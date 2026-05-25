@@ -15,6 +15,11 @@ export default function WelcomeScreen() {
           Stop calling home to ask what's low.{'\n'}
           Your shared grocery list, always in sync.
         </Text>
+        <View style={styles.featureList}>
+          <Text style={styles.featureItem}>🛒  Live grocery list — mark items low, see it instantly</Text>
+          <Text style={styles.featureItem}>🏪  Store routing — sort your list by which store to hit</Text>
+          <Text style={styles.featureItem}>🧾  Receipt scanning — track spending automatically</Text>
+        </View>
       </View>
       <View style={styles.actions}>
         <TouchableOpacity
@@ -37,6 +42,8 @@ const styles = StyleSheet.create({
   emoji: { fontSize: 72 },
   title: { fontSize: 36, fontWeight: '700', color: '#1a1a1a', letterSpacing: -0.5 },
   subtitle: { fontSize: 17, color: '#666', textAlign: 'center', lineHeight: 26 },
+  featureList: { marginTop: 24, gap: 10, alignSelf: 'stretch' },
+  featureItem: { fontSize: 15, color: '#555', lineHeight: 22 },
   actions: { paddingBottom: 48, gap: 12 },
   primaryBtn: {
     backgroundColor: '#2D9CDB',

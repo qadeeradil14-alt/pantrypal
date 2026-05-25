@@ -2,7 +2,16 @@ import { supabase } from './supabase';
 import { ensureDefaultItems } from './items';
 
 function generateInviteCode(): string {
-  return Math.random().toString(36).substring(2, 8).toUpperCase();
+  // Unambiguous character set (no 0/O, 1/I/L confusion)
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = new Uint8Array(6);
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    crypto.getRandomValues(bytes);
+  } else {
+    // Fallback for environments without Web Crypto (should not happen in RN/Expo)
+    for (let i = 0; i < 6; i++) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  return Array.from(bytes, (b) => chars[b % chars.length]).join('');
 }
 
 type HouseholdCore = {

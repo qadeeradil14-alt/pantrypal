@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { signUp } from '../../lib/auth';
+import { supabase } from '../../lib/supabase';
 
 export default function SignUpScreen() {
   const router = useRouter();
@@ -17,6 +18,9 @@ export default function SignUpScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [needsVerification, setNeedsVerification] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resendSuccess, setResendSuccess] = useState(false);
 
   function handleBack() {
     if (router.canGoBack()) {
@@ -41,13 +45,71 @@ export default function SignUpScreen() {
         }
         router.replace('/(setup)/check');
       } else {
-        setError('Check your email for a confirmation link.');
+        // Email confirmation required — show resend UI instead of a dead-end error
+        setNeedsVerification(true);
       }
     } catch (e: any) {
       setError(e.message ?? 'Something went wrong. Try again.');
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleResend() {
+    setResending(true);
+    setResendSuccess(false);
+    try {
+      const { error: resendError } = await supabase.auth.resend({
+        type: 'signup',
+        email: email.trim(),
+      });
+      if (resendError) throw resendError;
+      setResendSuccess(true);
+    } catch (e: any) {
+      setError(e.message ?? 'Could not resend. Try again in a minute.');
+    } finally {
+      setResending(false);
+    }
+  }
+
+  if (needsVerification) {
+    return (
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <View style={styles.verifyCard}>
+          <Text style={styles.verifyEmoji}>📬</Text>
+          <Text style={styles.title}>Check your email</Text>
+          <Text style={styles.subtitle}>
+            We sent a confirmation link to{'\n'}
+            <Text style={styles.emailHighlight}>{email.trim()}</Text>
+          </Text>
+          <Text style={styles.verifyHint}>
+            Tap the link in that email to activate your account, then come back to sign in.
+          </Text>
+
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {resendSuccess ? (
+            <Text style={styles.resendSuccess}>Sent! Check your inbox (and spam folder).</Text>
+          ) : null}
+
+          <TouchableOpacity
+            style={[styles.btn, resending && styles.btnDisabled]}
+            onPress={handleResend}
+            disabled={resending}
+          >
+            {resending
+              ? <ActivityIndicator color="#fff" />
+              : <Text style={styles.btnText}>Resend confirmation email</Text>}
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={() => router.replace('/(auth)/sign-in')}>
+            <Text style={styles.link}>Already confirmed? Sign in</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    );
   }
 
   return (
@@ -120,4 +182,13 @@ const styles = StyleSheet.create({
   },
   btnText: { color: '#fff', fontSize: 17, fontWeight: '600' },
   link: { color: '#2D9CDB', fontSize: 15, textAlign: 'center' },
+  btnDisabled: { backgroundColor: '#93C5FD' },
+  verifyCard: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12, paddingHorizontal: 8 },
+  verifyEmoji: { fontSize: 56, marginBottom: 8 },
+  emailHighlight: { fontWeight: '700', color: '#1a1a1a' },
+  verifyHint: { fontSize: 14, color: '#888', textAlign: 'center', lineHeight: 20, marginBottom: 8 },
+  resendSuccess: {
+    backgroundColor: '#D1FAE5', color: '#065F46', borderRadius: 8,
+    padding: 12, fontSize: 14, textAlign: 'center', width: '100%',
+  },
 });

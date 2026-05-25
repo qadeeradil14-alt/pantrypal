@@ -11,14 +11,16 @@
 
 A household pantry awareness app. Two people share one household. Either person marks items as low. The shopper sees a live grocery list on their phone at the store. The phone call stops happening.
 
-**NOT in v1:** barcode scanning, expiry tracking, recipes, meal planning, AI, quantity tracking, categories, history.
+**Shipped in v1:** pantry list (grouped by category), live grocery list, store routing, receipt scanning, push notifications, geofencing store arrival alerts, deep-link invite codes.
+
+**NOT in v1:** barcode scanning, expiry tracking, recipes, meal planning, AI, quantity tracking, history.
 
 ---
 
 ## Architecture
 
 ### Tech Stack
-- **Frontend:** Expo SDK 51, React Native, TypeScript
+- **Frontend:** Expo SDK 56, React Native, TypeScript
 - **Backend:** Supabase (Postgres + Realtime + Auth + Push via Expo Notifications)
 - **State:** Zustand (lightweight, no Redux overhead)
 - **Navigation:** Expo Router (file-based, simplest for this app size)
@@ -101,17 +103,21 @@ App
 │   ├── CreateHouseholdScreen   — name household, shows invite code + Share sheet
 │   └── JoinHouseholdScreen     — enter invite code OR tap deep link
 └── Main (tab navigator — default: PantryTab)
-    ├── PantryTab               — full item list, recently-low items float to top
-    │   ├── ItemListScreen      — grouped by category, search bar
-    │   │   States: loading (shimmer rows), empty (add items CTA), error (retry banner)
-    │   │   ItemRow visual states: stocked (normal) / low (highlighted + badge)
-    │   │   Offline: items marked low show "Queued" badge until synced
-    │   └── AddItemScreen       — add custom item
-    └── GroceryTab              — items marked low, tap row (not swipe) to mark "got it"
-        └── GroceryListScreen   — live synced list, shopping mode ON by default
-            States: empty ("All stocked up! 🛒"), loading (shimmer), error (retry)
-            Shopping mode: screen stays on, large text, full-row tap to complete
-            Completion: "All done — 6 items grabbed" toast on last item checked
+    ├── PantryTab               — full item list, low items float to top per section
+    │   └── ItemListScreen      — grouped by category (Fridge/Freezer/Pantry), search bar,
+    │                             category filter chips
+    │                             States: loading, empty, error (retry)
+    │                             ItemRow: stocked (normal) / low (red highlight + Low pill)
+    │                             Long-press ItemRow → assign to a store
+    │                             "+ Add" button opens AddItemModal (bottom-sheet modal,
+    │                             NOT a separate route — add-item.tsx was never created)
+    ├── GroceryTab              — items marked low, grouped by store assignment
+    │   └── GroceryListScreen   — live synced list, shopping mode toggle in header
+    │                             Shopping mode: keepAwake, larger text, green background
+    │                             Store filter chips at top
+    │                             Geofence arrival → 120-second countdown banner
+    ├── ReceiptsTab             — upload/scan grocery receipts, spend-by-store summary
+    └── SettingsTab             — household name, invite code, share button, sign out
 ```
 
 ### ItemRow Visual Spec
