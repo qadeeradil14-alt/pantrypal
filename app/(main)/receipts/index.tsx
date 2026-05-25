@@ -103,7 +103,7 @@ export default function ReceiptsScreen() {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="'#16A34A'" />
+        <ActivityIndicator size="large" color="#16A34A" />
       </View>
     );
   }
@@ -127,7 +127,7 @@ export default function ReceiptsScreen() {
       <FlatList
         data={receipts}
         keyExtractor={(r) => r.id}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="'#16A34A'" />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#16A34A" />}
         ListHeaderComponent={
           <View>
             {/* Spend summary */}
@@ -212,7 +212,7 @@ const styles = StyleSheet.create({
   summaryLabel: { fontSize: 13, color: '#6B7280', marginBottom: 4 },
   summaryTotal: { fontSize: 36, fontWeight: '800', color: '#111827', marginBottom: 16 },
   storeRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderTopWidth: 1, borderTopColor: '#F3F4F6' },
-  storeName: { fontSize: 15, color: '#555' },
+  storeName: { fontSize: 15, color: '#6B7280' },
   storeAmount: { fontSize: 15, fontWeight: '600', color: '#111827' },
   sectionLabel: { paddingHorizontal: 20, paddingBottom: 8, fontSize: 13, fontWeight: '600', color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5 },
   list: { paddingBottom: 32 },

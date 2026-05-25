@@ -1,9 +1,12 @@
 import { TouchableOpacity, View, Text, StyleSheet, Alert } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useItemsStore } from '../store/items';
 import { useStoresStore } from '../store/stores';
 import { deleteItem, markItemLow, markItemOk } from '../lib/items';
 import { setItemStore } from '../lib/stores';
 import type { Item } from '../lib/items';
+import { CATEGORY_LABELS } from '../constants/defaultItems';
+import { colors, radii } from '../constants/theme';
 
 interface Props {
   item: Item;
@@ -84,6 +87,7 @@ export default function ItemRow({ item, userId }: Props) {
   }
 
   const assignedStoreName = stores.find((s) => s.id === item.preferred_store_id)?.name;
+  const categoryLabel = CATEGORY_LABELS[item.category as keyof typeof CATEGORY_LABELS] ?? item.category;
 
   return (
     <TouchableOpacity
@@ -93,9 +97,16 @@ export default function ItemRow({ item, userId }: Props) {
       delayLongPress={400}
       activeOpacity={0.65}
     >
-      {/* Left: status bar accent */}
-      <View style={[styles.accentBar, item.is_low ? styles.accentBarLow : styles.accentBarOk]} />
+      {/* Status icon circle */}
+      <View style={[styles.statusIcon, item.is_low && styles.statusIconLow]}>
+        <Ionicons
+          name={item.is_low ? 'alert-circle' : 'checkmark'}
+          size={18}
+          color={item.is_low ? colors.low : colors.primary}
+        />
+      </View>
 
+      {/* Content */}
       <View style={styles.content}>
         <View style={styles.nameRow}>
           <Text style={[styles.name, item.is_low && styles.nameLow]} numberOfLines={1}>
@@ -108,9 +119,9 @@ export default function ItemRow({ item, userId }: Props) {
           )}
         </View>
 
-        {assignedStoreName ? (
-          <Text style={styles.storeName}>📍 {assignedStoreName}</Text>
-        ) : null}
+        <Text style={styles.meta} numberOfLines={1}>
+          {categoryLabel}{assignedStoreName ? ` · ${assignedStoreName}` : ''}
+        </Text>
       </View>
     </TouchableOpacity>
   );
@@ -119,32 +130,36 @@ export default function ItemRow({ item, userId }: Props) {
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
-    alignItems: 'stretch',
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-    minHeight: 56,
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    minHeight: 68,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: colors.faint,
   },
   rowLow: {
-    backgroundColor: '#FFF8F0',
+    backgroundColor: colors.lowSoft,
+    borderColor: '#FBBF9A',
   },
-  // Left-edge accent bar (replaces dot — easier to see at a glance)
-  accentBar: {
-    width: 4,
-    borderRadius: 0,
+  statusIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primarySoft,
+    flexShrink: 0,
   },
-  accentBarOk: {
-    backgroundColor: '#D1FAE5',
-  },
-  accentBarLow: {
-    backgroundColor: '#F97316',
+  statusIconLow: {
+    backgroundColor: colors.lowBadgeBg,
   },
   content: {
     flex: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
     justifyContent: 'center',
-    gap: 4,
+    gap: 3,
   },
   nameRow: {
     flexDirection: 'row',
@@ -154,29 +169,28 @@ const styles = StyleSheet.create({
   },
   name: {
     fontSize: 16,
-    color: '#1A1A1A',
-    fontWeight: '400',
+    color: colors.ink,
+    fontWeight: '600',
     flex: 1,
   },
   nameLow: {
-    color: '#C2410C',
-    fontWeight: '600',
+    color: colors.lowText,
   },
   lowBadge: {
-    backgroundColor: '#FED7AA',
-    borderRadius: 6,
+    backgroundColor: colors.lowBadgeBg,
+    borderRadius: radii.sm,
     paddingHorizontal: 7,
     paddingVertical: 2,
   },
   lowBadgeText: {
-    color: '#9A3412',
-    fontSize: 11,
+    color: colors.lowBadgeText,
+    fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.5,
   },
-  storeName: {
+  meta: {
     fontSize: 12,
-    color: '#6B7280',
+    color: colors.muted,
     fontWeight: '400',
   },
 });

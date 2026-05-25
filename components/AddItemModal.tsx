@@ -3,12 +3,19 @@ import {
   Modal, View, Text, TextInput, TouchableOpacity,
   StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useItemsStore } from '../store/items';
 import { addItem } from '../lib/items';
-import { CATEGORY_LABELS, CATEGORY_ICONS, type ItemCategory } from '../constants/defaultItems';
+import { CATEGORY_LABELS, type ItemCategory } from '../constants/defaultItems';
+import { colors, radii, shadow } from '../constants/theme';
 
 const CATEGORIES: ItemCategory[] = ['fridge', 'freezer', 'pantry'];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const CATEGORY_ICON: Record<ItemCategory, React.ComponentProps<typeof Ionicons>['name']> = {
+  fridge: 'leaf-outline',
+  freezer: 'snow-outline',
+  pantry: 'basket-outline',
+};
 
 interface Props {
   householdId: string;
@@ -62,6 +69,7 @@ export default function AddItemModal({ householdId, userId, onClose }: Props) {
           <View style={styles.handle} />
 
           <Text style={styles.title}>New item</Text>
+          <Text style={styles.subtitle}>Add something your household checks often.</Text>
 
           {error ? (
             <View style={styles.errorBox}>
@@ -71,13 +79,13 @@ export default function AddItemModal({ householdId, userId, onClose }: Props) {
 
           <TextInput
             style={styles.input}
-            placeholder="Item name"
+            placeholder="Milk, eggs, rice..."
             autoFocus
             value={name}
             onChangeText={(t) => { setName(t); if (error) setError(''); }}
             onSubmitEditing={handleAdd}
             returnKeyType="done"
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={colors.muted}
           />
 
           <Text style={styles.label}>Category</Text>
@@ -89,7 +97,11 @@ export default function AddItemModal({ householdId, userId, onClose }: Props) {
                 onPress={() => setCategory(cat)}
                 activeOpacity={0.75}
               >
-                <Text style={styles.catIcon}>{CATEGORY_ICONS[cat]}</Text>
+                <Ionicons
+                  name={CATEGORY_ICON[cat]}
+                  size={22}
+                  color={category === cat ? colors.surface : colors.primaryDeep}
+                />
                 <Text style={[styles.catLabel, category === cat && styles.catLabelActive]}>
                   {CATEGORY_LABELS[cat]}
                 </Text>
@@ -121,64 +133,62 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'rgba(43,33,24,0.42)',
   },
   sheet: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    backgroundColor: colors.background,
+    borderTopLeftRadius: radii.xl,
+    borderTopRightRadius: radii.xl,
     padding: 24,
     paddingBottom: 40,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 16,
+    ...shadow,
   },
   handle: {
     width: 36,
     height: 4,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: colors.faint,
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 20,
   },
   title: {
     fontSize: 20,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 16,
+    fontWeight: '800',
+    color: colors.ink,
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: colors.muted,
+    marginBottom: 18,
   },
   errorBox: {
-    backgroundColor: '#FEF2F2',
-    borderRadius: 10,
+    backgroundColor: colors.lowSoft,
+    borderRadius: radii.sm,
     padding: 12,
     marginBottom: 12,
-    borderLeftWidth: 3,
-    borderLeftColor: '#EF4444',
   },
   errorText: {
-    color: '#B91C1C',
+    color: '#8F321C',
     fontSize: 14,
     lineHeight: 20,
   },
   input: {
-    borderWidth: 1.5,
-    borderColor: '#E5E7EB',
-    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.faint,
+    borderRadius: radii.md,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 16,
     marginBottom: 20,
-    color: '#111827',
-    backgroundColor: '#FAFAFA',
+    color: colors.ink,
+    backgroundColor: colors.surface,
   },
   label: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#9CA3AF',
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.muted,
     textTransform: 'uppercase',
-    letterSpacing: 0.8,
     marginBottom: 10,
   },
   categoryRow: { flexDirection: 'row', gap: 10, marginBottom: 24 },
@@ -186,28 +196,27 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     paddingVertical: 14,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#FAFAFA',
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.faint,
+    backgroundColor: colors.surface,
     gap: 6,
   },
   catBtnActive: {
-    borderColor: '#16A34A',
-    backgroundColor: '#16A34A',
+    borderColor: colors.primary,
+    backgroundColor: colors.primary,
   },
-  catIcon: { fontSize: 22 },
-  catLabel: { fontSize: 12, color: '#6B7280', fontWeight: '600' },
-  catLabelActive: { color: '#fff' },
+  catLabel: { fontSize: 12, color: colors.muted, fontWeight: '700' },
+  catLabelActive: { color: colors.surface },
   addBtn: {
-    backgroundColor: '#16A34A',
-    borderRadius: 14,
+    backgroundColor: colors.primary,
+    borderRadius: radii.md,
     paddingVertical: 16,
     alignItems: 'center',
     marginBottom: 10,
   },
-  addBtnDisabled: { backgroundColor: '#D1D5DB' },
-  addBtnText: { color: '#fff', fontSize: 17, fontWeight: '600' },
+  addBtnDisabled: { backgroundColor: '#B7C9B8' },
+  addBtnText: { color: colors.surface, fontSize: 17, fontWeight: '800' },
   cancelBtn: { paddingVertical: 14, alignItems: 'center' },
-  cancelText: { color: '#9CA3AF', fontSize: 16, fontWeight: '500' },
+  cancelText: { color: colors.muted, fontSize: 16, fontWeight: '600' },
 });

@@ -29,7 +29,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff', paddingHorizontal: 28 },
   hero: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 16 },
   emoji: { fontSize: 72 },
-  title: { fontSize: 28, fontWeight: '700', color: '#1a1a1a', textAlign: 'center' },
+  title: { fontSize: 28, fontWeight: '700', color: '#111827', textAlign: 'center' },
   subtitle: { fontSize: 17, color: '#666', textAlign: 'center', lineHeight: 26 },
   actions: { paddingBottom: 48, gap: 12 },
   primaryBtn: {

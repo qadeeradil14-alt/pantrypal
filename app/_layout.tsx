@@ -3,8 +3,7 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/auth';
 import { useStoresStore } from '../store/stores';
-import { defineGeofenceTask } from '../lib/geofencing';
-import { notifyPartnerArrival, recordStoreArrival } from '../lib/geofencing';
+import { defineGeofenceTask, notifyPartnerArrival, recordStoreArrival } from '../lib/geofencing';
 
 // Register geofence background task at module load time (before any async code)
 defineGeofenceTask((storeId) => {

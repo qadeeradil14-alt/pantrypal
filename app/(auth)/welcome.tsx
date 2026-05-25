@@ -40,10 +40,10 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff', paddingHorizontal: 28 },
   hero: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 16 },
   emoji: { fontSize: 72 },
-  title: { fontSize: 36, fontWeight: '700', color: '#1a1a1a', letterSpacing: -0.5 },
+  title: { fontSize: 36, fontWeight: '700', color: '#111827', letterSpacing: -0.5 },
   subtitle: { fontSize: 17, color: '#666', textAlign: 'center', lineHeight: 26 },
   featureList: { marginTop: 24, gap: 10, alignSelf: 'stretch' },
-  featureItem: { fontSize: 15, color: '#555', lineHeight: 22 },
+  featureItem: { fontSize: 15, color: '#6B7280', lineHeight: 22 },
   actions: { paddingBottom: 48, gap: 12 },
   primaryBtn: {
     backgroundColor: '#16A34A',

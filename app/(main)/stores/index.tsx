@@ -91,7 +91,7 @@ export default function StoresScreen() {
   }
 
   if (loading) {
-    return <View style={styles.centered}><ActivityIndicator size="large" color="'#16A34A'" /></View>;
+    return <View style={styles.centered}><ActivityIndicator size="large" color="#16A34A" /></View>;
   }
 
   return (
@@ -317,8 +317,8 @@ const styles = StyleSheet.create({
   error: { backgroundColor: '#FEE2E2', color: '#B91C1C', borderRadius: 8, padding: 12, marginBottom: 12, fontSize: 14 },
   label: { fontSize: 12, fontWeight: '600', color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
   presetsRow: { marginBottom: 20 },
-  presetChip: { backgroundColor: '#F0F9FF', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8, marginRight: 8, borderWidth: 1, borderColor: '#BAE6FD' },
-  presetChipText: { color: '#0369A1', fontSize: 14, fontWeight: '500' },
+  presetChip: { backgroundColor: '#F0FDF4', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8, marginRight: 8, borderWidth: 1, borderColor: '#BBF7D0' },
+  presetChipText: { color: '#16A34A', fontSize: 14, fontWeight: '500' },
   input: { borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, marginBottom: 12, color: '#111827' },
   saveBtn: { backgroundColor: '#16A34A', borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginBottom: 10 },
   saveBtnDisabled: { backgroundColor: '#D1D5DB' },

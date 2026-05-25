@@ -101,7 +101,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff', paddingHorizontal: 28, paddingTop: 60 },
   back: { marginBottom: 32 },
   backText: { color: '#16A34A', fontSize: 16 },
-  title: { fontSize: 28, fontWeight: '700', color: '#1a1a1a', marginBottom: 32 },
+  title: { fontSize: 28, fontWeight: '700', color: '#111827', marginBottom: 32 },
   error: {
     backgroundColor: '#FEE2E2', color: '#B91C1C', borderRadius: 8,
     padding: 12, marginBottom: 16, fontSize: 14,
@@ -109,13 +109,13 @@ const styles = StyleSheet.create({
   input: {
     borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 12,
     paddingHorizontal: 16, paddingVertical: 14, fontSize: 16,
-    marginBottom: 12, color: '#1a1a1a',
+    marginBottom: 12, color: '#111827',
   },
   btn: {
     backgroundColor: '#16A34A', borderRadius: 14,
     paddingVertical: 16, alignItems: 'center', marginTop: 8, marginBottom: 16,
   },
   btnText: { color: '#fff', fontSize: 17, fontWeight: '600' },
-  forgotLink: { color: '#888', fontSize: 14, textAlign: 'center', marginBottom: 12 },
+  forgotLink: { color: '#6B7280', fontSize: 14, textAlign: 'center', marginBottom: 12 },
   link: { color: '#16A34A', fontSize: 15, textAlign: 'center' },
 });

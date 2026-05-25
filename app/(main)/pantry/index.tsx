@@ -237,6 +237,7 @@ export default function PantryScreen() {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#F97316" />
           }
           contentContainerStyle={styles.list}
+          ItemSeparatorComponent={() => <View style={styles.separator} />}
           stickySectionHeadersEnabled
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
@@ -398,7 +399,8 @@ const styles = StyleSheet.create({
   sectionEmptyWrap: { paddingHorizontal: 20, paddingBottom: 8 },
   sectionEmptyText: { color: '#9CA3AF', fontSize: 13 },
 
-  list: { paddingBottom: 120 },
+  list: { paddingHorizontal: 12, paddingBottom: 120 },
+  separator: { height: 8 },
 
   // Empty state
   empty: {

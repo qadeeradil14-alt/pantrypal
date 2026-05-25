@@ -78,8 +78,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff', paddingHorizontal: 28, paddingTop: 60 },
   back: { marginBottom: 32 },
   backText: { color: '#16A34A', fontSize: 16 },
-  title: { fontSize: 28, fontWeight: '700', color: '#1a1a1a', marginBottom: 8 },
-  subtitle: { fontSize: 15, color: '#888', marginBottom: 32 },
+  title: { fontSize: 28, fontWeight: '700', color: '#111827', marginBottom: 8 },
+  subtitle: { fontSize: 15, color: '#6B7280', marginBottom: 32 },
   error: {
     backgroundColor: '#FEE2E2', color: '#B91C1C', borderRadius: 8,
     padding: 12, marginBottom: 16, fontSize: 14,
@@ -87,7 +87,7 @@ const styles = StyleSheet.create({
   input: {
     borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 12,
     paddingHorizontal: 16, paddingVertical: 14, fontSize: 16,
-    marginBottom: 12, color: '#1a1a1a',
+    marginBottom: 12, color: '#111827',
   },
   codeInput: {
     fontSize: 28, fontWeight: '700', letterSpacing: 8,
