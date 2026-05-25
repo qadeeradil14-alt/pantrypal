@@ -81,7 +81,10 @@ export default function MainLayout() {
       />
       <Tabs.Screen
         name="settings"
-        options={{ href: null }}
+        options={{
+          title: 'Settings',
+          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>⚙️</Text>,
+        }}
       />
     </Tabs>
   );

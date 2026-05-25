@@ -3,12 +3,11 @@ import {
   View, Text, SectionList, StyleSheet, TouchableOpacity,
   ActivityIndicator, RefreshControl, TextInput, Alert,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useHouseholdStore } from '../../../store/household';
 import { useAuthStore } from '../../../store/auth';
 import { useItemsStore } from '../../../store/items';
-import { fetchItems } from '../../../lib/items';
+import { ensureDefaultItems, fetchItems } from '../../../lib/items';
 import { registerPushToken } from '../../../lib/notifications';
 import ItemRow from '../../../components/ItemRow';
 import AddItemModal from '../../../components/AddItemModal';
@@ -23,7 +22,6 @@ function normalizeCategory(value: string | null | undefined): ItemCategory | nul
 }
 
 export default function PantryScreen() {
-  const router = useRouter();
   const { household } = useHouseholdStore();
   const { session } = useAuthStore();
   const { items, setItems } = useItemsStore();
@@ -31,6 +29,7 @@ export default function PantryScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [query, setQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<'all' | ItemCategory>('all');
   const householdId = household?.id ?? null;
   const canAdd = !!householdId;
 
@@ -39,9 +38,18 @@ export default function PantryScreen() {
       setItems([]);
       return;
     }
-    const data = await fetchItems(householdId);
+    let data = await fetchItems(householdId);
+
+    // Self-heal households created before default seeding was stable.
+    if (data.length === 0) {
+      const inserted = await ensureDefaultItems(householdId, session?.user.id);
+      if (inserted > 0) {
+        data = await fetchItems(householdId);
+      }
+    }
+
     setItems(data);
-  }, [householdId, setItems]);
+  }, [householdId, session?.user.id, setItems]);
 
   useEffect(() => {
     load()
@@ -70,10 +78,15 @@ export default function PantryScreen() {
   }, [load]);
 
   const q = query.toLowerCase().trim();
-  const filtered = q ? items.filter((i) => i.name.toLowerCase().includes(q)) : items;
+  const queryFiltered = q ? items.filter((i) => i.name.toLowerCase().includes(q)) : items;
+  const filtered = selectedCategory === 'all'
+    ? queryFiltered
+    : queryFiltered.filter((i) => normalizeCategory(i.category) === selectedCategory);
   const hasAnyItems = filtered.length > 0;
 
-  const knownSections = CATEGORY_ORDER.map((cat) => {
+  const visibleCategories = selectedCategory === 'all' ? CATEGORY_ORDER : [selectedCategory];
+
+  const knownSections = visibleCategories.map((cat) => {
     const catItems = filtered.filter((i) => normalizeCategory(i.category) === cat);
     const low = catItems.filter((i) => i.is_low).sort((a, b) => a.name.localeCompare(b.name));
     const ok = catItems
@@ -83,20 +96,22 @@ export default function PantryScreen() {
       title: `${CATEGORY_ICONS[cat]}  ${CATEGORY_LABELS[cat]}`,
       data: [...low, ...ok],
       key: cat,
+      count: catItems.length,
     };
-  }).filter((section) => section.data.length > 0);
+  });
 
   const unknownItems = filtered
     .filter((i) => normalizeCategory(i.category) == null)
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  const sections = unknownItems.length > 0
+  const sections = unknownItems.length > 0 && selectedCategory === 'all'
     ? [
         ...knownSections,
         {
           title: '📦  Other',
           data: unknownItems,
           key: 'other',
+          count: unknownItems.length,
         },
       ]
     : knownSections;
@@ -133,9 +148,6 @@ export default function PantryScreen() {
           >
             <Text style={styles.addBtnText}>+ Add</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.settingsBtn} onPress={() => router.push('/(main)/settings')}>
-            <Text style={styles.settingsIcon}>⚙️</Text>
-          </TouchableOpacity>
         </View>
       </View>
 
@@ -151,10 +163,38 @@ export default function PantryScreen() {
         />
       </View>
 
+      <View style={styles.categoryFilters}>
+        <TouchableOpacity
+          style={[styles.filterChip, selectedCategory === 'all' && styles.filterChipActive]}
+          onPress={() => setSelectedCategory('all')}
+        >
+          <Text style={[styles.filterChipText, selectedCategory === 'all' && styles.filterChipTextActive]}>
+            All ({queryFiltered.length})
+          </Text>
+        </TouchableOpacity>
+        {CATEGORY_ORDER.map((cat) => {
+          const count = queryFiltered.filter((i) => normalizeCategory(i.category) === cat).length;
+          const active = selectedCategory === cat;
+          return (
+            <TouchableOpacity
+              key={cat}
+              style={[styles.filterChip, active && styles.filterChipActive]}
+              onPress={() => setSelectedCategory(cat)}
+            >
+              <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
+                {CATEGORY_ICONS[cat]} {CATEGORY_LABELS[cat]} ({count})
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
       {!hasAnyItems ? (
         <View style={styles.empty}>
           <Text style={styles.emptyText}>
-            {q ? `No items matching "${query}"` : 'No items yet — tap + Add to get started.'}
+            {q
+              ? `No items matching "${query}" in ${selectedCategory === 'all' ? 'your pantry' : CATEGORY_LABELS[selectedCategory]}.`
+              : `No items in ${selectedCategory === 'all' ? 'your pantry' : CATEGORY_LABELS[selectedCategory]} yet.`}
           </Text>
         </View>
       ) : (
@@ -167,8 +207,17 @@ export default function PantryScreen() {
           )}
           renderSectionHeader={({ section }) => (
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>{section.title}</Text>
+              <Text style={styles.sectionTitle}>{section.title} ({section.count})</Text>
             </View>
+          )}
+          renderSectionFooter={({ section }) => (
+            section.data.length === 0
+              ? (
+                <View style={styles.sectionEmptyWrap}>
+                  <Text style={styles.sectionEmptyText}>No items in this category yet.</Text>
+                </View>
+              )
+              : null
           )}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#2D9CDB" />}
           contentContainerStyle={styles.list}
@@ -206,15 +255,43 @@ const styles = StyleSheet.create({
   },
   addBtnDisabled: { backgroundColor: '#93C5FD' },
   addBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  settingsBtn: { padding: 6 },
-  settingsIcon: { fontSize: 20 },
   searchBar: { paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
   searchInput: {
     backgroundColor: '#F3F4F6', borderRadius: 10,
     paddingHorizontal: 14, paddingVertical: 9, fontSize: 15, color: '#1a1a1a',
   },
+  categoryFilters: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  filterChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#fff',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  filterChipActive: {
+    borderColor: '#2D9CDB',
+    backgroundColor: '#F0F9FF',
+  },
+  filterChipText: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '600',
+  },
+  filterChipTextActive: {
+    color: '#2D9CDB',
+  },
   sectionHeader: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 6 },
   sectionTitle: { fontSize: 13, fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: 0.5 },
+  sectionEmptyWrap: { paddingHorizontal: 20, paddingBottom: 6 },
+  sectionEmptyText: { color: '#9CA3AF', fontSize: 13 },
   list: { paddingBottom: 120 },
   empty: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 },
   emptyText: { fontSize: 15, color: '#888', textAlign: 'center', lineHeight: 22 },

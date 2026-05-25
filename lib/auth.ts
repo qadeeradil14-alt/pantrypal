@@ -21,3 +21,8 @@ export async function getSession() {
   const { data: { session } } = await supabase.auth.getSession();
   return session;
 }
+
+export async function resetPassword(email: string) {
+  const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
+  if (error) throw error;
+}

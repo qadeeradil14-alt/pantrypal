@@ -21,7 +21,7 @@ export default function JoinDeepLink() {
 
     joinHousehold(code, session.user.id)
       .then((household) => {
-        setHousehold({ id: household.id, name: household.name, inviteCode: '', role: 'member' });
+        setHousehold({ id: household.id, name: household.name, inviteCode: code.toUpperCase(), role: 'member' });
         router.replace('/(main)/pantry');
       })
       .catch(() => {

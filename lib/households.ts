@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { DEFAULT_ITEMS } from '../constants/defaultItems';
+import { ensureDefaultItems } from './items';
 
 function generateInviteCode(): string {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -12,9 +12,8 @@ type HouseholdCore = {
 };
 
 function isMissingRpc(error: any): boolean {
-  const code = error?.code;
-  const message = String(error?.message ?? '').toLowerCase();
-  return code === '42883' || message.includes('function') || message.includes('does not exist');
+  // PostgreSQL error code 42883 = undefined_function (RPC not deployed yet)
+  return error?.code === '42883';
 }
 
 function normalizeRpcRow(data: unknown): HouseholdCore | null {
@@ -84,16 +83,8 @@ export async function createHousehold(name: string, userId: string) {
     throw new Error('Household created without an invite code. Please try again.');
   }
 
-  // Seed default items for this household
-  const items = DEFAULT_ITEMS.map((item) => ({
-    household_id: household.id,
-    name: item.name,
-    category: item.category,
-    added_by: userId,
-  }));
-
-  const { error: seedError } = await supabase.from('items').insert(items);
-  if (seedError) throw seedError;
+  // Seed standard grocery defaults for a brand-new household.
+  await ensureDefaultItems(household.id, userId);
 
   return {
     id: household.id,

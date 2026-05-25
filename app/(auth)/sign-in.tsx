@@ -4,7 +4,7 @@ import {
   StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { signIn } from '../../lib/auth';
+import { signIn, resetPassword } from '../../lib/auth';
 
 export default function SignInScreen() {
   const router = useRouter();
@@ -19,6 +19,21 @@ export default function SignInScreen() {
       return;
     }
     router.replace('/(auth)/welcome');
+  }
+
+  async function handleForgotPassword() {
+    if (!email.trim()) { setError('Enter your email first, then tap Forgot password.'); return; }
+    setError('');
+    setLoading(true);
+    try {
+      await resetPassword(email.trim());
+      setError('');
+      alert('Check your email for a password reset link.');
+    } catch (e: any) {
+      setError(e.message ?? 'Could not send reset email. Try again.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleSignIn() {
@@ -71,6 +86,10 @@ export default function SignInScreen() {
         {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Sign in</Text>}
       </TouchableOpacity>
 
+      <TouchableOpacity onPress={handleForgotPassword}>
+        <Text style={styles.forgotLink}>Forgot password?</Text>
+      </TouchableOpacity>
+
       <TouchableOpacity onPress={() => router.push({ pathname: '/(auth)/sign-up', params: { fromJoin: '0' } })}>
         <Text style={styles.link}>No account yet? Sign up</Text>
       </TouchableOpacity>
@@ -97,5 +116,6 @@ const styles = StyleSheet.create({
     paddingVertical: 16, alignItems: 'center', marginTop: 8, marginBottom: 16,
   },
   btnText: { color: '#fff', fontSize: 17, fontWeight: '600' },
+  forgotLink: { color: '#888', fontSize: 14, textAlign: 'center', marginBottom: 12 },
   link: { color: '#2D9CDB', fontSize: 15, textAlign: 'center' },
 });

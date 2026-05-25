@@ -31,7 +31,7 @@ export default function JoinHouseholdScreen() {
     setLoading(true);
     try {
       const household = await joinHousehold(code.trim(), session.user.id);
-      setHousehold({ id: household.id, name: household.name, inviteCode: '', role: 'member' });
+      setHousehold({ id: household.id, name: household.name, inviteCode: code.trim().toUpperCase(), role: 'member' });
       router.replace('/(main)/pantry');
     } catch (e: any) {
       setError(e.message ?? 'Invalid code. Check and try again.');

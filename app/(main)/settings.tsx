@@ -3,7 +3,6 @@ import {
   View, Text, TouchableOpacity, StyleSheet,
   Alert, Share, ActivityIndicator,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../store/auth';
 import { useHouseholdStore } from '../../store/household';
@@ -11,15 +10,6 @@ import { useItemsStore } from '../../store/items';
 import { signOut } from '../../lib/auth';
 
 export default function SettingsScreen() {
-  const router = useRouter();
-  function handleBack() {
-    if (router.canGoBack()) {
-      router.back();
-      return;
-    }
-    router.replace('/(main)/pantry');
-  }
-
   const { session } = useAuthStore();
   const { household, clearHousehold } = useHouseholdStore();
   const { setItems } = useItemsStore();
@@ -61,11 +51,7 @@ export default function SettingsScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.back} onPress={handleBack}>
-          <Text style={styles.backText}>← Back</Text>
-        </TouchableOpacity>
         <Text style={styles.headerTitle}>Settings</Text>
-        <View style={styles.backSpacer} />
       </View>
 
       <View style={styles.section}>
@@ -114,14 +100,10 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F9FAFB' },
   header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 20, paddingVertical: 16,
     backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
   },
-  back: { minWidth: 60 },
-  backText: { color: '#2D9CDB', fontSize: 16 },
-  headerTitle: { fontSize: 17, fontWeight: '600', color: '#1a1a1a' },
-  backSpacer: { minWidth: 60 },
+  headerTitle: { fontSize: 22, fontWeight: '700', color: '#1a1a1a' },
   section: { marginTop: 28, paddingHorizontal: 20 },
   sectionLabel: {
     fontSize: 12, fontWeight: '600', color: '#888',

@@ -56,7 +56,7 @@ export default function GroceryScreen() {
   // Filter items by active store, fall back to all low items
   const lowItems = items
     .filter((i) => i.is_low)
-    .filter((i) => activeStoreId ? (i as any).preferred_store_id === activeStoreId || (i as any).preferred_store_id == null : true)
+    .filter((i) => activeStoreId ? i.preferred_store_id === activeStoreId || i.preferred_store_id == null : true)
     .sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
 
   async function handleGotIt(item: Item) {
@@ -148,9 +148,9 @@ export default function GroceryScreen() {
                   <Text style={styles.itemCategory}>{item.category}</Text>
                 </View>
               </View>
-              {(item as any).preferred_store_id && (
+              {item.preferred_store_id && (
                 <Text style={styles.storeTag}>
-                  {stores.find((s) => s.id === (item as any).preferred_store_id)?.name ?? ''}
+                  {stores.find((s) => s.id === item.preferred_store_id)?.name ?? ''}
                 </Text>
               )}
             </TouchableOpacity>

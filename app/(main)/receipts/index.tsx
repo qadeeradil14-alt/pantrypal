@@ -132,7 +132,7 @@ export default function ReceiptsScreen() {
           <View>
             {/* Spend summary */}
             <View style={styles.summaryCard}>
-              <Text style={styles.summaryLabel}>Spent this month</Text>
+              <Text style={styles.summaryLabel}>Spent this month (processed receipts)</Text>
               <Text style={styles.summaryTotal}>${totalThisMonth.toFixed(2)}</Text>
               {spendByStore.map((s) => (
                 <View key={s.store} style={styles.storeRow}>
