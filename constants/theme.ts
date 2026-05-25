@@ -1,57 +1,36 @@
-// Single source of truth for the PantryPal design system.
-// All screens should import from here instead of hard-coding hex values.
 export const colors = {
-  // Backgrounds
-  background: '#FAFAFA',
+  background: '#FFF9F1',
   surface: '#FFFFFF',
-
-  // Text
-  ink: '#111827',
-  muted: '#6B7280',
-  placeholder: '#9CA3AF',
-
-  // Borders / dividers
-  faint: '#F3F4F6',
-  border: '#E5E7EB',
-
-  // Primary — green
-  primary: '#16A34A',
-  primarySoft: '#D1FAE5',
-  primaryDeep: '#166534',
-
-  // Low / alert — orange
-  low: '#F97316',
-  lowText: '#C2410C',
-  lowSoft: '#FFF8F0',
-  lowBadgeBg: '#FED7AA',
-  lowBadgeText: '#9A3412',
-
-  // Destructive
-  danger: '#DC2626',
-  dangerSoft: '#FEE2E2',
-  dangerText: '#B91C1C',
-
-  // Category tints (section headers, optional)
+  surfaceWarm: '#FFF3E2',
+  ink: '#2B2118',
+  muted: '#7C6A58',
+  placeholder: '#9B8A78',
+  faint: '#EADFCC',
+  border: '#DED0BA',
+  primary: '#2F7D4F',
+  primarySoft: '#E5F3E9',
+  primaryDeep: '#1F5A39',
+  low: '#D95D39',
+  lowText: '#8F321C',
+  lowSoft: '#FFE6DA',
+  lowBadgeBg: '#FFD3C1',
+  lowBadgeText: '#8F321C',
+  danger: '#B83A2E',
+  dangerSoft: '#FFE3DC',
+  dangerText: '#8F2B22',
   fridge: '#E8F2D8',
   freezer: '#DBECF6',
   pantry: '#F7E4BE',
-
-  // Disabled
-  disabled: '#D1D5DB',
+  disabled: '#B7C9B8',
 };
 
 export const radii = {
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 24,
+  sm: 10,
+  md: 14,
+  lg: 22,
+  xl: 28,
 };
 
-// React Native shadow (iOS). Android uses elevation on the component itself.
 export const shadow = {
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: -4 },
-  shadowOpacity: 0.08,
-  shadowRadius: 16,
-  elevation: 16,
+  boxShadow: '0 10px 28px rgba(82, 55, 28, 0.10)',
 };

@@ -11,6 +11,8 @@ import { useAuthStore } from '../../../store/auth';
 import { useStoresStore } from '../../../store/stores';
 import { markItemGotIt } from '../../../lib/items';
 import type { Item } from '../../../lib/items';
+import { CATEGORY_LABELS } from '../../../constants/defaultItems';
+import { colors, radii, shadow } from '../../../constants/theme';
 
 const ARRIVAL_WINDOW_SECS = 120;
 
@@ -25,8 +27,8 @@ export default function GroceryScreen() {
 
   useEffect(() => {
     const tag = 'shopping-mode';
-    if (shoppingMode) { activateKeepAwakeAsync(tag); }
-    else { deactivateKeepAwake(tag); }
+    if (shoppingMode) activateKeepAwakeAsync(tag);
+    else deactivateKeepAwake(tag);
     return () => { deactivateKeepAwake(tag); };
   }, [shoppingMode]);
 
@@ -47,12 +49,9 @@ export default function GroceryScreen() {
   }, [activeStoreId]);
 
   const activeStore = stores.find((s) => s.id === activeStoreId);
-
   const lowItems = items
     .filter((i) => i.is_low)
-    .filter((i) => activeStoreId
-      ? i.preferred_store_id === activeStoreId || i.preferred_store_id == null
-      : true)
+    .filter((i) => activeStoreId ? i.preferred_store_id === activeStoreId || i.preferred_store_id == null : true)
     .sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
 
   async function handleGotIt(item: Item) {
@@ -73,21 +72,10 @@ export default function GroceryScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* ── Header ── */}
       <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>
-            {activeStore ? activeStore.name : 'Shopping list'}
-          </Text>
-          {arrivalCountdown !== null ? (
-            <Text style={styles.countdownText}>
-              Partner has {formatCountdown(arrivalCountdown)} to add items
-            </Text>
-          ) : lowItems.length > 0 ? (
-            <Text style={styles.subText}>
-              {lowItems.length} item{lowItems.length !== 1 ? 's' : ''} to grab
-            </Text>
-          ) : null}
+        <View style={styles.headerLeft}>
+          <Text style={styles.eyebrow}>{shoppingMode ? 'Shopping mode' : 'Grocery run'}</Text>
+          <Text style={styles.headerTitle}>{activeStore ? activeStore.name : 'Shopping list'}</Text>
         </View>
         <TouchableOpacity
           style={[styles.modeBtn, shoppingMode && styles.modeBtnActive]}
@@ -96,9 +84,8 @@ export default function GroceryScreen() {
         >
           <Ionicons
             name={shoppingMode ? 'checkmark-circle' : 'cart-outline'}
-            size={16}
-            color={shoppingMode ? '#fff' : '#374151'}
-            style={{ marginRight: 5 }}
+            size={18}
+            color={shoppingMode ? colors.surface : colors.primaryDeep}
           />
           <Text style={[styles.modeBtnText, shoppingMode && styles.modeBtnTextActive]}>
             {shoppingMode ? 'In store' : 'Shop'}
@@ -106,7 +93,26 @@ export default function GroceryScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* ── Store filter chips ── */}
+      <View style={[styles.statusCard, shoppingMode && styles.statusCardActive]}>
+        <View>
+          <Text style={styles.statusNumber}>{lowItems.length}</Text>
+          <Text style={styles.statusLabel}>
+            {lowItems.length === 1 ? 'thing to grab' : 'things to grab'}
+          </Text>
+        </View>
+        {arrivalCountdown !== null ? (
+          <View style={styles.countdownPill}>
+            <Ionicons name="timer-outline" size={18} color={colors.low} />
+            <Text style={styles.countdownText}>{formatCountdown(arrivalCountdown)}</Text>
+          </View>
+        ) : (
+          <View style={styles.countdownPill}>
+            <Ionicons name="bag-handle-outline" size={18} color={colors.primary} />
+            <Text style={styles.readyText}>{shoppingMode ? 'Keep awake' : 'Ready'}</Text>
+          </View>
+        )}
+      </View>
+
       {stores.length > 0 && (
         <ScrollView
           horizontal
@@ -118,9 +124,7 @@ export default function GroceryScreen() {
             style={[styles.chip, !activeStoreId && styles.chipActive]}
             onPress={() => setActiveStore(null)}
           >
-            <Text style={[styles.chipText, !activeStoreId && styles.chipTextActive]}>
-              All stores
-            </Text>
+            <Text style={[styles.chipText, !activeStoreId && styles.chipTextActive]}>All stores</Text>
           </TouchableOpacity>
           {stores.map((s) => (
             <TouchableOpacity
@@ -136,16 +140,13 @@ export default function GroceryScreen() {
         </ScrollView>
       )}
 
-      {/* ── List or empty state ── */}
       {lowItems.length === 0 ? (
         <View style={styles.empty}>
           <View style={styles.emptyIconWrap}>
-            <Ionicons name="checkmark-circle" size={56} color="#16A34A" />
+            <Ionicons name="checkmark-circle-outline" size={64} color={colors.primary} />
           </View>
-          <Text style={styles.emptyTitle}>All stocked up!</Text>
-          <Text style={styles.emptySub}>
-            Nothing is marked low.{'\n'}Tap items in your pantry when you run low.
-          </Text>
+          <Text style={styles.emptyTitle}>All stocked up</Text>
+          <Text style={styles.emptySub}>Mark items low from the Pantry tab and they will show up here.</Text>
         </View>
       ) : (
         <FlatList
@@ -156,37 +157,37 @@ export default function GroceryScreen() {
               ? stores.find((s) => s.id === item.preferred_store_id)?.name
               : null;
             const isTapping = tapping === item.id;
+            const categoryLabel = CATEGORY_LABELS[item.category] ?? item.category;
 
             return (
               <TouchableOpacity
                 style={[styles.row, shoppingMode && styles.rowShop]}
                 onPress={() => handleGotIt(item)}
                 disabled={isTapping}
-                activeOpacity={0.6}
+                activeOpacity={0.72}
               >
-                {/* Checkbox */}
                 <View style={[styles.checkbox, isTapping && styles.checkboxTapping]}>
-                  {isTapping && <ActivityIndicator size="small" color="#16A34A" />}
+                  {isTapping ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  ) : (
+                    <Ionicons name="checkmark" size={18} color={colors.faint} />
+                  )}
                 </View>
-
-                {/* Name + meta */}
                 <View style={styles.rowBody}>
                   <Text style={[styles.itemName, shoppingMode && styles.itemNameShop]}>
                     {item.name}
                   </Text>
                   <Text style={styles.itemMeta}>
-                    {item.category.charAt(0).toUpperCase() + item.category.slice(1)}
-                    {storeName ? `  ·  ${storeName}` : ''}
+                    {categoryLabel}{storeName ? ` · ${storeName}` : ''}
                   </Text>
                 </View>
-
-                {/* Tap hint */}
-                <Ionicons name="chevron-forward" size={16} color="#D1D5DB" />
+                <Ionicons name="chevron-forward" size={17} color={colors.faint} />
               </TouchableOpacity>
             );
           }}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
           contentContainerStyle={styles.list}
+          contentInsetAdjustmentBehavior="automatic"
         />
       )}
     </SafeAreaView>
@@ -194,55 +195,63 @@ export default function GroceryScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#fff' },
-
-  // Header
+  safe: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 16,
+    paddingTop: 18,
     paddingBottom: 14,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
   },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#111827',
-    letterSpacing: -0.3,
-  },
-  subText: { fontSize: 13, color: '#6B7280', fontWeight: '500', marginTop: 2 },
-  countdownText: { fontSize: 13, color: '#16A34A', fontWeight: '600', marginTop: 2 },
-
+  headerLeft: { flex: 1, gap: 2 },
+  eyebrow: { fontSize: 13, color: colors.primary, fontWeight: '800' },
+  headerTitle: { fontSize: 30, fontWeight: '900', color: colors.ink },
   modeBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 10,
-    paddingHorizontal: 14,
+    gap: 6,
+    borderRadius: 999,
+    paddingHorizontal: 13,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: colors.faint,
+    backgroundColor: colors.surface,
+  },
+  modeBtnActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  modeBtnText: { fontSize: 14, fontWeight: '800', color: colors.primaryDeep },
+  modeBtnTextActive: { color: colors.surface },
+  statusCard: {
+    marginHorizontal: 16,
+    marginBottom: 14,
+    borderRadius: radii.xl,
+    backgroundColor: colors.surfaceWarm,
+    borderWidth: 1,
+    borderColor: colors.faint,
+    padding: 18,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    ...shadow,
+  },
+  statusCardActive: { backgroundColor: colors.primarySoft },
+  statusNumber: { fontSize: 44, lineHeight: 48, fontWeight: '900', color: colors.ink },
+  statusLabel: { fontSize: 14, color: colors.muted, fontWeight: '700' },
+  countdownPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    backgroundColor: colors.surface,
+    borderRadius: 999,
+    paddingHorizontal: 12,
     paddingVertical: 9,
-    borderWidth: 1.5,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#fff',
   },
-  modeBtnActive: { backgroundColor: '#16A34A', borderColor: '#16A34A' },
-  modeBtnText: { fontSize: 14, fontWeight: '600', color: '#374151' },
-  modeBtnTextActive: { color: '#fff' },
-
-  // Store chips — fixed height prevents ScrollView from expanding
-  storeBar: {
-    height: 50,
-    flexGrow: 0,
-    flexShrink: 0,
-    backgroundColor: '#FAFAFA',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
+  countdownText: { color: colors.low, fontWeight: '900', fontSize: 15 },
+  readyText: { color: colors.primary, fontWeight: '800', fontSize: 13 },
+  storeBar: { height: 50, flexGrow: 0, flexShrink: 0, backgroundColor: colors.background },
   storeBarContent: {
     paddingHorizontal: 16,
-    paddingVertical: 9,
+    paddingVertical: 8,
     gap: 8,
     alignItems: 'center',
     flexDirection: 'row',
@@ -250,57 +259,42 @@ const styles = StyleSheet.create({
   chip: {
     borderRadius: 999,
     paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderWidth: 1.5,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#fff',
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: colors.faint,
+    backgroundColor: colors.surface,
   },
-  chipActive: { backgroundColor: '#16A34A', borderColor: '#16A34A' },
-  chipText: { fontSize: 13, fontWeight: '600', color: '#6B7280' },
-  chipTextActive: { color: '#fff' },
-
-  // List rows
-  list: { paddingTop: 4, paddingBottom: 120 },
-  separator: { height: 1, backgroundColor: '#F3F4F6', marginLeft: 68 },
-
+  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipText: { fontSize: 13, fontWeight: '800', color: colors.muted },
+  chipTextActive: { color: colors.surface },
+  list: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 120 },
+  separator: { height: 10 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: '#fff',
-    gap: 14,
+    padding: 14,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.faint,
+    gap: 12,
   },
-  rowShop: { paddingVertical: 22 },
-
+  rowShop: { paddingVertical: 18 },
   checkbox: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     borderWidth: 2,
-    borderColor: '#D1D5DB',
+    borderColor: colors.faint,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
   },
-  checkboxTapping: {
-    borderColor: '#16A34A',
-  },
-
+  checkboxTapping: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
   rowBody: { flex: 1 },
-  itemName: {
-    fontSize: 17,
-    color: '#111827',
-    fontWeight: '500',
-  },
-  itemNameShop: { fontSize: 20, fontWeight: '600' },
-  itemMeta: {
-    fontSize: 13,
-    color: '#9CA3AF',
-    marginTop: 2,
-  },
-
-  // Empty state
+  itemName: { fontSize: 17, color: colors.ink, fontWeight: '800' },
+  itemNameShop: { fontSize: 21 },
+  itemMeta: { fontSize: 13, color: colors.muted, marginTop: 3, fontWeight: '600' },
   empty: {
     flex: 1,
     justifyContent: 'center',
@@ -308,12 +302,12 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 48,
   },
-  emptyIconWrap: { marginBottom: 8 },
-  emptyTitle: { fontSize: 22, fontWeight: '700', color: '#111827' },
-  emptySub: {
-    fontSize: 16,
-    color: '#6B7280',
-    textAlign: 'center',
-    lineHeight: 24,
+  emptyIconWrap: {
+    backgroundColor: colors.primarySoft,
+    borderRadius: radii.xl,
+    padding: 16,
+    marginBottom: 8,
   },
+  emptyTitle: { fontSize: 23, fontWeight: '900', color: colors.ink },
+  emptySub: { fontSize: 16, color: colors.muted, textAlign: 'center', lineHeight: 23 },
 });

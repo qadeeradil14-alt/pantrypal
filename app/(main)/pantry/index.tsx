@@ -13,6 +13,7 @@ import { registerPushToken } from '../../../lib/notifications';
 import ItemRow from '../../../components/ItemRow';
 import AddItemModal from '../../../components/AddItemModal';
 import { CATEGORY_LABELS, type ItemCategory } from '../../../constants/defaultItems';
+import { colors, radii, shadow } from '../../../constants/theme';
 
 const CATEGORY_ORDER: ItemCategory[] = ['fridge', 'freezer', 'pantry'];
 const CATEGORY_SET = new Set<ItemCategory>(CATEGORY_ORDER);
@@ -43,9 +44,7 @@ export default function PantryScreen() {
 
     if (data.length === 0) {
       const inserted = await ensureDefaultItems(householdId, session?.user.id);
-      if (inserted > 0) {
-        data = await fetchItems(householdId);
-      }
+      if (inserted > 0) data = await fetchItems(householdId);
     }
 
     setItems(data);
@@ -53,9 +52,7 @@ export default function PantryScreen() {
 
   useEffect(() => {
     load()
-      .catch(() => {
-        Alert.alert('Could not load items', 'Please try again.');
-      })
+      .catch(() => Alert.alert('Could not load items', 'Please try again.'))
       .finally(() => setLoading(false));
   }, [load]);
 
@@ -77,7 +74,6 @@ export default function PantryScreen() {
     ? queryFiltered
     : queryFiltered.filter((i) => normalizeCategory(i.category) === selectedCategory);
   const hasAnyItems = filtered.length > 0;
-
   const visibleCategories = selectedCategory === 'all' ? CATEGORY_ORDER : [selectedCategory];
 
   const knownSections = visibleCategories.map((cat) => {
@@ -100,36 +96,26 @@ export default function PantryScreen() {
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const sections = unknownItems.length > 0 && selectedCategory === 'all'
-    ? [
-        ...knownSections,
-        { title: 'OTHER', data: unknownItems, key: 'other', count: unknownItems.length, lowCount: 0 },
-      ]
+    ? [...knownSections, { title: 'OTHER', data: unknownItems, key: 'other', count: unknownItems.length, lowCount: 0 }]
     : knownSections;
 
   const lowCount = items.filter((i) => i.is_low).length;
+  const stockedCount = Math.max(items.length - lowCount, 0);
 
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#F97316" />
+        <ActivityIndicator size="large" color={colors.low} />
       </View>
     );
   }
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* ── Header ── */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Text style={styles.headerTitle}>{household?.name ?? 'Pantry'}</Text>
-          {lowCount > 0 ? (
-            <View style={styles.lowCountBadge}>
-              <View style={styles.lowCountDot} />
-              <Text style={styles.lowCountText}>{lowCount} running low</Text>
-            </View>
-          ) : (
-            <Text style={styles.allGoodText}>All stocked up ✓</Text>
-          )}
+          <Text style={styles.eyebrow}>PantryPal</Text>
+          <Text style={styles.headerTitle}>{household?.name ?? 'My kitchen'}</Text>
         </View>
         <TouchableOpacity
           style={[styles.addBtn, !canAdd && styles.addBtnDisabled]}
@@ -142,17 +128,28 @@ export default function PantryScreen() {
           }}
           activeOpacity={0.8}
         >
-          <Text style={styles.addBtnText}>+ Add</Text>
+          <Ionicons name="add" size={20} color={colors.surface} />
+          <Text style={styles.addBtnText}>Add</Text>
         </TouchableOpacity>
       </View>
 
-      {/* ── Search ── */}
+      <View style={styles.heroCard}>
+        <View>
+          <Text style={styles.heroNumber}>{lowCount}</Text>
+          <Text style={styles.heroLabel}>{lowCount === 1 ? 'item needs attention' : 'items need attention'}</Text>
+        </View>
+        <View style={styles.heroRight}>
+          <Text style={styles.stockedNumber}>{stockedCount}</Text>
+          <Text style={styles.stockedLabel}>stocked</Text>
+        </View>
+      </View>
+
       <View style={styles.searchWrap}>
-        <Ionicons name="search-outline" size={16} color="#9CA3AF" />
+        <Ionicons name="search-outline" size={17} color={colors.muted} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search items..."
-          placeholderTextColor="#9CA3AF"
+          placeholder="Search your kitchen"
+          placeholderTextColor={colors.muted}
           value={query}
           onChangeText={setQuery}
           clearButtonMode="while-editing"
@@ -160,7 +157,6 @@ export default function PantryScreen() {
         />
       </View>
 
-      {/* ── Category filter chips — single scrollable row ── */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -168,12 +164,11 @@ export default function PantryScreen() {
         contentContainerStyle={styles.chips}
       >
         {(['all', ...CATEGORY_ORDER] as const).map((cat) => {
-          const isAll = cat === 'all';
-          const count = isAll
+          const count = cat === 'all'
             ? queryFiltered.length
             : queryFiltered.filter((i) => normalizeCategory(i.category) === cat).length;
           const active = selectedCategory === cat;
-          const label = isAll ? `All · ${count}` : `${CATEGORY_LABELS[cat as ItemCategory]} · ${count}`;
+          const label = cat === 'all' ? `All ${count}` : `${CATEGORY_LABELS[cat as ItemCategory]} ${count}`;
           return (
             <TouchableOpacity
               key={cat}
@@ -187,21 +182,18 @@ export default function PantryScreen() {
         })}
       </ScrollView>
 
-      {/* ── List ── */}
       {!hasAnyItems ? (
         <View style={styles.empty}>
-          <Text style={styles.emptyEmoji}>🥬</Text>
+          <Ionicons name="leaf-outline" size={58} color={colors.primary} />
           <Text style={styles.emptyTitle}>
-            {q ? `No results for "${query}"` : 'Nothing here yet'}
+            {q ? `No results for "${query}"` : 'Your pantry is ready'}
           </Text>
           <Text style={styles.emptySub}>
-            {q
-              ? 'Try a different search term or clear the filter.'
-              : 'Tap "+ Add" to add your first item.'}
+            {q ? 'Try a different search term or clear the filter.' : 'Add the first item your household checks often.'}
           </Text>
           {!q && (
             <TouchableOpacity style={styles.emptyAddBtn} onPress={() => canAdd && setShowAdd(true)}>
-              <Text style={styles.emptyAddBtnText}>+ Add item</Text>
+              <Text style={styles.emptyAddBtnText}>Add item</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -234,7 +226,7 @@ export default function PantryScreen() {
             ) : null
           }
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#F97316" />
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.low} />
           }
           contentContainerStyle={styles.list}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
@@ -257,178 +249,125 @@ export default function PantryScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#FAFAFA' },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FAFAFA' },
-
-  // Header
+  safe: { flex: 1, backgroundColor: colors.background },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 12,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    paddingTop: 18,
+    paddingBottom: 14,
   },
-  headerLeft: { gap: 4 },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#111827',
-    letterSpacing: -0.3,
-  },
-  lowCountBadge: {
+  headerLeft: { gap: 2, flex: 1 },
+  eyebrow: { fontSize: 13, color: colors.primary, fontWeight: '800' },
+  headerTitle: { fontSize: 30, fontWeight: '900', color: colors.ink },
+  addBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-  },
-  lowCountDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: '#F97316',
-  },
-  lowCountText: {
-    fontSize: 13,
-    color: '#C2410C',
-    fontWeight: '500',
-  },
-  allGoodText: {
-    fontSize: 13,
-    color: '#16A34A',
-    fontWeight: '500',
-  },
-  addBtn: {
-    backgroundColor: '#16A34A',
-    borderRadius: 10,
-    paddingHorizontal: 16,
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: colors.primary,
+    borderRadius: 999,
+    paddingHorizontal: 14,
     paddingVertical: 10,
-    minWidth: 72,
+  },
+  addBtnDisabled: { backgroundColor: '#B7C9B8' },
+  addBtnText: { color: colors.surface, fontSize: 15, fontWeight: '800' },
+  heroCard: {
+    marginHorizontal: 16,
+    marginBottom: 14,
+    borderRadius: radii.xl,
+    backgroundColor: colors.surfaceWarm,
+    padding: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: colors.faint,
+    ...shadow,
+  },
+  heroNumber: { fontSize: 44, lineHeight: 48, fontWeight: '900', color: colors.low },
+  heroLabel: { fontSize: 14, color: colors.muted, fontWeight: '700' },
+  heroRight: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
     alignItems: 'center',
   },
-  addBtnDisabled: { backgroundColor: '#D1D5DB' },
-  addBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
-
-  // Search
+  stockedNumber: { fontSize: 24, fontWeight: '900', color: colors.primary },
+  stockedLabel: { fontSize: 12, color: colors.muted, fontWeight: '700' },
   searchWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     marginHorizontal: 16,
-    marginTop: 12,
-    marginBottom: 4,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: '#E5E7EB',
-    paddingHorizontal: 12,
+    marginBottom: 8,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.faint,
+    paddingHorizontal: 14,
     gap: 8,
   },
-  searchIcon: { fontSize: 15 },
-  searchInput: {
-    flex: 1,
-    paddingVertical: 11,
-    fontSize: 15,
-    color: '#111827',
-  },
-
-  // Category chips — fixed height matches grocery store chips exactly
-  chipsScroll: {
-    height: 50,
-    flexGrow: 0,
-    flexShrink: 0,
-    backgroundColor: '#FAFAFA',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
+  searchInput: { flex: 1, paddingVertical: 13, fontSize: 15, color: colors.ink },
+  chipsScroll: { height: 50, flexGrow: 0, flexShrink: 0, backgroundColor: colors.background },
   chips: {
     flexDirection: 'row',
     gap: 8,
     paddingHorizontal: 16,
-    paddingVertical: 9,
+    paddingVertical: 8,
     alignItems: 'center',
   },
   chip: {
     borderRadius: 999,
-    borderWidth: 1.5,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: colors.faint,
+    backgroundColor: colors.surface,
     paddingHorizontal: 14,
-    paddingVertical: 7,
+    paddingVertical: 8,
   },
-  chipActive: {
-    borderColor: '#16A34A',
-    backgroundColor: '#16A34A',
-  },
-  chipText: {
-    fontSize: 13,
-    color: '#6B7280',
-    fontWeight: '600',
-  },
-  chipTextActive: {
-    color: '#fff',
-  },
-
-  // Section headers
+  chipActive: { borderColor: colors.primary, backgroundColor: colors.primary },
+  chipText: { fontSize: 13, color: colors.muted, fontWeight: '800' },
+  chipTextActive: { color: colors.surface },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
+    paddingHorizontal: 18,
     paddingTop: 20,
     paddingBottom: 8,
-    backgroundColor: '#FAFAFA',
+    backgroundColor: colors.background,
   },
-  sectionTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#6B7280',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
+  sectionTitle: { fontSize: 12, fontWeight: '900', color: colors.muted, textTransform: 'uppercase' },
   sectionMeta: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   sectionLowBadge: {
-    backgroundColor: '#FED7AA',
-    borderRadius: 5,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    backgroundColor: colors.lowSoft,
+    borderRadius: radii.sm,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
   },
-  sectionLowText: { fontSize: 11, color: '#9A3412', fontWeight: '700' },
-  sectionCount: { fontSize: 12, color: '#9CA3AF', fontWeight: '600' },
+  sectionLowText: { fontSize: 11, color: colors.low, fontWeight: '800' },
+  sectionCount: { fontSize: 12, color: colors.muted, fontWeight: '700' },
   sectionEmptyWrap: { paddingHorizontal: 20, paddingBottom: 8 },
-  sectionEmptyText: { color: '#9CA3AF', fontSize: 13 },
-
-  list: { paddingHorizontal: 12, paddingBottom: 120 },
-  separator: { height: 8 },
-
-  // Empty state
+  sectionEmptyText: { color: colors.muted, fontSize: 13 },
+  list: { paddingHorizontal: 16, paddingBottom: 120 },
+  separator: { height: 10 },
   empty: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 40,
-    gap: 8,
+    gap: 10,
   },
-  emptyEmoji: { fontSize: 64, marginBottom: 8 },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#111827',
-    textAlign: 'center',
-  },
-  emptySub: {
-    fontSize: 15,
-    color: '#6B7280',
-    textAlign: 'center',
-    lineHeight: 22,
-  },
+  emptyTitle: { fontSize: 21, fontWeight: '900', color: colors.ink, textAlign: 'center' },
+  emptySub: { fontSize: 15, color: colors.muted, textAlign: 'center', lineHeight: 22 },
   emptyAddBtn: {
     marginTop: 16,
-    backgroundColor: '#16A34A',
-    borderRadius: 12,
+    backgroundColor: colors.primary,
+    borderRadius: radii.md,
     paddingVertical: 14,
     paddingHorizontal: 32,
   },
-  emptyAddBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  emptyAddBtnText: { color: colors.surface, fontSize: 16, fontWeight: '800' },
 });

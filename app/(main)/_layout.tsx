@@ -7,6 +7,7 @@ import { startGeofencing, stopGeofencing } from '../../lib/geofencing';
 import { useRealtime } from '../../lib/realtime';
 import { useHouseholdStore } from '../../store/household';
 import { useStoresStore } from '../../store/stores';
+import { colors } from '../../constants/theme';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -51,11 +52,11 @@ export default function MainLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: '#16A34A',
-        tabBarInactiveTintColor: '#9CA3AF',
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.muted,
         tabBarStyle: {
-          backgroundColor: '#fff',
-          borderTopColor: '#F3F4F6',
+          backgroundColor: colors.surface,
+          borderTopColor: colors.faint,
           borderTopWidth: 1,
           paddingTop: 8,
           paddingBottom: 8,
