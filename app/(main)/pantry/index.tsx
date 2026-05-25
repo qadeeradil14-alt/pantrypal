@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, SectionList, StyleSheet, TouchableOpacity,
-  ActivityIndicator, RefreshControl, TextInput, Alert,
+  ActivityIndicator, RefreshControl, TextInput, Alert, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -160,8 +160,13 @@ export default function PantryScreen() {
         />
       </View>
 
-      {/* ── Category filter chips ── */}
-      <View style={styles.chips}>
+      {/* ── Category filter chips — single scrollable row ── */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.chipsScroll}
+        contentContainerStyle={styles.chips}
+      >
         {(['all', ...CATEGORY_ORDER] as const).map((cat) => {
           const isAll = cat === 'all';
           const count = isAll
@@ -180,7 +185,7 @@ export default function PantryScreen() {
             </TouchableOpacity>
           );
         })}
-      </View>
+      </ScrollView>
 
       {/* ── List ── */}
       {!hasAnyItems ? (
@@ -328,14 +333,17 @@ const styles = StyleSheet.create({
   },
 
   // Category chips
+  chipsScroll: {
+    backgroundColor: '#FAFAFA',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
   chips: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 8,
     paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 8,
-    backgroundColor: '#FAFAFA',
+    paddingVertical: 10,
+    alignItems: 'center',
   },
   chip: {
     borderRadius: 999,

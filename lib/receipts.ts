@@ -1,3 +1,4 @@
+import * as FileSystem from 'expo-file-system';
 import { supabase } from './supabase';
 
 export interface Receipt {
@@ -29,20 +30,28 @@ export async function uploadReceipt(
   uri: string,
   mimeType: string,
 ): Promise<Receipt> {
-  // Upload image to Supabase Storage
   const ext = mimeType === 'application/pdf' ? 'pdf' : 'jpg';
   const path = `${householdId}/${Date.now()}.${ext}`;
 
-  const response = await fetch(uri);
-  const blob = await response.blob();
+  // Hermes does not support `new Blob([ArrayBuffer])`. Read the file as
+  // base64 via expo-file-system and decode to a Uint8Array instead —
+  // the Supabase JS SDK accepts typed arrays directly.
+  const base64 = await FileSystem.readAsStringAsync(uri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
 
   const { error: uploadError } = await supabase.storage
     .from('receipts')
-    .upload(path, blob, { contentType: mimeType, upsert: false });
+    .upload(path, bytes, { contentType: mimeType, upsert: false });
 
   if (uploadError) throw uploadError;
 
-  // Create receipt record
   const { data: receipt, error: insertError } = await supabase
     .from('receipts')
     .insert({
@@ -56,10 +65,10 @@ export async function uploadReceipt(
 
   if (insertError) throw insertError;
 
-  // Trigger Edge Function asynchronously
+  // Trigger Edge Function asynchronously — failure is non-fatal
   supabase.functions.invoke('parse-receipt', {
     body: { receiptId: receipt.id, imageUrl: path, householdId },
-  });
+  }).catch(() => {});
 
   return receipt as Receipt;
 }

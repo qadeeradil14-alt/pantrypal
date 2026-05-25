@@ -57,13 +57,17 @@ export default function MainLayout() {
           backgroundColor: '#fff',
           borderTopColor: '#F3F4F6',
           borderTopWidth: 1,
-          paddingTop: 4,
-          height: 60,
+          paddingTop: 8,
+          paddingBottom: 8,
+          height: 72,
         },
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: '600',
-          marginBottom: 4,
+          marginTop: 2,
+        },
+        tabBarIconStyle: {
+          marginBottom: 0,
         },
       }}
     >
