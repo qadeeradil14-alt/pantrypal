@@ -193,14 +193,14 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   catBtnActive: {
-    borderColor: '#111827',
-    backgroundColor: '#111827',
+    borderColor: '#16A34A',
+    backgroundColor: '#16A34A',
   },
   catIcon: { fontSize: 22 },
   catLabel: { fontSize: 12, color: '#6B7280', fontWeight: '600' },
   catLabelActive: { color: '#fff' },
   addBtn: {
-    backgroundColor: '#111827',
+    backgroundColor: '#16A34A',
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',

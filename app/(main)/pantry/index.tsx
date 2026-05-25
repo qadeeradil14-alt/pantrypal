@@ -4,6 +4,7 @@ import {
   ActivityIndicator, RefreshControl, TextInput, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useHouseholdStore } from '../../../store/household';
 import { useAuthStore } from '../../../store/auth';
 import { useItemsStore } from '../../../store/items';
@@ -11,7 +12,7 @@ import { ensureDefaultItems, fetchItems } from '../../../lib/items';
 import { registerPushToken } from '../../../lib/notifications';
 import ItemRow from '../../../components/ItemRow';
 import AddItemModal from '../../../components/AddItemModal';
-import { CATEGORY_LABELS, CATEGORY_ICONS, type ItemCategory } from '../../../constants/defaultItems';
+import { CATEGORY_LABELS, type ItemCategory } from '../../../constants/defaultItems';
 
 const CATEGORY_ORDER: ItemCategory[] = ['fridge', 'freezer', 'pantry'];
 const CATEGORY_SET = new Set<ItemCategory>(CATEGORY_ORDER);
@@ -86,7 +87,7 @@ export default function PantryScreen() {
       .filter((i) => !i.is_low)
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     return {
-      title: `${CATEGORY_ICONS[cat]}  ${CATEGORY_LABELS[cat]}`,
+      title: CATEGORY_LABELS[cat].toUpperCase(),
       data: [...low, ...ok],
       key: cat,
       count: catItems.length,
@@ -101,7 +102,7 @@ export default function PantryScreen() {
   const sections = unknownItems.length > 0 && selectedCategory === 'all'
     ? [
         ...knownSections,
-        { title: '📦  Other', data: unknownItems, key: 'other', count: unknownItems.length, lowCount: 0 },
+        { title: 'OTHER', data: unknownItems, key: 'other', count: unknownItems.length, lowCount: 0 },
       ]
     : knownSections;
 
@@ -147,7 +148,7 @@ export default function PantryScreen() {
 
       {/* ── Search ── */}
       <View style={styles.searchWrap}>
-        <Text style={styles.searchIcon}>🔍</Text>
+        <Ionicons name="search-outline" size={16} color="#9CA3AF" />
         <TextInput
           style={styles.searchInput}
           placeholder="Search items..."
@@ -163,11 +164,11 @@ export default function PantryScreen() {
       <View style={styles.chips}>
         {(['all', ...CATEGORY_ORDER] as const).map((cat) => {
           const isAll = cat === 'all';
-          const count = isAll ? queryFiltered.length : queryFiltered.filter((i) => normalizeCategory(i.category) === cat).length;
+          const count = isAll
+            ? queryFiltered.length
+            : queryFiltered.filter((i) => normalizeCategory(i.category) === cat).length;
           const active = selectedCategory === cat;
-          const label = isAll
-            ? `All (${count})`
-            : `${CATEGORY_ICONS[cat as ItemCategory]}  ${CATEGORY_LABELS[cat as ItemCategory]} (${count})`;
+          const label = isAll ? `All  ${count}` : `${CATEGORY_LABELS[cat as ItemCategory]}  ${count}`;
           return (
             <TouchableOpacity
               key={cat}
@@ -294,7 +295,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   addBtn: {
-    backgroundColor: '#111827',
+    backgroundColor: '#16A34A',
     borderRadius: 10,
     paddingHorizontal: 16,
     paddingVertical: 10,
@@ -341,12 +342,12 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#E5E7EB',
     backgroundColor: '#fff',
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     paddingVertical: 7,
   },
   chipActive: {
-    borderColor: '#111827',
-    backgroundColor: '#111827',
+    borderColor: '#16A34A',
+    backgroundColor: '#16A34A',
   },
   chipText: {
     fontSize: 13,
@@ -411,7 +412,7 @@ const styles = StyleSheet.create({
   },
   emptyAddBtn: {
     marginTop: 16,
-    backgroundColor: '#111827',
+    backgroundColor: '#16A34A',
     borderRadius: 12,
     paddingVertical: 14,
     paddingHorizontal: 32,

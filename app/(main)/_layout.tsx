@@ -1,11 +1,20 @@
 import { useEffect } from 'react';
 import { Tabs } from 'expo-router';
-import { Text } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import type { ColorValue } from 'react-native';
 import { fetchStores } from '../../lib/stores';
 import { startGeofencing, stopGeofencing } from '../../lib/geofencing';
 import { useRealtime } from '../../lib/realtime';
 import { useHouseholdStore } from '../../store/household';
 import { useStoresStore } from '../../store/stores';
+
+type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
+
+function tabIcon(name: IoniconName, focusedName: IoniconName) {
+  return ({ color, focused }: { color: ColorValue; focused: boolean }) => (
+    <Ionicons name={focused ? focusedName : name} size={24} color={color as string} />
+  );
+}
 
 export default function MainLayout() {
   const householdId = useHouseholdStore((s) => s.household?.id);
@@ -21,69 +30,76 @@ export default function MainLayout() {
         await stopGeofencing();
         return;
       }
-
       try {
         const stores = await fetchStores(householdId);
         if (cancelled) return;
-
         setStores(stores);
         await stopGeofencing();
         if (stores.some((s) => s.latitude != null && s.longitude != null)) {
           await startGeofencing(stores);
         }
       } catch {
-        // Leave screen usable even if stores bootstrap fails.
+        // Keep UI usable even if stores bootstrap fails.
       }
     }
 
     bootstrapStoresAndGeofencing();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [householdId, setStores]);
 
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: '#2D9CDB',
-        tabBarInactiveTintColor: '#999',
-        tabBarStyle: { borderTopColor: '#E5E7EB' },
+        tabBarActiveTintColor: '#16A34A',
+        tabBarInactiveTintColor: '#9CA3AF',
+        tabBarStyle: {
+          backgroundColor: '#fff',
+          borderTopColor: '#F3F4F6',
+          borderTopWidth: 1,
+          paddingTop: 4,
+          height: 60,
+        },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '600',
+          marginBottom: 4,
+        },
       }}
     >
       <Tabs.Screen
         name="pantry"
         options={{
           title: 'Pantry',
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>🥬</Text>,
+          tabBarIcon: tabIcon('nutrition-outline', 'nutrition'),
         }}
       />
       <Tabs.Screen
         name="grocery"
         options={{
           title: 'Shopping',
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>🛒</Text>,
+          tabBarIcon: tabIcon('cart-outline', 'cart'),
         }}
       />
       <Tabs.Screen
         name="receipts"
         options={{
           title: 'Receipts',
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>🧾</Text>,
+          tabBarIcon: tabIcon('receipt-outline', 'receipt'),
         }}
       />
       <Tabs.Screen
         name="stores"
         options={{
           title: 'Stores',
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>🏪</Text>,
+          tabBarIcon: tabIcon('storefront-outline', 'storefront'),
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
           title: 'Settings',
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>⚙️</Text>,
+          tabBarIcon: tabIcon('settings-outline', 'settings'),
         }}
       />
     </Tabs>
