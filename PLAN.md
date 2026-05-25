@@ -50,9 +50,41 @@ items (
   name text NOT NULL,
   category text,            -- 'fridge', 'pantry', 'freezer'
   is_low boolean DEFAULT false,
+  marked_low_by uuid REFERENCES auth.users(id),  -- who flagged it
+  got_it_by uuid REFERENCES auth.users(id),       -- who bought it
   added_by uuid REFERENCES auth.users(id),
-  updated_at timestamptz
+  updated_at timestamptz DEFAULT now()
 )
+
+-- Required indexes
+CREATE INDEX idx_items_household_low ON items(household_id, is_low);
+CREATE INDEX idx_items_household_id ON items(household_id);
+
+-- Row Level Security (CRITICAL — without this any user can read any household)
+ALTER TABLE households ENABLE ROW LEVEL SECURITY;
+ALTER TABLE household_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE items ENABLE ROW LEVEL SECURITY;
+
+-- Policy: users can only see households they belong to
+CREATE POLICY "household_members_own" ON household_members
+  USING (user_id = auth.uid());
+
+CREATE POLICY "households_member_only" ON households
+  USING (id IN (SELECT household_id FROM household_members WHERE user_id = auth.uid()));
+
+CREATE POLICY "items_household_only" ON items
+  USING (household_id IN (SELECT household_id FROM household_members WHERE user_id = auth.uid()));
+
+CREATE POLICY "items_household_insert" ON items FOR INSERT
+  WITH CHECK (household_id IN (SELECT household_id FROM household_members WHERE user_id = auth.uid()));
+
+CREATE POLICY "items_household_update" ON items FOR UPDATE
+  USING (household_id IN (SELECT household_id FROM household_members WHERE user_id = auth.uid()));
+
+-- updated_at auto-trigger
+CREATE OR REPLACE FUNCTION update_updated_at()
+RETURNS TRIGGER AS $$ BEGIN NEW.updated_at = now(); RETURN NEW; END; $$ LANGUAGE plpgsql;
+CREATE TRIGGER items_updated_at BEFORE UPDATE ON items FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 ```
 
 ### Real-time Sync
@@ -66,15 +98,27 @@ App
 │   ├── SignUpScreen       — email + password
 │   └── SignInScreen       — email + password
 ├── Household Setup
-│   ├── CreateHouseholdScreen   — name household, generates invite code
-│   └── JoinHouseholdScreen     — enter invite code from spouse
-└── Main (tab navigator)
-    ├── PantryTab               — full item list, tap to mark low
+│   ├── CreateHouseholdScreen   — name household, shows invite code + Share sheet
+│   └── JoinHouseholdScreen     — enter invite code OR tap deep link
+└── Main (tab navigator — default: PantryTab)
+    ├── PantryTab               — full item list, recently-low items float to top
     │   ├── ItemListScreen      — grouped by category, search bar
+    │   │   States: loading (shimmer rows), empty (add items CTA), error (retry banner)
+    │   │   ItemRow visual states: stocked (normal) / low (highlighted + badge)
+    │   │   Offline: items marked low show "Queued" badge until synced
     │   └── AddItemScreen       — add custom item
-    └── GroceryTab              — items marked low, tap to mark "got it"
-        └── GroceryListScreen   — live synced list, swipe to complete
+    └── GroceryTab              — items marked low, tap row (not swipe) to mark "got it"
+        └── GroceryListScreen   — live synced list, shopping mode ON by default
+            States: empty ("All stocked up! 🛒"), loading (shimmer), error (retry)
+            Shopping mode: screen stays on, large text, full-row tap to complete
+            Completion: "All done — 6 items grabbed" toast on last item checked
 ```
+
+### ItemRow Visual Spec
+- **Stocked:** white background, item name, category icon, right chevron
+- **Low:** amber background tint, item name bold, "LOW" badge top-right, tap anywhere marks it "got it" from grocery view
+- **"Got it" tap:** optimistic local update immediately (don't wait for server), revert if server write fails with error toast
+- **Offline write:** show "Syncing..." spinner on the row, resolve when back online
 
 ---
 
@@ -84,16 +128,17 @@ App
 **Goal:** Auth works, households work, two phones can join same household.
 
 Files to create/modify:
-- `app/_layout.tsx` — root layout with auth gate
+- `app/_layout.tsx` — root layout with auth gate + `supabase.auth.onAuthStateChange` wired for token refresh
 - `app/(auth)/welcome.tsx` — welcome screen
 - `app/(auth)/sign-up.tsx` — signup form
 - `app/(auth)/sign-in.tsx` — signin form
-- `app/(setup)/create-household.tsx` — create household + show invite code
-- `app/(setup)/join-household.tsx` — enter invite code
+- `app/(setup)/create-household.tsx` — name household, show invite code with native Share sheet
+- `app/(setup)/join-household.tsx` — enter invite code; handle invalid/expired codes with clear error message
 - `lib/supabase.ts` — Supabase client setup
-- `lib/auth.ts` — auth helpers (signUp, signIn, signOut, getSession)
-- `store/auth.ts` — Zustand auth store
-- `supabase/migrations/001_initial.sql` — tables above
+- `lib/auth.ts` — auth helpers (signUp, signIn, signOut, getSession, onAuthStateChange listener)
+- `store/auth.ts` — Zustand auth store; re-hydrates on token refresh event
+- `supabase/migrations/001_initial.sql` — tables + RLS policies + indexes (see Data Model above)
+- **Seed items per-household:** insert 50 default items into `items` on household creation (DB trigger or called from `createHousehold()`). NOT a global seed — each household gets its own copy.
 
 ### Phase 2: Pantry Screen (Day 2 morning)
 **Goal:** Pre-seeded item library. Wife can see items and mark them low.
@@ -115,20 +160,23 @@ Files to create/modify:
 **Goal:** Grocery list syncs live. Shopper can mark items as "got it."
 
 Files to create/modify:
-- `app/(main)/grocery/index.tsx` — grocery list screen
-- `components/GroceryItem.tsx` — item with swipe-to-complete
-- `components/EmptyGroceryState.tsx` — "All stocked up!" empty state
-- `lib/realtime.ts` — Supabase Realtime subscription setup
+- `app/(main)/grocery/index.tsx` — grocery list screen with shopping mode ON by default
+- `components/GroceryItem.tsx` — full-row tap to complete (not swipe — too hard at store with one hand)
+- `components/EmptyGroceryState.tsx` — "All stocked up! 🛒" empty state
+- `components/LoadingShimmer.tsx` — shimmer skeleton for both Pantry and Grocery screens
+- `lib/realtime.ts` — Supabase Realtime subscription; separate from store (store accepts events via callback)
+- `lib/appState.ts` — AppState listener: re-subscribe Realtime channel when app foregrounds after being backgrounded
 - Verify real-time works between two devices (test with Expo Go)
+- **Shopping mode ships in Phase 3** (not Phase 5): `keepAwake` via `expo-keep-awake`, larger text, toggle in header
 
 ### Phase 4: Push Notifications (Day 3)
 **Goal:** Husband gets push notification when wife marks something low.
 
 Files to create/modify:
-- `lib/notifications.ts` — Expo push token registration, send helpers
-- `supabase/functions/notify-household.ts` — Edge Function: on item.is_low=true,
-  send push to all household members except the updater
-- Update `household_members` to store `push_token` on login
+- `lib/notifications.ts` — Expo push token registration, request permissions, send helpers
+- `supabase/functions/notify-household.ts` — Edge Function triggered by Supabase webhook on `items` UPDATE where `is_low` changes to `true`. Must verify webhook signature (Supabase service role secret) — NOT a raw public HTTP endpoint.
+- Update `household_members` to store `push_token` on every app launch (token changes on reinstall)
+- Handle push permission denied gracefully: show "Enable notifications in Settings to get alerts" banner, app works without it
 
 ### Phase 5: Polish + Sharing (Day 4)
 **Goal:** App feels good enough to send to wife.
@@ -156,11 +204,14 @@ Files to create/modify:
 
 1. **Both spouses mark the same item low simultaneously** — idempotent: `is_low=true` is fine either way, last write wins, no data loss
 2. **Shopper marks "got it" but wife says it's still low** — item goes back to not-low; wife can re-mark it. No permanent state.
-3. **No internet at the store** — grocery list is cached locally in Zustand. Read works offline. Writes queue and sync when back online (Supabase offline support).
-4. **Invite code expires or is reused** — invite code is single-use: once a household has 2 members, the invite code is invalidated. Generate new one from settings.
-5. **Wife gets a new phone** — push token changes on reinstall. Update `push_token` in `household_members` on every app launch.
-6. **User deletes the app and reinstalls** — auth session expires; they sign in again, household membership is preserved in DB.
-7. **Household has more than 2 members** — data model supports N members (grandparent living with family, roommates). v1 UI only shows "your household" without member management.
+3. **No internet at the store** — grocery list is cached locally in Zustand. Read works offline. Writes queue and show "Queued" badge until synced.
+4. **Invite code expires or is reused** — single-use: once household has 2+ members, code is invalidated (DB-level check, not app-level). Generate new one from settings.
+5. **Wife gets a new phone** — push token changes on reinstall. Upsert `push_token` in `household_members` on every app launch.
+6. **User deletes app and reinstalls** — auth session expires; sign in again, household membership persists in DB.
+7. **Household has more than 2 members** — data model supports N members. v1 UI only shows "your household."
+8. **Realtime subscription drops** — `AppState` listener re-subscribes on foreground. Show "Reconnecting..." banner if > 5s without connection.
+9. **Concurrent invite join race** — two users submit same invite code simultaneously. DB unique constraint on `household_members(household_id, user_id)` prevents duplicate; atomic check handles race.
+10. **Push notifications denied** — app works fully without notifications. Show one-time "Enable notifications for alerts" banner, dismissable permanently.
 
 ---
 
@@ -169,21 +220,32 @@ Files to create/modify:
 ### Unit tests (Jest)
 - `lib/auth.ts` — signUp/signIn/signOut happy paths, invalid email, wrong password
 - `lib/items.ts` — markLow, markGotIt, addItem, deleteItem
-- `store/items.ts` — Zustand store transitions
+- `store/items.ts` — Zustand store transitions: optimistic update, revert on error
+- `lib/realtime.ts` — subscription setup, teardown, reconnect on foreground
+
+### Security tests (Supabase CLI / pgTAP — CRITICAL)
+- **RLS enforcement:** User from Household A cannot SELECT items from Household B
+- **RLS enforcement:** User from Household A cannot UPDATE items from Household B
+- **Invite code uniqueness:** simultaneous joins with same code — only one succeeds
+- **Edge Function auth:** unauthenticated request to notify-household returns 401
 
 ### Integration tests (Detox or manual)
 - Two-device sync: mark item low on Device A, verify appears on Device B within 2 seconds
 - Push notification delivery: mark item low, verify push arrives on other device
-- Offline: disable network, mark items, re-enable, verify sync
+- **Offline-then-sync:** disable network, mark 3 items low, re-enable, verify all 3 sync
+- **Reconnect recovery:** background app 60s (Realtime drops), foreground, verify subscription re-established
+- **Concurrent update:** both phones tap same item at same moment, verify converges to consistent state
 
 ### Manual smoke tests before sending to wife
-- [ ] Sign up on two phones, join same household
-- [ ] Milk shows in pantry list
-- [ ] Tap milk → it moves to grocery list on both phones
-- [ ] Open grocery list → milk is there
-- [ ] Tap "got it" → milk disappears from grocery list on both phones
-- [ ] Kill app, reopen → list persists
+- [ ] Sign up on two phones, join same household via Share sheet invite
+- [ ] 50 default items appear in pantry, grouped by category
+- [ ] Tap Milk → amber highlight + LOW badge, appears on Grocery tab on both phones
+- [ ] Open Grocery tab → Milk is there, shopping mode on (screen stays on)
+- [ ] Tap Milk row → disappears from Grocery tab on both phones immediately
+- [ ] Kill app, reopen → list persists (Zustand hydration)
 - [ ] Push notification arrives when wife marks something (requires TestFlight build)
+- [ ] Disable WiFi at store — Grocery list still readable, "Queued" badge shows on new marks
+- [ ] Re-enable WiFi — queued marks sync within 5 seconds
 
 ---
 
