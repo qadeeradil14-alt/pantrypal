@@ -40,7 +40,6 @@ export default function PantryScreen() {
     }
     let data = await fetchItems(householdId);
 
-    // Self-heal households created before default seeding was stable.
     if (data.length === 0) {
       const inserted = await ensureDefaultItems(householdId, session?.user.id);
       if (inserted > 0) {
@@ -61,19 +60,13 @@ export default function PantryScreen() {
 
   useEffect(() => {
     if (household && session?.user.id) {
-      void registerPushToken(household.id, session.user.id).catch(() => {
-        // Keep pantry usable if push registration fails.
-      });
+      void registerPushToken(household.id, session.user.id).catch(() => {});
     }
   }, [household?.id, session?.user.id]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    try {
-      await load();
-    } catch {
-      Alert.alert('Refresh failed', 'Please try again.');
-    }
+    try { await load(); } catch { Alert.alert('Refresh failed', 'Please try again.'); }
     setRefreshing(false);
   }, [load]);
 
@@ -97,6 +90,7 @@ export default function PantryScreen() {
       data: [...low, ...ok],
       key: cat,
       count: catItems.length,
+      lowCount: low.length,
     };
   });
 
@@ -107,12 +101,7 @@ export default function PantryScreen() {
   const sections = unknownItems.length > 0 && selectedCategory === 'all'
     ? [
         ...knownSections,
-        {
-          title: '📦  Other',
-          data: unknownItems,
-          key: 'other',
-          count: unknownItems.length,
-        },
+        { title: '📦  Other', data: unknownItems, key: 'other', count: unknownItems.length, lowCount: 0 },
       ]
     : knownSections;
 
@@ -121,41 +110,48 @@ export default function PantryScreen() {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#2D9CDB" />
+        <ActivityIndicator size="large" color="#F97316" />
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      {/* ── Header ── */}
       <View style={styles.header}>
-        <View>
+        <View style={styles.headerLeft}>
           <Text style={styles.headerTitle}>{household?.name ?? 'Pantry'}</Text>
-          {lowCount > 0 && (
-            <Text style={styles.lowBadge}>{lowCount} item{lowCount !== 1 ? 's' : ''} running low</Text>
+          {lowCount > 0 ? (
+            <View style={styles.lowCountBadge}>
+              <View style={styles.lowCountDot} />
+              <Text style={styles.lowCountText}>{lowCount} running low</Text>
+            </View>
+          ) : (
+            <Text style={styles.allGoodText}>All stocked up ✓</Text>
           )}
         </View>
-        <View style={styles.headerRight}>
-          <TouchableOpacity
-            style={[styles.addBtn, !canAdd && styles.addBtnDisabled]}
-            onPress={() => {
-              if (!canAdd) {
-                Alert.alert('Still loading', 'Household is still loading. Please try again in a moment.');
-                return;
-              }
-              setShowAdd(true);
-            }}
-          >
-            <Text style={styles.addBtnText}>+ Add</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          style={[styles.addBtn, !canAdd && styles.addBtnDisabled]}
+          onPress={() => {
+            if (!canAdd) {
+              Alert.alert('Still loading', 'Household is still loading. Please try again in a moment.');
+              return;
+            }
+            setShowAdd(true);
+          }}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.addBtnText}>+ Add</Text>
+        </TouchableOpacity>
       </View>
 
-      <View style={styles.searchBar}>
+      {/* ── Search ── */}
+      <View style={styles.searchWrap}>
+        <Text style={styles.searchIcon}>🔍</Text>
         <TextInput
           style={styles.searchInput}
           placeholder="Search items..."
-          placeholderTextColor="#aaa"
+          placeholderTextColor="#9CA3AF"
           value={query}
           onChangeText={setQuery}
           clearButtonMode="while-editing"
@@ -163,39 +159,45 @@ export default function PantryScreen() {
         />
       </View>
 
-      <View style={styles.categoryFilters}>
-        <TouchableOpacity
-          style={[styles.filterChip, selectedCategory === 'all' && styles.filterChipActive]}
-          onPress={() => setSelectedCategory('all')}
-        >
-          <Text style={[styles.filterChipText, selectedCategory === 'all' && styles.filterChipTextActive]}>
-            All ({queryFiltered.length})
-          </Text>
-        </TouchableOpacity>
-        {CATEGORY_ORDER.map((cat) => {
-          const count = queryFiltered.filter((i) => normalizeCategory(i.category) === cat).length;
+      {/* ── Category filter chips ── */}
+      <View style={styles.chips}>
+        {(['all', ...CATEGORY_ORDER] as const).map((cat) => {
+          const isAll = cat === 'all';
+          const count = isAll ? queryFiltered.length : queryFiltered.filter((i) => normalizeCategory(i.category) === cat).length;
           const active = selectedCategory === cat;
+          const label = isAll
+            ? `All (${count})`
+            : `${CATEGORY_ICONS[cat as ItemCategory]}  ${CATEGORY_LABELS[cat as ItemCategory]} (${count})`;
           return (
             <TouchableOpacity
               key={cat}
-              style={[styles.filterChip, active && styles.filterChipActive]}
+              style={[styles.chip, active && styles.chipActive]}
               onPress={() => setSelectedCategory(cat)}
+              activeOpacity={0.75}
             >
-              <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
-                {CATEGORY_ICONS[cat]} {CATEGORY_LABELS[cat]} ({count})
-              </Text>
+              <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
             </TouchableOpacity>
           );
         })}
       </View>
 
+      {/* ── List ── */}
       {!hasAnyItems ? (
         <View style={styles.empty}>
-          <Text style={styles.emptyText}>
-            {q
-              ? `No items matching "${query}" in ${selectedCategory === 'all' ? 'your pantry' : CATEGORY_LABELS[selectedCategory]}.`
-              : `No items in ${selectedCategory === 'all' ? 'your pantry' : CATEGORY_LABELS[selectedCategory]} yet.`}
+          <Text style={styles.emptyEmoji}>🥬</Text>
+          <Text style={styles.emptyTitle}>
+            {q ? `No results for "${query}"` : 'Nothing here yet'}
           </Text>
+          <Text style={styles.emptySub}>
+            {q
+              ? 'Try a different search term or clear the filter.'
+              : 'Tap "+ Add" to add your first item.'}
+          </Text>
+          {!q && (
+            <TouchableOpacity style={styles.emptyAddBtn} onPress={() => canAdd && setShowAdd(true)}>
+              <Text style={styles.emptyAddBtnText}>+ Add item</Text>
+            </TouchableOpacity>
+          )}
         </View>
       ) : (
         <SectionList
@@ -207,21 +209,29 @@ export default function PantryScreen() {
           )}
           renderSectionHeader={({ section }) => (
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>{section.title} ({section.count})</Text>
+              <Text style={styles.sectionTitle}>{section.title}</Text>
+              <View style={styles.sectionMeta}>
+                {section.lowCount > 0 && (
+                  <View style={styles.sectionLowBadge}>
+                    <Text style={styles.sectionLowText}>{section.lowCount} low</Text>
+                  </View>
+                )}
+                <Text style={styles.sectionCount}>{section.count}</Text>
+              </View>
             </View>
           )}
-          renderSectionFooter={({ section }) => (
-            section.data.length === 0
-              ? (
-                <View style={styles.sectionEmptyWrap}>
-                  <Text style={styles.sectionEmptyText}>No items in this category yet.</Text>
-                </View>
-              )
-              : null
-          )}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#2D9CDB" />}
+          renderSectionFooter={({ section }) =>
+            section.data.length === 0 ? (
+              <View style={styles.sectionEmptyWrap}>
+                <Text style={styles.sectionEmptyText}>No items in this category.</Text>
+              </View>
+            ) : null
+          }
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#F97316" />
+          }
           contentContainerStyle={styles.list}
-          stickySectionHeadersEnabled={false}
+          stickySectionHeadersEnabled
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           contentInsetAdjustmentBehavior="automatic"
@@ -240,59 +250,171 @@ export default function PantryScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#fff' },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' },
+  safe: { flex: 1, backgroundColor: '#FAFAFA' },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FAFAFA' },
+
+  // Header
   header: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
   },
-  headerTitle: { fontSize: 22, fontWeight: '700', color: '#1a1a1a' },
-  lowBadge: { fontSize: 13, color: '#DC2626', marginTop: 2 },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerLeft: { gap: 4 },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#111827',
+    letterSpacing: -0.3,
+  },
+  lowCountBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  lowCountDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#F97316',
+  },
+  lowCountText: {
+    fontSize: 13,
+    color: '#C2410C',
+    fontWeight: '500',
+  },
+  allGoodText: {
+    fontSize: 13,
+    color: '#16A34A',
+    fontWeight: '500',
+  },
   addBtn: {
-    backgroundColor: '#2D9CDB', borderRadius: 10,
-    paddingHorizontal: 14, paddingVertical: 8,
+    backgroundColor: '#111827',
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    minWidth: 72,
+    alignItems: 'center',
   },
-  addBtnDisabled: { backgroundColor: '#93C5FD' },
+  addBtnDisabled: { backgroundColor: '#D1D5DB' },
   addBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  searchBar: { paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
-  searchInput: {
-    backgroundColor: '#F3F4F6', borderRadius: 10,
-    paddingHorizontal: 14, paddingVertical: 9, fontSize: 15, color: '#1a1a1a',
+
+  // Search
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 4,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 12,
+    gap: 8,
   },
-  categoryFilters: {
+  searchIcon: { fontSize: 15 },
+  searchInput: {
+    flex: 1,
+    paddingVertical: 11,
+    fontSize: 15,
+    color: '#111827',
+  },
+
+  // Category chips
+  chips: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
     paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 4,
+    paddingTop: 12,
+    paddingBottom: 8,
+    backgroundColor: '#FAFAFA',
   },
-  filterChip: {
+  chip: {
     borderRadius: 999,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: '#E5E7EB',
     backgroundColor: '#fff',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
   },
-  filterChipActive: {
-    borderColor: '#2D9CDB',
-    backgroundColor: '#F0F9FF',
+  chipActive: {
+    borderColor: '#111827',
+    backgroundColor: '#111827',
   },
-  filterChipText: {
-    fontSize: 12,
+  chipText: {
+    fontSize: 13,
     color: '#6B7280',
     fontWeight: '600',
   },
-  filterChipTextActive: {
-    color: '#2D9CDB',
+  chipTextActive: {
+    color: '#fff',
   },
-  sectionHeader: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 6 },
-  sectionTitle: { fontSize: 13, fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: 0.5 },
-  sectionEmptyWrap: { paddingHorizontal: 20, paddingBottom: 6 },
+
+  // Section headers
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 8,
+    backgroundColor: '#FAFAFA',
+  },
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#6B7280',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  sectionMeta: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  sectionLowBadge: {
+    backgroundColor: '#FED7AA',
+    borderRadius: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  sectionLowText: { fontSize: 11, color: '#9A3412', fontWeight: '700' },
+  sectionCount: { fontSize: 12, color: '#9CA3AF', fontWeight: '600' },
+  sectionEmptyWrap: { paddingHorizontal: 20, paddingBottom: 8 },
   sectionEmptyText: { color: '#9CA3AF', fontSize: 13 },
+
   list: { paddingBottom: 120 },
-  empty: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 },
-  emptyText: { fontSize: 15, color: '#888', textAlign: 'center', lineHeight: 22 },
+
+  // Empty state
+  empty: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+    gap: 8,
+  },
+  emptyEmoji: { fontSize: 64, marginBottom: 8 },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111827',
+    textAlign: 'center',
+  },
+  emptySub: {
+    fontSize: 15,
+    color: '#6B7280',
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  emptyAddBtn: {
+    marginTop: 16,
+    backgroundColor: '#111827',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+  },
+  emptyAddBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
 });

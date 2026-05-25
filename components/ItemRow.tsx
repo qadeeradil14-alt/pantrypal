@@ -38,7 +38,7 @@ export default function ItemRow({ item, userId }: Props) {
   }
 
   function handleLongPress() {
-    if (stores.length === 0) return; // no stores configured — silently skip
+    if (stores.length === 0) return;
 
     const assignedStore = stores.find((s) => s.id === item.preferred_store_id);
 
@@ -81,44 +81,92 @@ export default function ItemRow({ item, userId }: Props) {
       onPress={handleTap}
       onLongPress={stores.length > 0 ? handleLongPress : undefined}
       delayLongPress={400}
-      activeOpacity={0.7}
+      activeOpacity={0.65}
     >
-      <View style={styles.left}>
-        <View style={[styles.dot, item.is_low ? styles.dotLow : styles.dotOk]} />
-        <View style={styles.nameCol}>
-          <Text style={[styles.name, item.is_low && styles.nameLow]}>{item.name}</Text>
-          {assignedStoreName ? (
-            <Text style={styles.storeName}>{assignedStoreName}</Text>
-          ) : null}
+      {/* Left: status bar accent */}
+      <View style={[styles.accentBar, item.is_low ? styles.accentBarLow : styles.accentBarOk]} />
+
+      <View style={styles.content}>
+        <View style={styles.nameRow}>
+          <Text style={[styles.name, item.is_low && styles.nameLow]} numberOfLines={1}>
+            {item.name}
+          </Text>
+          {item.is_low && (
+            <View style={styles.lowBadge}>
+              <Text style={styles.lowBadgeText}>LOW</Text>
+            </View>
+          )}
         </View>
+
+        {assignedStoreName ? (
+          <Text style={styles.storeName}>📍 {assignedStoreName}</Text>
+        ) : null}
       </View>
-      {item.is_low && (
-        <View style={styles.lowPill}>
-          <Text style={styles.lowPillText}>Low</Text>
-        </View>
-      )}
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
   row: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingVertical: 14,
-    borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+    minHeight: 56,
   },
-  rowLow: { backgroundColor: '#FFF7F7' },
-  left: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  dot: { width: 10, height: 10, borderRadius: 5 },
-  dotOk: { backgroundColor: '#D1FAE5' },
-  dotLow: { backgroundColor: '#EF4444' },
-  nameCol: { flex: 1 },
-  name: { fontSize: 16, color: '#1a1a1a' },
-  nameLow: { color: '#991B1B', fontWeight: '500' },
-  storeName: { fontSize: 12, color: '#2D9CDB', marginTop: 2 },
-  lowPill: {
-    backgroundColor: '#FEE2E2', borderRadius: 6,
-    paddingHorizontal: 8, paddingVertical: 3,
+  rowLow: {
+    backgroundColor: '#FFF8F0',
   },
-  lowPillText: { color: '#B91C1C', fontSize: 12, fontWeight: '600' },
+  // Left-edge accent bar (replaces dot — easier to see at a glance)
+  accentBar: {
+    width: 4,
+    borderRadius: 0,
+  },
+  accentBarOk: {
+    backgroundColor: '#D1FAE5',
+  },
+  accentBarLow: {
+    backgroundColor: '#F97316',
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    justifyContent: 'center',
+    gap: 4,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  name: {
+    fontSize: 16,
+    color: '#1A1A1A',
+    fontWeight: '400',
+    flex: 1,
+  },
+  nameLow: {
+    color: '#C2410C',
+    fontWeight: '600',
+  },
+  lowBadge: {
+    backgroundColor: '#FED7AA',
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  lowBadgeText: {
+    color: '#9A3412',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  storeName: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '400',
+  },
 });
