@@ -1,7 +1,7 @@
 import { TouchableOpacity, View, Text, StyleSheet, Alert } from 'react-native';
 import { useItemsStore } from '../store/items';
 import { useStoresStore } from '../store/stores';
-import { markItemLow, markItemOk } from '../lib/items';
+import { deleteItem, markItemLow, markItemOk } from '../lib/items';
 import { setItemStore } from '../lib/stores';
 import type { Item } from '../lib/items';
 
@@ -11,7 +11,7 @@ interface Props {
 }
 
 export default function ItemRow({ item, userId }: Props) {
-  const { updateItem } = useItemsStore();
+  const { removeItem, restoreItem, updateItem } = useItemsStore();
   const { stores } = useStoresStore();
 
   async function handleTap() {
@@ -57,9 +57,20 @@ export default function ItemRow({ item, userId }: Props) {
         ...(item.preferred_store_id
           ? [{ text: 'Clear store', style: 'destructive' as const, onPress: () => assignStore(null) }]
           : []),
+        { text: 'Delete item', style: 'destructive' as const, onPress: handleDelete },
         { text: 'Cancel', style: 'cancel' as const },
       ],
     );
+  }
+
+  async function handleDelete() {
+    removeItem(item.id);
+    try {
+      await deleteItem(item.id);
+    } catch (e: any) {
+      console.error('[ItemRow] delete failed:', e?.message ?? e);
+      restoreItem(item);
+    }
   }
 
   async function assignStore(storeId: string | null) {

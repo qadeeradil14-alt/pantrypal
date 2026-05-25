@@ -6,6 +6,7 @@ interface ItemsStore {
   setItems: (items: Item[]) => void;
   upsertItem: (item: Item) => void;
   removeItem: (id: string) => void;
+  restoreItem: (item: Item) => void;
   updateItem: (id: string, patch: Partial<Item>) => void;
 }
 
@@ -21,6 +22,8 @@ export const useItemsStore = create<ItemsStore>((set) => ({
       return { items: next };
     }),
   removeItem: (id) => set((state) => ({ items: state.items.filter((i) => i.id !== id) })),
+  restoreItem: (item) =>
+    set((state) => ({ items: state.items.some((i) => i.id === item.id) ? state.items : [...state.items, item] })),
   updateItem: (id, patch) =>
     set((state) => ({
       items: state.items.map((i) => (i.id === id ? { ...i, ...patch } : i)),

@@ -164,7 +164,7 @@ export default function SignUpScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff', paddingHorizontal: 28, paddingTop: 60 },
   back: { marginBottom: 32 },
-  backText: { color: '#2D9CDB', fontSize: 16 },
+  backText: { color: '#16A34A', fontSize: 16 },
   title: { fontSize: 28, fontWeight: '700', color: '#1a1a1a', marginBottom: 8 },
   subtitle: { fontSize: 15, color: '#888', marginBottom: 32 },
   error: {
@@ -177,12 +177,12 @@ const styles = StyleSheet.create({
     marginBottom: 12, color: '#1a1a1a',
   },
   btn: {
-    backgroundColor: '#2D9CDB', borderRadius: 14,
+    backgroundColor: '#16A34A', borderRadius: 14,
     paddingVertical: 16, alignItems: 'center', marginTop: 8, marginBottom: 16,
   },
   btnText: { color: '#fff', fontSize: 17, fontWeight: '600' },
-  link: { color: '#2D9CDB', fontSize: 15, textAlign: 'center' },
-  btnDisabled: { backgroundColor: '#93C5FD' },
+  link: { color: '#16A34A', fontSize: 15, textAlign: 'center' },
+  btnDisabled: { backgroundColor: '#86EFAC' },
   verifyCard: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12, paddingHorizontal: 8 },
   verifyEmoji: { fontSize: 56, marginBottom: 8 },
   emailHighlight: { fontWeight: '700', color: '#1a1a1a' },

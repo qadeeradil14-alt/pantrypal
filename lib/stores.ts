@@ -51,7 +51,6 @@ export async function addStore(
     latitude = coords?.latitude ?? null;
     longitude = coords?.longitude ?? null;
   } else {
-    // Best-effort geocoding for quick-add presets (e.g., "Walmart")
     const place = await geocodeStoreName(name.trim());
     if (place) {
       latitude = place.latitude;
@@ -120,18 +119,17 @@ async function geocodeStoreName(
   if (!storeName) return null;
 
   try {
-    const native = await Location.geocodeAsync(storeName);
-    if (native.length > 0) {
-      return { latitude: native[0].latitude, longitude: native[0].longitude };
-    }
-  } catch {
-    // Continue to HTTP fallback.
-  }
-
-  try {
+    const permission = await Location.requestForegroundPermissionsAsync();
+    if (permission.status !== 'granted') return null;
+    const here = await Location.getCurrentPositionAsync({});
+    const delta = 0.35;
+    const left = here.coords.longitude - delta;
+    const right = here.coords.longitude + delta;
+    const top = here.coords.latitude + delta;
+    const bottom = here.coords.latitude - delta;
     const encoded = encodeURIComponent(storeName);
     const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encoded}&format=json&limit=1&addressdetails=1`,
+      `https://nominatim.openstreetmap.org/search?q=${encoded}&format=json&limit=1&addressdetails=1&bounded=1&viewbox=${left},${top},${right},${bottom}`,
       {
         headers: {
           'User-Agent': 'PantryPal/1.0',
@@ -143,11 +141,10 @@ async function geocodeStoreName(
     if (!res.ok) return null;
     const results = await res.json();
     if (!results.length) return null;
-    const conciseAddress = formatNominatimAddress(results[0]);
     return {
       latitude: parseFloat(results[0].lat),
       longitude: parseFloat(results[0].lon),
-      address: conciseAddress,
+      address: formatNominatimAddress(results[0]),
     };
   } catch {
     return null;

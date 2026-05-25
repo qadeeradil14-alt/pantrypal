@@ -77,7 +77,7 @@ export default function JoinHouseholdScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff', paddingHorizontal: 28, paddingTop: 60 },
   back: { marginBottom: 32 },
-  backText: { color: '#2D9CDB', fontSize: 16 },
+  backText: { color: '#16A34A', fontSize: 16 },
   title: { fontSize: 28, fontWeight: '700', color: '#1a1a1a', marginBottom: 8 },
   subtitle: { fontSize: 15, color: '#888', marginBottom: 32 },
   error: {
@@ -94,7 +94,7 @@ const styles = StyleSheet.create({
     textAlign: 'center', paddingVertical: 20,
   },
   btn: {
-    backgroundColor: '#2D9CDB', borderRadius: 14,
+    backgroundColor: '#16A34A', borderRadius: 14,
     paddingVertical: 16, alignItems: 'center', marginTop: 8,
   },
   btnText: { color: '#fff', fontSize: 17, fontWeight: '600' },

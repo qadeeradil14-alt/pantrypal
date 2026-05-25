@@ -2,6 +2,7 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import * as Notifications from 'expo-notifications';
 import type { Store } from './stores';
+import { supabase } from './supabase';
 
 export const GEOFENCE_TASK = 'PANTRYPAL_GEOFENCE';
 
@@ -59,5 +60,12 @@ export async function notifyPartnerArrival(storeName: string) {
       sound: 'default',
     },
     trigger: null,
+  });
+}
+
+export async function recordStoreArrival(store: Store) {
+  await supabase.from('store_arrivals').insert({
+    household_id: store.household_id,
+    store_id: store.id,
   });
 }

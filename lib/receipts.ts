@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import { File } from 'expo-file-system';
 import { supabase } from './supabase';
 
 export interface Receipt {
@@ -33,22 +33,11 @@ export async function uploadReceipt(
   const ext = mimeType === 'application/pdf' ? 'pdf' : 'jpg';
   const path = `${householdId}/${Date.now()}.${ext}`;
 
-  // Hermes does not support `new Blob([ArrayBuffer])`. Read the file as
-  // base64 via expo-file-system and decode to a Uint8Array instead —
-  // the Supabase JS SDK accepts typed arrays directly.
-  const base64 = await FileSystem.readAsStringAsync(uri, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
-
-  const binaryString = atob(base64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
+  const file = new File(uri);
 
   const { error: uploadError } = await supabase.storage
     .from('receipts')
-    .upload(path, bytes, { contentType: mimeType, upsert: false });
+    .upload(path, file as unknown as Blob, { contentType: mimeType, upsert: false });
 
   if (uploadError) throw uploadError;
 

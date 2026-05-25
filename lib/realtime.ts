@@ -2,10 +2,12 @@ import { useEffect, useRef } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 import { supabase } from './supabase';
 import { useItemsStore } from '../store/items';
+import { useStoresStore } from '../store/stores';
 import type { Item } from './items';
 
 export function useRealtime(householdId: string | null) {
   const { upsertItem, removeItem } = useItemsStore();
+  const setActiveStore = useStoresStore((s) => s.setActiveStore);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const instanceKeyRef = useRef(Math.random().toString(36).slice(2));
 
@@ -32,6 +34,14 @@ export function useRealtime(householdId: string | null) {
         'postgres_changes',
         { event: 'DELETE', schema: 'public', table: 'items', filter: `household_id=eq.${householdId}` },
         (payload) => removeItem((payload.old as Item).id),
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'store_arrivals', filter: `household_id=eq.${householdId}` },
+        (payload) => {
+          const arrival = payload.new as { store_id?: string };
+          if (arrival.store_id) setActiveStore(arrival.store_id);
+        },
       )
       .subscribe();
   }

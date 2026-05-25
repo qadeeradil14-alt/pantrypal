@@ -4,13 +4,16 @@ import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/auth';
 import { useStoresStore } from '../store/stores';
 import { defineGeofenceTask } from '../lib/geofencing';
-import { notifyPartnerArrival } from '../lib/geofencing';
+import { notifyPartnerArrival, recordStoreArrival } from '../lib/geofencing';
 
 // Register geofence background task at module load time (before any async code)
 defineGeofenceTask((storeId) => {
   useStoresStore.getState().setActiveStore(storeId);
   const store = useStoresStore.getState().stores.find((s) => s.id === storeId);
-  if (store) notifyPartnerArrival(store.name);
+  if (store) {
+    notifyPartnerArrival(store.name);
+    recordStoreArrival(store).catch(() => {});
+  }
 });
 
 export default function RootLayout() {

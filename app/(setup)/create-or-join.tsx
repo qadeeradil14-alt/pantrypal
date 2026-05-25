@@ -33,10 +33,10 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 17, color: '#666', textAlign: 'center', lineHeight: 26 },
   actions: { paddingBottom: 48, gap: 12 },
   primaryBtn: {
-    backgroundColor: '#2D9CDB', borderRadius: 14,
+    backgroundColor: '#16A34A', borderRadius: 14,
     paddingVertical: 16, alignItems: 'center',
   },
   primaryBtnText: { color: '#fff', fontSize: 17, fontWeight: '600' },
   secondaryBtn: { paddingVertical: 14, alignItems: 'center' },
-  secondaryBtnText: { color: '#2D9CDB', fontSize: 16 },
+  secondaryBtnText: { color: '#16A34A', fontSize: 16 },
 });
