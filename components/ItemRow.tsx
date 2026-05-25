@@ -38,8 +38,6 @@ export default function ItemRow({ item, userId }: Props) {
   }
 
   function handleLongPress() {
-    if (stores.length === 0) return;
-
     const assignedStore = stores.find((s) => s.id === item.preferred_store_id);
 
     const storeButtons = stores.map((s) => ({
@@ -47,20 +45,21 @@ export default function ItemRow({ item, userId }: Props) {
       onPress: () => assignStore(s.id),
     }));
 
-    Alert.alert(
-      'Assign to store',
-      assignedStore
-        ? `Currently buying at ${assignedStore.name}. Pick a different store or clear it.`
-        : 'Which store do you usually get this from?',
-      [
-        ...storeButtons,
-        ...(item.preferred_store_id
-          ? [{ text: 'Clear store', style: 'destructive' as const, onPress: () => assignStore(null) }]
-          : []),
-        { text: 'Delete item', style: 'destructive' as const, onPress: handleDelete },
-        { text: 'Cancel', style: 'cancel' as const },
-      ],
-    );
+    const title = stores.length > 0 ? 'Assign to store' : item.name;
+    const message = stores.length > 0
+      ? (assignedStore
+          ? `Currently buying at ${assignedStore.name}. Pick a different store or clear it.`
+          : 'Which store do you usually get this from?')
+      : 'What would you like to do?';
+
+    Alert.alert(title, message, [
+      ...storeButtons,
+      ...(item.preferred_store_id
+        ? [{ text: 'Clear store', style: 'destructive' as const, onPress: () => assignStore(null) }]
+        : []),
+      { text: 'Delete item', style: 'destructive' as const, onPress: handleDelete },
+      { text: 'Cancel', style: 'cancel' as const },
+    ]);
   }
 
   async function handleDelete() {
@@ -90,7 +89,7 @@ export default function ItemRow({ item, userId }: Props) {
     <TouchableOpacity
       style={[styles.row, item.is_low && styles.rowLow]}
       onPress={handleTap}
-      onLongPress={stores.length > 0 ? handleLongPress : undefined}
+      onLongPress={handleLongPress}
       delayLongPress={400}
       activeOpacity={0.65}
     >
