@@ -1,0 +1,11 @@
+-- Database webhook: fires when an item row is updated
+-- Replace <PROJECT_REF> and <WEBHOOK_SECRET> when deploying.
+-- In the Supabase dashboard: Database → Webhooks → Create webhook
+--
+-- Name:    notify_low_item
+-- Table:   items (UPDATE events only)
+-- URL:     https://<PROJECT_REF>.supabase.co/functions/v1/notify-low-item
+-- Headers: x-supabase-signature: <WEBHOOK_SECRET>
+--
+-- This migration is a reminder/reference only.
+-- Webhooks are configured in the dashboard, not via SQL.
