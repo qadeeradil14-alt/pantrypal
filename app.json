@@ -30,7 +30,10 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.pantrypal.app"
+      "bundleIdentifier": "com.pantrypal.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.pantrypal.app",
