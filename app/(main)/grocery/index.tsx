@@ -231,17 +231,21 @@ const styles = StyleSheet.create({
   modeBtnText: { fontSize: 14, fontWeight: '600', color: '#374151' },
   modeBtnTextActive: { color: '#fff' },
 
-  // Store chips
+  // Store chips — fixed height prevents ScrollView from expanding
   storeBar: {
+    height: 50,
+    flexGrow: 0,
+    flexShrink: 0,
     backgroundColor: '#FAFAFA',
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
   },
   storeBarContent: {
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 9,
     gap: 8,
     alignItems: 'center',
+    flexDirection: 'row',
   },
   chip: {
     borderRadius: 999,

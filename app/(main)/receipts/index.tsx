@@ -103,7 +103,7 @@ export default function ReceiptsScreen() {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#2D9CDB" />
+        <ActivityIndicator size="large" color="'#16A34A'" />
       </View>
     );
   }
@@ -127,7 +127,7 @@ export default function ReceiptsScreen() {
       <FlatList
         data={receipts}
         keyExtractor={(r) => r.id}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#2D9CDB" />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="'#16A34A'" />}
         ListHeaderComponent={
           <View>
             {/* Spend summary */}
@@ -201,32 +201,32 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20, paddingVertical: 16,
     backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
   },
-  headerTitle: { fontSize: 22, fontWeight: '700', color: '#1a1a1a' },
-  addBtn: { backgroundColor: '#2D9CDB', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 },
-  addBtnDisabled: { backgroundColor: '#93C5FD' },
+  headerTitle: { fontSize: 24, fontWeight: '700', color: '#111827' },
+  addBtn: { backgroundColor: '#16A34A', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 },
+  addBtnDisabled: { backgroundColor: '#D1D5DB' },
   addBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   summaryCard: {
     margin: 16, backgroundColor: '#fff', borderRadius: 16,
     padding: 20, borderWidth: 1, borderColor: '#E5E7EB',
   },
-  summaryLabel: { fontSize: 13, color: '#888', marginBottom: 4 },
-  summaryTotal: { fontSize: 36, fontWeight: '800', color: '#1a1a1a', marginBottom: 16 },
+  summaryLabel: { fontSize: 13, color: '#6B7280', marginBottom: 4 },
+  summaryTotal: { fontSize: 36, fontWeight: '800', color: '#111827', marginBottom: 16 },
   storeRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderTopWidth: 1, borderTopColor: '#F3F4F6' },
   storeName: { fontSize: 15, color: '#555' },
-  storeAmount: { fontSize: 15, fontWeight: '600', color: '#1a1a1a' },
-  sectionLabel: { paddingHorizontal: 20, paddingBottom: 8, fontSize: 13, fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: 0.5 },
+  storeAmount: { fontSize: 15, fontWeight: '600', color: '#111827' },
+  sectionLabel: { paddingHorizontal: 20, paddingBottom: 8, fontSize: 13, fontWeight: '600', color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5 },
   list: { paddingBottom: 32 },
   card: { backgroundColor: '#fff', marginHorizontal: 16, marginBottom: 10, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: '#E5E7EB' },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  cardStore: { fontSize: 16, fontWeight: '600', color: '#1a1a1a' },
-  cardDate: { fontSize: 13, color: '#888', marginTop: 2 },
+  cardStore: { fontSize: 16, fontWeight: '600', color: '#111827' },
+  cardDate: { fontSize: 13, color: '#6B7280', marginTop: 2 },
   cardRight: { alignItems: 'flex-end', gap: 6 },
-  cardTotal: { fontSize: 18, fontWeight: '700', color: '#1a1a1a' },
+  cardTotal: { fontSize: 18, fontWeight: '700', color: '#111827' },
   statusPill: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
   statusText: { fontSize: 12, fontWeight: '600' },
-  cardItems: { fontSize: 13, color: '#888', marginTop: 10 },
+  cardItems: { fontSize: 13, color: '#6B7280', marginTop: 10 },
   empty: { alignItems: 'center', paddingTop: 60, paddingHorizontal: 40, gap: 12 },
   emptyEmoji: { fontSize: 56 },
-  emptyTitle: { fontSize: 20, fontWeight: '700', color: '#1a1a1a' },
-  emptySub: { fontSize: 15, color: '#888', textAlign: 'center', lineHeight: 22 },
+  emptyTitle: { fontSize: 20, fontWeight: '700', color: '#111827' },
+  emptySub: { fontSize: 15, color: '#6B7280', textAlign: 'center', lineHeight: 22 },
 });

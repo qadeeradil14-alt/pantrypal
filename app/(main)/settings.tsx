@@ -103,10 +103,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20, paddingVertical: 16,
     backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
   },
-  headerTitle: { fontSize: 22, fontWeight: '700', color: '#1a1a1a' },
+  headerTitle: { fontSize: 24, fontWeight: '700', color: '#111827' },
   section: { marginTop: 28, paddingHorizontal: 20 },
   sectionLabel: {
-    fontSize: 12, fontWeight: '600', color: '#888',
+    fontSize: 12, fontWeight: '600', color: '#6B7280',
     textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8,
   },
   card: {
@@ -119,12 +119,12 @@ const styles = StyleSheet.create({
   },
   rowBorderTop: { borderTopWidth: 1, borderTopColor: '#F3F4F6' },
   rowLabel: { fontSize: 15, color: '#555' },
-  rowValue: { fontSize: 15, color: '#1a1a1a', fontWeight: '500', maxWidth: '55%', textAlign: 'right' },
+  rowValue: { fontSize: 15, color: '#111827', fontWeight: '500', maxWidth: '55%', textAlign: 'right' },
   shareBtn: {
     marginTop: 10, paddingVertical: 12, alignItems: 'center',
-    borderRadius: 12, borderWidth: 1.5, borderColor: '#2D9CDB',
+    borderRadius: 12, borderWidth: 1.5, borderColor: '#16A34A',
   },
-  shareBtnText: { color: '#2D9CDB', fontSize: 15, fontWeight: '600' },
+  shareBtnText: { color: '#16A34A', fontSize: 15, fontWeight: '600' },
   footer: { position: 'absolute', bottom: 48, left: 20, right: 20 },
   signOutBtn: {
     backgroundColor: '#FEE2E2', borderRadius: 14,

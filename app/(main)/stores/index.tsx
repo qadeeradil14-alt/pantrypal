@@ -91,7 +91,7 @@ export default function StoresScreen() {
   }
 
   if (loading) {
-    return <View style={styles.centered}><ActivityIndicator size="large" color="#2D9CDB" /></View>;
+    return <View style={styles.centered}><ActivityIndicator size="large" color="'#16A34A'" /></View>;
   }
 
   return (
@@ -284,9 +284,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20, paddingVertical: 16,
     backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
   },
-  headerTitle: { fontSize: 22, fontWeight: '700', color: '#1a1a1a' },
-  addBtn: { backgroundColor: '#2D9CDB', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 },
-  addBtnDisabled: { backgroundColor: '#93C5FD' },
+  headerTitle: { fontSize: 24, fontWeight: '700', color: '#111827' },
+  addBtn: { backgroundColor: '#16A34A', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 },
+  addBtnDisabled: { backgroundColor: '#D1D5DB' },
   addBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   list: { padding: 16, gap: 10 },
   row: {
@@ -295,8 +295,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
   },
   rowLeft: { flex: 1, gap: 4 },
-  storeName: { fontSize: 16, fontWeight: '600', color: '#1a1a1a' },
-  storeAddress: { fontSize: 13, color: '#888' },
+  storeName: { fontSize: 16, fontWeight: '600', color: '#111827' },
+  storeAddress: { fontSize: 13, color: '#6B7280' },
   noAddress: { fontSize: 13, color: '#F59E0B' },
   rowRight: { alignItems: 'flex-end', gap: 8 },
   geoPill: { backgroundColor: '#DCFCE7', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
@@ -305,24 +305,24 @@ const styles = StyleSheet.create({
   deleteBtnText: { color: '#DC2626', fontSize: 13 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 12 },
   emptyEmoji: { fontSize: 56 },
-  emptyTitle: { fontSize: 20, fontWeight: '700', color: '#1a1a1a' },
-  emptySub: { fontSize: 15, color: '#888', textAlign: 'center', lineHeight: 22 },
-  emptyBtn: { backgroundColor: '#2D9CDB', borderRadius: 14, paddingHorizontal: 24, paddingVertical: 14, marginTop: 8 },
-  emptyBtnDisabled: { backgroundColor: '#93C5FD' },
+  emptyTitle: { fontSize: 20, fontWeight: '700', color: '#111827' },
+  emptySub: { fontSize: 15, color: '#6B7280', textAlign: 'center', lineHeight: 22 },
+  emptyBtn: { backgroundColor: '#16A34A', borderRadius: 14, paddingHorizontal: 24, paddingVertical: 14, marginTop: 8 },
+  emptyBtnDisabled: { backgroundColor: '#D1D5DB' },
   emptyBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
   sheet: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
   handle: { width: 40, height: 4, backgroundColor: '#E5E7EB', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
-  sheetTitle: { fontSize: 20, fontWeight: '700', color: '#1a1a1a', marginBottom: 16 },
+  sheetTitle: { fontSize: 20, fontWeight: '700', color: '#111827', marginBottom: 16 },
   error: { backgroundColor: '#FEE2E2', color: '#B91C1C', borderRadius: 8, padding: 12, marginBottom: 12, fontSize: 14 },
-  label: { fontSize: 12, fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
+  label: { fontSize: 12, fontWeight: '600', color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
   presetsRow: { marginBottom: 20 },
   presetChip: { backgroundColor: '#F0F9FF', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8, marginRight: 8, borderWidth: 1, borderColor: '#BAE6FD' },
   presetChipText: { color: '#0369A1', fontSize: 14, fontWeight: '500' },
-  input: { borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, marginBottom: 12, color: '#1a1a1a' },
-  saveBtn: { backgroundColor: '#2D9CDB', borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginBottom: 10 },
-  saveBtnDisabled: { backgroundColor: '#93C5FD' },
+  input: { borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, marginBottom: 12, color: '#111827' },
+  saveBtn: { backgroundColor: '#16A34A', borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginBottom: 10 },
+  saveBtnDisabled: { backgroundColor: '#D1D5DB' },
   saveBtnText: { color: '#fff', fontSize: 17, fontWeight: '600' },
   cancelBtn: { paddingVertical: 12, alignItems: 'center' },
-  cancelText: { color: '#888', fontSize: 16 },
+  cancelText: { color: '#6B7280', fontSize: 16 },
 });

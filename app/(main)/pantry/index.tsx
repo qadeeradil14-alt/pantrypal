@@ -173,7 +173,7 @@ export default function PantryScreen() {
             ? queryFiltered.length
             : queryFiltered.filter((i) => normalizeCategory(i.category) === cat).length;
           const active = selectedCategory === cat;
-          const label = isAll ? `All  ${count}` : `${CATEGORY_LABELS[cat as ItemCategory]}  ${count}`;
+          const label = isAll ? `All · ${count}` : `${CATEGORY_LABELS[cat as ItemCategory]} · ${count}`;
           return (
             <TouchableOpacity
               key={cat}
@@ -332,8 +332,11 @@ const styles = StyleSheet.create({
     color: '#111827',
   },
 
-  // Category chips
+  // Category chips — fixed height matches grocery store chips exactly
   chipsScroll: {
+    height: 50,
+    flexGrow: 0,
+    flexShrink: 0,
     backgroundColor: '#FAFAFA',
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
@@ -342,7 +345,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 9,
     alignItems: 'center',
   },
   chip: {
