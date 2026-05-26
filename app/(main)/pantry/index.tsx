@@ -229,7 +229,7 @@ export default function PantryScreen() {
     <>
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Text style={styles.greeting}>Hi, {firstName} 👋</Text>
+          <Text style={styles.greeting} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>Hi, {firstName} 👋</Text>
           <Text style={styles.householdSub}>{household?.name ?? 'Your pantry'}</Text>
         </View>
         <View style={styles.headerStats}>

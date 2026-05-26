@@ -9,6 +9,7 @@ import { useAuthStore } from '../../store/auth';
 import { useHouseholdStore } from '../../store/household';
 import { useItemsStore } from '../../store/items';
 import { signOut } from '../../lib/auth';
+import { supabase } from '../../lib/supabase';
 import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../../lib/haptics';
 import { useTheme } from '../../hooks/useTheme';
 import { fonts } from '../../constants/theme';
@@ -17,10 +18,11 @@ import ScalePressable from '../../components/ScalePressable';
 
 export default function SettingsScreen() {
   const { colors, isDark, toggleTheme } = useTheme();
-  const { session } = useAuthStore();
+  const { session, setSession } = useAuthStore();
   const { household, clearHousehold } = useHouseholdStore();
   const { setItems } = useItemsStore();
   const [signingOut, setSigningOut] = useState(false);
+  const [savingName, setSavingName] = useState(false);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -60,6 +62,33 @@ export default function SettingsScreen() {
       Alert.alert('Could not share', e?.message ?? 'Please try again.');
       void hapticError();
     }
+  }
+
+  function handleEditName() {
+    const current = session?.user?.user_metadata?.full_name ?? '';
+    Alert.prompt(
+      'Display name',
+      'Shown in your pantry greeting.',
+      async (name) => {
+        if (!name?.trim()) return;
+        setSavingName(true);
+        try {
+          const { data, error } = await supabase.auth.updateUser({
+            data: { full_name: name.trim() },
+          });
+          if (error) throw error;
+          if (data.user && session) setSession({ ...session, user: data.user });
+          void hapticSuccess();
+        } catch (e: any) {
+          Alert.alert('Could not save', e?.message ?? 'Try again.');
+          void hapticError();
+        } finally {
+          setSavingName(false);
+        }
+      },
+      'plain-text',
+      current,
+    );
   }
 
   return (
@@ -132,7 +161,25 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Account</Text>
           <View style={styles.card}>
-            <View style={styles.row}>
+            <ScalePressable
+              style={styles.row}
+              onPress={() => { void hapticSelection(); handleEditName(); }}
+            >
+              <View style={styles.rowLabelWrap}>
+                <Ionicons name="person-outline" size={17} color={colors.muted} />
+                <Text style={styles.rowLabel}>Display name</Text>
+              </View>
+              <View style={styles.rowEditWrap}>
+                {savingName
+                  ? <ActivityIndicator size="small" color={colors.primary} />
+                  : <Text style={styles.rowValue} numberOfLines={1}>
+                      {session?.user?.user_metadata?.full_name || session?.user?.user_metadata?.name || '—'}
+                    </Text>
+                }
+                <Ionicons name="pencil-outline" size={14} color={colors.muted} />
+              </View>
+            </ScalePressable>
+            <View style={[styles.row, styles.rowBorderTop]}>
               <View style={styles.rowLabelWrap}>
                 <Ionicons name="mail-outline" size={17} color={colors.muted} />
                 <Text style={styles.rowLabel}>Email</Text>
@@ -198,7 +245,8 @@ function makeStyles(colors: AppColors) {
     rowBorderTop: { borderTopWidth: 1, borderTopColor: colors.border },
     rowLabelWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     rowLabel: { fontSize: 15, color: colors.muted, fontFamily: fonts.bodyMedium },
-    rowValue: { fontSize: 16, color: colors.ink, fontFamily: fonts.bodyMedium, maxWidth: '58%', textAlign: 'right' },
+    rowEditWrap: { flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: '55%' },
+    rowValue: { fontSize: 16, color: colors.ink, fontFamily: fonts.bodyMedium, maxWidth: '100%', textAlign: 'right' },
     rowCode: { fontSize: 16, color: colors.ink, fontFamily: fonts.mono, maxWidth: '58%', textAlign: 'right', letterSpacing: 0.4 },
     shareBtn: {
       marginTop: 10, paddingVertical: 14, alignItems: 'center', justifyContent: 'center',
