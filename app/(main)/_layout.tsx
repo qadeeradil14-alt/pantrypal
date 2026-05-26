@@ -14,6 +14,7 @@ import { useStoresStore } from '../../store/stores';
 import { useShoppingStore } from '../../store/shopping';
 import { useItemsStore } from '../../store/items';
 import { useTheme } from '../../hooks/useTheme';
+import { fonts } from '../../constants/theme';
 import ArrivalBanner from '../../components/ArrivalBanner';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
@@ -123,7 +124,7 @@ export default function MainLayout() {
           },
           tabBarLabelStyle: {
             fontSize: 11,
-            fontWeight: '800',
+            fontFamily: fonts.bodySemiBold,
             marginTop: 2,
           },
           tabBarIconStyle: {

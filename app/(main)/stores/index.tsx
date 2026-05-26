@@ -10,10 +10,11 @@ import { useStoresStore } from '../../../store/stores';
 import { fetchStores, addStoreWithQueue, deleteStoreWithQueue, PRESET_STORES, type Store } from '../../../lib/stores';
 import { startGeofencing, stopGeofencing } from '../../../lib/geofencing';
 import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../../../lib/haptics';
-import { radii, shadow } from '../../../constants/theme';
+import { fonts, radii, shadow } from '../../../constants/theme';
 import type { AppColors } from '../../../constants/theme';
 import { useTheme } from '../../../hooks/useTheme';
 import ScalePressable from '../../../components/ScalePressable';
+import EmptyState from '../../../components/EmptyState';
 
 function compactAddress(address: string, storeName: string): string {
   const raw = address.trim();
@@ -143,29 +144,12 @@ export default function StoresScreen() {
       </View>
 
       {stores.length === 0 ? (
-        <View style={styles.empty}>
-          <View style={styles.emptyIconWrap}>
-            <Ionicons name="storefront-outline" size={58} color={colors.primary} />
-          </View>
-          <Text style={styles.emptyTitle}>No stores yet</Text>
-          <Text style={styles.emptySub}>
-            Add the stores you shop at. Include an address and the app will alert your partner the moment you arrive.
-          </Text>
-          <ScalePressable
-            style={[styles.emptyBtn, !canManageStores && styles.emptyBtnDisabled]}
-            onPress={() => {
-              void hapticSelection();
-              if (!canManageStores) {
-                Alert.alert('Household not ready', 'Please wait a moment and try again.');
-                return;
-              }
-              setShowAdd(true);
-            }}
-            disabled={!canManageStores}
-          >
-            <Text style={styles.emptyBtnText}>Add your first store</Text>
-          </ScalePressable>
-        </View>
+        <EmptyState
+          emoji="🏪"
+          title="No stores yet"
+          subtitle="Add the stores you shop at. Include an address and the app will alert your partner the moment you arrive."
+          action={canManageStores ? { label: 'Add your first store', onPress: () => { void hapticSelection(); setShowAdd(true); } } : undefined}
+        />
       ) : (
         <FlatList
           data={stores}
@@ -358,34 +342,34 @@ function makeStyles(colors: AppColors) {
       paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14,
     },
     headerLeft: { flex: 1, gap: 2 },
-    eyebrow: { fontSize: 12, color: colors.primary, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
-    headerTitle: { fontSize: 26, fontWeight: '800', color: colors.ink, letterSpacing: -0.4 },
+    eyebrow: { fontSize: 12, color: colors.primary, fontFamily: fonts.bodySemiBold, textTransform: 'uppercase', letterSpacing: 0.5 },
+    headerTitle: { fontSize: 26, fontFamily: fonts.displayExtraBold, color: colors.ink, letterSpacing: 0 },
     addBtn: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
       gap: 4, backgroundColor: colors.primary, borderRadius: 999,
       paddingHorizontal: 14, paddingVertical: 10,
     },
     addBtnDisabled: { backgroundColor: colors.disabled },
-    addBtnText: { color: colors.surface, fontSize: 15, fontWeight: '800' },
+    addBtnText: { color: colors.surface, fontSize: 15, fontFamily: fonts.bodySemiBold },
     heroCard: {
       marginHorizontal: 16, marginBottom: 12, borderRadius: radii.lg,
       backgroundColor: colors.surface, padding: 16,
       flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-      borderWidth: 1, borderColor: colors.faint, ...shadow,
+      borderWidth: 1, borderColor: colors.border, ...shadow,
     },
-    heroNumber: { fontSize: 38, lineHeight: 42, fontWeight: '800', color: colors.ink, fontVariant: ['tabular-nums'] },
-    heroLabel: { fontSize: 14, color: colors.muted, fontWeight: '700' },
+    heroNumber: { fontSize: 38, lineHeight: 42, fontFamily: fonts.monoMedium, color: colors.ink, fontVariant: ['tabular-nums'] },
+    heroLabel: { fontSize: 14, color: colors.muted, fontFamily: fonts.bodySemiBold },
     heroBadge: {
       flexDirection: 'row', alignItems: 'center', gap: 7,
       backgroundColor: colors.primarySoft, borderRadius: 999,
       paddingHorizontal: 12, paddingVertical: 8,
     },
-    heroBadgeText: { color: colors.primary, fontWeight: '800', fontSize: 13 },
+    heroBadgeText: { color: colors.primary, fontFamily: fonts.bodySemiBold, fontSize: 13 },
     list: { paddingHorizontal: 16, paddingBottom: 120 },
     separator: { height: 10 },
     row: {
       backgroundColor: colors.surface, borderRadius: radii.md, padding: 12,
-      borderWidth: 1, borderColor: colors.faint,
+      borderWidth: 1, borderColor: colors.border,
       flexDirection: 'row', alignItems: 'center', gap: 12,
     },
     storeIcon: {
@@ -394,41 +378,41 @@ function makeStyles(colors: AppColors) {
     },
     storeIconActive: { backgroundColor: colors.primarySoft },
     rowLeft: { flex: 1, gap: 4 },
-    storeName: { fontSize: 17, fontWeight: '700', color: colors.ink },
-    storeAddress: { fontSize: 13, color: colors.muted, lineHeight: 19 },
-    noAddress: { fontSize: 13, color: colors.low, fontWeight: '600' },
+    storeName: { fontSize: 17, fontFamily: fonts.bodySemiBold, color: colors.ink },
+    storeAddress: { fontSize: 13, color: colors.muted, lineHeight: 19, fontFamily: fonts.body },
+    noAddress: { fontSize: 13, color: colors.low, fontFamily: fonts.bodyMedium },
     rowRight: { alignItems: 'flex-end', gap: 8 },
     geoPill: {
       flexDirection: 'row', alignItems: 'center', gap: 4,
       backgroundColor: colors.primarySoft, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5,
     },
-    geoPillText: { fontSize: 12, color: colors.primary, fontWeight: '800' },
+    geoPillText: { fontSize: 12, color: colors.primary, fontFamily: fonts.bodySemiBold },
     deleteBtn: { padding: 4 },
-    deleteBtnText: { color: colors.danger, fontSize: 13, fontWeight: '700' },
+    deleteBtnText: { color: colors.danger, fontSize: 13, fontFamily: fonts.bodySemiBold },
     empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 12 },
     emptyIconWrap: { backgroundColor: colors.primarySoft, borderRadius: radii.xl, padding: 16, marginBottom: 8 },
-    emptyTitle: { fontSize: 24, fontWeight: '800', color: colors.ink, letterSpacing: -0.3 },
-    emptySub: { fontSize: 15, color: colors.muted, textAlign: 'center', lineHeight: 24 },
+    emptyTitle: { fontSize: 24, fontFamily: fonts.display, color: colors.ink, letterSpacing: 0 },
+    emptySub: { fontSize: 15, color: colors.muted, textAlign: 'center', lineHeight: 24, fontFamily: fonts.body },
     emptyBtn: { backgroundColor: colors.primary, borderRadius: radii.md, paddingHorizontal: 24, paddingVertical: 14, marginTop: 8 },
     emptyBtnDisabled: { backgroundColor: colors.disabled },
-    emptyBtnText: { color: colors.surface, fontSize: 16, fontWeight: '800' },
+    emptyBtnText: { color: colors.surface, fontSize: 16, fontFamily: fonts.bodySemiBold },
     overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(2, 6, 23, 0.36)' },
     sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 40, ...shadow },
     handle: { width: 36, height: 4, backgroundColor: colors.faint, borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
-    sheetTitle: { fontSize: 22, fontWeight: '800', color: colors.ink, marginBottom: 4, letterSpacing: -0.2 },
-    sheetSubtitle: { fontSize: 14, color: colors.muted, marginBottom: 18 },
+    sheetTitle: { fontSize: 22, fontFamily: fonts.displayItalic, color: colors.ink, marginBottom: 4, letterSpacing: 0 },
+    sheetSubtitle: { fontSize: 14, color: colors.muted, marginBottom: 18, fontFamily: fonts.body },
     errorBox: { backgroundColor: colors.dangerSoft, borderRadius: radii.sm, padding: 12, marginBottom: 12 },
     error: { color: colors.dangerText, fontSize: 14 },
-    label: { fontSize: 12, fontWeight: '800', color: colors.muted, textTransform: 'uppercase', marginBottom: 8 },
+    label: { fontSize: 12, fontFamily: fonts.bodySemiBold, color: colors.muted, textTransform: 'uppercase', marginBottom: 8 },
     presetsRow: { marginBottom: 20 },
     presetsContent: { paddingRight: 10 },
     presetChip: { backgroundColor: colors.primarySoft, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, marginRight: 8, borderWidth: 1, borderColor: colors.primarySoft },
-    presetChipText: { color: colors.primary, fontSize: 14, fontWeight: '800' },
-    input: { borderWidth: 1, borderColor: colors.faint, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 15, fontSize: 16, marginBottom: 12, color: colors.ink, backgroundColor: colors.background },
+    presetChipText: { color: colors.primary, fontSize: 14, fontFamily: fonts.bodySemiBold },
+    input: { borderWidth: 1, borderColor: colors.border, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 15, fontSize: 16, marginBottom: 12, color: colors.ink, backgroundColor: colors.background, fontFamily: fonts.body },
     saveBtn: { backgroundColor: colors.primary, borderRadius: radii.md, paddingVertical: 16, alignItems: 'center', marginBottom: 10 },
     saveBtnDisabled: { backgroundColor: colors.disabled },
-    saveBtnText: { color: colors.surface, fontSize: 17, fontWeight: '800' },
+    saveBtnText: { color: colors.surface, fontSize: 17, fontFamily: fonts.bodySemiBold },
     cancelBtn: { paddingVertical: 12, alignItems: 'center' },
-    cancelText: { color: colors.muted, fontSize: 16, fontWeight: '600' },
+    cancelText: { color: colors.muted, fontSize: 16, fontFamily: fonts.bodySemiBold },
   });
 }

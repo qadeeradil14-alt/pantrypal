@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useTheme } from '../hooks/useTheme';
-import type { AppColors } from '../constants/theme';
+import { fonts, type AppColors } from '../constants/theme';
 import ScalePressable from './ScalePressable';
 
 interface Props {
@@ -55,17 +55,17 @@ function makeStyles(colors: AppColors) {
     emoji: { fontSize: 42 },
     title: {
       fontSize: 20,
-      fontWeight: '800',
+      fontFamily: fonts.display,
       color: colors.ink,
       textAlign: 'center',
-      letterSpacing: -0.3,
+      letterSpacing: 0,
     },
     subtitle: {
       fontSize: 14,
       color: colors.muted,
       textAlign: 'center',
       lineHeight: 21,
-      fontWeight: '500',
+      fontFamily: fonts.bodyMedium,
     },
     btn: {
       marginTop: 8,
@@ -74,6 +74,6 @@ function makeStyles(colors: AppColors) {
       paddingHorizontal: 24,
       paddingVertical: 13,
     },
-    btnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+    btnText: { color: '#FFFFFF', fontSize: 15, fontFamily: fonts.bodySemiBold },
   });
 }

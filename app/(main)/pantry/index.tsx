@@ -455,15 +455,15 @@ function makeStyles(colors: AppColors) {
       paddingHorizontal: 10,
       paddingVertical: 5,
     },
-    healthPillText: { fontSize: 13, fontWeight: '900' },
+    healthPillText: { fontSize: 13, fontFamily: fonts.monoMedium, fontVariant: ['tabular-nums'] },
     streakPill: {
       borderRadius: 999,
       paddingHorizontal: 10,
       paddingVertical: 5,
       backgroundColor: colors.warningSoft,
     },
-    streakText: { fontSize: 13, fontWeight: '900', color: colors.warning },
-    greeting: { fontSize: 26, fontFamily: fonts.displayExtraBoldItalic, color: colors.ink, letterSpacing: -0.3 },
+    streakText: { fontSize: 13, fontFamily: fonts.monoMedium, color: colors.warning, fontVariant: ['tabular-nums'] },
+    greeting: { fontSize: 26, fontFamily: fonts.displayExtraBoldItalic, color: colors.ink, letterSpacing: 0 },
     householdSub: { fontSize: 14, color: colors.muted, fontFamily: fonts.bodyMedium },
 
     searchWrap: {
@@ -478,7 +478,7 @@ function makeStyles(colors: AppColors) {
       paddingHorizontal: 14,
       gap: 8,
     },
-    searchInput: { flex: 1, paddingVertical: 12, fontSize: 15, color: colors.ink },
+    searchInput: { flex: 1, paddingVertical: 12, fontSize: 15, color: colors.ink, fontFamily: fonts.body },
 
     filterScroll: {
       marginBottom: 20,
@@ -508,11 +508,12 @@ function makeStyles(colors: AppColors) {
       borderColor: colors.primary,
     },
     filterPillEmoji: { fontSize: 14 },
-    filterPillText: { fontSize: 13, fontWeight: '700', color: colors.ink },
+    filterPillText: { fontSize: 13, fontFamily: fonts.bodySemiBold, color: colors.ink },
     filterPillTextActive: { color: '#FFFFFF' },
     filterPillCount: {
       fontSize: 12,
-      fontWeight: '700',
+      fontFamily: fonts.monoMedium,
+      fontVariant: ['tabular-nums'],
       color: colors.muted,
       backgroundColor: colors.faint,
       borderRadius: 999,
@@ -538,14 +539,14 @@ function makeStyles(colors: AppColors) {
     section: { marginHorizontal: 16, marginBottom: 20 },
     sectionRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
     sectionIcon: { fontSize: 15 },
-    sectionTitle: { fontSize: 17, fontFamily: fonts.displayItalic, color: colors.ink, flex: 1, letterSpacing: -0.2 },
+    sectionTitle: { fontSize: 17, fontFamily: fonts.displayItalic, color: colors.ink, flex: 1, letterSpacing: 0 },
     sectionBadge: {
       backgroundColor: colors.primarySoft,
       borderRadius: 999,
       paddingHorizontal: 9,
       paddingVertical: 2,
     },
-    sectionBadgeText: { fontSize: 12, fontWeight: '700', color: colors.primary },
+    sectionBadgeText: { fontSize: 12, fontFamily: fonts.monoMedium, color: colors.primary, fontVariant: ['tabular-nums'] },
 
     lowCard: {
       flexDirection: 'row',
@@ -560,15 +561,15 @@ function makeStyles(colors: AppColors) {
     },
     lowCardEmoji: { fontSize: 26 },
     lowCardContent: { flex: 1 },
-    lowCardName: { fontSize: 16, fontWeight: '700', color: colors.ink },
-    lowCardCat: { fontSize: 13, color: colors.muted, marginTop: 2 },
+    lowCardName: { fontSize: 16, fontFamily: fonts.bodySemiBold, color: colors.ink },
+    lowCardCat: { fontSize: 13, color: colors.muted, marginTop: 2, fontFamily: fonts.body },
     gotItBtn: {
       backgroundColor: colors.primary,
       borderRadius: 20,
       paddingHorizontal: 14,
       paddingVertical: 8,
     },
-    gotItText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
+    gotItText: { color: '#FFFFFF', fontSize: 13, fontFamily: fonts.bodySemiBold },
 
     allItemsRow: {
       flexDirection: 'row',
@@ -577,7 +578,7 @@ function makeStyles(colors: AppColors) {
       paddingHorizontal: 16,
       marginBottom: 12,
     },
-    allItemsCount: { fontSize: 14, fontWeight: '700', color: colors.muted },
+    allItemsCount: { fontSize: 14, fontFamily: fonts.monoMedium, color: colors.muted, fontVariant: ['tabular-nums'] },
 
     listSectionHeader: {
       flexDirection: 'row',
@@ -589,15 +590,15 @@ function makeStyles(colors: AppColors) {
       backgroundColor: colors.background,
     },
     listSectionEmoji: { fontSize: 15 },
-    listSectionTitle: { fontSize: 20, fontFamily: fonts.displayItalic, color: colors.ink, flex: 1, letterSpacing: -0.3 },
-    listSectionCount: { fontSize: 13, color: colors.muted, fontWeight: '600' },
+    listSectionTitle: { fontSize: 20, fontFamily: fonts.displayItalic, color: colors.ink, flex: 1, letterSpacing: 0 },
+    listSectionCount: { fontSize: 13, color: colors.muted, fontFamily: fonts.mono, fontVariant: ['tabular-nums'] },
     lowBadge: {
       backgroundColor: colors.warningSoft,
       borderRadius: 999,
       paddingHorizontal: 8,
       paddingVertical: 2,
     },
-    lowBadgeText: { fontSize: 11, color: colors.warning, fontWeight: '800' },
+    lowBadgeText: { fontSize: 11, color: colors.warning, fontFamily: fonts.bodySemiBold },
 
     fabWrap: {
       position: 'absolute',
@@ -637,7 +638,7 @@ function makeStyles(colors: AppColors) {
       paddingHorizontal: 40,
     },
     emptyEmoji: { fontSize: 52 },
-    emptyTitle: { fontSize: 20, fontWeight: '800', color: colors.ink, textAlign: 'center' },
-    emptySub: { fontSize: 15, color: colors.muted, textAlign: 'center', lineHeight: 22 },
+    emptyTitle: { fontSize: 20, fontFamily: fonts.display, color: colors.ink, textAlign: 'center' },
+    emptySub: { fontSize: 15, color: colors.muted, textAlign: 'center', lineHeight: 22, fontFamily: fonts.body },
   });
 }

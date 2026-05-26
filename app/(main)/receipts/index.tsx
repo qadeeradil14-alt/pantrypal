@@ -255,7 +255,7 @@ function makeStyles(colors: AppColors) {
     addBtnText: { color: colors.surface, fontSize: 15, fontFamily: fonts.bodySemiBold },
     summaryCard: {
       marginHorizontal: 16, marginBottom: 14, backgroundColor: colors.surfaceWarm, borderRadius: radii.xl,
-      padding: 18, borderWidth: 1, borderColor: colors.faint, ...shadow,
+      padding: 18, borderWidth: 1, borderColor: colors.border, ...shadow,
     },
     summaryIcon: {
       position: 'absolute', right: 18, top: 18, width: 46, height: 46, borderRadius: 23,
@@ -263,14 +263,14 @@ function makeStyles(colors: AppColors) {
     },
     summaryLabel: { fontSize: 14, color: colors.muted, fontFamily: fonts.bodyMedium, marginBottom: 4 },
     summaryTotal: { fontSize: 42, lineHeight: 52, fontFamily: fonts.mono, color: colors.ink, marginBottom: 16 },
-    storeRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.faint },
+    storeRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.border },
     storeName: { fontSize: 15, color: colors.muted, fontFamily: fonts.bodyMedium },
     storeAmount: { fontSize: 15, fontFamily: fonts.mono, color: colors.ink },
     sectionLabel: { paddingHorizontal: 20, paddingBottom: 8, fontSize: 12, fontFamily: fonts.bodySemiBold, color: colors.muted, textTransform: 'uppercase' },
     list: { paddingBottom: 120 },
     card: {
       backgroundColor: colors.surface, marginHorizontal: 16, marginBottom: 10,
-      borderRadius: radii.lg, padding: 14, borderWidth: 1, borderColor: colors.faint,
+      borderRadius: radii.lg, padding: 14, borderWidth: 1, borderColor: colors.border,
       flexDirection: 'row', gap: 12,
     },
     cardIcon: {

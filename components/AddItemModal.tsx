@@ -9,7 +9,7 @@ import { addItemWithQueue } from '../lib/items';
 import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../lib/haptics';
 import { CATEGORY_LABELS, type ItemCategory } from '../constants/defaultItems';
 import { useTheme } from '../hooks/useTheme';
-import type { AppColors } from '../constants/theme';
+import { fonts, type AppColors } from '../constants/theme';
 import ScalePressable from './ScalePressable';
 
 const CATEGORIES: ItemCategory[] = ['fridge', 'freezer', 'pantry'];
@@ -179,8 +179,8 @@ function makeStyles(colors: AppColors) {
       alignItems: 'center', justifyContent: 'center',
       backgroundColor: colors.primarySoft,
     },
-    title: { fontSize: 22, fontWeight: '800', color: colors.ink, marginBottom: 4, letterSpacing: -0.2 },
-    subtitle: { fontSize: 14, color: colors.muted },
+    title: { fontSize: 22, fontFamily: fonts.displayItalic, color: colors.ink, marginBottom: 4, letterSpacing: 0 },
+    subtitle: { fontSize: 14, color: colors.muted, fontFamily: fonts.body },
     errorBox: {
       backgroundColor: colors.dangerSoft,
       borderRadius: 12,
@@ -200,7 +200,7 @@ function makeStyles(colors: AppColors) {
       backgroundColor: colors.background,
     },
     label: {
-      fontSize: 12, fontWeight: '800',
+      fontSize: 12, fontFamily: fonts.bodySemiBold,
       color: colors.muted,
       textTransform: 'uppercase',
       marginBottom: 10,
@@ -224,7 +224,7 @@ function makeStyles(colors: AppColors) {
       backgroundColor: colors.primarySoft,
     },
     catEmoji: { fontSize: 22 },
-    catLabel: { fontSize: 12, color: colors.muted, fontWeight: '700' },
+    catLabel: { fontSize: 12, color: colors.muted, fontFamily: fonts.bodySemiBold },
     catLabelActive: { color: colors.primary },
     addBtn: {
       backgroundColor: colors.primary,
@@ -234,8 +234,8 @@ function makeStyles(colors: AppColors) {
       marginBottom: 10,
     },
     addBtnDisabled: { backgroundColor: colors.disabled },
-    addBtnText: { color: '#FFFFFF', fontSize: 17, fontWeight: '800' },
+    addBtnText: { color: '#FFFFFF', fontSize: 17, fontFamily: fonts.bodySemiBold },
     cancelBtn: { paddingVertical: 14, alignItems: 'center' },
-    cancelText: { color: colors.muted, fontSize: 16, fontWeight: '600' },
+    cancelText: { color: colors.muted, fontSize: 16, fontFamily: fonts.bodySemiBold },
   });
 }

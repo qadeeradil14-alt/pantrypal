@@ -215,7 +215,7 @@ function makeStyles(colors: AppColors) {
     content: { paddingBottom: 40 },
     header: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 10 },
     eyebrow: { fontSize: 12, color: colors.primary, fontFamily: fonts.bodySemiBold, textTransform: 'uppercase', letterSpacing: 0.5 },
-    headerTitle: { fontSize: 28, fontFamily: fonts.displayExtraBold, color: colors.ink, letterSpacing: -0.4 },
+    headerTitle: { fontSize: 28, fontFamily: fonts.displayExtraBold, color: colors.ink, letterSpacing: 0 },
     heroCard: {
       marginHorizontal: 16, marginBottom: 16, borderRadius: 20,
       backgroundColor: colors.surface, padding: 16,
@@ -223,7 +223,7 @@ function makeStyles(colors: AppColors) {
       borderWidth: 1, borderColor: colors.border,
     },
     heroLeft: { flex: 1, paddingRight: 12 },
-    heroTitle: { fontSize: 20, fontFamily: fonts.display, color: colors.ink, letterSpacing: -0.2 },
+    heroTitle: { fontSize: 20, fontFamily: fonts.display, color: colors.ink, letterSpacing: 0 },
     heroLabel: { fontSize: 15, color: colors.muted, fontFamily: fonts.body, marginTop: 4 },
     heroIcon: {
       width: 44, height: 44, borderRadius: 22,

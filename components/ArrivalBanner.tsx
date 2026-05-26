@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useStoresStore } from '../store/stores';
 import { useTheme } from '../hooks/useTheme';
-import type { AppColors } from '../constants/theme';
+import { fonts, type AppColors } from '../constants/theme';
 
 export default function ArrivalBanner() {
   const { colors } = useTheme();
@@ -92,7 +92,7 @@ function makeStyles(colors: AppColors) {
       gap: 12,
     },
     icon: { fontSize: 26 },
-    text: { flex: 1, fontSize: 13, color: colors.surface, lineHeight: 19 },
-    bold: { fontWeight: '800', fontSize: 14 },
+    text: { flex: 1, fontSize: 13, color: colors.surface, lineHeight: 19, fontFamily: fonts.body },
+    bold: { fontFamily: fonts.bodySemiBold, fontSize: 14 },
   });
 }

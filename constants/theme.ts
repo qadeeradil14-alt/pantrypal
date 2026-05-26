@@ -39,16 +39,16 @@ export const lightColors = {
 
 export const darkColors: typeof lightColors = {
   background: '#1C1812',    // espresso
-  surface: '#271F19',
+  surface: '#2E231A',       // lifted — cards must stand out from background
   primary: '#D4874E',       // copper
   primarySoft: '#2A1A0A',
   primaryDeep: '#E09A5F',
   ink: '#F0E8DC',           // cream
   inkSoft: '#E8D8C4',
-  muted: '#8C7A68',
+  muted: '#9C8A76',
   placeholder: '#6A5A4A',
-  faint: '#2A2018',
-  border: '#3A2E24',
+  faint: '#251C14',
+  border: '#4A3A2C',        // stronger border so cards have a clear edge
   success: '#5A9E70',
   successSoft: '#0D2A14',
   warning: '#D4874E',       // copper doubles as "low" warning in dark mode
@@ -65,7 +65,7 @@ export const darkColors: typeof lightColors = {
   accent: '#5A9E70',
   accentSoft: '#0D2A14',
   surfaceDeep: '#0F0D0A',
-  surfaceWarm: '#271F19',
+  surfaceWarm: '#2E231A',
   surfaceTint: '#2A1A0A',
   inkSoftAlt: '#E8D8C4',
   lowText2: '#F0C890',

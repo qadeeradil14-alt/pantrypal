@@ -15,7 +15,7 @@ import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../l
 import { CATEGORY_LABELS, type ItemCategory } from '../constants/defaultItems';
 import type { Item } from '../lib/items';
 import { useTheme } from '../hooks/useTheme';
-import type { AppColors } from '../constants/theme';
+import { fonts, type AppColors } from '../constants/theme';
 import ScalePressable from './ScalePressable';
 
 const CATEGORIES: ItemCategory[] = ['fridge', 'freezer', 'pantry'];
@@ -238,8 +238,8 @@ function makeStyles(colors: AppColors) {
       alignItems: 'center', justifyContent: 'center',
       backgroundColor: colors.primarySoft,
     },
-    title: { fontSize: 22, fontWeight: '800', color: colors.ink, marginBottom: 2, letterSpacing: -0.2 },
-    subtitle: { fontSize: 14, color: colors.muted },
+    title: { fontSize: 22, fontFamily: fonts.displayItalic, color: colors.ink, marginBottom: 2, letterSpacing: 0 },
+    subtitle: { fontSize: 14, color: colors.muted, fontFamily: fonts.body },
     errorBox: { backgroundColor: colors.dangerSoft, borderRadius: 12, padding: 12, marginBottom: 12 },
     errorText: { color: colors.danger, fontSize: 14, lineHeight: 20 },
     input: {
@@ -252,10 +252,10 @@ function makeStyles(colors: AppColors) {
       marginBottom: 20,
       color: colors.ink,
       backgroundColor: colors.background,
-      fontWeight: '700',
+      fontFamily: fonts.bodySemiBold,
     },
     label: {
-      fontSize: 12, fontWeight: '800',
+      fontSize: 12, fontFamily: fonts.bodySemiBold,
       color: colors.muted,
       textTransform: 'uppercase',
       marginBottom: 10,
@@ -270,7 +270,7 @@ function makeStyles(colors: AppColors) {
     },
     catBtnActive: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
     catEmoji: { fontSize: 22 },
-    catLabel: { fontSize: 12, color: colors.muted, fontWeight: '700' },
+    catLabel: { fontSize: 12, color: colors.muted, fontFamily: fonts.bodySemiBold },
     catLabelActive: { color: colors.primary },
     saveBtn: {
       backgroundColor: colors.primary,
@@ -278,7 +278,7 @@ function makeStyles(colors: AppColors) {
       alignItems: 'center', marginBottom: 10,
     },
     saveBtnDisabled: { backgroundColor: colors.disabled },
-    saveBtnText: { color: '#FFFFFF', fontSize: 17, fontWeight: '800' },
+    saveBtnText: { color: '#FFFFFF', fontSize: 17, fontFamily: fonts.bodySemiBold },
     deleteBtn: {
       flexDirection: 'row', gap: 8,
       alignItems: 'center', justifyContent: 'center',
@@ -287,8 +287,8 @@ function makeStyles(colors: AppColors) {
       borderWidth: 1, borderColor: colors.danger + '33',
       marginBottom: 8,
     },
-    deleteBtnText: { color: colors.danger, fontSize: 15, fontWeight: '800' },
+    deleteBtnText: { color: colors.danger, fontSize: 15, fontFamily: fonts.bodySemiBold },
     cancelBtn: { paddingVertical: 12, alignItems: 'center' },
-    cancelText: { color: colors.muted, fontSize: 16, fontWeight: '600' },
+    cancelText: { color: colors.muted, fontSize: 16, fontFamily: fonts.bodySemiBold },
   });
 }

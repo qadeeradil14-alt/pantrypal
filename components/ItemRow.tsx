@@ -11,7 +11,7 @@ import { CATEGORY_LABELS } from '../constants/defaultItems';
 import { pantryItemTestId } from '../lib/testIds';
 import { getItemEmoji } from '../constants/itemEmojis';
 import { useTheme } from '../hooks/useTheme';
-import type { AppColors } from '../constants/theme';
+import { fonts, type AppColors } from '../constants/theme';
 import ScalePressable from './ScalePressable';
 
 interface Props {
@@ -219,8 +219,8 @@ function makeStyles(colors: AppColors) {
     },
     emoji: { fontSize: 24 },
     content: { flex: 1, gap: 3 },
-    name: { fontSize: 16, fontWeight: '700', color: colors.ink },
-    meta: { fontSize: 13, color: colors.muted, fontWeight: '500' },
+    name: { fontSize: 16, fontFamily: fonts.bodySemiBold, color: colors.ink },
+    meta: { fontSize: 13, color: colors.muted, fontFamily: fonts.bodyMedium },
     lowBadge: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -236,7 +236,7 @@ function makeStyles(colors: AppColors) {
       borderRadius: 3,
       backgroundColor: colors.warning,
     },
-    lowBadgeText: { fontSize: 11, fontWeight: '800', color: colors.warning, letterSpacing: 0.3 },
+    lowBadgeText: { fontSize: 11, fontFamily: fonts.bodySemiBold, color: colors.warning, letterSpacing: 0.3 },
     stockDot: {
       width: 7,
       height: 7,
@@ -255,7 +255,6 @@ function makeStyles(colors: AppColors) {
     swipeActionLow: { backgroundColor: colors.warningSoft },
     swipeActionGotIt: { backgroundColor: colors.successSoft },
     swipeActionEmoji: { fontSize: 20 },
-    swipeActionLabel: { fontSize: 11, fontWeight: '800', color: colors.ink },
+    swipeActionLabel: { fontSize: 11, fontFamily: fonts.bodySemiBold, color: colors.ink },
   });
 }
-

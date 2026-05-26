@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { getPendingMutationCount, subscribeOfflineQueue } from '../lib/offlineQueue';
 import { useTheme } from '../hooks/useTheme';
-import type { AppColors } from '../constants/theme';
+import { fonts, type AppColors } from '../constants/theme';
 
 export default function SyncStatusPill() {
   const { colors } = useTheme();
@@ -66,7 +66,7 @@ function makeStyles(colors: AppColors) {
     dotOffline: { backgroundColor: colors.warning },
     text: {
       fontSize: 11,
-      fontWeight: '800',
+      fontFamily: fonts.bodySemiBold,
       letterSpacing: 0.2,
     },
     textSynced: { color: colors.success },
