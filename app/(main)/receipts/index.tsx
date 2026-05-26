@@ -77,7 +77,7 @@ export default function ReceiptsScreen() {
       const result = source === 'camera'
         ? await ImagePicker.launchCameraAsync({ quality: 0.8, base64: false })
         : await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            mediaTypes: ['images'],
             quality: 0.8,
           });
 

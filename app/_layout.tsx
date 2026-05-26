@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
-import { StyleSheet, View, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, ActivityIndicator, LogBox } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useFonts as usePlayfairFonts } from '@expo-google-fonts/playfair-display';
 import { useFonts as useDMSansFonts } from '@expo-google-fonts/dm-sans';
@@ -12,6 +12,14 @@ import { startMutationQueueWorker } from '../lib/offlineQueue';
 
 // Register geofence background task at module load time (before any async code)
 defineGeofenceTask(() => {});
+
+LogBox.ignoreLogs([
+  'expo-notifications: Android Push notifications',
+  '`expo-notifications` functionality is not fully supported in Expo Go',
+  'Background location is limited in Expo Go',
+  'Sending `onAnimatedValueUpdate` with no listeners registered',
+  'Sending `websocketMessage` with no listeners registered',
+]);
 
 export default function RootLayout() {
   // ── Slow Kitchen fonts ─────────────────────────────────────────────────────
