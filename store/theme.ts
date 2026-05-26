@@ -10,7 +10,7 @@ interface ThemeStore {
 export const useThemeStore = create<ThemeStore>()(
   persist(
     (set, get) => ({
-      isDark: false,
+      isDark: true,  // Slow Kitchen is dark-first; users can toggle in Settings
       toggle: () => set({ isDark: !get().isDark }),
     }),
     {
