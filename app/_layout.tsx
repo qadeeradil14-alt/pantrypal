@@ -1,7 +1,10 @@
 import { useEffect } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, View, ActivityIndicator } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { useFonts as usePlayfairFonts } from '@expo-google-fonts/playfair-display';
+import { useFonts as useDMSansFonts } from '@expo-google-fonts/dm-sans';
+import { useFonts as useDMMonoFonts } from '@expo-google-fonts/dm-mono';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/auth';
 import { defineGeofenceTask } from '../lib/geofencing';
@@ -11,6 +14,27 @@ import { startMutationQueueWorker } from '../lib/offlineQueue';
 defineGeofenceTask(() => {});
 
 export default function RootLayout() {
+  // ── Slow Kitchen fonts ─────────────────────────────────────────────────────
+  const [playfairLoaded] = usePlayfairFonts({
+    'PlayfairDisplay-Regular':    require('@expo-google-fonts/playfair-display/PlayfairDisplay_400Regular.ttf'),
+    'PlayfairDisplay-Italic':     require('@expo-google-fonts/playfair-display/PlayfairDisplay_400Regular_Italic.ttf'),
+    'PlayfairDisplay-Bold':       require('@expo-google-fonts/playfair-display/PlayfairDisplay_700Bold.ttf'),
+    'PlayfairDisplay-BoldItalic': require('@expo-google-fonts/playfair-display/PlayfairDisplay_700Bold_Italic.ttf'),
+    'PlayfairDisplay-ExtraBold':  require('@expo-google-fonts/playfair-display/PlayfairDisplay_800ExtraBold.ttf'),
+    'PlayfairDisplay-ExtraBoldItalic': require('@expo-google-fonts/playfair-display/PlayfairDisplay_800ExtraBold_Italic.ttf'),
+  });
+  const [dmSansLoaded] = useDMSansFonts({
+    'DMSans-Light':     require('@expo-google-fonts/dm-sans/DMSans_300Light.ttf'),
+    'DMSans-Regular':   require('@expo-google-fonts/dm-sans/DMSans_400Regular.ttf'),
+    'DMSans-Medium':    require('@expo-google-fonts/dm-sans/DMSans_500Medium.ttf'),
+    'DMSans-SemiBold':  require('@expo-google-fonts/dm-sans/DMSans_600SemiBold.ttf'),
+  });
+  const [dmMonoLoaded] = useDMMonoFonts({
+    'DMMono-Regular': require('@expo-google-fonts/dm-mono/DMMono_400Regular.ttf'),
+    'DMMono-Medium':  require('@expo-google-fonts/dm-mono/DMMono_500Medium.ttf'),
+  });
+  const fontsLoaded = playfairLoaded && dmSansLoaded && dmMonoLoaded;
+
   const { session, loading, setSession, setLoading } = useAuthStore();
   const router = useRouter();
   const segments = useSegments();
@@ -55,6 +79,15 @@ export default function RootLayout() {
     }
   }, [session, loading, segments]);
 
+  // Hold the splash until fonts are ready — prevents FOUT on first render
+  if (!fontsLoaded) {
+    return (
+      <View style={[styles.root, styles.splash]}>
+        <ActivityIndicator color="#D4874E" />
+      </View>
+    );
+  }
+
   return (
     <GestureHandlerRootView style={styles.root}>
       <Stack screenOptions={{ headerShown: false }}>
@@ -70,4 +103,5 @@ export default function RootLayout() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  splash: { justifyContent: 'center', alignItems: 'center', backgroundColor: '#1C1812' },
 });

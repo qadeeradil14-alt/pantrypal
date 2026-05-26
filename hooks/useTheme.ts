@@ -1,5 +1,5 @@
 import { useThemeStore } from '../store/theme';
-import { lightColors, darkColors, radii, shadow, tightShadow } from '../constants/theme';
+import { lightColors, darkColors, radii, shadow, tightShadow, fonts } from '../constants/theme';
 
 export function useTheme() {
   const { isDark, toggle } = useThemeStore();
@@ -10,5 +10,6 @@ export function useTheme() {
     radii,
     shadow,
     tightShadow,
+    fonts,
   };
 }

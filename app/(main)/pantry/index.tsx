@@ -24,6 +24,7 @@ import { CATEGORY_LABELS, type ItemCategory } from '../../../constants/defaultIt
 import { getItemEmoji } from '../../../constants/itemEmojis';
 import { useTheme } from '../../../hooks/useTheme';
 import type { AppColors } from '../../../constants/theme';
+import { fonts } from '../../../constants/theme';
 
 const CATEGORY_ORDER: ItemCategory[] = ['fridge', 'freezer', 'pantry'];
 const CATEGORY_SET = new Set<ItemCategory>(CATEGORY_ORDER);
@@ -452,8 +453,8 @@ function makeStyles(colors: AppColors) {
       backgroundColor: colors.warningSoft,
     },
     streakText: { fontSize: 13, fontWeight: '900', color: colors.warning },
-    greeting: { fontSize: 26, fontWeight: '800', color: colors.ink, letterSpacing: -0.3 },
-    householdSub: { fontSize: 14, color: colors.muted, fontWeight: '600' },
+    greeting: { fontSize: 26, fontFamily: fonts.displayExtraBoldItalic, color: colors.ink, letterSpacing: -0.3 },
+    householdSub: { fontSize: 14, color: colors.muted, fontFamily: fonts.bodyMedium },
 
     searchWrap: {
       flexDirection: 'row',
@@ -527,7 +528,7 @@ function makeStyles(colors: AppColors) {
     section: { marginHorizontal: 16, marginBottom: 20 },
     sectionRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
     sectionIcon: { fontSize: 15 },
-    sectionTitle: { fontSize: 17, fontWeight: '800', color: colors.ink, flex: 1 },
+    sectionTitle: { fontSize: 17, fontFamily: fonts.displayItalic, color: colors.ink, flex: 1, letterSpacing: -0.2 },
     sectionBadge: {
       backgroundColor: colors.primarySoft,
       borderRadius: 999,
@@ -578,7 +579,7 @@ function makeStyles(colors: AppColors) {
       backgroundColor: colors.background,
     },
     listSectionEmoji: { fontSize: 15 },
-    listSectionTitle: { fontSize: 15, fontWeight: '800', color: colors.ink, flex: 1 },
+    listSectionTitle: { fontSize: 20, fontFamily: fonts.displayItalic, color: colors.ink, flex: 1, letterSpacing: -0.3 },
     listSectionCount: { fontSize: 13, color: colors.muted, fontWeight: '600' },
     lowBadge: {
       backgroundColor: colors.warningSoft,

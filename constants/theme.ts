@@ -73,6 +73,23 @@ export const darkColors: typeof lightColors = {
 
 export type AppColors = typeof lightColors;
 
+// ── Font family constants ──────────────────────────────────────────────────
+// Use these everywhere instead of raw strings to catch typos at compile time.
+export const fonts = {
+  display:            'PlayfairDisplay-Bold',
+  displayItalic:      'PlayfairDisplay-BoldItalic',
+  displayExtraBold:   'PlayfairDisplay-ExtraBold',
+  displayExtraBoldItalic: 'PlayfairDisplay-ExtraBoldItalic',
+  displayRegular:     'PlayfairDisplay-Regular',
+  displayRegularItalic: 'PlayfairDisplay-Italic',
+  body:               'DMSans-Regular',
+  bodyLight:          'DMSans-Light',
+  bodyMedium:         'DMSans-Medium',
+  bodySemiBold:       'DMSans-SemiBold',
+  mono:               'DMMono-Regular',
+  monoMedium:         'DMMono-Medium',
+} as const;
+
 // Backward compat — existing screens that import `colors` still work
 export const colors = lightColors;
 
