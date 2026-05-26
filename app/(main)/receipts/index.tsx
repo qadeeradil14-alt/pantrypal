@@ -5,9 +5,11 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useHouseholdStore } from '../../../store/household';
 import { useAuthStore } from '../../../store/auth';
 import { uploadReceipt, fetchReceipts, getSpendByStore, type Receipt } from '../../../lib/receipts';
+import { colors, radii, shadow } from '../../../constants/theme';
 
 export default function ReceiptsScreen() {
   const { household } = useHouseholdStore();
@@ -103,23 +105,32 @@ export default function ReceiptsScreen() {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#16A34A" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Receipts</Text>
+        <View style={styles.headerLeft}>
+          <Text style={styles.eyebrow}>Spending</Text>
+          <Text style={styles.headerTitle}>Receipts</Text>
+        </View>
         <TouchableOpacity
           style={[styles.addBtn, !canUpload && styles.addBtnDisabled]}
           onPress={handleAdd}
           disabled={!canUpload}
+          activeOpacity={0.8}
         >
           {uploading
-            ? <ActivityIndicator color="#fff" size="small" />
-            : <Text style={styles.addBtnText}>+ Scan</Text>
+            ? <ActivityIndicator color={colors.surface} size="small" />
+            : (
+              <>
+                <Ionicons name="scan-outline" size={18} color={colors.surface} />
+                <Text style={styles.addBtnText}>Scan</Text>
+              </>
+            )
           }
         </TouchableOpacity>
       </View>
@@ -130,10 +141,14 @@ export default function ReceiptsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#16A34A" />}
         ListHeaderComponent={
           <View>
-            {/* Spend summary */}
             <View style={styles.summaryCard}>
-              <Text style={styles.summaryLabel}>Spent this month (processed receipts)</Text>
-              <Text style={styles.summaryTotal}>${totalThisMonth.toFixed(2)}</Text>
+              <View>
+                <Text style={styles.summaryLabel}>Processed this month</Text>
+                <Text style={styles.summaryTotal}>${totalThisMonth.toFixed(2)}</Text>
+              </View>
+              <View style={styles.summaryIcon}>
+                <Ionicons name="receipt-outline" size={24} color={colors.primary} />
+              </View>
               {spendByStore.map((s) => (
                 <View key={s.store} style={styles.storeRow}>
                   <Text style={styles.storeName}>{s.store}</Text>
@@ -147,9 +162,11 @@ export default function ReceiptsScreen() {
         renderItem={({ item }) => <ReceiptCard receipt={item} />}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyEmoji}>🧾</Text>
+            <View style={styles.emptyIconWrap}>
+              <Ionicons name="receipt-outline" size={58} color={colors.primary} />
+            </View>
             <Text style={styles.emptyTitle}>No receipts yet</Text>
-            <Text style={styles.emptySub}>Tap + Scan after a grocery trip to track your spending automatically.</Text>
+            <Text style={styles.emptySub}>Tap Scan after a grocery trip to track your spending automatically.</Text>
           </View>
         }
         contentContainerStyle={styles.list}
@@ -159,11 +176,19 @@ export default function ReceiptsScreen() {
 }
 
 function ReceiptCard({ receipt }: { receipt: Receipt }) {
-  const statusColor = receipt.status === 'done' ? '#16A34A' : receipt.status === 'failed' ? '#DC2626' : '#D97706';
+  const statusColor = receipt.status === 'done' ? colors.primary : receipt.status === 'failed' ? colors.danger : colors.low;
   const statusLabel = receipt.status === 'done' ? 'Done' : receipt.status === 'failed' ? 'Failed' : 'Processing…';
+  const statusIcon = receipt.status === 'done'
+    ? 'checkmark-circle'
+    : receipt.status === 'failed'
+      ? 'alert-circle'
+      : 'time-outline';
 
   return (
     <View style={styles.card}>
+      <View style={styles.cardIcon}>
+        <Ionicons name="receipt-outline" size={18} color={colors.primary} />
+      </View>
       <View style={styles.cardTop}>
         <View>
           <Text style={styles.cardStore}>{receipt.store_name ?? 'Unknown store'}</Text>
@@ -178,6 +203,7 @@ function ReceiptCard({ receipt }: { receipt: Receipt }) {
             <Text style={styles.cardTotal}>${receipt.total_amount.toFixed(2)}</Text>
           )}
           <View style={[styles.statusPill, { backgroundColor: statusColor + '22' }]}>
+            <Ionicons name={statusIcon} size={13} color={statusColor} />
             <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
           </View>
         </View>
@@ -194,39 +220,56 @@ function ReceiptCard({ receipt }: { receipt: Receipt }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F9FAFB' },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F9FAFB' },
+  safe: { flex: 1, backgroundColor: colors.background },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 20, paddingVertical: 16,
-    backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
+    paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14,
   },
-  headerTitle: { fontSize: 24, fontWeight: '700', color: '#111827' },
-  addBtn: { backgroundColor: '#16A34A', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 },
-  addBtnDisabled: { backgroundColor: '#D1D5DB' },
-  addBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  headerLeft: { flex: 1, gap: 2 },
+  eyebrow: { fontSize: 13, color: colors.primary, fontWeight: '800' },
+  headerTitle: { fontSize: 30, fontWeight: '900', color: colors.ink },
+  addBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, backgroundColor: colors.primary, borderRadius: 999,
+    paddingHorizontal: 14, paddingVertical: 10, minWidth: 82,
+  },
+  addBtnDisabled: { backgroundColor: colors.disabled },
+  addBtnText: { color: colors.surface, fontSize: 15, fontWeight: '800' },
   summaryCard: {
-    margin: 16, backgroundColor: '#fff', borderRadius: 16,
-    padding: 20, borderWidth: 1, borderColor: '#E5E7EB',
+    marginHorizontal: 16, marginBottom: 14, backgroundColor: colors.surfaceWarm, borderRadius: radii.xl,
+    padding: 18, borderWidth: 1, borderColor: colors.faint, ...shadow,
   },
-  summaryLabel: { fontSize: 13, color: '#6B7280', marginBottom: 4 },
-  summaryTotal: { fontSize: 36, fontWeight: '800', color: '#111827', marginBottom: 16 },
-  storeRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderTopWidth: 1, borderTopColor: '#F3F4F6' },
-  storeName: { fontSize: 15, color: '#6B7280' },
-  storeAmount: { fontSize: 15, fontWeight: '600', color: '#111827' },
-  sectionLabel: { paddingHorizontal: 20, paddingBottom: 8, fontSize: 13, fontWeight: '600', color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5 },
-  list: { paddingBottom: 32 },
-  card: { backgroundColor: '#fff', marginHorizontal: 16, marginBottom: 10, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: '#E5E7EB' },
-  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  cardStore: { fontSize: 16, fontWeight: '600', color: '#111827' },
-  cardDate: { fontSize: 13, color: '#6B7280', marginTop: 2 },
+  summaryIcon: {
+    position: 'absolute', right: 18, top: 18, width: 46, height: 46, borderRadius: 23,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface,
+  },
+  summaryLabel: { fontSize: 14, color: colors.muted, fontWeight: '700', marginBottom: 4 },
+  summaryTotal: { fontSize: 42, lineHeight: 48, fontWeight: '900', color: colors.ink, marginBottom: 16 },
+  storeRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.faint },
+  storeName: { fontSize: 15, color: colors.muted, fontWeight: '600' },
+  storeAmount: { fontSize: 15, fontWeight: '800', color: colors.ink },
+  sectionLabel: { paddingHorizontal: 20, paddingBottom: 8, fontSize: 12, fontWeight: '900', color: colors.muted, textTransform: 'uppercase' },
+  list: { paddingBottom: 120 },
+  card: {
+    backgroundColor: colors.surface, marginHorizontal: 16, marginBottom: 10,
+    borderRadius: radii.lg, padding: 14, borderWidth: 1, borderColor: colors.faint,
+    flexDirection: 'row', gap: 12,
+  },
+  cardIcon: {
+    width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.primarySoft, flexShrink: 0,
+  },
+  cardTop: { flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  cardStore: { fontSize: 17, fontWeight: '800', color: colors.ink },
+  cardDate: { fontSize: 13, color: colors.muted, marginTop: 2, fontWeight: '500' },
   cardRight: { alignItems: 'flex-end', gap: 6 },
-  cardTotal: { fontSize: 18, fontWeight: '700', color: '#111827' },
-  statusPill: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
-  statusText: { fontSize: 12, fontWeight: '600' },
-  cardItems: { fontSize: 13, color: '#6B7280', marginTop: 10 },
+  cardTotal: { fontSize: 18, fontWeight: '900', color: colors.ink },
+  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 },
+  statusText: { fontSize: 12, fontWeight: '800' },
+  cardItems: { fontSize: 13, color: colors.muted, marginTop: 10, fontWeight: '600' },
   empty: { alignItems: 'center', paddingTop: 60, paddingHorizontal: 40, gap: 12 },
-  emptyEmoji: { fontSize: 56 },
-  emptyTitle: { fontSize: 20, fontWeight: '700', color: '#111827' },
-  emptySub: { fontSize: 15, color: '#6B7280', textAlign: 'center', lineHeight: 22 },
+  emptyIconWrap: { backgroundColor: colors.primarySoft, borderRadius: radii.xl, padding: 16, marginBottom: 8 },
+  emptyTitle: { fontSize: 22, fontWeight: '900', color: colors.ink },
+  emptySub: { fontSize: 15, color: colors.muted, textAlign: 'center', lineHeight: 22 },
 });

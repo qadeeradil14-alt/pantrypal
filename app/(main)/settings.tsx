@@ -4,10 +4,12 @@ import {
   Alert, Share, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../store/auth';
 import { useHouseholdStore } from '../../store/household';
 import { useItemsStore } from '../../store/items';
 import { signOut } from '../../lib/auth';
+import { colors, radii, shadow } from '../../constants/theme';
 
 export default function SettingsScreen() {
   const { session } = useAuthStore();
@@ -49,27 +51,45 @@ export default function SettingsScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
+        <Text style={styles.eyebrow}>Account</Text>
         <Text style={styles.headerTitle}>Settings</Text>
+      </View>
+
+      <View style={styles.heroCard}>
+        <View>
+          <Text style={styles.heroTitle}>{household?.name ?? 'Household'}</Text>
+          <Text style={styles.heroLabel}>{session?.user.email ?? 'Signed in'}</Text>
+        </View>
+        <View style={styles.heroIcon}>
+          <Ionicons name="settings-outline" size={24} color={colors.primary} />
+        </View>
       </View>
 
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>Household</Text>
         <View style={styles.card}>
           <View style={styles.row}>
-            <Text style={styles.rowLabel}>Name</Text>
+            <View style={styles.rowLabelWrap}>
+              <Ionicons name="home-outline" size={17} color={colors.muted} />
+              <Text style={styles.rowLabel}>Name</Text>
+            </View>
             <Text style={styles.rowValue}>{household?.name ?? '—'}</Text>
           </View>
           {household?.inviteCode ? (
             <View style={[styles.row, styles.rowBorderTop]}>
-              <Text style={styles.rowLabel}>Invite code</Text>
+              <View style={styles.rowLabelWrap}>
+                <Ionicons name="key-outline" size={17} color={colors.muted} />
+                <Text style={styles.rowLabel}>Invite code</Text>
+              </View>
               <Text style={styles.rowValue}>{household.inviteCode}</Text>
             </View>
           ) : null}
         </View>
         {household?.inviteCode ? (
           <TouchableOpacity style={styles.shareBtn} onPress={() => { void handleShare(); }}>
+            <Ionicons name="share-outline" size={18} color={colors.primary} />
             <Text style={styles.shareBtnText}>Share invite code</Text>
           </TouchableOpacity>
         ) : null}
@@ -79,7 +99,10 @@ export default function SettingsScreen() {
         <Text style={styles.sectionLabel}>Account</Text>
         <View style={styles.card}>
           <View style={styles.row}>
-            <Text style={styles.rowLabel}>Email</Text>
+            <View style={styles.rowLabelWrap}>
+              <Ionicons name="mail-outline" size={17} color={colors.muted} />
+              <Text style={styles.rowLabel}>Email</Text>
+            </View>
             <Text style={styles.rowValue} numberOfLines={1}>{session?.user.email ?? '—'}</Text>
           </View>
         </View>
@@ -88,8 +111,13 @@ export default function SettingsScreen() {
       <View style={styles.footer}>
         <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut} disabled={signingOut}>
           {signingOut
-            ? <ActivityIndicator color="#DC2626" />
-            : <Text style={styles.signOutText}>Sign out</Text>
+            ? <ActivityIndicator color={colors.danger} />
+            : (
+              <>
+                <Ionicons name="log-out-outline" size={18} color={colors.danger} />
+                <Text style={styles.signOutText}>Sign out</Text>
+              </>
+            )
           }
         </TouchableOpacity>
       </View>
@@ -98,37 +126,52 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F9FAFB' },
+  safe: { flex: 1, backgroundColor: colors.background },
   header: {
-    paddingHorizontal: 20, paddingVertical: 16,
-    backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
+    paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14,
   },
-  headerTitle: { fontSize: 24, fontWeight: '700', color: '#111827' },
-  section: { marginTop: 28, paddingHorizontal: 20 },
+  eyebrow: { fontSize: 13, color: colors.primary, fontWeight: '800' },
+  headerTitle: { fontSize: 30, fontWeight: '900', color: colors.ink },
+  heroCard: {
+    marginHorizontal: 16, marginBottom: 14, borderRadius: radii.xl,
+    backgroundColor: colors.surfaceWarm, padding: 18,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    borderWidth: 1, borderColor: colors.faint, ...shadow,
+  },
+  heroTitle: { fontSize: 22, fontWeight: '900', color: colors.ink, maxWidth: 245 },
+  heroLabel: { fontSize: 14, color: colors.muted, fontWeight: '700', marginTop: 4, maxWidth: 245 },
+  heroIcon: {
+    width: 48, height: 48, borderRadius: 24,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface,
+  },
+  section: { marginTop: 18, paddingHorizontal: 20 },
   sectionLabel: {
-    fontSize: 12, fontWeight: '600', color: '#6B7280',
-    textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8,
+    fontSize: 12, fontWeight: '900', color: colors.muted,
+    textTransform: 'uppercase', marginBottom: 8,
   },
   card: {
-    backgroundColor: '#fff', borderRadius: 14,
-    borderWidth: 1, borderColor: '#E5E7EB', overflow: 'hidden',
+    backgroundColor: colors.surface, borderRadius: radii.lg,
+    borderWidth: 1, borderColor: colors.faint, overflow: 'hidden',
   },
   row: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 16, paddingVertical: 14,
+    paddingHorizontal: 16, paddingVertical: 15, gap: 12,
   },
-  rowBorderTop: { borderTopWidth: 1, borderTopColor: '#F3F4F6' },
-  rowLabel: { fontSize: 15, color: '#555' },
-  rowValue: { fontSize: 15, color: '#111827', fontWeight: '500', maxWidth: '55%', textAlign: 'right' },
+  rowBorderTop: { borderTopWidth: 1, borderTopColor: colors.faint },
+  rowLabelWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  rowLabel: { fontSize: 15, color: colors.muted, fontWeight: '700' },
+  rowValue: { fontSize: 15, color: colors.ink, fontWeight: '800', maxWidth: '55%', textAlign: 'right' },
   shareBtn: {
-    marginTop: 10, paddingVertical: 12, alignItems: 'center',
-    borderRadius: 12, borderWidth: 1.5, borderColor: '#16A34A',
+    marginTop: 10, paddingVertical: 13, alignItems: 'center', justifyContent: 'center',
+    flexDirection: 'row', gap: 8, borderRadius: radii.md, borderWidth: 1, borderColor: colors.primary,
+    backgroundColor: colors.surface,
   },
-  shareBtnText: { color: '#16A34A', fontSize: 15, fontWeight: '600' },
+  shareBtnText: { color: colors.primary, fontSize: 15, fontWeight: '800' },
   footer: { position: 'absolute', bottom: 48, left: 20, right: 20 },
   signOutBtn: {
-    backgroundColor: '#FEE2E2', borderRadius: 14,
+    flexDirection: 'row', gap: 8, justifyContent: 'center',
+    backgroundColor: colors.dangerSoft, borderRadius: radii.md,
     paddingVertical: 16, alignItems: 'center',
   },
-  signOutText: { color: '#DC2626', fontSize: 17, fontWeight: '600' },
+  signOutText: { color: colors.danger, fontSize: 17, fontWeight: '800' },
 });

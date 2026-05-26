@@ -4,10 +4,12 @@ import {
   Alert, ActivityIndicator, TextInput, ScrollView, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useHouseholdStore } from '../../../store/household';
 import { useStoresStore } from '../../../store/stores';
 import { fetchStores, addStore, deleteStore, PRESET_STORES, type Store } from '../../../lib/stores';
 import { startGeofencing, stopGeofencing } from '../../../lib/geofencing';
+import { colors, radii, shadow } from '../../../constants/theme';
 
 function compactAddress(address: string, storeName: string): string {
   const raw = address.trim();
@@ -91,13 +93,16 @@ export default function StoresScreen() {
   }
 
   if (loading) {
-    return <View style={styles.centered}><ActivityIndicator size="large" color="#16A34A" /></View>;
+    return <View style={styles.centered}><ActivityIndicator size="large" color={colors.primary} /></View>;
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>My Stores</Text>
+        <View style={styles.headerLeft}>
+          <Text style={styles.eyebrow}>Store alerts</Text>
+          <Text style={styles.headerTitle}>My Stores</Text>
+        </View>
         <TouchableOpacity
           style={[styles.addBtn, !canManageStores && styles.addBtnDisabled]}
           onPress={() => {
@@ -108,14 +113,31 @@ export default function StoresScreen() {
             setShowAdd(true);
           }}
           disabled={!canManageStores}
+          activeOpacity={0.8}
         >
-          <Text style={styles.addBtnText}>+ Add</Text>
+          <Ionicons name="add" size={20} color={colors.surface} />
+          <Text style={styles.addBtnText}>Add</Text>
         </TouchableOpacity>
+      </View>
+
+      <View style={styles.heroCard}>
+        <View>
+          <Text style={styles.heroNumber}>{stores.length}</Text>
+          <Text style={styles.heroLabel}>{stores.length === 1 ? 'store saved' : 'stores saved'}</Text>
+        </View>
+        <View style={styles.heroBadge}>
+          <Ionicons name="navigate-outline" size={18} color={colors.primary} />
+          <Text style={styles.heroBadgeText}>
+            {stores.filter((s) => s.latitude != null).length} active
+          </Text>
+        </View>
       </View>
 
       {stores.length === 0 ? (
         <View style={styles.empty}>
-          <Text style={styles.emptyEmoji}>🏪</Text>
+          <View style={styles.emptyIconWrap}>
+            <Ionicons name="storefront-outline" size={58} color={colors.primary} />
+          </View>
           <Text style={styles.emptyTitle}>No stores yet</Text>
           <Text style={styles.emptySub}>
             Add the stores you shop at. Include an address and the app will alert your partner the moment you arrive.
@@ -140,6 +162,13 @@ export default function StoresScreen() {
           keyExtractor={(s) => s.id}
           renderItem={({ item }) => (
             <View style={styles.row}>
+              <View style={[styles.storeIcon, item.latitude != null && styles.storeIconActive]}>
+                <Ionicons
+                  name={item.latitude != null ? 'navigate' : 'storefront-outline'}
+                  size={18}
+                  color={item.latitude != null ? colors.primary : colors.muted}
+                />
+              </View>
               <View style={styles.rowLeft}>
                 <Text style={styles.storeName}>{item.name}</Text>
                 {item.address
@@ -154,7 +183,8 @@ export default function StoresScreen() {
               <View style={styles.rowRight}>
                 {item.latitude != null && (
                   <View style={styles.geoPill}>
-                    <Text style={styles.geoPillText}>📍 Active</Text>
+                    <Ionicons name="location" size={13} color={colors.primary} />
+                    <Text style={styles.geoPillText}>Active</Text>
                   </View>
                 )}
                 <TouchableOpacity
@@ -168,6 +198,7 @@ export default function StoresScreen() {
             </View>
           )}
           contentContainerStyle={styles.list}
+          ItemSeparatorComponent={() => <View style={styles.separator} />}
         />
       )}
 
@@ -228,8 +259,9 @@ function AddStoreModal({
         <View style={styles.sheet}>
           <View style={styles.handle} />
           <Text style={styles.sheetTitle}>Add a store</Text>
+          <Text style={styles.sheetSubtitle}>Save places your household shops often.</Text>
 
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {error ? <View style={styles.errorBox}><Text style={styles.error}>{error}</Text></View> : null}
 
           <Text style={styles.label}>Quick add</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.presetsRow}>
@@ -246,14 +278,14 @@ function AddStoreModal({
             placeholder="Store name"
             value={name}
             onChangeText={setName}
-            placeholderTextColor="#aaa"
+            placeholderTextColor={colors.placeholder}
           />
           <TextInput
             style={styles.input}
             placeholder="Address (optional — enables geofencing)"
             value={address}
             onChangeText={setAddress}
-            placeholderTextColor="#aaa"
+            placeholderTextColor={colors.placeholder}
           />
 
           <TouchableOpacity
@@ -277,52 +309,82 @@ function AddStoreModal({
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F9FAFB' },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  safe: { flex: 1, backgroundColor: colors.background },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 20, paddingVertical: 16,
-    backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
+    paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14,
   },
-  headerTitle: { fontSize: 24, fontWeight: '700', color: '#111827' },
-  addBtn: { backgroundColor: '#16A34A', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 },
-  addBtnDisabled: { backgroundColor: '#D1D5DB' },
-  addBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  list: { padding: 16, gap: 10 },
+  headerLeft: { flex: 1, gap: 2 },
+  eyebrow: { fontSize: 13, color: colors.primary, fontWeight: '800' },
+  headerTitle: { fontSize: 30, fontWeight: '900', color: colors.ink },
+  addBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 4, backgroundColor: colors.primary, borderRadius: 999,
+    paddingHorizontal: 14, paddingVertical: 10,
+  },
+  addBtnDisabled: { backgroundColor: colors.disabled },
+  addBtnText: { color: colors.surface, fontSize: 15, fontWeight: '800' },
+  heroCard: {
+    marginHorizontal: 16, marginBottom: 14, borderRadius: radii.xl,
+    backgroundColor: colors.surfaceWarm, padding: 18,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    borderWidth: 1, borderColor: colors.faint, ...shadow,
+  },
+  heroNumber: { fontSize: 44, lineHeight: 48, fontWeight: '900', color: colors.ink },
+  heroLabel: { fontSize: 14, color: colors.muted, fontWeight: '700' },
+  heroBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    backgroundColor: colors.surface, borderRadius: 999,
+    paddingHorizontal: 12, paddingVertical: 9,
+  },
+  heroBadgeText: { color: colors.primary, fontWeight: '800', fontSize: 13 },
+  list: { paddingHorizontal: 16, paddingBottom: 120 },
+  separator: { height: 10 },
   row: {
-    backgroundColor: '#fff', borderRadius: 14, padding: 16,
-    borderWidth: 1, borderColor: '#E5E7EB',
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    backgroundColor: colors.surface, borderRadius: radii.lg, padding: 14,
+    borderWidth: 1, borderColor: colors.faint,
+    flexDirection: 'row', alignItems: 'center', gap: 12,
   },
+  storeIcon: {
+    width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.surfaceWarm, flexShrink: 0,
+  },
+  storeIconActive: { backgroundColor: colors.primarySoft },
   rowLeft: { flex: 1, gap: 4 },
-  storeName: { fontSize: 16, fontWeight: '600', color: '#111827' },
-  storeAddress: { fontSize: 13, color: '#6B7280' },
-  noAddress: { fontSize: 13, color: '#F59E0B' },
+  storeName: { fontSize: 17, fontWeight: '800', color: colors.ink },
+  storeAddress: { fontSize: 13, color: colors.muted, lineHeight: 18 },
+  noAddress: { fontSize: 13, color: colors.low, fontWeight: '600' },
   rowRight: { alignItems: 'flex-end', gap: 8 },
-  geoPill: { backgroundColor: '#DCFCE7', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
-  geoPillText: { fontSize: 12, color: '#16A34A', fontWeight: '600' },
+  geoPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: colors.primarySoft, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5,
+  },
+  geoPillText: { fontSize: 12, color: colors.primary, fontWeight: '800' },
   deleteBtn: { padding: 4 },
-  deleteBtnText: { color: '#DC2626', fontSize: 13 },
+  deleteBtnText: { color: colors.danger, fontSize: 13, fontWeight: '700' },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 12 },
-  emptyEmoji: { fontSize: 56 },
-  emptyTitle: { fontSize: 20, fontWeight: '700', color: '#111827' },
-  emptySub: { fontSize: 15, color: '#6B7280', textAlign: 'center', lineHeight: 22 },
-  emptyBtn: { backgroundColor: '#16A34A', borderRadius: 14, paddingHorizontal: 24, paddingVertical: 14, marginTop: 8 },
-  emptyBtnDisabled: { backgroundColor: '#D1D5DB' },
-  emptyBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
-  sheet: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
-  handle: { width: 40, height: 4, backgroundColor: '#E5E7EB', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
-  sheetTitle: { fontSize: 20, fontWeight: '700', color: '#111827', marginBottom: 16 },
-  error: { backgroundColor: '#FEE2E2', color: '#B91C1C', borderRadius: 8, padding: 12, marginBottom: 12, fontSize: 14 },
-  label: { fontSize: 12, fontWeight: '600', color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
+  emptyIconWrap: { backgroundColor: colors.primarySoft, borderRadius: radii.xl, padding: 16, marginBottom: 8 },
+  emptyTitle: { fontSize: 22, fontWeight: '900', color: colors.ink },
+  emptySub: { fontSize: 15, color: colors.muted, textAlign: 'center', lineHeight: 22 },
+  emptyBtn: { backgroundColor: colors.primary, borderRadius: radii.md, paddingHorizontal: 24, paddingVertical: 14, marginTop: 8 },
+  emptyBtnDisabled: { backgroundColor: colors.disabled },
+  emptyBtnText: { color: colors.surface, fontSize: 16, fontWeight: '800' },
+  overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(43,33,24,0.42)' },
+  sheet: { backgroundColor: colors.background, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: 24, paddingBottom: 40, ...shadow },
+  handle: { width: 36, height: 4, backgroundColor: colors.faint, borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
+  sheetTitle: { fontSize: 20, fontWeight: '800', color: colors.ink, marginBottom: 4 },
+  sheetSubtitle: { fontSize: 14, color: colors.muted, marginBottom: 18 },
+  errorBox: { backgroundColor: colors.dangerSoft, borderRadius: radii.sm, padding: 12, marginBottom: 12 },
+  error: { color: colors.dangerText, fontSize: 14 },
+  label: { fontSize: 12, fontWeight: '800', color: colors.muted, textTransform: 'uppercase', marginBottom: 8 },
   presetsRow: { marginBottom: 20 },
-  presetChip: { backgroundColor: '#F0FDF4', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8, marginRight: 8, borderWidth: 1, borderColor: '#BBF7D0' },
-  presetChipText: { color: '#16A34A', fontSize: 14, fontWeight: '500' },
-  input: { borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, marginBottom: 12, color: '#111827' },
-  saveBtn: { backgroundColor: '#16A34A', borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginBottom: 10 },
-  saveBtnDisabled: { backgroundColor: '#D1D5DB' },
-  saveBtnText: { color: '#fff', fontSize: 17, fontWeight: '600' },
+  presetChip: { backgroundColor: colors.primarySoft, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, marginRight: 8, borderWidth: 1, borderColor: colors.primarySoft },
+  presetChipText: { color: colors.primary, fontSize: 14, fontWeight: '800' },
+  input: { borderWidth: 1, borderColor: colors.faint, borderRadius: radii.md, paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, marginBottom: 12, color: colors.ink, backgroundColor: colors.surface },
+  saveBtn: { backgroundColor: colors.primary, borderRadius: radii.md, paddingVertical: 16, alignItems: 'center', marginBottom: 10 },
+  saveBtnDisabled: { backgroundColor: colors.disabled },
+  saveBtnText: { color: colors.surface, fontSize: 17, fontWeight: '800' },
   cancelBtn: { paddingVertical: 12, alignItems: 'center' },
-  cancelText: { color: '#6B7280', fontSize: 16 },
+  cancelText: { color: colors.muted, fontSize: 16, fontWeight: '600' },
 });
