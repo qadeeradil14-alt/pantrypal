@@ -21,7 +21,7 @@ BEGIN
     body := to_jsonb(NEW),
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
-      'x-supabase-signature', '4ba09e92f4c4cfd6530200ba5deb2c2ff66b21f2396ec6aa46b70626a6f33f3'
+      'x-supabase-signature', current_setting('app.webhook_secret', true)
     )
   );
   RETURN NEW;

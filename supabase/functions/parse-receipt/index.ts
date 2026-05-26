@@ -23,12 +23,40 @@ function normalizeName(name: string): string {
 }
 
 Deno.serve(async (req) => {
+  // ── Auth: verify caller's JWT and confirm they belong to the target household ──
+  const authHeader = req.headers.get('Authorization') ?? '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  if (!token) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  const anonClient = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_ANON_KEY')!,
+  );
+  const { data: { user }, error: authError } = await anonClient.auth.getUser(token);
+  if (authError || !user) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
   const { receiptId, imageUrl, householdId }: ParseRequest = await req.json();
 
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
   );
+
+  // Verify the authenticated user is a member of the requested household
+  const { data: membership } = await supabase
+    .from('household_members')
+    .select('user_id')
+    .eq('household_id', householdId)
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  if (!membership) {
+    return new Response('Forbidden: caller is not a member of this household', { status: 403 });
+  }
 
   try {
     // Download the image from Supabase Storage

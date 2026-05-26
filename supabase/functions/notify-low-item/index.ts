@@ -11,12 +11,14 @@ interface ItemRow {
 }
 
 Deno.serve(async (req) => {
+  // Fail closed: if WEBHOOK_SECRET is not configured, refuse all requests.
   const webhookSecret = Deno.env.get('WEBHOOK_SECRET');
-  if (webhookSecret) {
-    const signature = req.headers.get('x-supabase-signature');
-    if (signature !== webhookSecret) {
-      return new Response('Unauthorized', { status: 401 });
-    }
+  if (!webhookSecret) {
+    return new Response('Server misconfigured: WEBHOOK_SECRET not set', { status: 500 });
+  }
+  const signature = req.headers.get('x-supabase-signature') ?? '';
+  if (signature !== webhookSecret) {
+    return new Response('Unauthorized', { status: 401 });
   }
 
   const record: ItemRow = await req.json();
