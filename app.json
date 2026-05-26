@@ -26,7 +26,8 @@
           "isAndroidBackgroundLocationEnabled": true
         }
       ],
-      "expo-font"
+      "expo-font",
+      "./plugins/withGradleProperties"
     ],
     "ios": {
       "supportsTablet": true,

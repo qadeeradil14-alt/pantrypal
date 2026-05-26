@@ -1,0 +1,35 @@
+diff --git a/node_modules/expo-modules-core/android/build.gradle b/node_modules/expo-modules-core/android/build.gradle
+index 3772140..069425f 100644
+--- a/node_modules/expo-modules-core/android/build.gradle
++++ b/node_modules/expo-modules-core/android/build.gradle
+@@ -69,10 +69,26 @@ if (workletsProject != null) {
+ 
+   afterEvaluate {
+     println("Linking react-native-worklets native libs into expo-modules-core build tasks")
+-    println(workletsProject.tasks.getByName("mergeDebugNativeLibs"))
+-    println(workletsProject.tasks.getByName("mergeReleaseNativeLibs"))
+-    tasks.getByName("buildCMakeDebug").dependsOn(workletsProject.tasks.getByName("mergeDebugNativeLibs"))
+-    tasks.getByName("buildCMakeRelWithDebInfo").dependsOn(workletsProject.tasks.getByName("mergeReleaseNativeLibs"))
++    def mergeDebugTask = workletsProject.tasks.findByName("mergeDebugNativeLibs")
++    def mergeReleaseTask = workletsProject.tasks.findByName("mergeReleaseNativeLibs")
++    if (mergeDebugTask != null) {
++      println(mergeDebugTask)
++      def buildCMakeDebugTask = tasks.findByName("buildCMakeDebug")
++      if (buildCMakeDebugTask != null) {
++        buildCMakeDebugTask.dependsOn(mergeDebugTask)
++      }
++    } else {
++      println("mergeDebugNativeLibs task not found in react-native-worklets, skipping debug dependency")
++    }
++    if (mergeReleaseTask != null) {
++      println(mergeReleaseTask)
++      def buildCMakeReleaseTask = tasks.findByName("buildCMakeRelWithDebInfo")
++      if (buildCMakeReleaseTask != null) {
++        buildCMakeReleaseTask.dependsOn(mergeReleaseTask)
++      }
++    } else {
++      println("mergeReleaseNativeLibs task not found in react-native-worklets, skipping release dependency")
++    }
+   }
+ }
+ 
