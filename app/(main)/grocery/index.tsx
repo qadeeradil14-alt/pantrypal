@@ -18,7 +18,7 @@ import { hapticError, hapticSelection, hapticSuccess } from '../../../lib/haptic
 import type { Item } from '../../../lib/items';
 import { CATEGORY_LABELS } from '../../../constants/defaultItems';
 import { groceryItemTestId } from '../../../lib/testIds';
-import { radii, shadow } from '../../../constants/theme';
+import { radii, shadow, fonts } from '../../../constants/theme';
 import type { AppColors } from '../../../constants/theme';
 import { useTheme } from '../../../hooks/useTheme';
 import ScalePressable from '../../../components/ScalePressable';
@@ -284,8 +284,8 @@ function makeStyles(colors: AppColors) {
       paddingBottom: 14,
     },
     headerLeft: { flex: 1, gap: 2 },
-    eyebrow: { fontSize: 13, color: colors.primary, fontWeight: '800' },
-    headerTitle: { fontSize: 26, fontWeight: '800', color: colors.ink, letterSpacing: -0.4 },
+    eyebrow: { fontSize: 13, color: colors.primary, fontFamily: fonts.bodySemiBold },
+    headerTitle: { fontSize: 26, fontFamily: fonts.displayExtraBold, color: colors.ink, letterSpacing: -0.4 },
     modeBtn: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -298,7 +298,7 @@ function makeStyles(colors: AppColors) {
       backgroundColor: colors.surface,
     },
     modeBtnActive: { backgroundColor: colors.surfaceDeep, borderColor: colors.surfaceDeep },
-    modeBtnText: { fontSize: 14, fontWeight: '800', color: colors.primaryDeep },
+    modeBtnText: { fontSize: 14, fontFamily: fonts.bodySemiBold, color: colors.primaryDeep },
     modeBtnTextActive: { color: colors.surface },
     statusCard: {
       marginHorizontal: 16,
@@ -313,11 +313,11 @@ function makeStyles(colors: AppColors) {
       ...shadow,
     },
     statusCardActive: { backgroundColor: colors.surfaceDeep, borderColor: colors.surfaceDeep },
-    statusKicker: { fontSize: 13, color: colors.primary, fontWeight: '900', marginBottom: 4 },
+    statusKicker: { fontSize: 13, color: colors.primary, fontFamily: fonts.bodySemiBold, marginBottom: 4 },
     statusKickerActive: { color: colors.accentSoft },
-    statusNumber: { fontSize: 38, lineHeight: 42, fontWeight: '800', color: colors.ink },
+    statusNumber: { fontSize: 38, lineHeight: 46, fontFamily: fonts.mono, color: colors.ink },
     statusNumberActive: { color: colors.surface },
-    statusLabel: { fontSize: 14, color: colors.muted, fontWeight: '700' },
+    statusLabel: { fontSize: 14, color: colors.muted, fontFamily: fonts.bodyMedium },
     statusLabelActive: { color: colors.inkSoft },
     statusRight: { alignItems: 'flex-end', gap: 10, flex: 1, maxWidth: 140 },
     storePill: {
@@ -330,7 +330,7 @@ function makeStyles(colors: AppColors) {
       paddingVertical: 5,
       alignSelf: 'flex-end',
     },
-    storePillText: { fontSize: 12, fontWeight: '800', color: colors.primary, maxWidth: 100 },
+    storePillText: { fontSize: 12, fontFamily: fonts.bodySemiBold, color: colors.primary, maxWidth: 100 },
     budgetRow: { alignItems: 'flex-end', gap: 4 },
     budgetBar: {
       width: 110,
@@ -340,7 +340,7 @@ function makeStyles(colors: AppColors) {
       overflow: 'hidden',
     },
     budgetFill: { height: 6, borderRadius: 3 },
-    budgetLabel: { fontSize: 11, color: colors.muted, fontWeight: '700' },
+    budgetLabel: { fontSize: 11, color: colors.muted, fontFamily: fonts.bodyMedium },
     storeBar: { height: 50, flexGrow: 0, flexShrink: 0, backgroundColor: colors.background },
     storeBarContent: {
       paddingHorizontal: 16,
@@ -358,7 +358,7 @@ function makeStyles(colors: AppColors) {
       backgroundColor: colors.surface,
     },
     chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-    chipText: { fontSize: 13, fontWeight: '800', color: colors.muted },
+    chipText: { fontSize: 13, fontFamily: fonts.bodySemiBold, color: colors.muted },
     chipTextActive: { color: colors.surface },
     list: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 120 },
     separator: { height: 10 },
@@ -389,10 +389,10 @@ function makeStyles(colors: AppColors) {
       backgroundColor: colors.accentSoft,
     },
     rowBody: { flex: 1 },
-    itemName: { fontSize: 16, color: colors.ink, fontWeight: '700' },
+    itemName: { fontSize: 16, color: colors.ink, fontFamily: fonts.bodyMedium },
     itemNameShop: { fontSize: 18 },
-    itemMeta: { fontSize: 13, color: colors.muted, marginTop: 3, fontWeight: '600' },
-    tapHint: { fontSize: 12, color: colors.muted, fontWeight: '900' },
+    itemMeta: { fontSize: 13, color: colors.muted, marginTop: 3, fontFamily: fonts.body },
+    tapHint: { fontSize: 12, color: colors.muted, fontFamily: fonts.bodySemiBold },
     empty: {
       flex: 1,
       justifyContent: 'center',

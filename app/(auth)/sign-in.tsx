@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { signIn, resetPassword } from '../../lib/auth';
 import { useTheme } from '../../hooks/useTheme';
+import { fonts } from '../../constants/theme';
 import type { AppColors } from '../../constants/theme';
 
 export default function SignInScreen() {
@@ -116,14 +117,14 @@ function makeStyles(colors: AppColors) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background, paddingHorizontal: 28, paddingTop: 60 },
     back: { marginBottom: 30, flexDirection: 'row', alignItems: 'center', gap: 4 },
-    backText: { color: colors.primary, fontSize: 16, fontWeight: '800' },
+    backText: { color: colors.primary, fontSize: 16, fontFamily: fonts.bodySemiBold },
     iconWrap: {
       width: 50, height: 50, borderRadius: 16,
       backgroundColor: colors.primarySoft,
       alignItems: 'center', justifyContent: 'center', marginBottom: 18,
     },
-    title: { fontSize: 32, fontWeight: '800', color: colors.ink, marginBottom: 8 },
-    subtitle: { fontSize: 16, color: colors.muted, fontWeight: '600', marginBottom: 28, lineHeight: 22 },
+    title: { fontSize: 32, fontFamily: fonts.displayExtraBold, color: colors.ink, marginBottom: 8 },
+    subtitle: { fontSize: 16, color: colors.muted, fontFamily: fonts.body, marginBottom: 28, lineHeight: 22 },
     errorBox: {
       backgroundColor: colors.dangerSoft, borderRadius: 12,
       padding: 12, marginBottom: 16,
@@ -138,8 +139,8 @@ function makeStyles(colors: AppColors) {
       backgroundColor: colors.primary, borderRadius: 14,
       paddingVertical: 16, alignItems: 'center', marginTop: 8, marginBottom: 16,
     },
-    btnText: { color: '#FFFFFF', fontSize: 17, fontWeight: '800' },
-    forgotLink: { color: colors.muted, fontSize: 14, textAlign: 'center', marginBottom: 12, fontWeight: '600' },
-    link: { color: colors.primary, fontSize: 15, textAlign: 'center', fontWeight: '800' },
+    btnText: { color: '#FFFFFF', fontSize: 17, fontFamily: fonts.bodySemiBold },
+    forgotLink: { color: colors.muted, fontSize: 14, textAlign: 'center', marginBottom: 12, fontFamily: fonts.bodyMedium },
+    link: { color: colors.primary, fontSize: 15, textAlign: 'center', fontFamily: fonts.bodySemiBold },
   });
 }

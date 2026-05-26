@@ -10,6 +10,7 @@ import { createHousehold } from '../../lib/households';
 import { useAuthStore } from '../../store/auth';
 import { useHouseholdStore } from '../../store/household';
 import { useTheme } from '../../hooks/useTheme';
+import { fonts } from '../../constants/theme';
 import type { AppColors } from '../../constants/theme';
 
 export default function CreateHouseholdScreen() {
@@ -128,14 +129,14 @@ function makeStyles(colors: AppColors) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background, paddingHorizontal: 28, paddingTop: 60 },
     back: { marginBottom: 30, flexDirection: 'row', alignItems: 'center', gap: 4 },
-    backText: { color: colors.primary, fontSize: 16, fontWeight: '800' },
+    backText: { color: colors.primary, fontSize: 16, fontFamily: fonts.bodySemiBold },
     iconWrap: {
       width: 50, height: 50, borderRadius: 16,
       backgroundColor: colors.primarySoft,
       alignItems: 'center', justifyContent: 'center', marginBottom: 18,
     },
-    title: { fontSize: 32, fontWeight: '800', color: colors.ink, marginBottom: 8 },
-    subtitle: { fontSize: 16, color: colors.muted, fontWeight: '600', marginBottom: 28, lineHeight: 22 },
+    title: { fontSize: 32, fontFamily: fonts.displayExtraBold, color: colors.ink, marginBottom: 8 },
+    subtitle: { fontSize: 16, color: colors.muted, fontFamily: fonts.body, marginBottom: 28, lineHeight: 22 },
     errorBox: { backgroundColor: colors.dangerSoft, borderRadius: 12, padding: 12, marginBottom: 16 },
     errorText: { color: colors.danger, fontSize: 14, lineHeight: 20 },
     input: {
@@ -149,9 +150,9 @@ function makeStyles(colors: AppColors) {
       flexDirection: 'row', justifyContent: 'center', gap: 8,
     },
     btnDisabled: { backgroundColor: colors.disabled },
-    primaryBtnText: { color: '#FFFFFF', fontSize: 17, fontWeight: '800' },
+    primaryBtnText: { color: '#FFFFFF', fontSize: 17, fontFamily: fonts.bodySemiBold },
     secondaryBtn: { paddingVertical: 14, alignItems: 'center' },
-    secondaryBtnText: { color: colors.primary, fontSize: 16, fontWeight: '700' },
+    secondaryBtnText: { color: colors.primary, fontSize: 16, fontFamily: fonts.bodyMedium },
     successHero: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
     successIconWrap: {
       width: 90, height: 90, borderRadius: 30,
@@ -163,8 +164,8 @@ function makeStyles(colors: AppColors) {
       alignItems: 'center', marginBottom: 32,
       borderWidth: 1, borderColor: colors.border,
     },
-    codeLabel: { fontSize: 12, color: colors.muted, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1, fontWeight: '800' },
-    codeValue: { fontSize: 38, fontWeight: '800', color: colors.ink, letterSpacing: 8 },
+    codeLabel: { fontSize: 12, color: colors.muted, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1, fontFamily: fonts.bodySemiBold },
+    codeValue: { fontSize: 38, fontFamily: fonts.mono, color: colors.ink, letterSpacing: 8 },
     actions: { paddingBottom: 48, gap: 12 },
   });
 }

@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useHouseholdStore } from '../../../store/household';
 import { useAuthStore } from '../../../store/auth';
 import { uploadReceipt, fetchReceipts, getSpendByStore, type Receipt } from '../../../lib/receipts';
-import { radii, shadow } from '../../../constants/theme';
+import { radii, shadow, fonts } from '../../../constants/theme';
 import type { AppColors } from '../../../constants/theme';
 import { useTheme } from '../../../hooks/useTheme';
 import EmptyState from '../../../components/EmptyState';
@@ -44,6 +44,14 @@ export default function ReceiptsScreen() {
   }, [householdId]);
 
   useEffect(() => { load().finally(() => setLoading(false)); }, [load]);
+
+  // Auto-poll every 12s while any receipt is still processing
+  useEffect(() => {
+    const hasProcessing = receipts.some((r) => r.status === 'processing');
+    if (!hasProcessing) return;
+    const id = setInterval(() => { void load(); }, 12000);
+    return () => clearInterval(id);
+  }, [receipts, load]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -236,15 +244,15 @@ function makeStyles(colors: AppColors) {
       paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14,
     },
     headerLeft: { flex: 1, gap: 2 },
-    eyebrow: { fontSize: 13, color: colors.primary, fontWeight: '800' },
-    headerTitle: { fontSize: 30, fontWeight: '900', color: colors.ink },
+    eyebrow: { fontSize: 13, color: colors.primary, fontFamily: fonts.bodySemiBold },
+    headerTitle: { fontSize: 30, fontFamily: fonts.displayExtraBold, color: colors.ink },
     addBtn: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
       gap: 6, backgroundColor: colors.primary, borderRadius: 999,
       paddingHorizontal: 14, paddingVertical: 10, minWidth: 82,
     },
     addBtnDisabled: { backgroundColor: colors.disabled },
-    addBtnText: { color: colors.surface, fontSize: 15, fontWeight: '800' },
+    addBtnText: { color: colors.surface, fontSize: 15, fontFamily: fonts.bodySemiBold },
     summaryCard: {
       marginHorizontal: 16, marginBottom: 14, backgroundColor: colors.surfaceWarm, borderRadius: radii.xl,
       padding: 18, borderWidth: 1, borderColor: colors.faint, ...shadow,
@@ -253,12 +261,12 @@ function makeStyles(colors: AppColors) {
       position: 'absolute', right: 18, top: 18, width: 46, height: 46, borderRadius: 23,
       alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface,
     },
-    summaryLabel: { fontSize: 14, color: colors.muted, fontWeight: '700', marginBottom: 4 },
-    summaryTotal: { fontSize: 42, lineHeight: 48, fontWeight: '900', color: colors.ink, marginBottom: 16 },
+    summaryLabel: { fontSize: 14, color: colors.muted, fontFamily: fonts.bodyMedium, marginBottom: 4 },
+    summaryTotal: { fontSize: 42, lineHeight: 52, fontFamily: fonts.mono, color: colors.ink, marginBottom: 16 },
     storeRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.faint },
-    storeName: { fontSize: 15, color: colors.muted, fontWeight: '600' },
-    storeAmount: { fontSize: 15, fontWeight: '800', color: colors.ink },
-    sectionLabel: { paddingHorizontal: 20, paddingBottom: 8, fontSize: 12, fontWeight: '900', color: colors.muted, textTransform: 'uppercase' },
+    storeName: { fontSize: 15, color: colors.muted, fontFamily: fonts.bodyMedium },
+    storeAmount: { fontSize: 15, fontFamily: fonts.mono, color: colors.ink },
+    sectionLabel: { paddingHorizontal: 20, paddingBottom: 8, fontSize: 12, fontFamily: fonts.bodySemiBold, color: colors.muted, textTransform: 'uppercase' },
     list: { paddingBottom: 120 },
     card: {
       backgroundColor: colors.surface, marginHorizontal: 16, marginBottom: 10,
@@ -270,12 +278,12 @@ function makeStyles(colors: AppColors) {
       backgroundColor: colors.primarySoft, flexShrink: 0,
     },
     cardTop: { flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-    cardStore: { fontSize: 17, fontWeight: '800', color: colors.ink },
-    cardDate: { fontSize: 13, color: colors.muted, marginTop: 2, fontWeight: '500' },
+    cardStore: { fontSize: 17, fontFamily: fonts.bodyMedium, color: colors.ink },
+    cardDate: { fontSize: 13, color: colors.muted, marginTop: 2, fontFamily: fonts.body },
     cardRight: { alignItems: 'flex-end', gap: 6 },
-    cardTotal: { fontSize: 18, fontWeight: '900', color: colors.ink },
+    cardTotal: { fontSize: 18, fontFamily: fonts.mono, color: colors.ink },
     statusPill: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 },
-    statusText: { fontSize: 12, fontWeight: '800' },
-    cardItems: { fontSize: 13, color: colors.muted, marginTop: 10, fontWeight: '600' },
+    statusText: { fontSize: 12, fontFamily: fonts.bodySemiBold },
+    cardItems: { fontSize: 13, color: colors.muted, marginTop: 10, fontFamily: fonts.bodyMedium },
   });
 }

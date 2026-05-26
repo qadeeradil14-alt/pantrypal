@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../../hooks/useTheme';
+import { fonts } from '../../constants/theme';
 import type { AppColors } from '../../constants/theme';
 
 const { width: W } = Dimensions.get('window');
@@ -134,18 +135,18 @@ function makeStyles(colors: AppColors) {
     emoji: { fontSize: 52 },
     slideTitle: {
       fontSize: 36,
-      fontWeight: '800',
+      fontFamily: fonts.displayExtraBold,
       color: colors.ink,
       letterSpacing: -0.6,
       textAlign: 'center',
-      lineHeight: 42,
+      lineHeight: 46,
     },
     slideSub: {
       fontSize: 16,
       color: colors.muted,
       textAlign: 'center',
       lineHeight: 24,
-      fontWeight: '500',
+      fontFamily: fonts.body,
     },
     dots: {
       flexDirection: 'row',
@@ -170,8 +171,8 @@ function makeStyles(colors: AppColors) {
       paddingVertical: 17,
       alignItems: 'center',
     },
-    primaryBtnText: { color: '#FFFFFF', fontSize: 17, fontWeight: '800' },
+    primaryBtnText: { color: '#FFFFFF', fontSize: 17, fontFamily: fonts.bodySemiBold },
     secondaryBtn: { paddingVertical: 13, alignItems: 'center' },
-    secondaryBtnText: { color: colors.muted, fontSize: 15, fontWeight: '600' },
+    secondaryBtnText: { color: colors.muted, fontSize: 15, fontFamily: fonts.bodyMedium },
   });
 }

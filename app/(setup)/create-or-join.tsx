@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../hooks/useTheme';
+import { fonts } from '../../constants/theme';
 import type { AppColors } from '../../constants/theme';
 
 export default function CreateOrJoinScreen() {
@@ -51,17 +52,17 @@ function makeStyles(colors: AppColors) {
       borderWidth: 1, borderColor: colors.border,
       alignItems: 'center', justifyContent: 'center', marginBottom: 8,
     },
-    kicker: { fontSize: 12, color: colors.primary, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
-    title: { fontSize: 32, fontWeight: '800', color: colors.ink, textAlign: 'center', letterSpacing: -0.4 },
-    subtitle: { fontSize: 16, color: colors.muted, textAlign: 'center', lineHeight: 24, fontWeight: '500' },
+    kicker: { fontSize: 12, color: colors.primary, fontFamily: fonts.bodySemiBold, textTransform: 'uppercase', letterSpacing: 0.5 },
+    title: { fontSize: 32, fontFamily: fonts.displayExtraBold, color: colors.ink, textAlign: 'center', letterSpacing: -0.4 },
+    subtitle: { fontSize: 16, color: colors.muted, textAlign: 'center', lineHeight: 24, fontFamily: fonts.body },
     actions: { paddingBottom: 48, gap: 12 },
     primaryBtn: {
       backgroundColor: colors.primary, borderRadius: 14,
       paddingVertical: 16, alignItems: 'center',
       flexDirection: 'row', justifyContent: 'center', gap: 8,
     },
-    primaryBtnText: { color: '#FFFFFF', fontSize: 17, fontWeight: '800' },
+    primaryBtnText: { color: '#FFFFFF', fontSize: 17, fontFamily: fonts.bodySemiBold },
     secondaryBtn: { paddingVertical: 14, alignItems: 'center' },
-    secondaryBtnText: { color: colors.muted, fontSize: 16, fontWeight: '600' },
+    secondaryBtnText: { color: colors.muted, fontSize: 16, fontFamily: fonts.bodyMedium },
   });
 }

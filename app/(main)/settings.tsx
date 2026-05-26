@@ -11,6 +11,7 @@ import { useItemsStore } from '../../store/items';
 import { signOut } from '../../lib/auth';
 import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../../lib/haptics';
 import { useTheme } from '../../hooks/useTheme';
+import { fonts } from '../../constants/theme';
 import type { AppColors } from '../../constants/theme';
 import ScalePressable from '../../components/ScalePressable';
 
@@ -166,8 +167,8 @@ function makeStyles(colors: AppColors) {
     safe: { flex: 1, backgroundColor: colors.background },
     content: { paddingBottom: 40 },
     header: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 10 },
-    eyebrow: { fontSize: 12, color: colors.primary, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
-    headerTitle: { fontSize: 28, fontWeight: '800', color: colors.ink, letterSpacing: -0.4 },
+    eyebrow: { fontSize: 12, color: colors.primary, fontFamily: fonts.bodySemiBold, textTransform: 'uppercase', letterSpacing: 0.5 },
+    headerTitle: { fontSize: 28, fontFamily: fonts.displayExtraBold, color: colors.ink, letterSpacing: -0.4 },
     heroCard: {
       marginHorizontal: 16, marginBottom: 16, borderRadius: 20,
       backgroundColor: colors.surface, padding: 16,
@@ -175,15 +176,15 @@ function makeStyles(colors: AppColors) {
       borderWidth: 1, borderColor: colors.border,
     },
     heroLeft: { flex: 1, paddingRight: 12 },
-    heroTitle: { fontSize: 20, fontWeight: '800', color: colors.ink, letterSpacing: -0.2 },
-    heroLabel: { fontSize: 15, color: colors.muted, fontWeight: '600', marginTop: 4 },
+    heroTitle: { fontSize: 20, fontFamily: fonts.display, color: colors.ink, letterSpacing: -0.2 },
+    heroLabel: { fontSize: 15, color: colors.muted, fontFamily: fonts.body, marginTop: 4 },
     heroIcon: {
       width: 44, height: 44, borderRadius: 22,
       alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primarySoft,
     },
     section: { marginTop: 14, paddingHorizontal: 20 },
     sectionLabel: {
-      fontSize: 11, fontWeight: '800', color: colors.muted,
+      fontSize: 11, fontFamily: fonts.bodySemiBold, color: colors.muted,
       textTransform: 'uppercase', marginBottom: 8, letterSpacing: 0.4,
     },
     card: {
@@ -196,21 +197,21 @@ function makeStyles(colors: AppColors) {
     },
     rowBorderTop: { borderTopWidth: 1, borderTopColor: colors.border },
     rowLabelWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-    rowLabel: { fontSize: 15, color: colors.muted, fontWeight: '700' },
-    rowValue: { fontSize: 16, color: colors.ink, fontWeight: '700', maxWidth: '58%', textAlign: 'right' },
-    rowCode: { fontSize: 16, color: colors.ink, fontWeight: '800', maxWidth: '58%', textAlign: 'right', letterSpacing: 0.4 },
+    rowLabel: { fontSize: 15, color: colors.muted, fontFamily: fonts.bodyMedium },
+    rowValue: { fontSize: 16, color: colors.ink, fontFamily: fonts.bodyMedium, maxWidth: '58%', textAlign: 'right' },
+    rowCode: { fontSize: 16, color: colors.ink, fontFamily: fonts.mono, maxWidth: '58%', textAlign: 'right', letterSpacing: 0.4 },
     shareBtn: {
       marginTop: 10, paddingVertical: 14, alignItems: 'center', justifyContent: 'center',
       flexDirection: 'row', gap: 8, borderRadius: 16, borderWidth: 1, borderColor: colors.primary,
       backgroundColor: colors.primarySoft,
     },
-    shareBtnText: { color: colors.primary, fontSize: 15, fontWeight: '800' },
+    shareBtnText: { color: colors.primary, fontSize: 15, fontFamily: fonts.bodySemiBold },
     signOutBtn: {
       marginHorizontal: 20, marginTop: 28,
       flexDirection: 'row', gap: 8, justifyContent: 'center',
       backgroundColor: colors.dangerSoft, borderRadius: 16,
       paddingVertical: 16, alignItems: 'center', borderWidth: 1, borderColor: colors.danger + '33',
     },
-    signOutText: { color: colors.danger, fontSize: 17, fontWeight: '800' },
+    signOutText: { color: colors.danger, fontSize: 17, fontFamily: fonts.bodySemiBold },
   });
 }
