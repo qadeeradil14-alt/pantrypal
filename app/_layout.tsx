@@ -16,22 +16,22 @@ defineGeofenceTask(() => {});
 export default function RootLayout() {
   // ── Slow Kitchen fonts ─────────────────────────────────────────────────────
   const [playfairLoaded] = usePlayfairFonts({
-    'PlayfairDisplay-Regular':    require('@expo-google-fonts/playfair-display/PlayfairDisplay_400Regular.ttf'),
-    'PlayfairDisplay-Italic':     require('@expo-google-fonts/playfair-display/PlayfairDisplay_400Regular_Italic.ttf'),
-    'PlayfairDisplay-Bold':       require('@expo-google-fonts/playfair-display/PlayfairDisplay_700Bold.ttf'),
-    'PlayfairDisplay-BoldItalic': require('@expo-google-fonts/playfair-display/PlayfairDisplay_700Bold_Italic.ttf'),
-    'PlayfairDisplay-ExtraBold':  require('@expo-google-fonts/playfair-display/PlayfairDisplay_800ExtraBold.ttf'),
-    'PlayfairDisplay-ExtraBoldItalic': require('@expo-google-fonts/playfair-display/PlayfairDisplay_800ExtraBold_Italic.ttf'),
+    'PlayfairDisplay-Regular':    require('@expo-google-fonts/playfair-display/400Regular/PlayfairDisplay_400Regular.ttf'),
+    'PlayfairDisplay-Italic':     require('@expo-google-fonts/playfair-display/400Regular_Italic/PlayfairDisplay_400Regular_Italic.ttf'),
+    'PlayfairDisplay-Bold':       require('@expo-google-fonts/playfair-display/700Bold/PlayfairDisplay_700Bold.ttf'),
+    'PlayfairDisplay-BoldItalic': require('@expo-google-fonts/playfair-display/700Bold_Italic/PlayfairDisplay_700Bold_Italic.ttf'),
+    'PlayfairDisplay-ExtraBold':  require('@expo-google-fonts/playfair-display/800ExtraBold/PlayfairDisplay_800ExtraBold.ttf'),
+    'PlayfairDisplay-ExtraBoldItalic': require('@expo-google-fonts/playfair-display/800ExtraBold_Italic/PlayfairDisplay_800ExtraBold_Italic.ttf'),
   });
   const [dmSansLoaded] = useDMSansFonts({
-    'DMSans-Light':     require('@expo-google-fonts/dm-sans/DMSans_300Light.ttf'),
-    'DMSans-Regular':   require('@expo-google-fonts/dm-sans/DMSans_400Regular.ttf'),
-    'DMSans-Medium':    require('@expo-google-fonts/dm-sans/DMSans_500Medium.ttf'),
-    'DMSans-SemiBold':  require('@expo-google-fonts/dm-sans/DMSans_600SemiBold.ttf'),
+    'DMSans-Light':     require('@expo-google-fonts/dm-sans/300Light/DMSans_300Light.ttf'),
+    'DMSans-Regular':   require('@expo-google-fonts/dm-sans/400Regular/DMSans_400Regular.ttf'),
+    'DMSans-Medium':    require('@expo-google-fonts/dm-sans/500Medium/DMSans_500Medium.ttf'),
+    'DMSans-SemiBold':  require('@expo-google-fonts/dm-sans/600SemiBold/DMSans_600SemiBold.ttf'),
   });
   const [dmMonoLoaded] = useDMMonoFonts({
-    'DMMono-Regular': require('@expo-google-fonts/dm-mono/DMMono_400Regular.ttf'),
-    'DMMono-Medium':  require('@expo-google-fonts/dm-mono/DMMono_500Medium.ttf'),
+    'DMMono-Regular': require('@expo-google-fonts/dm-mono/400Regular/DMMono_400Regular.ttf'),
+    'DMMono-Medium':  require('@expo-google-fonts/dm-mono/500Medium/DMMono_500Medium.ttf'),
   });
   const fontsLoaded = playfairLoaded && dmSansLoaded && dmMonoLoaded;
 
