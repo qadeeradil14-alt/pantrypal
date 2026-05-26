@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import type { ItemCategory } from '../constants/defaultItems';
 import { DEFAULT_ITEMS } from '../constants/defaultItems';
+import { runWithOfflineQueue } from './offlineQueue';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -17,6 +18,7 @@ export interface Item {
   household_id: string;
   name: string;
   category: ItemCategory;
+  macro_status: 'in_stock' | 'running_low' | 'out_of_stock';
   is_low: boolean;
   marked_low_by: string | null;
   got_it_by: string | null;
@@ -46,6 +48,14 @@ export async function markItemLow(itemId: string, userId: string) {
   if (error) throw error;
 }
 
+export async function markItemLowWithQueue(itemId: string, userId: string): Promise<{ queued: boolean }> {
+  return runWithOfflineQueue(
+    'mark_low',
+    { itemId, userId },
+    () => markItemLow(itemId, userId),
+  );
+}
+
 export async function markItemOk(itemId: string) {
   const { error } = await supabase
     .from('items')
@@ -55,6 +65,14 @@ export async function markItemOk(itemId: string) {
   if (error) throw error;
 }
 
+export async function markItemOkWithQueue(itemId: string): Promise<{ queued: boolean }> {
+  return runWithOfflineQueue(
+    'mark_ok',
+    { itemId },
+    () => markItemOk(itemId),
+  );
+}
+
 export async function markItemGotIt(itemId: string, userId: string) {
   const { error } = await supabase
     .from('items')
@@ -62,6 +80,14 @@ export async function markItemGotIt(itemId: string, userId: string) {
     .eq('id', itemId);
 
   if (error) throw error;
+}
+
+export async function markItemGotItWithQueue(itemId: string, userId: string): Promise<{ queued: boolean }> {
+  return runWithOfflineQueue(
+    'mark_got_it',
+    { itemId, userId },
+    () => markItemGotIt(itemId, userId),
+  );
 }
 
 export async function addItem(householdId: string, name: string, category: ItemCategory, userId: string): Promise<Item> {
@@ -84,6 +110,14 @@ export async function addItem(householdId: string, name: string, category: ItemC
 export async function deleteItem(itemId: string) {
   const { error } = await supabase.from('items').delete().eq('id', itemId);
   if (error) throw error;
+}
+
+export async function deleteItemWithQueue(itemId: string): Promise<{ queued: boolean }> {
+  return runWithOfflineQueue(
+    'delete_item',
+    { itemId },
+    () => deleteItem(itemId),
+  );
 }
 
 export async function ensureDefaultItems(householdId: string, userId?: string | null): Promise<number> {

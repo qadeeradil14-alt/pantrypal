@@ -3,10 +3,12 @@ import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import type { ColorValue } from 'react-native';
 import { fetchStores } from '../../lib/stores';
+import { fetchActiveShoppingList } from '../../lib/shoppingList';
 import { startGeofencing, stopGeofencing } from '../../lib/geofencing';
 import { useRealtime } from '../../lib/realtime';
 import { useHouseholdStore } from '../../store/household';
 import { useStoresStore } from '../../store/stores';
+import { useShoppingStore } from '../../store/shopping';
 import { colors } from '../../constants/theme';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
@@ -20,6 +22,7 @@ function tabIcon(name: IoniconName, focusedName: IoniconName) {
 export default function MainLayout() {
   const householdId = useHouseholdStore((s) => s.household?.id);
   const setStores = useStoresStore((s) => s.setStores);
+  const setShoppingEntries = useShoppingStore((s) => s.setEntries);
   useRealtime(householdId ?? null);
 
   useEffect(() => {
@@ -28,13 +31,18 @@ export default function MainLayout() {
     async function bootstrapStoresAndGeofencing() {
       if (!householdId) {
         setStores([]);
+        setShoppingEntries([]);
         await stopGeofencing();
         return;
       }
       try {
-        const stores = await fetchStores(householdId);
+        const [stores, shoppingEntries] = await Promise.all([
+          fetchStores(householdId),
+          fetchActiveShoppingList(householdId),
+        ]);
         if (cancelled) return;
         setStores(stores);
+        setShoppingEntries(shoppingEntries);
         await stopGeofencing();
         if (stores.some((s) => s.latitude != null && s.longitude != null)) {
           await startGeofencing(stores);
@@ -46,7 +54,7 @@ export default function MainLayout() {
 
     bootstrapStoresAndGeofencing();
     return () => { cancelled = true; };
-  }, [householdId, setStores]);
+  }, [householdId, setStores, setShoppingEntries]);
 
   return (
     <Tabs
@@ -56,15 +64,15 @@ export default function MainLayout() {
         tabBarInactiveTintColor: colors.muted,
         tabBarStyle: {
           backgroundColor: colors.surface,
-          borderTopColor: colors.faint,
+          borderTopColor: colors.border,
           borderTopWidth: 1,
           paddingTop: 8,
           paddingBottom: 8,
-          height: 72,
+          height: 76,
         },
         tabBarLabelStyle: {
           fontSize: 11,
-          fontWeight: '600',
+          fontWeight: '800',
           marginTop: 2,
         },
         tabBarIconStyle: {

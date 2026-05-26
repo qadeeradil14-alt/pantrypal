@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import * as Location from 'expo-location';
+import { runWithOfflineQueue } from './offlineQueue';
 
 export interface Store {
   id: string;
@@ -80,6 +81,14 @@ export async function setItemStore(itemId: string, storeId: string | null) {
     .update({ preferred_store_id: storeId })
     .eq('id', itemId);
   if (error) throw error;
+}
+
+export async function setItemStoreWithQueue(itemId: string, storeId: string | null): Promise<{ queued: boolean }> {
+  return runWithOfflineQueue(
+    'set_item_store',
+    { itemId, storeId },
+    () => setItemStore(itemId, storeId),
+  );
 }
 
 async function geocodeAddress(address: string): Promise<{ latitude: number; longitude: number } | null> {

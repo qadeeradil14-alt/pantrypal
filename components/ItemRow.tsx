@@ -2,8 +2,9 @@ import { TouchableOpacity, View, Text, StyleSheet, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useItemsStore } from '../store/items';
 import { useStoresStore } from '../store/stores';
-import { deleteItem, markItemLow, markItemOk } from '../lib/items';
-import { setItemStore } from '../lib/stores';
+import { deleteItemWithQueue, markItemLowWithQueue, markItemOkWithQueue } from '../lib/items';
+import { setItemStoreWithQueue } from '../lib/stores';
+import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../lib/haptics';
 import type { Item } from '../lib/items';
 import { CATEGORY_LABELS } from '../constants/defaultItems';
 import { colors, radii } from '../constants/theme';
@@ -19,6 +20,7 @@ export default function ItemRow({ item, userId }: Props) {
 
   async function handleTap() {
     const nextLow = !item.is_low;
+    void hapticSelection();
     updateItem(item.id, {
       is_low: nextLow,
       marked_low_by: nextLow ? userId : null,
@@ -26,12 +28,23 @@ export default function ItemRow({ item, userId }: Props) {
     });
     try {
       if (nextLow) {
-        await markItemLow(item.id, userId);
+        const result = await markItemLowWithQueue(item.id, userId);
+        if (result.queued) {
+          void hapticSelection();
+          return;
+        }
+        void hapticWarning();
       } else {
-        await markItemOk(item.id);
+        const result = await markItemOkWithQueue(item.id);
+        if (result.queued) {
+          void hapticSelection();
+          return;
+        }
+        void hapticSuccess();
       }
     } catch (e: any) {
       console.error('[ItemRow] update failed:', e?.message ?? e);
+      void hapticError();
       updateItem(item.id, {
         is_low: item.is_low,
         marked_low_by: item.marked_low_by,
@@ -41,6 +54,7 @@ export default function ItemRow({ item, userId }: Props) {
   }
 
   function handleLongPress() {
+    void hapticSelection();
     const assignedStore = stores.find((s) => s.id === item.preferred_store_id);
 
     const storeButtons = stores.map((s) => ({
@@ -66,22 +80,36 @@ export default function ItemRow({ item, userId }: Props) {
   }
 
   async function handleDelete() {
+    void hapticWarning();
     removeItem(item.id);
     try {
-      await deleteItem(item.id);
+      const result = await deleteItemWithQueue(item.id);
+      if (result.queued) {
+        void hapticSelection();
+        return;
+      }
+      void hapticSuccess();
     } catch (e: any) {
       console.error('[ItemRow] delete failed:', e?.message ?? e);
+      void hapticError();
       restoreItem(item);
     }
   }
 
   async function assignStore(storeId: string | null) {
+    void hapticSelection();
     const prev = item.preferred_store_id;
     updateItem(item.id, { preferred_store_id: storeId });
     try {
-      await setItemStore(item.id, storeId);
+      const result = await setItemStoreWithQueue(item.id, storeId);
+      if (result.queued) {
+        void hapticSelection();
+        return;
+      }
+      void hapticSuccess();
     } catch (e: any) {
       console.error('[ItemRow] store assign failed:', e?.message ?? e);
+      void hapticError();
       updateItem(item.id, { preferred_store_id: prev });
     }
   }
@@ -100,9 +128,9 @@ export default function ItemRow({ item, userId }: Props) {
       {/* Status icon circle */}
       <View style={[styles.statusIcon, item.is_low && styles.statusIconLow]}>
         <Ionicons
-          name={item.is_low ? 'alert-circle' : 'checkmark'}
+          name={item.is_low ? 'alert-circle' : 'checkmark-circle'}
           size={18}
-          color={item.is_low ? colors.low : colors.primary}
+          color={item.is_low ? colors.lowText : colors.primary}
         />
       </View>
 
@@ -132,8 +160,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    minHeight: 68,
+    borderRadius: radii.md,
+    minHeight: 60,
     paddingHorizontal: 14,
     paddingVertical: 12,
     gap: 12,
@@ -142,12 +170,12 @@ const styles = StyleSheet.create({
   },
   rowLow: {
     backgroundColor: colors.lowSoft,
-    borderColor: '#FBBF9A',
+    borderColor: colors.lowBadgeBg,
   },
   statusIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.primarySoft,
@@ -170,7 +198,7 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 16,
     color: colors.ink,
-    fontWeight: '600',
+    fontWeight: '700',
     flex: 1,
   },
   nameLow: {
@@ -178,19 +206,19 @@ const styles = StyleSheet.create({
   },
   lowBadge: {
     backgroundColor: colors.lowBadgeBg,
-    borderRadius: radii.sm,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
   },
   lowBadgeText: {
     color: colors.lowBadgeText,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
     letterSpacing: 0.5,
   },
   meta: {
-    fontSize: 12,
+    fontSize: 13,
     color: colors.muted,
-    fontWeight: '400',
+    fontWeight: '500',
   },
 });

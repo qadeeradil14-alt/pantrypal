@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
-  View, Text, FlatList, StyleSheet, TouchableOpacity,
+  View, Text, FlatList, StyleSheet,
   Alert, ActivityIndicator, TextInput, ScrollView, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,7 +9,9 @@ import { useHouseholdStore } from '../../../store/household';
 import { useStoresStore } from '../../../store/stores';
 import { fetchStores, addStore, deleteStore, PRESET_STORES, type Store } from '../../../lib/stores';
 import { startGeofencing, stopGeofencing } from '../../../lib/geofencing';
+import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../../../lib/haptics';
 import { colors, radii, shadow } from '../../../constants/theme';
+import ScalePressable from '../../../components/ScalePressable';
 
 function compactAddress(address: string, storeName: string): string {
   const raw = address.trim();
@@ -71,6 +73,7 @@ export default function StoresScreen() {
       {
         text: 'Remove', style: 'destructive',
         onPress: async () => {
+          void hapticWarning();
           if (!canManageStores) {
             Alert.alert('Household not ready', 'Please wait a moment and try again.');
             return;
@@ -82,8 +85,10 @@ export default function StoresScreen() {
             await stopGeofencing();
             const updated = stores.filter((s) => s.id !== store.id);
             if (updated.some((s) => s.latitude != null)) await startGeofencing(updated);
+            void hapticSuccess();
           } catch (e: any) {
             Alert.alert('Could not remove store', e?.message ?? 'Please try again.');
+            void hapticError();
           } finally {
             setRemovingId(null);
           }
@@ -100,12 +105,13 @@ export default function StoresScreen() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Text style={styles.eyebrow}>Store alerts</Text>
+          <Text style={styles.eyebrow}>Stores</Text>
           <Text style={styles.headerTitle}>My Stores</Text>
         </View>
-        <TouchableOpacity
+        <ScalePressable
           style={[styles.addBtn, !canManageStores && styles.addBtnDisabled]}
           onPress={() => {
+            void hapticSelection();
             if (!canManageStores) {
               Alert.alert('Household not ready', 'Please wait a moment and try again.');
               return;
@@ -113,11 +119,10 @@ export default function StoresScreen() {
             setShowAdd(true);
           }}
           disabled={!canManageStores}
-          activeOpacity={0.8}
         >
           <Ionicons name="add" size={20} color={colors.surface} />
           <Text style={styles.addBtnText}>Add</Text>
-        </TouchableOpacity>
+        </ScalePressable>
       </View>
 
       <View style={styles.heroCard}>
@@ -142,9 +147,10 @@ export default function StoresScreen() {
           <Text style={styles.emptySub}>
             Add the stores you shop at. Include an address and the app will alert your partner the moment you arrive.
           </Text>
-          <TouchableOpacity
+          <ScalePressable
             style={[styles.emptyBtn, !canManageStores && styles.emptyBtnDisabled]}
             onPress={() => {
+              void hapticSelection();
               if (!canManageStores) {
                 Alert.alert('Household not ready', 'Please wait a moment and try again.');
                 return;
@@ -154,7 +160,7 @@ export default function StoresScreen() {
             disabled={!canManageStores}
           >
             <Text style={styles.emptyBtnText}>Add your first store</Text>
-          </TouchableOpacity>
+          </ScalePressable>
         </View>
       ) : (
         <FlatList
@@ -187,13 +193,17 @@ export default function StoresScreen() {
                     <Text style={styles.geoPillText}>Active</Text>
                   </View>
                 )}
-                <TouchableOpacity
-                  onPress={() => handleDelete(item)}
+                <ScalePressable
+                  profile="danger"
+                  onPress={() => {
+                    void hapticSelection();
+                    handleDelete(item);
+                  }}
                   style={styles.deleteBtn}
                   disabled={removingId === item.id}
                 >
                   <Text style={styles.deleteBtnText}>{removingId === item.id ? 'Removing…' : 'Remove'}</Text>
-                </TouchableOpacity>
+                </ScalePressable>
               </View>
             </View>
           )}
@@ -246,8 +256,10 @@ function AddStoreModal({
     try {
       const store = await addStore(householdId, storeName, storeAddress);
       onAdd(store);
+      void hapticSuccess();
     } catch (e: any) {
       setError(e.message ?? 'Could not add store.');
+      void hapticError();
     } finally {
       setSaving(false);
     }
@@ -258,17 +270,26 @@ function AddStoreModal({
       <View style={styles.overlay}>
         <View style={styles.sheet}>
           <View style={styles.handle} />
-          <Text style={styles.sheetTitle}>Add a store</Text>
+          <Text style={styles.sheetTitle}>Add store</Text>
           <Text style={styles.sheetSubtitle}>Save places your household shops often.</Text>
 
           {error ? <View style={styles.errorBox}><Text style={styles.error}>{error}</Text></View> : null}
 
           <Text style={styles.label}>Quick add</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.presetsRow}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.presetsRow} contentContainerStyle={styles.presetsContent}>
             {presets.map((p) => (
-              <TouchableOpacity key={p} style={styles.presetChip} onPress={() => handleSave(p)} disabled={saving}>
+              <ScalePressable
+                key={p}
+                profile="chip"
+                style={styles.presetChip}
+                onPress={() => {
+                  void hapticSelection();
+                  handleSave(p);
+                }}
+                disabled={saving}
+              >
                 <Text style={styles.presetChipText}>{p}</Text>
-              </TouchableOpacity>
+              </ScalePressable>
             ))}
           </ScrollView>
 
@@ -288,20 +309,30 @@ function AddStoreModal({
             placeholderTextColor={colors.placeholder}
           />
 
-          <TouchableOpacity
+          <ScalePressable
             style={[styles.saveBtn, !name.trim() && styles.saveBtnDisabled]}
-            onPress={() => handleSave(name.trim(), address.trim() || undefined)}
+            onPress={() => {
+              void hapticSelection();
+              handleSave(name.trim(), address.trim() || undefined);
+            }}
             disabled={!name.trim() || saving}
           >
             {saving
               ? <ActivityIndicator color="#fff" />
               : <Text style={styles.saveBtnText}>Add store</Text>
             }
-          </TouchableOpacity>
+          </ScalePressable>
 
-          <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
+          <ScalePressable
+            style={styles.cancelBtn}
+            profile="chip"
+            onPress={() => {
+              void hapticSelection();
+              onClose();
+            }}
+          >
             <Text style={styles.cancelText}>Cancel</Text>
-          </TouchableOpacity>
+          </ScalePressable>
         </View>
       </View>
     </Modal>
@@ -316,8 +347,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14,
   },
   headerLeft: { flex: 1, gap: 2 },
-  eyebrow: { fontSize: 13, color: colors.primary, fontWeight: '800' },
-  headerTitle: { fontSize: 30, fontWeight: '900', color: colors.ink },
+  eyebrow: { fontSize: 12, color: colors.primary, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+  headerTitle: { fontSize: 32, fontWeight: '800', color: colors.ink, letterSpacing: -0.6 },
   addBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 4, backgroundColor: colors.primary, borderRadius: 999,
@@ -327,16 +358,16 @@ const styles = StyleSheet.create({
   addBtnText: { color: colors.surface, fontSize: 15, fontWeight: '800' },
   heroCard: {
     marginHorizontal: 16, marginBottom: 14, borderRadius: radii.xl,
-    backgroundColor: colors.surfaceWarm, padding: 18,
+    backgroundColor: colors.surface, padding: 20,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     borderWidth: 1, borderColor: colors.faint, ...shadow,
   },
-  heroNumber: { fontSize: 44, lineHeight: 48, fontWeight: '900', color: colors.ink },
+  heroNumber: { fontSize: 48, lineHeight: 50, fontWeight: '800', color: colors.ink, fontVariant: ['tabular-nums'] },
   heroLabel: { fontSize: 14, color: colors.muted, fontWeight: '700' },
   heroBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 7,
-    backgroundColor: colors.surface, borderRadius: 999,
-    paddingHorizontal: 12, paddingVertical: 9,
+    backgroundColor: colors.primarySoft, borderRadius: 999,
+    paddingHorizontal: 12, paddingVertical: 8,
   },
   heroBadgeText: { color: colors.primary, fontWeight: '800', fontSize: 13 },
   list: { paddingHorizontal: 16, paddingBottom: 120 },
@@ -352,8 +383,8 @@ const styles = StyleSheet.create({
   },
   storeIconActive: { backgroundColor: colors.primarySoft },
   rowLeft: { flex: 1, gap: 4 },
-  storeName: { fontSize: 17, fontWeight: '800', color: colors.ink },
-  storeAddress: { fontSize: 13, color: colors.muted, lineHeight: 18 },
+  storeName: { fontSize: 17, fontWeight: '700', color: colors.ink },
+  storeAddress: { fontSize: 13, color: colors.muted, lineHeight: 19 },
   noAddress: { fontSize: 13, color: colors.low, fontWeight: '600' },
   rowRight: { alignItems: 'flex-end', gap: 8 },
   geoPill: {
@@ -365,23 +396,24 @@ const styles = StyleSheet.create({
   deleteBtnText: { color: colors.danger, fontSize: 13, fontWeight: '700' },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 12 },
   emptyIconWrap: { backgroundColor: colors.primarySoft, borderRadius: radii.xl, padding: 16, marginBottom: 8 },
-  emptyTitle: { fontSize: 22, fontWeight: '900', color: colors.ink },
-  emptySub: { fontSize: 15, color: colors.muted, textAlign: 'center', lineHeight: 22 },
+  emptyTitle: { fontSize: 24, fontWeight: '800', color: colors.ink, letterSpacing: -0.3 },
+  emptySub: { fontSize: 15, color: colors.muted, textAlign: 'center', lineHeight: 24 },
   emptyBtn: { backgroundColor: colors.primary, borderRadius: radii.md, paddingHorizontal: 24, paddingVertical: 14, marginTop: 8 },
   emptyBtnDisabled: { backgroundColor: colors.disabled },
   emptyBtnText: { color: colors.surface, fontSize: 16, fontWeight: '800' },
-  overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(43,33,24,0.42)' },
-  sheet: { backgroundColor: colors.background, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: 24, paddingBottom: 40, ...shadow },
+  overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(2, 6, 23, 0.36)' },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 40, ...shadow },
   handle: { width: 36, height: 4, backgroundColor: colors.faint, borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
-  sheetTitle: { fontSize: 20, fontWeight: '800', color: colors.ink, marginBottom: 4 },
+  sheetTitle: { fontSize: 22, fontWeight: '800', color: colors.ink, marginBottom: 4, letterSpacing: -0.2 },
   sheetSubtitle: { fontSize: 14, color: colors.muted, marginBottom: 18 },
   errorBox: { backgroundColor: colors.dangerSoft, borderRadius: radii.sm, padding: 12, marginBottom: 12 },
   error: { color: colors.dangerText, fontSize: 14 },
   label: { fontSize: 12, fontWeight: '800', color: colors.muted, textTransform: 'uppercase', marginBottom: 8 },
   presetsRow: { marginBottom: 20 },
+  presetsContent: { paddingRight: 10 },
   presetChip: { backgroundColor: colors.primarySoft, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, marginRight: 8, borderWidth: 1, borderColor: colors.primarySoft },
   presetChipText: { color: colors.primary, fontSize: 14, fontWeight: '800' },
-  input: { borderWidth: 1, borderColor: colors.faint, borderRadius: radii.md, paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, marginBottom: 12, color: colors.ink, backgroundColor: colors.surface },
+  input: { borderWidth: 1, borderColor: colors.faint, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 15, fontSize: 16, marginBottom: 12, color: colors.ink, backgroundColor: colors.background },
   saveBtn: { backgroundColor: colors.primary, borderRadius: radii.md, paddingVertical: 16, alignItems: 'center', marginBottom: 10 },
   saveBtnDisabled: { backgroundColor: colors.disabled },
   saveBtnText: { color: colors.surface, fontSize: 17, fontWeight: '800' },

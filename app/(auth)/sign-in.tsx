@@ -4,7 +4,9 @@ import {
   StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { signIn, resetPassword } from '../../lib/auth';
+import { colors, radii } from '../../constants/theme';
 
 export default function SignInScreen() {
   const router = useRouter();
@@ -56,9 +58,14 @@ export default function SignInScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <TouchableOpacity style={styles.back} onPress={handleBack}>
-        <Text style={styles.backText}>← Back</Text>
+        <Ionicons name="chevron-back" size={18} color={colors.primary} />
+        <Text style={styles.backText}>Back</Text>
       </TouchableOpacity>
+      <View style={styles.iconWrap}>
+        <Ionicons name="lock-closed-outline" size={22} color={colors.primary} />
+      </View>
       <Text style={styles.title}>Welcome back</Text>
+      <Text style={styles.subtitle}>Sign in to your shared kitchen workspace.</Text>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -70,7 +77,7 @@ export default function SignInScreen() {
         autoComplete="email"
         value={email}
         onChangeText={setEmail}
-        placeholderTextColor="#aaa"
+        placeholderTextColor={colors.placeholder}
       />
       <TextInput
         style={styles.input}
@@ -79,11 +86,11 @@ export default function SignInScreen() {
         autoComplete="current-password"
         value={password}
         onChangeText={setPassword}
-        placeholderTextColor="#aaa"
+        placeholderTextColor={colors.placeholder}
       />
 
       <TouchableOpacity style={styles.btn} onPress={handleSignIn} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Sign in</Text>}
+        {loading ? <ActivityIndicator color={colors.surface} /> : <Text style={styles.btnText}>Sign in</Text>}
       </TouchableOpacity>
 
       <TouchableOpacity onPress={handleForgotPassword}>
@@ -98,24 +105,34 @@ export default function SignInScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff', paddingHorizontal: 28, paddingTop: 60 },
-  back: { marginBottom: 32 },
-  backText: { color: '#16A34A', fontSize: 16 },
-  title: { fontSize: 28, fontWeight: '700', color: '#111827', marginBottom: 32 },
+  container: { flex: 1, backgroundColor: colors.background, paddingHorizontal: 28, paddingTop: 60 },
+  back: { marginBottom: 30, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  backText: { color: colors.primary, fontSize: 16, fontWeight: '800' },
+  iconWrap: {
+    width: 50,
+    height: 50,
+    borderRadius: 16,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 18,
+  },
+  title: { fontSize: 32, fontWeight: '800', color: colors.ink, marginBottom: 8 },
+  subtitle: { fontSize: 16, color: colors.muted, fontWeight: '700', marginBottom: 28, lineHeight: 22 },
   error: {
-    backgroundColor: '#FEE2E2', color: '#B91C1C', borderRadius: 8,
+    backgroundColor: colors.dangerSoft, color: colors.dangerText, borderRadius: radii.sm,
     padding: 12, marginBottom: 16, fontSize: 14,
   },
   input: {
-    borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 12,
+    borderWidth: 1, borderColor: colors.faint, borderRadius: radii.md,
     paddingHorizontal: 16, paddingVertical: 14, fontSize: 16,
-    marginBottom: 12, color: '#111827',
+    marginBottom: 12, color: colors.ink, backgroundColor: colors.surface,
   },
   btn: {
-    backgroundColor: '#16A34A', borderRadius: 14,
+    backgroundColor: colors.primary, borderRadius: radii.md,
     paddingVertical: 16, alignItems: 'center', marginTop: 8, marginBottom: 16,
   },
-  btnText: { color: '#fff', fontSize: 17, fontWeight: '600' },
-  forgotLink: { color: '#6B7280', fontSize: 14, textAlign: 'center', marginBottom: 12 },
-  link: { color: '#16A34A', fontSize: 15, textAlign: 'center' },
+  btnText: { color: colors.surface, fontSize: 17, fontWeight: '800' },
+  forgotLink: { color: colors.muted, fontSize: 14, textAlign: 'center', marginBottom: 12, fontWeight: '700' },
+  link: { color: colors.primary, fontSize: 15, textAlign: 'center', fontWeight: '800' },
 });

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet,
+  View, Text, StyleSheet,
   Alert, Share, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,7 +9,9 @@ import { useAuthStore } from '../../store/auth';
 import { useHouseholdStore } from '../../store/household';
 import { useItemsStore } from '../../store/items';
 import { signOut } from '../../lib/auth';
+import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../../lib/haptics';
 import { colors, radii, shadow } from '../../constants/theme';
+import ScalePressable from '../../components/ScalePressable';
 
 export default function SettingsScreen() {
   const { session } = useAuthStore();
@@ -24,13 +26,16 @@ export default function SettingsScreen() {
         text: 'Sign out',
         style: 'destructive',
         onPress: async () => {
+          void hapticWarning();
           setSigningOut(true);
           try {
             await signOut();
             clearHousehold();
             setItems([]);
+            void hapticSuccess();
           } catch (e: any) {
             Alert.alert('Sign out failed', e?.message ?? 'Please try again.');
+            void hapticError();
           } finally {
             setSigningOut(false);
           }
@@ -42,11 +47,13 @@ export default function SettingsScreen() {
   async function handleShare() {
     if (!household?.inviteCode) return;
     try {
+      void hapticSelection();
       await Share.share({
         message: `Join my household on PantryPal! Use invite code: ${household.inviteCode}`,
       });
     } catch (e: any) {
       Alert.alert('Could not share', e?.message ?? 'Please try again.');
+      void hapticError();
     }
   }
 
@@ -88,10 +95,16 @@ export default function SettingsScreen() {
           ) : null}
         </View>
         {household?.inviteCode ? (
-          <TouchableOpacity style={styles.shareBtn} onPress={() => { void handleShare(); }}>
+          <ScalePressable
+            style={styles.shareBtn}
+            onPress={() => {
+              void hapticSelection();
+              void handleShare();
+            }}
+          >
             <Ionicons name="share-outline" size={18} color={colors.primary} />
             <Text style={styles.shareBtnText}>Share invite code</Text>
-          </TouchableOpacity>
+          </ScalePressable>
         ) : null}
       </View>
 
@@ -109,7 +122,15 @@ export default function SettingsScreen() {
       </View>
 
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut} disabled={signingOut}>
+        <ScalePressable
+          profile="danger"
+          style={styles.signOutBtn}
+          onPress={() => {
+            void hapticSelection();
+            handleSignOut();
+          }}
+          disabled={signingOut}
+        >
           {signingOut
             ? <ActivityIndicator color={colors.danger} />
             : (
@@ -119,7 +140,7 @@ export default function SettingsScreen() {
               </>
             )
           }
-        </TouchableOpacity>
+        </ScalePressable>
       </View>
     </SafeAreaView>
   );
@@ -130,24 +151,24 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14,
   },
-  eyebrow: { fontSize: 13, color: colors.primary, fontWeight: '800' },
-  headerTitle: { fontSize: 30, fontWeight: '900', color: colors.ink },
+  eyebrow: { fontSize: 12, color: colors.primary, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+  headerTitle: { fontSize: 32, fontWeight: '800', color: colors.ink, letterSpacing: -0.6 },
   heroCard: {
     marginHorizontal: 16, marginBottom: 14, borderRadius: radii.xl,
-    backgroundColor: colors.surfaceWarm, padding: 18,
+    backgroundColor: colors.surface, padding: 20,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     borderWidth: 1, borderColor: colors.faint, ...shadow,
   },
-  heroTitle: { fontSize: 22, fontWeight: '900', color: colors.ink, maxWidth: 245 },
+  heroTitle: { fontSize: 24, fontWeight: '800', color: colors.ink, maxWidth: 245, letterSpacing: -0.3 },
   heroLabel: { fontSize: 14, color: colors.muted, fontWeight: '700', marginTop: 4, maxWidth: 245 },
   heroIcon: {
     width: 48, height: 48, borderRadius: 24,
-    alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primarySoft,
   },
-  section: { marginTop: 18, paddingHorizontal: 20 },
+  section: { marginTop: 16, paddingHorizontal: 20 },
   sectionLabel: {
-    fontSize: 12, fontWeight: '900', color: colors.muted,
-    textTransform: 'uppercase', marginBottom: 8,
+    fontSize: 12, fontWeight: '800', color: colors.muted,
+    textTransform: 'uppercase', marginBottom: 8, letterSpacing: 0.4,
   },
   card: {
     backgroundColor: colors.surface, borderRadius: radii.lg,
@@ -160,7 +181,7 @@ const styles = StyleSheet.create({
   rowBorderTop: { borderTopWidth: 1, borderTopColor: colors.faint },
   rowLabelWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   rowLabel: { fontSize: 15, color: colors.muted, fontWeight: '700' },
-  rowValue: { fontSize: 15, color: colors.ink, fontWeight: '800', maxWidth: '55%', textAlign: 'right' },
+  rowValue: { fontSize: 15, color: colors.ink, fontWeight: '700', maxWidth: '55%', textAlign: 'right' },
   shareBtn: {
     marginTop: 10, paddingVertical: 13, alignItems: 'center', justifyContent: 'center',
     flexDirection: 'row', gap: 8, borderRadius: radii.md, borderWidth: 1, borderColor: colors.primary,
@@ -171,7 +192,7 @@ const styles = StyleSheet.create({
   signOutBtn: {
     flexDirection: 'row', gap: 8, justifyContent: 'center',
     backgroundColor: colors.dangerSoft, borderRadius: radii.md,
-    paddingVertical: 16, alignItems: 'center',
+    paddingVertical: 16, alignItems: 'center', borderWidth: 1, borderColor: '#F9D1D1',
   },
   signOutText: { color: colors.danger, fontSize: 17, fontWeight: '800' },
 });

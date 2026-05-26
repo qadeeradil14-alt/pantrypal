@@ -4,8 +4,10 @@ import {
   StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { signUp } from '../../lib/auth';
 import { supabase } from '../../lib/supabase';
+import { colors, radii } from '../../constants/theme';
 
 export default function SignUpScreen() {
   const router = useRouter();
@@ -79,7 +81,9 @@ export default function SignUpScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={styles.verifyCard}>
-          <Text style={styles.verifyEmoji}>📬</Text>
+          <View style={styles.iconWrap}>
+            <Ionicons name="mail-unread-outline" size={22} color={colors.primary} />
+          </View>
           <Text style={styles.title}>Check your email</Text>
           <Text style={styles.subtitle}>
             We sent a confirmation link to{'\n'}
@@ -118,8 +122,12 @@ export default function SignUpScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <TouchableOpacity style={styles.back} onPress={handleBack}>
-        <Text style={styles.backText}>← Back</Text>
+        <Ionicons name="chevron-back" size={18} color={colors.primary} />
+        <Text style={styles.backText}>Back</Text>
       </TouchableOpacity>
+      <View style={styles.iconWrap}>
+        <Ionicons name="person-add-outline" size={22} color={colors.primary} />
+      </View>
       <Text style={styles.title}>Create account</Text>
       <Text style={styles.subtitle}>
         {deepLinkJoin
@@ -138,7 +146,7 @@ export default function SignUpScreen() {
         autoComplete="email"
         value={email}
         onChangeText={setEmail}
-        placeholderTextColor="#aaa"
+        placeholderTextColor={colors.placeholder}
       />
       <TextInput
         style={styles.input}
@@ -147,11 +155,11 @@ export default function SignUpScreen() {
         autoComplete="new-password"
         value={password}
         onChangeText={setPassword}
-        placeholderTextColor="#aaa"
+        placeholderTextColor={colors.placeholder}
       />
 
       <TouchableOpacity style={styles.btn} onPress={handleSignUp} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Create account</Text>}
+        {loading ? <ActivityIndicator color={colors.surface} /> : <Text style={styles.btnText}>Create account</Text>}
       </TouchableOpacity>
 
       <TouchableOpacity onPress={() => router.push('/(auth)/sign-in')}>
@@ -162,33 +170,41 @@ export default function SignUpScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff', paddingHorizontal: 28, paddingTop: 60 },
-  back: { marginBottom: 32 },
-  backText: { color: '#16A34A', fontSize: 16 },
-  title: { fontSize: 28, fontWeight: '700', color: '#111827', marginBottom: 8 },
-  subtitle: { fontSize: 15, color: '#6B7280', marginBottom: 32 },
+  container: { flex: 1, backgroundColor: colors.background, paddingHorizontal: 28, paddingTop: 60 },
+  back: { marginBottom: 30, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  backText: { color: colors.primary, fontSize: 16, fontWeight: '800' },
+  iconWrap: {
+    width: 50,
+    height: 50,
+    borderRadius: 16,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 18,
+  },
+  title: { fontSize: 32, fontWeight: '800', color: colors.ink, marginBottom: 8 },
+  subtitle: { fontSize: 16, color: colors.muted, marginBottom: 30, fontWeight: '700', lineHeight: 22 },
   error: {
-    backgroundColor: '#FEE2E2', color: '#B91C1C', borderRadius: 8,
+    backgroundColor: colors.dangerSoft, color: colors.dangerText, borderRadius: radii.sm,
     padding: 12, marginBottom: 16, fontSize: 14,
   },
   input: {
-    borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 12,
+    borderWidth: 1, borderColor: colors.faint, borderRadius: radii.md,
     paddingHorizontal: 16, paddingVertical: 14, fontSize: 16,
-    marginBottom: 12, color: '#111827',
+    marginBottom: 12, color: colors.ink, backgroundColor: colors.surface,
   },
   btn: {
-    backgroundColor: '#16A34A', borderRadius: 14,
+    backgroundColor: colors.primary, borderRadius: radii.md,
     paddingVertical: 16, alignItems: 'center', marginTop: 8, marginBottom: 16,
   },
-  btnText: { color: '#fff', fontSize: 17, fontWeight: '600' },
-  link: { color: '#16A34A', fontSize: 15, textAlign: 'center' },
-  btnDisabled: { backgroundColor: '#86EFAC' },
+  btnText: { color: colors.surface, fontSize: 17, fontWeight: '800' },
+  link: { color: colors.primary, fontSize: 15, textAlign: 'center', fontWeight: '800' },
+  btnDisabled: { backgroundColor: colors.disabled },
   verifyCard: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12, paddingHorizontal: 8 },
-  verifyEmoji: { fontSize: 56, marginBottom: 8 },
-  emailHighlight: { fontWeight: '700', color: '#111827' },
-  verifyHint: { fontSize: 14, color: '#6B7280', textAlign: 'center', lineHeight: 20, marginBottom: 8 },
+  emailHighlight: { fontWeight: '900', color: colors.ink },
+  verifyHint: { fontSize: 14, color: colors.muted, textAlign: 'center', lineHeight: 20, marginBottom: 8 },
   resendSuccess: {
-    backgroundColor: '#D1FAE5', color: '#065F46', borderRadius: 8,
+    backgroundColor: colors.primarySoft, color: colors.primaryDeep, borderRadius: radii.sm,
     padding: 12, fontSize: 14, textAlign: 'center', width: '100%',
   },
 });

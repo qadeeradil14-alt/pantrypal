@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import {
-  Modal, View, Text, TextInput, TouchableOpacity,
+  Modal, View, Text, TextInput,
   StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useItemsStore } from '../store/items';
 import { addItem } from '../lib/items';
+import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../lib/haptics';
 import { CATEGORY_LABELS, type ItemCategory } from '../constants/defaultItems';
 import { colors, radii, shadow } from '../constants/theme';
+import ScalePressable from './ScalePressable';
 
 const CATEGORIES: ItemCategory[] = ['fridge', 'freezer', 'pantry'];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -34,15 +36,17 @@ export default function AddItemModal({ householdId, userId, onClose }: Props) {
   async function handleAdd() {
     if (!ready) {
       setError('Still loading your household. Please close and reopen Add item.');
+      void hapticWarning();
       return;
     }
 
     const normalized = name.trim();
-    if (!normalized) { setError('Enter an item name.'); return; }
+    if (!normalized) { setError('Enter an item name.'); void hapticWarning(); return; }
 
     const existing = items.find((i) => i.name.trim().toLowerCase() === normalized.toLowerCase());
     if (existing) {
       setError(`"${existing.name}" is already in your pantry list.`);
+      void hapticWarning();
       return;
     }
 
@@ -51,9 +55,11 @@ export default function AddItemModal({ householdId, userId, onClose }: Props) {
     try {
       const item = await addItem(householdId, normalized, category, userId);
       upsertItem(item);
+      void hapticSuccess();
       onClose();
     } catch (e: any) {
       setError(e.message ?? 'Could not add item.');
+      void hapticError();
     } finally {
       setLoading(false);
     }
@@ -61,15 +67,19 @@ export default function AddItemModal({ householdId, userId, onClose }: Props) {
 
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={styles.overlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.sheet}>
           <View style={styles.handle} />
 
-          <Text style={styles.title}>New item</Text>
-          <Text style={styles.subtitle}>Add something your household checks often.</Text>
+          <View style={styles.sheetHeader}>
+            <View>
+              <Text style={styles.title}>New item</Text>
+              <Text style={styles.subtitle}>Track what your household uses.</Text>
+            </View>
+            <View style={styles.sheetIcon}>
+              <Ionicons name="add" size={20} color={colors.primary} />
+            </View>
+          </View>
 
           {error ? (
             <View style={styles.errorBox}>
@@ -91,11 +101,14 @@ export default function AddItemModal({ householdId, userId, onClose }: Props) {
           <Text style={styles.label}>Category</Text>
           <View style={styles.categoryRow}>
             {CATEGORIES.map((cat) => (
-              <TouchableOpacity
+              <ScalePressable
                 key={cat}
+                profile="chip"
                 style={[styles.catBtn, category === cat && styles.catBtnActive]}
-                onPress={() => setCategory(cat)}
-                activeOpacity={0.75}
+                onPress={() => {
+                  void hapticSelection();
+                  setCategory(cat);
+                }}
               >
                 <Ionicons
                   name={CATEGORY_ICON[cat]}
@@ -105,24 +118,26 @@ export default function AddItemModal({ householdId, userId, onClose }: Props) {
                 <Text style={[styles.catLabel, category === cat && styles.catLabelActive]}>
                   {CATEGORY_LABELS[cat]}
                 </Text>
-              </TouchableOpacity>
+              </ScalePressable>
             ))}
           </View>
 
-          <TouchableOpacity
-            style={[styles.addBtn, (!ready || loading) && styles.addBtnDisabled]}
-            onPress={handleAdd}
-            disabled={!ready || loading}
-            activeOpacity={0.8}
-          >
+          <ScalePressable style={[styles.addBtn, (!ready || loading) && styles.addBtnDisabled]} onPress={handleAdd} disabled={!ready || loading}>
             {loading
               ? <ActivityIndicator color="#fff" />
               : <Text style={styles.addBtnText}>Add to pantry</Text>}
-          </TouchableOpacity>
+          </ScalePressable>
 
-          <TouchableOpacity style={styles.cancelBtn} onPress={onClose} activeOpacity={0.6}>
+          <ScalePressable
+            style={styles.cancelBtn}
+            profile="chip"
+            onPress={() => {
+              void hapticSelection();
+              onClose();
+            }}
+          >
             <Text style={styles.cancelText}>Cancel</Text>
-          </TouchableOpacity>
+          </ScalePressable>
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -133,12 +148,12 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(43,33,24,0.42)',
+    backgroundColor: 'rgba(2, 6, 23, 0.36)',
   },
   sheet: {
-    backgroundColor: colors.background,
-    borderTopLeftRadius: radii.xl,
-    borderTopRightRadius: radii.xl,
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     padding: 24,
     paddingBottom: 40,
     ...shadow,
@@ -149,18 +164,26 @@ const styles = StyleSheet.create({
     backgroundColor: colors.faint,
     borderRadius: 2,
     alignSelf: 'center',
-    marginBottom: 20,
+    marginBottom: 18,
   },
-  title: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: colors.ink,
-    marginBottom: 4,
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 18,
   },
+  sheetIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primarySoft,
+  },
+  title: { fontSize: 22, fontWeight: '800', color: colors.ink, marginBottom: 4, letterSpacing: -0.2 },
   subtitle: {
     fontSize: 14,
     color: colors.muted,
-    marginBottom: 18,
   },
   errorBox: {
     backgroundColor: colors.lowSoft,
@@ -176,13 +199,13 @@ const styles = StyleSheet.create({
   input: {
     borderWidth: 1,
     borderColor: colors.faint,
-    borderRadius: radii.md,
+    borderRadius: 16,
     paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
+    paddingVertical: 15,
+    fontSize: 17,
     marginBottom: 20,
     color: colors.ink,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.background,
   },
   label: {
     fontSize: 12,
@@ -196,7 +219,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     paddingVertical: 14,
-    borderRadius: radii.md,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.faint,
     backgroundColor: colors.surface,
@@ -210,7 +233,7 @@ const styles = StyleSheet.create({
   catLabelActive: { color: colors.surface },
   addBtn: {
     backgroundColor: colors.primary,
-    borderRadius: radii.md,
+    borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
     marginBottom: 10,

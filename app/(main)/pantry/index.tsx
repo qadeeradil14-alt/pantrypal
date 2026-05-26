@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
-  View, Text, SectionList, StyleSheet, TouchableOpacity,
+  View, Text, SectionList, StyleSheet,
   ActivityIndicator, RefreshControl, TextInput, Alert, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -10,10 +10,12 @@ import { useAuthStore } from '../../../store/auth';
 import { useItemsStore } from '../../../store/items';
 import { ensureDefaultItems, fetchItems } from '../../../lib/items';
 import { registerPushToken } from '../../../lib/notifications';
+import { hapticSelection } from '../../../lib/haptics';
 import ItemRow from '../../../components/ItemRow';
 import AddItemModal from '../../../components/AddItemModal';
+import ScalePressable from '../../../components/ScalePressable';
 import { CATEGORY_LABELS, type ItemCategory } from '../../../constants/defaultItems';
-import { colors, radii, shadow } from '../../../constants/theme';
+import { colors, radii } from '../../../constants/theme';
 
 const CATEGORY_ORDER: ItemCategory[] = ['fridge', 'freezer', 'pantry'];
 const CATEGORY_SET = new Set<ItemCategory>(CATEGORY_ORDER);
@@ -101,6 +103,16 @@ export default function PantryScreen() {
 
   const lowCount = items.filter((i) => i.is_low).length;
   const stockedCount = Math.max(items.length - lowCount, 0);
+  const urgentItems = items
+    .filter((i) => i.is_low)
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .slice(0, 3);
+  const categoryStats = CATEGORY_ORDER.map((cat) => ({
+    key: cat,
+    label: CATEGORY_LABELS[cat],
+    count: queryFiltered.filter((i) => normalizeCategory(i.category) === cat).length,
+    low: items.filter((i) => normalizeCategory(i.category) === cat && i.is_low).length,
+  }));
 
   if (loading) {
     return (
@@ -114,34 +126,81 @@ export default function PantryScreen() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Text style={styles.eyebrow}>PantryPal</Text>
+          <Text style={styles.eyebrow}>Pantry</Text>
           <Text style={styles.headerTitle}>{household?.name ?? 'My kitchen'}</Text>
         </View>
-        <TouchableOpacity
+        <ScalePressable
           style={[styles.addBtn, !canAdd && styles.addBtnDisabled]}
           onPress={() => {
+            void hapticSelection();
             if (!canAdd) {
               Alert.alert('Still loading', 'Household is still loading. Please try again in a moment.');
               return;
             }
             setShowAdd(true);
           }}
-          activeOpacity={0.8}
         >
           <Ionicons name="add" size={20} color={colors.surface} />
           <Text style={styles.addBtnText}>Add</Text>
-        </TouchableOpacity>
+        </ScalePressable>
       </View>
 
-      <View style={styles.heroCard}>
-        <View>
-          <Text style={styles.heroNumber}>{lowCount}</Text>
-          <Text style={styles.heroLabel}>{lowCount === 1 ? 'item needs attention' : 'items need attention'}</Text>
+      <View style={styles.summaryStrip}>
+        <View style={styles.summaryCell}>
+          <Text style={styles.summaryValue}>{items.length}</Text>
+          <Text style={styles.summaryLabel}>Items</Text>
         </View>
-        <View style={styles.heroRight}>
-          <Text style={styles.stockedNumber}>{stockedCount}</Text>
-          <Text style={styles.stockedLabel}>stocked</Text>
+        <View style={styles.summaryDivider} />
+        <View style={styles.summaryCell}>
+          <Text style={styles.summaryValue}>{lowCount}</Text>
+          <Text style={styles.summaryLabel}>Low</Text>
         </View>
+        <View style={styles.summaryDivider} />
+        <View style={styles.summaryCell}>
+          <Text style={styles.summaryValue}>{stockedCount}</Text>
+          <Text style={styles.summaryLabel}>Stocked</Text>
+        </View>
+      </View>
+
+      <View style={styles.commandPanel}>
+        <View style={styles.commandHeader}>
+          <Text style={styles.commandTitle}>Focus list</Text>
+          <Text style={styles.commandMeta}>{urgentItems.length > 0 ? 'Needs restock' : 'All clear'}</Text>
+        </View>
+        {urgentItems.length > 0 ? (
+          <View style={styles.urgentStack}>
+            {urgentItems.map((item) => (
+              <View key={item.id} style={styles.urgentRow}>
+                <View style={styles.urgentDot} />
+                <Text style={styles.urgentName} numberOfLines={1}>{item.name}</Text>
+                <Text style={styles.urgentCat}>{CATEGORY_LABELS[normalizeCategory(item.category) ?? 'pantry']}</Text>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <View style={styles.clearRow}>
+            <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
+            <Text style={styles.clearText}>Everything is stocked right now</Text>
+          </View>
+        )}
+      </View>
+
+      <View style={styles.statsGrid}>
+        {categoryStats.map((stat) => (
+          <ScalePressable
+            key={stat.key}
+            profile="card"
+            style={[styles.statCard, selectedCategory === stat.key && styles.statCardActive]}
+            onPress={() => {
+              void hapticSelection();
+              setSelectedCategory(selectedCategory === stat.key ? 'all' : stat.key);
+            }}
+          >
+            <Text style={[styles.statValue, selectedCategory === stat.key && styles.statValueActive]}>{stat.count}</Text>
+            <Text style={[styles.statLabel, selectedCategory === stat.key && styles.statLabelActive]}>{stat.label}</Text>
+            {stat.low > 0 && <Text style={styles.statLow}>{stat.low} low</Text>}
+          </ScalePressable>
+        ))}
       </View>
 
       <View style={styles.searchWrap}>
@@ -170,14 +229,17 @@ export default function PantryScreen() {
           const active = selectedCategory === cat;
           const label = cat === 'all' ? `All ${count}` : `${CATEGORY_LABELS[cat as ItemCategory]} ${count}`;
           return (
-            <TouchableOpacity
+            <ScalePressable
               key={cat}
+              profile="chip"
               style={[styles.chip, active && styles.chipActive]}
-              onPress={() => setSelectedCategory(cat)}
-              activeOpacity={0.75}
+              onPress={() => {
+                void hapticSelection();
+                setSelectedCategory(cat);
+              }}
             >
               <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
-            </TouchableOpacity>
+            </ScalePressable>
           );
         })}
       </ScrollView>
@@ -192,9 +254,16 @@ export default function PantryScreen() {
             {q ? 'Try a different search term or clear the filter.' : 'Add the first item your household checks often.'}
           </Text>
           {!q && (
-            <TouchableOpacity style={styles.emptyAddBtn} onPress={() => canAdd && setShowAdd(true)}>
+            <ScalePressable
+              style={styles.emptyAddBtn}
+              onPress={() => {
+                if (!canAdd) return;
+                void hapticSelection();
+                setShowAdd(true);
+              }}
+            >
               <Text style={styles.emptyAddBtnText}>Add item</Text>
-            </TouchableOpacity>
+            </ScalePressable>
           )}
         </View>
       ) : (
@@ -256,12 +325,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 18,
-    paddingBottom: 14,
+    paddingTop: 16,
+    paddingBottom: 8,
   },
   headerLeft: { gap: 2, flex: 1 },
-  eyebrow: { fontSize: 13, color: colors.primary, fontWeight: '800' },
-  headerTitle: { fontSize: 30, fontWeight: '900', color: colors.ink },
+  eyebrow: { fontSize: 12, color: colors.primary, fontWeight: '800', textTransform: 'uppercase' },
+  headerTitle: { fontSize: 30, fontWeight: '800', color: colors.ink, letterSpacing: -0.6 },
   addBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -269,48 +338,86 @@ const styles = StyleSheet.create({
     gap: 4,
     backgroundColor: colors.primary,
     borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   addBtnDisabled: { backgroundColor: '#B7C9B8' },
   addBtnText: { color: colors.surface, fontSize: 15, fontWeight: '800' },
-  heroCard: {
+  summaryStrip: {
     marginHorizontal: 16,
-    marginBottom: 14,
-    borderRadius: radii.xl,
-    backgroundColor: colors.surfaceWarm,
-    padding: 18,
+    marginBottom: 10,
+    borderRadius: radii.lg,
+    backgroundColor: colors.surface,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     borderWidth: 1,
     borderColor: colors.faint,
-    ...shadow,
   },
-  heroNumber: { fontSize: 44, lineHeight: 48, fontWeight: '900', color: colors.low },
-  heroLabel: { fontSize: 14, color: colors.muted, fontWeight: '700' },
-  heroRight: {
+  summaryCell: { flex: 1, alignItems: 'center', gap: 2 },
+  summaryDivider: { width: 1, height: 34, backgroundColor: colors.faint },
+  summaryValue: { fontSize: 24, color: colors.ink, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  summaryLabel: { fontSize: 11, color: colors.muted, fontWeight: '700' },
+  commandPanel: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: radii.md,
     backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.faint,
+    padding: 14,
   },
-  stockedNumber: { fontSize: 24, fontWeight: '900', color: colors.primary },
-  stockedLabel: { fontSize: 12, color: colors.muted, fontWeight: '700' },
+  commandHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  commandTitle: { fontSize: 16, color: colors.ink, fontWeight: '800' },
+  commandMeta: { fontSize: 12, color: colors.muted, fontWeight: '600' },
+  urgentStack: { gap: 8 },
+  urgentRow: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 2 },
+  urgentDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.low },
+  urgentName: { flex: 1, fontSize: 15, color: colors.ink, fontWeight: '700' },
+  urgentCat: { fontSize: 12, color: colors.muted, fontWeight: '700' },
+  clearRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  clearText: { color: colors.primary, fontWeight: '700' },
+  statsGrid: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    marginBottom: 10,
+  },
+  statCard: {
+    flex: 1,
+    minHeight: 70,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.faint,
+    padding: 12,
+    justifyContent: 'space-between',
+  },
+  statCardActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  statValue: { fontSize: 22, color: colors.ink, fontWeight: '800' },
+  statValueActive: { color: colors.surface },
+  statLabel: { fontSize: 12, color: colors.muted, fontWeight: '700' },
+  statLabelActive: { color: colors.primarySoft },
+  statLow: { fontSize: 11, color: colors.low, fontWeight: '800' },
   searchWrap: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.surface,
     marginHorizontal: 16,
-    marginBottom: 8,
-    borderRadius: radii.lg,
+    marginBottom: 10,
+    borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.faint,
     paddingHorizontal: 14,
     gap: 8,
   },
-  searchInput: { flex: 1, paddingVertical: 13, fontSize: 15, color: colors.ink },
+  searchInput: { flex: 1, paddingVertical: 11, fontSize: 15, color: colors.ink },
   chipsScroll: { height: 50, flexGrow: 0, flexShrink: 0, backgroundColor: colors.background },
   chips: {
     flexDirection: 'row',
@@ -324,11 +431,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.faint,
     backgroundColor: colors.surface,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
   },
   chipActive: { borderColor: colors.primary, backgroundColor: colors.primary },
-  chipText: { fontSize: 13, color: colors.muted, fontWeight: '800' },
+  chipText: { fontSize: 13, color: colors.muted, fontWeight: '700' },
   chipTextActive: { color: colors.surface },
   sectionHeader: {
     flexDirection: 'row',
@@ -339,7 +446,7 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     backgroundColor: colors.background,
   },
-  sectionTitle: { fontSize: 12, fontWeight: '900', color: colors.muted, textTransform: 'uppercase' },
+  sectionTitle: { fontSize: 12, fontWeight: '800', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.4 },
   sectionMeta: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   sectionLowBadge: {
     backgroundColor: colors.lowSoft,

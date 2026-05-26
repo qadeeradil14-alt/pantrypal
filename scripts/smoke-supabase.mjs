@@ -85,6 +85,88 @@ async function run() {
   if (!updateByB.data.is_low) throw new Error('Item low-state update did not persist');
   console.log('Cross-member item update works');
 
+  // Trigger pipeline: low/out item should auto-appear in shopping_list.
+  const activeShopping = await clientA
+    .from('shopping_list')
+    .select('id, name, status, source_item_id')
+    .eq('household_id', created.id)
+    .eq('status', 'active')
+    .eq('source_item_id', insertItem.data.id)
+    .single();
+  if (activeShopping.error) {
+    throw new Error(`shopping_list trigger insert failed: ${activeShopping.error.message}`);
+  }
+  console.log('Pantry-to-shopping trigger insert works');
+
+  // Mark item back to stocked and verify shopping row is completed.
+  const updateBackOk = await clientA
+    .from('items')
+    .update({ is_low: false })
+    .eq('id', insertItem.data.id)
+    .select('id, macro_status, is_low')
+    .single();
+  if (updateBackOk.error) throw new Error(`Update item back to stocked failed: ${updateBackOk.error.message}`);
+  if (updateBackOk.data.is_low !== false || updateBackOk.data.macro_status !== 'in_stock') {
+    throw new Error('macro_status/is_low sync failed while moving back to stocked');
+  }
+  const completedShopping = await clientA
+    .from('shopping_list')
+    .select('id, status, source_item_id')
+    .eq('household_id', created.id)
+    .eq('source_item_id', insertItem.data.id)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .single();
+  if (completedShopping.error) {
+    throw new Error(`shopping_list completion lookup failed: ${completedShopping.error.message}`);
+  }
+  if (completedShopping.data.status !== 'completed') {
+    throw new Error('shopping_list row was not completed after item restock');
+  }
+  console.log('Pantry-to-shopping completion sync works');
+
+  // Macro-status path should also re-open shopping row.
+  const markOut = await clientA
+    .from('items')
+    .update({ macro_status: 'out_of_stock' })
+    .eq('id', insertItem.data.id)
+    .select('id, macro_status, is_low')
+    .single();
+  if (markOut.error) throw new Error(`macro_status update failed: ${markOut.error.message}`);
+  if (markOut.data.is_low !== true || markOut.data.macro_status !== 'out_of_stock') {
+    throw new Error('macro_status/is_low sync failed for out_of_stock');
+  }
+  const reopenedShopping = await clientB
+    .from('shopping_list')
+    .select('id, status')
+    .eq('household_id', created.id)
+    .eq('source_item_id', insertItem.data.id)
+    .eq('status', 'active')
+    .single();
+  if (reopenedShopping.error) {
+    throw new Error(`Cross-member shopping_list read failed: ${reopenedShopping.error.message}`);
+  }
+  console.log('Shopping list realtime ledger is shared across household members');
+
+  // Profile household pointer should be synced for both users.
+  const profileA = await clientA
+    .from('profiles')
+    .select('id, household_id')
+    .eq('id', (await clientA.auth.getUser()).data.user.id)
+    .single();
+  if (profileA.error || profileA.data.household_id !== created.id) {
+    throw new Error('Profile household sync failed for owner');
+  }
+  const profileB = await clientB
+    .from('profiles')
+    .select('id, household_id')
+    .eq('id', (await clientB.auth.getUser()).data.user.id)
+    .single();
+  if (profileB.error || profileB.data.household_id !== created.id) {
+    throw new Error('Profile household sync failed for member');
+  }
+  console.log('Profile household mapping sync works');
+
   const insertStore = await clientA
     .from('stores')
     .insert({
