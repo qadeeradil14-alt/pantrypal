@@ -1,0 +1,14 @@
+-- Database webhook: fires when a household member enters a geofenced store.
+-- Replace <PROJECT_REF> and <WEBHOOK_SECRET> when deploying.
+-- Supabase dashboard: Database → Webhooks → Create webhook
+--
+-- Name:    notify_store_arrival
+-- Table:   store_arrivals (INSERT events only)
+-- URL:     https://<PROJECT_REF>.supabase.co/functions/v1/notify-store-arrival
+-- Headers: x-supabase-signature: <WEBHOOK_SECRET>
+--
+-- Deploy the edge function:
+--   supabase functions deploy notify-store-arrival --no-verify-jwt
+--
+-- This migration is a reminder/reference only.
+-- Webhooks are configured in the dashboard, not via SQL.

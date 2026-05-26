@@ -9,7 +9,7 @@ import type { AppColors } from '../constants/theme';
 export default function ArrivalBanner() {
   const { colors } = useTheme();
   const router = useRouter();
-  const { activeStoreId, stores } = useStoresStore();
+  const { activeStoreId, stores, setActiveStore } = useStoresStore();
   const translateY = useRef(new Animated.Value(-120)).current;
   const prevStoreId = useRef<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -29,12 +29,13 @@ export default function ArrivalBanner() {
     timerRef.current = setTimeout(hide, 5000);
   }
 
-  function hide() {
+  function hide(clearShoppingMode = false) {
     Animated.timing(translateY, {
       toValue: -120,
       duration: 300,
       useNativeDriver: true,
     }).start();
+    if (clearShoppingMode) setActiveStore(null);
   }
 
   useEffect(() => {
@@ -51,7 +52,10 @@ export default function ArrivalBanner() {
     <Animated.View style={[styles.banner, { transform: [{ translateY }] }]}>
       <Pressable
         style={styles.inner}
-        onPress={() => { hide(); router.push('/(main)/grocery'); }}
+        onPress={() => {
+          hide();
+          router.push('/(main)/grocery');
+        }}
       >
         <Text style={styles.icon}>🛒</Text>
         <Text style={styles.text} numberOfLines={2}>

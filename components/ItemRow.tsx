@@ -188,12 +188,11 @@ function ItemRowComponent({ item, userId, onEditPress }: Props) {
         </View>
         {item.is_low ? (
           <View style={styles.lowBadge}>
+            <View style={styles.lowDot} />
             <Text style={styles.lowBadgeText}>Low</Text>
           </View>
         ) : (
-          <View style={styles.okBadge}>
-            <Text style={styles.okBadgeText}>✓</Text>
-          </View>
+          <View style={styles.stockDot} accessibilityLabel="In stock" />
         )}
       </ScalePressable>
     </Swipeable>
@@ -221,21 +220,28 @@ function makeStyles(colors: AppColors) {
     name: { fontSize: 16, fontWeight: '700', color: colors.ink },
     meta: { fontSize: 13, color: colors.muted, fontWeight: '500' },
     lowBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
       backgroundColor: colors.warningSoft,
       borderRadius: 999,
-      paddingHorizontal: 10,
+      paddingHorizontal: 9,
       paddingVertical: 4,
     },
-    lowBadgeText: { fontSize: 12, fontWeight: '800', color: colors.warning },
-    okBadge: {
-      width: 28,
-      height: 28,
-      borderRadius: 14,
-      backgroundColor: colors.successSoft,
-      alignItems: 'center',
-      justifyContent: 'center',
+    lowDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: colors.warning,
     },
-    okBadgeText: { fontSize: 13, color: colors.success, fontWeight: '700' },
+    lowBadgeText: { fontSize: 11, fontWeight: '800', color: colors.warning, letterSpacing: 0.3 },
+    stockDot: {
+      width: 7,
+      height: 7,
+      borderRadius: 4,
+      backgroundColor: colors.success,
+      opacity: 0.85,
+    },
     swipeAction: {
       justifyContent: 'center',
       alignItems: 'center',
