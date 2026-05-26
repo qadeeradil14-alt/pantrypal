@@ -11,7 +11,11 @@ type MutationType =
   | 'mark_got_it'
   | 'delete_item'
   | 'set_item_store'
-  | 'complete_shopping_entry';
+  | 'complete_shopping_entry'
+  | 'add_item'
+  | 'update_item'
+  | 'add_store'
+  | 'delete_store';
 
 type MutationPayloadMap = {
   mark_low: { itemId: string; userId: string };
@@ -20,6 +24,15 @@ type MutationPayloadMap = {
   delete_item: { itemId: string };
   set_item_store: { itemId: string; storeId: string | null };
   complete_shopping_entry: { entryId: string };
+  add_item: { householdId: string; name: string; category: string; userId: string };
+  update_item: {
+    itemId: string;
+    name: string;
+    category: string;
+    expectedUpdatedAt: string;
+  };
+  add_store: { householdId: string; name: string; address?: string };
+  delete_store: { storeId: string };
 };
 
 type QueuedMutation<T extends MutationType = MutationType> = {
@@ -33,6 +46,29 @@ let workerStarted = false;
 let intervalRef: ReturnType<typeof setInterval> | null = null;
 let appStateSub: { remove: () => void } | null = null;
 let flushing = false;
+const queueListeners = new Set<() => void>();
+
+function notifyQueueListeners(): void {
+  queueListeners.forEach((listener) => {
+    try {
+      listener();
+    } catch {
+      // ignore listener errors
+    }
+  });
+}
+
+export function subscribeOfflineQueue(listener: () => void): () => void {
+  queueListeners.add(listener);
+  return () => {
+    queueListeners.delete(listener);
+  };
+}
+
+export async function getPendingMutationCount(): Promise<number> {
+  const queue = await readQueue();
+  return queue.length;
+}
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -55,6 +91,7 @@ async function readQueue(): Promise<QueuedMutation[]> {
 
 async function writeQueue(queue: QueuedMutation[]): Promise<void> {
   await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+  notifyQueueListeners();
 }
 
 async function appendMutation<T extends MutationType>(type: T, payload: MutationPayloadMap[T]): Promise<void> {
@@ -66,6 +103,17 @@ async function appendMutation<T extends MutationType>(type: T, payload: Mutation
     createdAt: nowIso(),
   });
   await writeQueue(queue);
+}
+
+export async function enqueueOfflineMutation<T extends MutationType>(
+  type: T,
+  payload: MutationPayloadMap[T],
+): Promise<void> {
+  await appendMutation(type, payload);
+}
+
+export function isTransientNetworkErrorForQueue(error: unknown): boolean {
+  return isTransientNetworkError(error);
 }
 
 function isTransientNetworkError(error: unknown): boolean {
@@ -133,6 +181,50 @@ async function runMutation(m: QueuedMutation): Promise<void> {
       if (error) throw error;
       return;
     }
+    case 'add_item': {
+      const payload = m.payload as MutationPayloadMap['add_item'];
+      const { error } = await supabase.from('items').insert({
+        household_id: payload.householdId,
+        name: payload.name,
+        category: payload.category,
+        added_by: payload.userId,
+      });
+      if (error) throw error;
+      return;
+    }
+    case 'update_item': {
+      const payload = m.payload as MutationPayloadMap['update_item'];
+      const { data, error } = await supabase
+        .from('items')
+        .update({ name: payload.name, category: payload.category })
+        .eq('id', payload.itemId)
+        .eq('updated_at', payload.expectedUpdatedAt)
+        .select('id')
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) {
+        throw new Error('ITEM_CONFLICT');
+      }
+      return;
+    }
+    case 'add_store': {
+      const payload = m.payload as MutationPayloadMap['add_store'];
+      const { error } = await supabase.from('stores').insert({
+        household_id: payload.householdId,
+        name: payload.name,
+        address: payload.address?.trim() || null,
+        latitude: null,
+        longitude: null,
+      });
+      if (error) throw error;
+      return;
+    }
+    case 'delete_store': {
+      const payload = m.payload as MutationPayloadMap['delete_store'];
+      const { error } = await supabase.from('stores').delete().eq('id', payload.storeId);
+      if (error) throw error;
+      return;
+    }
     default:
       return;
   }
@@ -158,6 +250,9 @@ export async function flushMutationQueue(): Promise<void> {
           break;
         }
         // Permanent failures are dropped to avoid queue deadlock.
+        if (String((error as Error)?.message) === 'ITEM_CONFLICT') {
+          // Drop conflicted update; user must refresh.
+        }
       }
     }
 

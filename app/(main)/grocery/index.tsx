@@ -22,6 +22,7 @@ import type { AppColors } from '../../../constants/theme';
 import { useTheme } from '../../../hooks/useTheme';
 import ScalePressable from '../../../components/ScalePressable';
 import EmptyState from '../../../components/EmptyState';
+import SyncStatusPill from '../../../components/SyncStatusPill';
 
 const WEEKLY_BUDGET = 150;
 
@@ -129,6 +130,7 @@ export default function GroceryScreen() {
           <Text style={styles.eyebrow}>{shoppingMode ? 'Shopping mode' : 'Grocery list'}</Text>
           <Text style={styles.headerTitle}>{activeStore ? activeStore.name : 'Shopping list'}</Text>
         </View>
+        <SyncStatusPill />
         <ScalePressable
           style={[styles.modeBtn, shoppingMode && styles.modeBtnActive]}
           onPress={() => {
@@ -240,12 +242,12 @@ export default function GroceryScreen() {
                 onPress={() => handleGotIt(entry)}
                 disabled={isTapping}
               >
-                <View style={[styles.checkbox, shoppingMode && styles.checkboxShop, isTapping && styles.checkboxTapping]}>
+                <View style={[styles.lead, shoppingMode && styles.leadShop, isTapping && styles.leadTapping]}>
                   {isTapping ? (
                     <ActivityIndicator size="small" color={colors.primary} />
-                  ) : (
-                    <Ionicons name="checkmark" size={18} color={colors.faint} />
-                  )}
+                  ) : shoppingMode ? (
+                    <Ionicons name="checkmark" size={13} color={colors.accent} />
+                  ) : null}
                 </View>
                 <View style={styles.rowBody}>
                   <Text style={[styles.itemName, shoppingMode && styles.itemNameShop]}>
@@ -370,18 +372,20 @@ function makeStyles(colors: AppColors) {
       ...shadow,
     },
     rowShop: { paddingVertical: 16, borderColor: colors.accentSoft },
-    checkbox: {
-      width: 32,
-      height: 32,
-      borderRadius: 16,
-      borderWidth: 2,
-      borderColor: colors.faint,
+    lead: {
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      borderWidth: 1.5,
+      borderColor: colors.border,
       justifyContent: 'center',
       alignItems: 'center',
-      backgroundColor: colors.surface,
     },
-    checkboxTapping: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
-    checkboxShop: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
+    leadTapping: { borderColor: colors.primary },
+    leadShop: {
+      borderColor: colors.accent,
+      backgroundColor: colors.accentSoft,
+    },
     rowBody: { flex: 1 },
     itemName: { fontSize: 16, color: colors.ink, fontWeight: '700' },
     itemNameShop: { fontSize: 18 },

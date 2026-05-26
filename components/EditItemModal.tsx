@@ -5,7 +5,12 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useItemsStore } from '../store/items';
-import { updateItemDetails, deleteItemWithQueue } from '../lib/items';
+import {
+  ItemConflictError,
+  isOfflineItemId,
+  updateItemDetailsWithQueue,
+  deleteItemWithQueue,
+} from '../lib/items';
 import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../lib/haptics';
 import { CATEGORY_LABELS, type ItemCategory } from '../constants/defaultItems';
 import type { Item } from '../lib/items';
@@ -45,14 +50,40 @@ export default function EditItemModal({ item, onClose }: Props) {
     if (!trimmed) { setError('Name cannot be empty.'); return; }
     setError('');
     setSaving(true);
+    const prev = { name: item.name, category: item.category };
     updateItem(item.id, { name: trimmed, category });
     try {
-      await updateItemDetails(item.id, { name: trimmed, category });
+      if (isOfflineItemId(item.id)) {
+        setError('This item will sync when you’re back online.');
+        void hapticWarning();
+        return;
+      }
+      const { queued, item: saved } = await updateItemDetailsWithQueue(
+        item.id,
+        { name: trimmed, category },
+        item.updated_at,
+      );
+      if (saved) {
+        updateItem(item.id, {
+          name: saved.name,
+          category: saved.category as ItemCategory,
+          updated_at: saved.updated_at,
+        });
+      }
       void hapticSuccess();
+      if (queued) {
+        setError('Saved offline — will sync when you’re back online.');
+        setTimeout(onClose, 900);
+        return;
+      }
       onClose();
-    } catch (e: any) {
-      updateItem(item.id, { name: item.name, category: item.category });
-      setError(e?.message ?? 'Could not save. Try again.');
+    } catch (e: unknown) {
+      updateItem(item.id, prev);
+      if (e instanceof ItemConflictError) {
+        setError(e.message);
+      } else {
+        setError(e instanceof Error ? e.message : 'Could not save. Try again.');
+      }
       void hapticError();
     } finally {
       setSaving(false);

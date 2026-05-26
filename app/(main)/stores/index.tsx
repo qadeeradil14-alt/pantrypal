@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useHouseholdStore } from '../../../store/household';
 import { useStoresStore } from '../../../store/stores';
-import { fetchStores, addStore, deleteStore, PRESET_STORES, type Store } from '../../../lib/stores';
+import { fetchStores, addStoreWithQueue, deleteStoreWithQueue, PRESET_STORES, type Store } from '../../../lib/stores';
 import { startGeofencing, stopGeofencing } from '../../../lib/geofencing';
 import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../../../lib/haptics';
 import { radii, shadow } from '../../../constants/theme';
@@ -84,7 +84,7 @@ export default function StoresScreen() {
           }
           try {
             setRemovingId(store.id);
-            await deleteStore(store.id);
+            await deleteStoreWithQueue(store.id);
             removeStore(store.id);
             await stopGeofencing();
             const updated = stores.filter((s) => s.id !== store.id);
@@ -261,8 +261,11 @@ function AddStoreModal({
     setSaving(true);
     setError('');
     try {
-      const store = await addStore(householdId, storeName, storeAddress);
+      const { store, queued } = await addStoreWithQueue(householdId, storeName, storeAddress);
       onAdd(store);
+      if (queued) {
+        setError('Saved offline — will sync when you’re back online.');
+      }
       void hapticSuccess();
     } catch (e: any) {
       setError(e.message ?? 'Could not add store.');

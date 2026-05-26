@@ -1,6 +1,30 @@
 import { supabase } from './supabase';
 import * as Location from 'expo-location';
-import { runWithOfflineQueue } from './offlineQueue';
+import { enqueueOfflineMutation, isTransientNetworkErrorForQueue, runWithOfflineQueue } from './offlineQueue';
+
+export const OFFLINE_STORE_ID_PREFIX = 'offline-store:';
+
+export function isOfflineStoreId(id: string): boolean {
+  return id.startsWith(OFFLINE_STORE_ID_PREFIX);
+}
+
+function makeOfflineStoreId(): string {
+  return `${OFFLINE_STORE_ID_PREFIX}${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function makeOptimisticStore(householdId: string, name: string, address?: string): Store {
+  const ts = new Date().toISOString();
+  return {
+    id: makeOfflineStoreId(),
+    household_id: householdId,
+    name: name.trim(),
+    address: address?.trim() || null,
+    latitude: null,
+    longitude: null,
+    radius_meters: 150,
+    created_at: ts,
+  };
+}
 
 export interface Store {
   id: string;
@@ -73,6 +97,37 @@ export async function addStore(
 export async function deleteStore(storeId: string) {
   const { error } = await supabase.from('stores').delete().eq('id', storeId);
   if (error) throw error;
+}
+
+export async function addStoreWithQueue(
+  householdId: string,
+  name: string,
+  address?: string,
+): Promise<{ queued: boolean; store: Store }> {
+  try {
+    const store = await addStore(householdId, name, address);
+    return { queued: false, store };
+  } catch (error) {
+    if (!isTransientNetworkErrorForQueue(error)) throw error;
+    const store = makeOptimisticStore(householdId, name, address);
+    await enqueueOfflineMutation('add_store', {
+      householdId,
+      name: name.trim(),
+      address: address?.trim() || undefined,
+    });
+    return { queued: true, store };
+  }
+}
+
+export async function deleteStoreWithQueue(storeId: string): Promise<{ queued: boolean }> {
+  if (isOfflineStoreId(storeId)) {
+    return { queued: true };
+  }
+  return runWithOfflineQueue(
+    'delete_store',
+    { storeId },
+    () => deleteStore(storeId),
+  );
 }
 
 export async function setItemStore(itemId: string, storeId: string | null) {

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
-  View, Text, SectionList, StyleSheet,
+  View, Text, SectionList, StyleSheet, ScrollView,
   ActivityIndicator, RefreshControl, TextInput, Alert,
   Animated, Easing, Pressable,
 } from 'react-native';
@@ -16,6 +16,7 @@ import { hapticSelection, hapticSuccess } from '../../../lib/haptics';
 import ItemRow from '../../../components/ItemRow';
 import AddItemModal from '../../../components/AddItemModal';
 import EmptyState from '../../../components/EmptyState';
+import SyncStatusPill from '../../../components/SyncStatusPill';
 import EditItemModal from '../../../components/EditItemModal';
 import type { Item } from '../../../lib/items';
 import ScalePressable from '../../../components/ScalePressable';
@@ -221,6 +222,7 @@ export default function PantryScreen() {
           <Text style={styles.householdSub}>{household?.name ?? 'Your pantry'}</Text>
         </View>
         <View style={styles.headerStats}>
+          <SyncStatusPill />
           <View style={[styles.healthPill, { backgroundColor: healthScore >= 80 ? colors.successSoft : healthScore >= 50 ? colors.warningSoft : colors.lowSoft }]}>
             <Text style={[styles.healthPillText, { color: healthScore >= 80 ? colors.success : healthScore >= 50 ? colors.warning : colors.low }]}>
               {healthScore}%
@@ -247,7 +249,13 @@ export default function PantryScreen() {
         />
       </View>
 
-      <View style={styles.filterRow}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        nestedScrollEnabled
+        style={styles.filterScroll}
+        contentContainerStyle={styles.filterRow}
+      >
         {(['all', ...CATEGORY_ORDER] as Array<'all' | ItemCategory>).map((key) => {
           const active = selectedCategory === key;
           const stat = categoryStats.find((s) => s.key === key);
@@ -271,7 +279,7 @@ export default function PantryScreen() {
             </ScalePressable>
           );
         })}
-      </View>
+      </ScrollView>
 
       {lowItems.length > 0 && (
         <View style={styles.section}>
@@ -460,12 +468,16 @@ function makeStyles(colors: AppColors) {
     },
     searchInput: { flex: 1, paddingVertical: 12, fontSize: 15, color: colors.ink },
 
+    filterScroll: {
+      marginBottom: 20,
+      flexGrow: 0,
+    },
     filterRow: {
       flexDirection: 'row',
+      alignItems: 'center',
       gap: 8,
       paddingHorizontal: 16,
-      marginBottom: 20,
-      flexWrap: 'nowrap',
+      paddingRight: 24,
     },
     filterPill: {
       flexDirection: 'row',

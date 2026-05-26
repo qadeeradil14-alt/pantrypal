@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useItemsStore } from '../store/items';
-import { addItem } from '../lib/items';
+import { addItemWithQueue } from '../lib/items';
 import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../lib/haptics';
 import { CATEGORY_LABELS, type ItemCategory } from '../constants/defaultItems';
 import { useTheme } from '../hooks/useTheme';
@@ -55,9 +55,14 @@ export default function AddItemModal({ householdId, userId, onClose }: Props) {
     setError('');
     setLoading(true);
     try {
-      const item = await addItem(householdId, normalized, category, userId);
+      const { item, queued } = await addItemWithQueue(householdId, normalized, category, userId);
       upsertItem(item);
       void hapticSuccess();
+      if (queued) {
+        setError('Saved offline — will sync when you’re back online.');
+        setTimeout(onClose, 900);
+        return;
+      }
       onClose();
     } catch (e: any) {
       setError(e.message ?? 'Could not add item.');
