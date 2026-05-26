@@ -1,14 +1,18 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { joinHousehold } from '../../lib/households';
 import { useAuthStore } from '../../store/auth';
 import { useHouseholdStore } from '../../store/household';
+import { useTheme } from '../../hooks/useTheme';
+import type { AppColors } from '../../constants/theme';
 
 export default function JoinHouseholdScreen() {
+  const { colors } = useTheme();
   const router = useRouter();
   const { session } = useAuthStore();
   const { setHousehold } = useHouseholdStore();
@@ -16,11 +20,10 @@ export default function JoinHouseholdScreen() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   function handleBack() {
-    if (router.canGoBack()) {
-      router.back();
-      return;
-    }
+    if (router.canGoBack()) { router.back(); return; }
     router.replace('/(setup)/create-or-join');
   }
 
@@ -41,17 +44,19 @@ export default function JoinHouseholdScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <TouchableOpacity style={styles.back} onPress={handleBack}>
-        <Text style={styles.backText}>← Back</Text>
+        <Ionicons name="chevron-back" size={18} color={colors.primary} />
+        <Text style={styles.backText}>Back</Text>
       </TouchableOpacity>
+
+      <View style={styles.iconWrap}>
+        <Ionicons name="key-outline" size={22} color={colors.primary} />
+      </View>
       <Text style={styles.title}>Join a household</Text>
       <Text style={styles.subtitle}>Ask your partner for the 6-character invite code.</Text>
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {error ? <View style={styles.errorBox}><Text style={styles.errorText}>{error}</Text></View> : null}
 
       <TextInput
         style={[styles.input, styles.codeInput]}
@@ -64,38 +69,45 @@ export default function JoinHouseholdScreen() {
         onChangeText={(t) => setCode(t.toUpperCase())}
         onSubmitEditing={handleJoin}
         returnKeyType="join"
-        placeholderTextColor="#aaa"
+        placeholderTextColor={colors.placeholder}
       />
 
-      <TouchableOpacity style={styles.btn} onPress={handleJoin} disabled={loading}>
+      <TouchableOpacity style={[styles.btn, loading && styles.btnDisabled]} onPress={handleJoin} disabled={loading}>
         {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Join household</Text>}
       </TouchableOpacity>
     </KeyboardAvoidingView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff', paddingHorizontal: 28, paddingTop: 60 },
-  back: { marginBottom: 32 },
-  backText: { color: '#16A34A', fontSize: 16 },
-  title: { fontSize: 28, fontWeight: '700', color: '#111827', marginBottom: 8 },
-  subtitle: { fontSize: 15, color: '#6B7280', marginBottom: 32 },
-  error: {
-    backgroundColor: '#FEE2E2', color: '#B91C1C', borderRadius: 8,
-    padding: 12, marginBottom: 16, fontSize: 14,
-  },
-  input: {
-    borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 12,
-    paddingHorizontal: 16, paddingVertical: 14, fontSize: 16,
-    marginBottom: 12, color: '#111827',
-  },
-  codeInput: {
-    fontSize: 28, fontWeight: '700', letterSpacing: 8,
-    textAlign: 'center', paddingVertical: 20,
-  },
-  btn: {
-    backgroundColor: '#16A34A', borderRadius: 14,
-    paddingVertical: 16, alignItems: 'center', marginTop: 8,
-  },
-  btnText: { color: '#fff', fontSize: 17, fontWeight: '600' },
-});
+function makeStyles(colors: AppColors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background, paddingHorizontal: 28, paddingTop: 60 },
+    back: { marginBottom: 30, flexDirection: 'row', alignItems: 'center', gap: 4 },
+    backText: { color: colors.primary, fontSize: 16, fontWeight: '800' },
+    iconWrap: {
+      width: 50, height: 50, borderRadius: 16,
+      backgroundColor: colors.primarySoft,
+      alignItems: 'center', justifyContent: 'center', marginBottom: 18,
+    },
+    title: { fontSize: 32, fontWeight: '800', color: colors.ink, marginBottom: 8 },
+    subtitle: { fontSize: 16, color: colors.muted, fontWeight: '600', marginBottom: 28, lineHeight: 22 },
+    errorBox: { backgroundColor: colors.dangerSoft, borderRadius: 12, padding: 12, marginBottom: 16 },
+    errorText: { color: colors.danger, fontSize: 14, lineHeight: 20 },
+    input: {
+      borderWidth: 1, borderColor: colors.border, borderRadius: 14,
+      paddingHorizontal: 16, paddingVertical: 14, fontSize: 16,
+      marginBottom: 20, color: colors.ink, backgroundColor: colors.surface,
+    },
+    codeInput: {
+      fontSize: 30, fontWeight: '800', letterSpacing: 10,
+      textAlign: 'center', paddingVertical: 22,
+      borderWidth: 2, borderColor: colors.primary,
+    },
+    btn: {
+      backgroundColor: colors.primary, borderRadius: 14,
+      paddingVertical: 16, alignItems: 'center',
+    },
+    btnDisabled: { backgroundColor: colors.disabled },
+    btnText: { color: '#FFFFFF', fontSize: 17, fontWeight: '800' },
+  });
+}

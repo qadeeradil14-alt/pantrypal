@@ -1,5 +1,6 @@
-import { TouchableOpacity, View, Text, StyleSheet, Alert } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { memo, useMemo, useRef } from 'react';
+import { View, Text, StyleSheet, Alert, Animated } from 'react-native';
+import { Swipeable } from 'react-native-gesture-handler';
 import { useItemsStore } from '../store/items';
 import { useStoresStore } from '../store/stores';
 import { deleteItemWithQueue, markItemLowWithQueue, markItemOkWithQueue } from '../lib/items';
@@ -7,16 +8,27 @@ import { setItemStoreWithQueue } from '../lib/stores';
 import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../lib/haptics';
 import type { Item } from '../lib/items';
 import { CATEGORY_LABELS } from '../constants/defaultItems';
-import { colors, radii } from '../constants/theme';
+import { getItemEmoji } from '../constants/itemEmojis';
+import { useTheme } from '../hooks/useTheme';
+import type { AppColors } from '../constants/theme';
+import ScalePressable from './ScalePressable';
 
 interface Props {
   item: Item;
   userId: string;
+  onEditPress?: (item: Item) => void;
 }
 
-export default function ItemRow({ item, userId }: Props) {
+function ItemRowComponent({ item, userId, onEditPress }: Props) {
+  const { colors } = useTheme();
   const { removeItem, restoreItem, updateItem } = useItemsStore();
-  const { stores } = useStoresStore();
+  const assignedStoreName = useStoresStore((state) =>
+    state.stores.find((s) => s.id === item.preferred_store_id)?.name,
+  );
+  const stores = useStoresStore((state) => state.stores);
+  const swipeRef = useRef<Swipeable>(null);
+
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   async function handleTap() {
     const nextLow = !item.is_low;
@@ -29,18 +41,10 @@ export default function ItemRow({ item, userId }: Props) {
     try {
       if (nextLow) {
         const result = await markItemLowWithQueue(item.id, userId);
-        if (result.queued) {
-          void hapticSelection();
-          return;
-        }
-        void hapticWarning();
+        if (!result.queued) void hapticWarning();
       } else {
         const result = await markItemOkWithQueue(item.id);
-        if (result.queued) {
-          void hapticSelection();
-          return;
-        }
-        void hapticSuccess();
+        if (!result.queued) void hapticSuccess();
       }
     } catch (e: any) {
       console.error('[ItemRow] update failed:', e?.message ?? e);
@@ -56,27 +60,25 @@ export default function ItemRow({ item, userId }: Props) {
   function handleLongPress() {
     void hapticSelection();
     const assignedStore = stores.find((s) => s.id === item.preferred_store_id);
-
     const storeButtons = stores.map((s) => ({
       text: s.id === item.preferred_store_id ? `${s.name} ✓` : s.name,
       onPress: () => assignStore(s.id),
     }));
-
-    const title = stores.length > 0 ? 'Assign to store' : item.name;
-    const message = stores.length > 0
-      ? (assignedStore
-          ? `Currently buying at ${assignedStore.name}. Pick a different store or clear it.`
-          : 'Which store do you usually get this from?')
-      : 'What would you like to do?';
-
-    Alert.alert(title, message, [
-      ...storeButtons,
-      ...(item.preferred_store_id
-        ? [{ text: 'Clear store', style: 'destructive' as const, onPress: () => assignStore(null) }]
-        : []),
-      { text: 'Delete item', style: 'destructive' as const, onPress: handleDelete },
-      { text: 'Cancel', style: 'cancel' as const },
-    ]);
+    Alert.alert(
+      item.name,
+      assignedStore
+        ? `Assigned to ${assignedStore.name}. Pick a store to reassign, or edit/delete.`
+        : 'Edit, assign a store, or delete this item.',
+      [
+        ...(onEditPress ? [{ text: '✏️  Edit name & category', onPress: () => onEditPress(item) }] : []),
+        ...storeButtons,
+        ...(item.preferred_store_id
+          ? [{ text: 'Clear store', style: 'destructive' as const, onPress: () => assignStore(null) }]
+          : []),
+        { text: 'Delete item', style: 'destructive' as const, onPress: handleDelete },
+        { text: 'Cancel', style: 'cancel' as const },
+      ],
+    );
   }
 
   async function handleDelete() {
@@ -84,11 +86,7 @@ export default function ItemRow({ item, userId }: Props) {
     removeItem(item.id);
     try {
       const result = await deleteItemWithQueue(item.id);
-      if (result.queued) {
-        void hapticSelection();
-        return;
-      }
-      void hapticSuccess();
+      if (!result.queued) void hapticSuccess();
     } catch (e: any) {
       console.error('[ItemRow] delete failed:', e?.message ?? e);
       void hapticError();
@@ -102,11 +100,7 @@ export default function ItemRow({ item, userId }: Props) {
     updateItem(item.id, { preferred_store_id: storeId });
     try {
       const result = await setItemStoreWithQueue(item.id, storeId);
-      if (result.queued) {
-        void hapticSelection();
-        return;
-      }
-      void hapticSuccess();
+      if (!result.queued) void hapticSuccess();
     } catch (e: any) {
       console.error('[ItemRow] store assign failed:', e?.message ?? e);
       void hapticError();
@@ -114,111 +108,146 @@ export default function ItemRow({ item, userId }: Props) {
     }
   }
 
-  const assignedStoreName = stores.find((s) => s.id === item.preferred_store_id)?.name;
-  const categoryLabel = CATEGORY_LABELS[item.category as keyof typeof CATEGORY_LABELS] ?? item.category;
+  async function handleSwipeLeft() {
+    swipeRef.current?.close();
+    if (item.is_low) return;
+    void hapticWarning();
+    updateItem(item.id, { is_low: true, marked_low_by: userId, got_it_by: null });
+    try {
+      await markItemLowWithQueue(item.id, userId);
+    } catch {
+      void hapticError();
+      updateItem(item.id, { is_low: false, marked_low_by: null });
+    }
+  }
+
+  async function handleSwipeRight() {
+    swipeRef.current?.close();
+    if (!item.is_low) return;
+    void hapticSuccess();
+    updateItem(item.id, { is_low: false, marked_low_by: null, got_it_by: userId });
+    try {
+      await markItemOkWithQueue(item.id);
+    } catch {
+      void hapticError();
+      updateItem(item.id, { is_low: true, marked_low_by: item.marked_low_by });
+    }
+  }
+
+  const emoji = useMemo(() => getItemEmoji(item.name, item.category ?? ''), [item.name, item.category]);
+  const categoryLabel = useMemo(
+    () => CATEGORY_LABELS[item.category as keyof typeof CATEGORY_LABELS] ?? item.category,
+    [item.category],
+  );
+
+  const renderRightActions = (progress: Animated.AnimatedInterpolation<number>) => {
+    const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [80, 0] });
+    return (
+      <Animated.View style={[styles.swipeAction, styles.swipeActionLow, { transform: [{ translateX }] }]}>
+        <Text style={styles.swipeActionEmoji}>⚠️</Text>
+        <Text style={styles.swipeActionLabel}>Low</Text>
+      </Animated.View>
+    );
+  };
+
+  const renderLeftActions = (progress: Animated.AnimatedInterpolation<number>) => {
+    const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [-80, 0] });
+    return (
+      <Animated.View style={[styles.swipeAction, styles.swipeActionGotIt, { transform: [{ translateX }] }]}>
+        <Text style={styles.swipeActionEmoji}>✅</Text>
+        <Text style={styles.swipeActionLabel}>Got it</Text>
+      </Animated.View>
+    );
+  };
 
   return (
-    <TouchableOpacity
-      style={[styles.row, item.is_low && styles.rowLow]}
-      onPress={handleTap}
-      onLongPress={handleLongPress}
-      delayLongPress={400}
-      activeOpacity={0.65}
+    <Swipeable
+      ref={swipeRef}
+      renderRightActions={item.is_low ? undefined : renderRightActions}
+      renderLeftActions={item.is_low ? renderLeftActions : undefined}
+      onSwipeableOpen={(dir) => {
+        if (dir === 'right') void handleSwipeLeft();
+        else void handleSwipeRight();
+      }}
+      overshootRight={false}
+      overshootLeft={false}
+      friction={2}
     >
-      {/* Status icon circle */}
-      <View style={[styles.statusIcon, item.is_low && styles.statusIconLow]}>
-        <Ionicons
-          name={item.is_low ? 'alert-circle' : 'checkmark-circle'}
-          size={18}
-          color={item.is_low ? colors.lowText : colors.primary}
-        />
-      </View>
-
-      {/* Content */}
-      <View style={styles.content}>
-        <View style={styles.nameRow}>
-          <Text style={[styles.name, item.is_low && styles.nameLow]} numberOfLines={1}>
-            {item.name}
+      <ScalePressable
+        style={styles.card}
+        onPress={handleTap}
+        onLongPress={handleLongPress}
+        delayLongPress={400}
+      >
+        <Text style={styles.emoji}>{emoji}</Text>
+        <View style={styles.content}>
+          <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
+          <Text style={styles.meta} numberOfLines={1}>
+            {categoryLabel}{assignedStoreName ? ` · ${assignedStoreName}` : ''}
           </Text>
-          {item.is_low && (
-            <View style={styles.lowBadge}>
-              <Text style={styles.lowBadgeText}>LOW</Text>
-            </View>
-          )}
         </View>
-
-        <Text style={styles.meta} numberOfLines={1}>
-          {categoryLabel}{assignedStoreName ? ` · ${assignedStoreName}` : ''}
-        </Text>
-      </View>
-    </TouchableOpacity>
+        {item.is_low ? (
+          <View style={styles.lowBadge}>
+            <Text style={styles.lowBadgeText}>Low</Text>
+          </View>
+        ) : (
+          <View style={styles.okBadge}>
+            <Text style={styles.okBadgeText}>✓</Text>
+          </View>
+        )}
+      </ScalePressable>
+    </Swipeable>
   );
 }
 
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: radii.md,
-    minHeight: 60,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    gap: 12,
-    borderWidth: 1,
-    borderColor: colors.faint,
-  },
-  rowLow: {
-    backgroundColor: colors.lowSoft,
-    borderColor: colors.lowBadgeBg,
-  },
-  statusIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primarySoft,
-    flexShrink: 0,
-  },
-  statusIconLow: {
-    backgroundColor: colors.lowBadgeBg,
-  },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
-    gap: 3,
-  },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flex: 1,
-  },
-  name: {
-    fontSize: 16,
-    color: colors.ink,
-    fontWeight: '700',
-    flex: 1,
-  },
-  nameLow: {
-    color: colors.lowText,
-  },
-  lowBadge: {
-    backgroundColor: colors.lowBadgeBg,
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  lowBadgeText: {
-    color: colors.lowBadgeText,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  meta: {
-    fontSize: 13,
-    color: colors.muted,
-    fontWeight: '500',
-  },
-});
+const ItemRow = memo(ItemRowComponent);
+export default ItemRow;
+
+function makeStyles(colors: AppColors) {
+  return StyleSheet.create({
+    card: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.surface,
+      borderRadius: 16,
+      paddingHorizontal: 14,
+      paddingVertical: 14,
+      gap: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    emoji: { fontSize: 24 },
+    content: { flex: 1, gap: 3 },
+    name: { fontSize: 16, fontWeight: '700', color: colors.ink },
+    meta: { fontSize: 13, color: colors.muted, fontWeight: '500' },
+    lowBadge: {
+      backgroundColor: colors.warningSoft,
+      borderRadius: 999,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+    },
+    lowBadgeText: { fontSize: 12, fontWeight: '800', color: colors.warning },
+    okBadge: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: colors.successSoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    okBadgeText: { fontSize: 13, color: colors.success, fontWeight: '700' },
+    swipeAction: {
+      justifyContent: 'center',
+      alignItems: 'center',
+      width: 72,
+      borderRadius: 16,
+      marginVertical: 0,
+      gap: 3,
+    },
+    swipeActionLow: { backgroundColor: colors.warningSoft },
+    swipeActionGotIt: { backgroundColor: colors.successSoft },
+    swipeActionEmoji: { fontSize: 20 },
+    swipeActionLabel: { fontSize: 11, fontWeight: '800', color: colors.ink },
+  });
+}
+

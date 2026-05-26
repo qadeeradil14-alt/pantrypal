@@ -1,15 +1,19 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, KeyboardAvoidingView, Platform,
-  ActivityIndicator, Share, ScrollView,
+  ActivityIndicator, Share,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { createHousehold } from '../../lib/households';
 import { useAuthStore } from '../../store/auth';
 import { useHouseholdStore } from '../../store/household';
+import { useTheme } from '../../hooks/useTheme';
+import type { AppColors } from '../../constants/theme';
 
 export default function CreateHouseholdScreen() {
+  const { colors } = useTheme();
   const router = useRouter();
   const { session } = useAuthStore();
   const { setHousehold } = useHouseholdStore();
@@ -18,11 +22,10 @@ export default function CreateHouseholdScreen() {
   const [loading, setLoading] = useState(false);
   const [inviteCode, setInviteCode] = useState<string | null>(null);
 
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   function handleBack() {
-    if (router.canGoBack()) {
-      router.back();
-      return;
-    }
+    if (router.canGoBack()) { router.back(); return; }
     router.replace('/(setup)/create-or-join');
   }
 
@@ -44,16 +47,16 @@ export default function CreateHouseholdScreen() {
 
   async function handleShare() {
     if (!inviteCode) return;
-    await Share.share({
-      message: `Join my household on PantryPal! Use invite code: ${inviteCode}`,
-    });
+    await Share.share({ message: `Join my household on PantryPal! Use invite code: ${inviteCode}` });
   }
 
   if (inviteCode) {
     return (
       <View style={styles.container}>
         <View style={styles.successHero}>
-          <Text style={styles.checkEmoji}>✅</Text>
+          <View style={styles.successIconWrap}>
+            <Ionicons name="checkmark-circle" size={48} color={colors.success} />
+          </View>
           <Text style={styles.title}>Household created!</Text>
           <Text style={styles.subtitle}>Share this code with your household partner.</Text>
         </View>
@@ -64,11 +67,12 @@ export default function CreateHouseholdScreen() {
         </View>
 
         <View style={styles.actions}>
-          <TouchableOpacity style={styles.primaryBtn} onPress={handleShare}>
+          <TouchableOpacity style={styles.primaryBtn} onPress={handleShare} activeOpacity={0.85}>
+            <Ionicons name="share-outline" size={18} color="#FFFFFF" />
             <Text style={styles.primaryBtnText}>Share invite code</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.secondaryBtn} onPress={() => router.replace('/(main)/pantry')}>
-            <Text style={styles.secondaryBtnText}>Continue to pantry</Text>
+          <TouchableOpacity style={styles.secondaryBtn} onPress={() => router.replace('/(main)/pantry')} activeOpacity={0.7}>
+            <Text style={styles.secondaryBtnText}>Continue to pantry →</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -76,17 +80,19 @@ export default function CreateHouseholdScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <TouchableOpacity style={styles.back} onPress={handleBack}>
-        <Text style={styles.backText}>← Back</Text>
+        <Ionicons name="chevron-back" size={18} color={colors.primary} />
+        <Text style={styles.backText}>Back</Text>
       </TouchableOpacity>
+
+      <View style={styles.iconWrap}>
+        <Ionicons name="home-outline" size={22} color={colors.primary} />
+      </View>
       <Text style={styles.title}>Name your household</Text>
       <Text style={styles.subtitle}>Something like "The Smiths" or "Our Apartment".</Text>
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {error ? <View style={styles.errorBox}><Text style={styles.errorText}>{error}</Text></View> : null}
 
       <TextInput
         style={styles.input}
@@ -97,45 +103,57 @@ export default function CreateHouseholdScreen() {
         onChangeText={setName}
         onSubmitEditing={handleCreate}
         returnKeyType="done"
-        placeholderTextColor="#aaa"
+        placeholderTextColor={colors.placeholder}
       />
 
-      <TouchableOpacity style={styles.primaryBtn} onPress={handleCreate} disabled={loading}>
+      <TouchableOpacity style={[styles.primaryBtn, loading && styles.btnDisabled]} onPress={handleCreate} disabled={loading}>
         {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Create household</Text>}
       </TouchableOpacity>
     </KeyboardAvoidingView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff', paddingHorizontal: 28, paddingTop: 60 },
-  back: { marginBottom: 32 },
-  backText: { color: '#16A34A', fontSize: 16 },
-  title: { fontSize: 28, fontWeight: '700', color: '#111827', marginBottom: 8 },
-  subtitle: { fontSize: 15, color: '#6B7280', marginBottom: 32 },
-  error: {
-    backgroundColor: '#FEE2E2', color: '#B91C1C', borderRadius: 8,
-    padding: 12, marginBottom: 16, fontSize: 14,
-  },
-  input: {
-    borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 12,
-    paddingHorizontal: 16, paddingVertical: 14, fontSize: 16,
-    marginBottom: 12, color: '#111827',
-  },
-  primaryBtn: {
-    backgroundColor: '#16A34A', borderRadius: 14,
-    paddingVertical: 16, alignItems: 'center', marginTop: 8,
-  },
-  primaryBtnText: { color: '#fff', fontSize: 17, fontWeight: '600' },
-  secondaryBtn: { paddingVertical: 14, alignItems: 'center' },
-  secondaryBtnText: { color: '#16A34A', fontSize: 16 },
-  successHero: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
-  checkEmoji: { fontSize: 64 },
-  codeCard: {
-    backgroundColor: '#F0F9FF', borderRadius: 16, padding: 24,
-    alignItems: 'center', marginBottom: 32,
-  },
-  codeLabel: { fontSize: 13, color: '#6B7280', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 },
-  codeValue: { fontSize: 36, fontWeight: '800', color: '#111827', letterSpacing: 6 },
-  actions: { paddingBottom: 48, gap: 12 },
-});
+function makeStyles(colors: AppColors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background, paddingHorizontal: 28, paddingTop: 60 },
+    back: { marginBottom: 30, flexDirection: 'row', alignItems: 'center', gap: 4 },
+    backText: { color: colors.primary, fontSize: 16, fontWeight: '800' },
+    iconWrap: {
+      width: 50, height: 50, borderRadius: 16,
+      backgroundColor: colors.primarySoft,
+      alignItems: 'center', justifyContent: 'center', marginBottom: 18,
+    },
+    title: { fontSize: 32, fontWeight: '800', color: colors.ink, marginBottom: 8 },
+    subtitle: { fontSize: 16, color: colors.muted, fontWeight: '600', marginBottom: 28, lineHeight: 22 },
+    errorBox: { backgroundColor: colors.dangerSoft, borderRadius: 12, padding: 12, marginBottom: 16 },
+    errorText: { color: colors.danger, fontSize: 14, lineHeight: 20 },
+    input: {
+      borderWidth: 1, borderColor: colors.border, borderRadius: 14,
+      paddingHorizontal: 16, paddingVertical: 14, fontSize: 16,
+      marginBottom: 12, color: colors.ink, backgroundColor: colors.surface,
+    },
+    primaryBtn: {
+      backgroundColor: colors.primary, borderRadius: 14,
+      paddingVertical: 16, alignItems: 'center', marginTop: 8,
+      flexDirection: 'row', justifyContent: 'center', gap: 8,
+    },
+    btnDisabled: { backgroundColor: colors.disabled },
+    primaryBtnText: { color: '#FFFFFF', fontSize: 17, fontWeight: '800' },
+    secondaryBtn: { paddingVertical: 14, alignItems: 'center' },
+    secondaryBtnText: { color: colors.primary, fontSize: 16, fontWeight: '700' },
+    successHero: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
+    successIconWrap: {
+      width: 90, height: 90, borderRadius: 30,
+      backgroundColor: colors.successSoft,
+      alignItems: 'center', justifyContent: 'center', marginBottom: 8,
+    },
+    codeCard: {
+      backgroundColor: colors.surface, borderRadius: 20, padding: 28,
+      alignItems: 'center', marginBottom: 32,
+      borderWidth: 1, borderColor: colors.border,
+    },
+    codeLabel: { fontSize: 12, color: colors.muted, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1, fontWeight: '800' },
+    codeValue: { fontSize: 38, fontWeight: '800', color: colors.ink, letterSpacing: 8 },
+    actions: { paddingBottom: 48, gap: 12 },
+  });
+}

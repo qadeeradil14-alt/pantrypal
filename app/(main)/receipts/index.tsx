@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity,
   ActivityIndicator, Alert, RefreshControl,
@@ -9,9 +9,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useHouseholdStore } from '../../../store/household';
 import { useAuthStore } from '../../../store/auth';
 import { uploadReceipt, fetchReceipts, getSpendByStore, type Receipt } from '../../../lib/receipts';
-import { colors, radii, shadow } from '../../../constants/theme';
+import { radii, shadow } from '../../../constants/theme';
+import type { AppColors } from '../../../constants/theme';
+import { useTheme } from '../../../hooks/useTheme';
+import EmptyState from '../../../components/EmptyState';
 
 export default function ReceiptsScreen() {
+  const { colors } = useTheme();
   const { household } = useHouseholdStore();
   const { session } = useAuthStore();
   const householdId = household?.id ?? null;
@@ -22,6 +26,8 @@ export default function ReceiptsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const canUpload = !!householdId && !!userId && !uploading;
+
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const load = useCallback(async () => {
     if (!householdId) {
@@ -138,7 +144,7 @@ export default function ReceiptsScreen() {
       <FlatList
         data={receipts}
         keyExtractor={(r) => r.id}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#16A34A" />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
         ListHeaderComponent={
           <View>
             <View style={styles.summaryCard}>
@@ -161,13 +167,12 @@ export default function ReceiptsScreen() {
         }
         renderItem={({ item }) => <ReceiptCard receipt={item} />}
         ListEmptyComponent={
-          <View style={styles.empty}>
-            <View style={styles.emptyIconWrap}>
-              <Ionicons name="receipt-outline" size={58} color={colors.primary} />
-            </View>
-            <Text style={styles.emptyTitle}>No receipts yet</Text>
-            <Text style={styles.emptySub}>Tap Scan after a grocery trip to track your spending automatically.</Text>
-          </View>
+          <EmptyState
+            emoji="🧾"
+            title="No receipts yet"
+            subtitle="Tap Scan after a grocery trip to automatically track your spending."
+            action={{ label: 'Scan a receipt', onPress: handleAdd }}
+          />
         }
         contentContainerStyle={styles.list}
       />
@@ -176,6 +181,9 @@ export default function ReceiptsScreen() {
 }
 
 function ReceiptCard({ receipt }: { receipt: Receipt }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   const statusColor = receipt.status === 'done' ? colors.primary : receipt.status === 'failed' ? colors.danger : colors.low;
   const statusLabel = receipt.status === 'done' ? 'Done' : receipt.status === 'failed' ? 'Failed' : 'Processing…';
   const statusIcon = receipt.status === 'done'
@@ -219,57 +227,55 @@ function ReceiptCard({ receipt }: { receipt: Receipt }) {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },
-  header: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14,
-  },
-  headerLeft: { flex: 1, gap: 2 },
-  eyebrow: { fontSize: 13, color: colors.primary, fontWeight: '800' },
-  headerTitle: { fontSize: 30, fontWeight: '900', color: colors.ink },
-  addBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, backgroundColor: colors.primary, borderRadius: 999,
-    paddingHorizontal: 14, paddingVertical: 10, minWidth: 82,
-  },
-  addBtnDisabled: { backgroundColor: colors.disabled },
-  addBtnText: { color: colors.surface, fontSize: 15, fontWeight: '800' },
-  summaryCard: {
-    marginHorizontal: 16, marginBottom: 14, backgroundColor: colors.surfaceWarm, borderRadius: radii.xl,
-    padding: 18, borderWidth: 1, borderColor: colors.faint, ...shadow,
-  },
-  summaryIcon: {
-    position: 'absolute', right: 18, top: 18, width: 46, height: 46, borderRadius: 23,
-    alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface,
-  },
-  summaryLabel: { fontSize: 14, color: colors.muted, fontWeight: '700', marginBottom: 4 },
-  summaryTotal: { fontSize: 42, lineHeight: 48, fontWeight: '900', color: colors.ink, marginBottom: 16 },
-  storeRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.faint },
-  storeName: { fontSize: 15, color: colors.muted, fontWeight: '600' },
-  storeAmount: { fontSize: 15, fontWeight: '800', color: colors.ink },
-  sectionLabel: { paddingHorizontal: 20, paddingBottom: 8, fontSize: 12, fontWeight: '900', color: colors.muted, textTransform: 'uppercase' },
-  list: { paddingBottom: 120 },
-  card: {
-    backgroundColor: colors.surface, marginHorizontal: 16, marginBottom: 10,
-    borderRadius: radii.lg, padding: 14, borderWidth: 1, borderColor: colors.faint,
-    flexDirection: 'row', gap: 12,
-  },
-  cardIcon: {
-    width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: colors.primarySoft, flexShrink: 0,
-  },
-  cardTop: { flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  cardStore: { fontSize: 17, fontWeight: '800', color: colors.ink },
-  cardDate: { fontSize: 13, color: colors.muted, marginTop: 2, fontWeight: '500' },
-  cardRight: { alignItems: 'flex-end', gap: 6 },
-  cardTotal: { fontSize: 18, fontWeight: '900', color: colors.ink },
-  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 },
-  statusText: { fontSize: 12, fontWeight: '800' },
-  cardItems: { fontSize: 13, color: colors.muted, marginTop: 10, fontWeight: '600' },
-  empty: { alignItems: 'center', paddingTop: 60, paddingHorizontal: 40, gap: 12 },
-  emptyIconWrap: { backgroundColor: colors.primarySoft, borderRadius: radii.xl, padding: 16, marginBottom: 8 },
-  emptyTitle: { fontSize: 22, fontWeight: '900', color: colors.ink },
-  emptySub: { fontSize: 15, color: colors.muted, textAlign: 'center', lineHeight: 22 },
-});
+function makeStyles(colors: AppColors) {
+  return StyleSheet.create({
+    safe: { flex: 1, backgroundColor: colors.background },
+    centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },
+    header: {
+      flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+      paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14,
+    },
+    headerLeft: { flex: 1, gap: 2 },
+    eyebrow: { fontSize: 13, color: colors.primary, fontWeight: '800' },
+    headerTitle: { fontSize: 30, fontWeight: '900', color: colors.ink },
+    addBtn: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+      gap: 6, backgroundColor: colors.primary, borderRadius: 999,
+      paddingHorizontal: 14, paddingVertical: 10, minWidth: 82,
+    },
+    addBtnDisabled: { backgroundColor: colors.disabled },
+    addBtnText: { color: colors.surface, fontSize: 15, fontWeight: '800' },
+    summaryCard: {
+      marginHorizontal: 16, marginBottom: 14, backgroundColor: colors.surfaceWarm, borderRadius: radii.xl,
+      padding: 18, borderWidth: 1, borderColor: colors.faint, ...shadow,
+    },
+    summaryIcon: {
+      position: 'absolute', right: 18, top: 18, width: 46, height: 46, borderRadius: 23,
+      alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface,
+    },
+    summaryLabel: { fontSize: 14, color: colors.muted, fontWeight: '700', marginBottom: 4 },
+    summaryTotal: { fontSize: 42, lineHeight: 48, fontWeight: '900', color: colors.ink, marginBottom: 16 },
+    storeRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.faint },
+    storeName: { fontSize: 15, color: colors.muted, fontWeight: '600' },
+    storeAmount: { fontSize: 15, fontWeight: '800', color: colors.ink },
+    sectionLabel: { paddingHorizontal: 20, paddingBottom: 8, fontSize: 12, fontWeight: '900', color: colors.muted, textTransform: 'uppercase' },
+    list: { paddingBottom: 120 },
+    card: {
+      backgroundColor: colors.surface, marginHorizontal: 16, marginBottom: 10,
+      borderRadius: radii.lg, padding: 14, borderWidth: 1, borderColor: colors.faint,
+      flexDirection: 'row', gap: 12,
+    },
+    cardIcon: {
+      width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center',
+      backgroundColor: colors.primarySoft, flexShrink: 0,
+    },
+    cardTop: { flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+    cardStore: { fontSize: 17, fontWeight: '800', color: colors.ink },
+    cardDate: { fontSize: 13, color: colors.muted, marginTop: 2, fontWeight: '500' },
+    cardRight: { alignItems: 'flex-end', gap: 6 },
+    cardTotal: { fontSize: 18, fontWeight: '900', color: colors.ink },
+    statusPill: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 },
+    statusText: { fontSize: 12, fontWeight: '800' },
+    cardItems: { fontSize: 13, color: colors.muted, marginTop: 10, fontWeight: '600' },
+  });
+}

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View, Text, FlatList, StyleSheet,
   Alert, ActivityIndicator, TextInput, ScrollView, Modal,
@@ -10,7 +10,9 @@ import { useStoresStore } from '../../../store/stores';
 import { fetchStores, addStore, deleteStore, PRESET_STORES, type Store } from '../../../lib/stores';
 import { startGeofencing, stopGeofencing } from '../../../lib/geofencing';
 import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../../../lib/haptics';
-import { colors, radii, shadow } from '../../../constants/theme';
+import { radii, shadow } from '../../../constants/theme';
+import type { AppColors } from '../../../constants/theme';
+import { useTheme } from '../../../hooks/useTheme';
 import ScalePressable from '../../../components/ScalePressable';
 
 function compactAddress(address: string, storeName: string): string {
@@ -22,7 +24,6 @@ function compactAddress(address: string, storeName: string): string {
     .map((p) => p.trim())
     .filter(Boolean);
 
-  // Remove repeated chunks and repeated store name fragments.
   const seen = new Set<string>();
   const storeKey = storeName.trim().toLowerCase();
   const deduped = parts.filter((part, idx) => {
@@ -38,6 +39,7 @@ function compactAddress(address: string, storeName: string): string {
 }
 
 export default function StoresScreen() {
+  const { colors } = useTheme();
   const { household } = useHouseholdStore();
   const { stores, setStores, addStore: addToStore, removeStore } = useStoresStore();
   const [loading, setLoading] = useState(true);
@@ -45,6 +47,8 @@ export default function StoresScreen() {
   const [removingId, setRemovingId] = useState<string | null>(null);
   const householdId = household?.id ?? null;
   const canManageStores = !!householdId;
+
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const load = useCallback(async () => {
     if (!householdId) {
@@ -242,10 +246,13 @@ function AddStoreModal({
   onAdd: (store: Store) => void;
   onClose: () => void;
 }) {
+  const { colors } = useTheme();
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const existingNames = existingStores.map((s) => s.name.toLowerCase());
   const presets = PRESET_STORES.filter((p) => !existingNames.includes(p.toLowerCase()));
@@ -339,84 +346,86 @@ function AddStoreModal({
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },
-  header: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14,
-  },
-  headerLeft: { flex: 1, gap: 2 },
-  eyebrow: { fontSize: 12, color: colors.primary, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
-  headerTitle: { fontSize: 32, fontWeight: '800', color: colors.ink, letterSpacing: -0.6 },
-  addBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 4, backgroundColor: colors.primary, borderRadius: 999,
-    paddingHorizontal: 14, paddingVertical: 10,
-  },
-  addBtnDisabled: { backgroundColor: colors.disabled },
-  addBtnText: { color: colors.surface, fontSize: 15, fontWeight: '800' },
-  heroCard: {
-    marginHorizontal: 16, marginBottom: 14, borderRadius: radii.xl,
-    backgroundColor: colors.surface, padding: 20,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    borderWidth: 1, borderColor: colors.faint, ...shadow,
-  },
-  heroNumber: { fontSize: 48, lineHeight: 50, fontWeight: '800', color: colors.ink, fontVariant: ['tabular-nums'] },
-  heroLabel: { fontSize: 14, color: colors.muted, fontWeight: '700' },
-  heroBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 7,
-    backgroundColor: colors.primarySoft, borderRadius: 999,
-    paddingHorizontal: 12, paddingVertical: 8,
-  },
-  heroBadgeText: { color: colors.primary, fontWeight: '800', fontSize: 13 },
-  list: { paddingHorizontal: 16, paddingBottom: 120 },
-  separator: { height: 10 },
-  row: {
-    backgroundColor: colors.surface, borderRadius: radii.lg, padding: 14,
-    borderWidth: 1, borderColor: colors.faint,
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-  },
-  storeIcon: {
-    width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: colors.surfaceWarm, flexShrink: 0,
-  },
-  storeIconActive: { backgroundColor: colors.primarySoft },
-  rowLeft: { flex: 1, gap: 4 },
-  storeName: { fontSize: 17, fontWeight: '700', color: colors.ink },
-  storeAddress: { fontSize: 13, color: colors.muted, lineHeight: 19 },
-  noAddress: { fontSize: 13, color: colors.low, fontWeight: '600' },
-  rowRight: { alignItems: 'flex-end', gap: 8 },
-  geoPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: colors.primarySoft, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5,
-  },
-  geoPillText: { fontSize: 12, color: colors.primary, fontWeight: '800' },
-  deleteBtn: { padding: 4 },
-  deleteBtnText: { color: colors.danger, fontSize: 13, fontWeight: '700' },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 12 },
-  emptyIconWrap: { backgroundColor: colors.primarySoft, borderRadius: radii.xl, padding: 16, marginBottom: 8 },
-  emptyTitle: { fontSize: 24, fontWeight: '800', color: colors.ink, letterSpacing: -0.3 },
-  emptySub: { fontSize: 15, color: colors.muted, textAlign: 'center', lineHeight: 24 },
-  emptyBtn: { backgroundColor: colors.primary, borderRadius: radii.md, paddingHorizontal: 24, paddingVertical: 14, marginTop: 8 },
-  emptyBtnDisabled: { backgroundColor: colors.disabled },
-  emptyBtnText: { color: colors.surface, fontSize: 16, fontWeight: '800' },
-  overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(2, 6, 23, 0.36)' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 40, ...shadow },
-  handle: { width: 36, height: 4, backgroundColor: colors.faint, borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
-  sheetTitle: { fontSize: 22, fontWeight: '800', color: colors.ink, marginBottom: 4, letterSpacing: -0.2 },
-  sheetSubtitle: { fontSize: 14, color: colors.muted, marginBottom: 18 },
-  errorBox: { backgroundColor: colors.dangerSoft, borderRadius: radii.sm, padding: 12, marginBottom: 12 },
-  error: { color: colors.dangerText, fontSize: 14 },
-  label: { fontSize: 12, fontWeight: '800', color: colors.muted, textTransform: 'uppercase', marginBottom: 8 },
-  presetsRow: { marginBottom: 20 },
-  presetsContent: { paddingRight: 10 },
-  presetChip: { backgroundColor: colors.primarySoft, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, marginRight: 8, borderWidth: 1, borderColor: colors.primarySoft },
-  presetChipText: { color: colors.primary, fontSize: 14, fontWeight: '800' },
-  input: { borderWidth: 1, borderColor: colors.faint, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 15, fontSize: 16, marginBottom: 12, color: colors.ink, backgroundColor: colors.background },
-  saveBtn: { backgroundColor: colors.primary, borderRadius: radii.md, paddingVertical: 16, alignItems: 'center', marginBottom: 10 },
-  saveBtnDisabled: { backgroundColor: colors.disabled },
-  saveBtnText: { color: colors.surface, fontSize: 17, fontWeight: '800' },
-  cancelBtn: { paddingVertical: 12, alignItems: 'center' },
-  cancelText: { color: colors.muted, fontSize: 16, fontWeight: '600' },
-});
+function makeStyles(colors: AppColors) {
+  return StyleSheet.create({
+    safe: { flex: 1, backgroundColor: colors.background },
+    centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },
+    header: {
+      flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+      paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14,
+    },
+    headerLeft: { flex: 1, gap: 2 },
+    eyebrow: { fontSize: 12, color: colors.primary, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+    headerTitle: { fontSize: 26, fontWeight: '800', color: colors.ink, letterSpacing: -0.4 },
+    addBtn: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+      gap: 4, backgroundColor: colors.primary, borderRadius: 999,
+      paddingHorizontal: 14, paddingVertical: 10,
+    },
+    addBtnDisabled: { backgroundColor: colors.disabled },
+    addBtnText: { color: colors.surface, fontSize: 15, fontWeight: '800' },
+    heroCard: {
+      marginHorizontal: 16, marginBottom: 12, borderRadius: radii.lg,
+      backgroundColor: colors.surface, padding: 16,
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      borderWidth: 1, borderColor: colors.faint, ...shadow,
+    },
+    heroNumber: { fontSize: 38, lineHeight: 42, fontWeight: '800', color: colors.ink, fontVariant: ['tabular-nums'] },
+    heroLabel: { fontSize: 14, color: colors.muted, fontWeight: '700' },
+    heroBadge: {
+      flexDirection: 'row', alignItems: 'center', gap: 7,
+      backgroundColor: colors.primarySoft, borderRadius: 999,
+      paddingHorizontal: 12, paddingVertical: 8,
+    },
+    heroBadgeText: { color: colors.primary, fontWeight: '800', fontSize: 13 },
+    list: { paddingHorizontal: 16, paddingBottom: 120 },
+    separator: { height: 10 },
+    row: {
+      backgroundColor: colors.surface, borderRadius: radii.md, padding: 12,
+      borderWidth: 1, borderColor: colors.faint,
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+    },
+    storeIcon: {
+      width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center',
+      backgroundColor: colors.surfaceWarm, flexShrink: 0,
+    },
+    storeIconActive: { backgroundColor: colors.primarySoft },
+    rowLeft: { flex: 1, gap: 4 },
+    storeName: { fontSize: 17, fontWeight: '700', color: colors.ink },
+    storeAddress: { fontSize: 13, color: colors.muted, lineHeight: 19 },
+    noAddress: { fontSize: 13, color: colors.low, fontWeight: '600' },
+    rowRight: { alignItems: 'flex-end', gap: 8 },
+    geoPill: {
+      flexDirection: 'row', alignItems: 'center', gap: 4,
+      backgroundColor: colors.primarySoft, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5,
+    },
+    geoPillText: { fontSize: 12, color: colors.primary, fontWeight: '800' },
+    deleteBtn: { padding: 4 },
+    deleteBtnText: { color: colors.danger, fontSize: 13, fontWeight: '700' },
+    empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 12 },
+    emptyIconWrap: { backgroundColor: colors.primarySoft, borderRadius: radii.xl, padding: 16, marginBottom: 8 },
+    emptyTitle: { fontSize: 24, fontWeight: '800', color: colors.ink, letterSpacing: -0.3 },
+    emptySub: { fontSize: 15, color: colors.muted, textAlign: 'center', lineHeight: 24 },
+    emptyBtn: { backgroundColor: colors.primary, borderRadius: radii.md, paddingHorizontal: 24, paddingVertical: 14, marginTop: 8 },
+    emptyBtnDisabled: { backgroundColor: colors.disabled },
+    emptyBtnText: { color: colors.surface, fontSize: 16, fontWeight: '800' },
+    overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(2, 6, 23, 0.36)' },
+    sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 40, ...shadow },
+    handle: { width: 36, height: 4, backgroundColor: colors.faint, borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
+    sheetTitle: { fontSize: 22, fontWeight: '800', color: colors.ink, marginBottom: 4, letterSpacing: -0.2 },
+    sheetSubtitle: { fontSize: 14, color: colors.muted, marginBottom: 18 },
+    errorBox: { backgroundColor: colors.dangerSoft, borderRadius: radii.sm, padding: 12, marginBottom: 12 },
+    error: { color: colors.dangerText, fontSize: 14 },
+    label: { fontSize: 12, fontWeight: '800', color: colors.muted, textTransform: 'uppercase', marginBottom: 8 },
+    presetsRow: { marginBottom: 20 },
+    presetsContent: { paddingRight: 10 },
+    presetChip: { backgroundColor: colors.primarySoft, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, marginRight: 8, borderWidth: 1, borderColor: colors.primarySoft },
+    presetChipText: { color: colors.primary, fontSize: 14, fontWeight: '800' },
+    input: { borderWidth: 1, borderColor: colors.faint, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 15, fontSize: 16, marginBottom: 12, color: colors.ink, backgroundColor: colors.background },
+    saveBtn: { backgroundColor: colors.primary, borderRadius: radii.md, paddingVertical: 16, alignItems: 'center', marginBottom: 10 },
+    saveBtnDisabled: { backgroundColor: colors.disabled },
+    saveBtnText: { color: colors.surface, fontSize: 17, fontWeight: '800' },
+    cancelBtn: { paddingVertical: 12, alignItems: 'center' },
+    cancelText: { color: colors.muted, fontSize: 16, fontWeight: '600' },
+  });
+}

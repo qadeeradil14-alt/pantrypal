@@ -1,20 +1,19 @@
 import { useState, useMemo } from 'react';
 import {
   Modal, View, Text, TextInput,
-  StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator,
+  StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useItemsStore } from '../store/items';
-import { addItem } from '../lib/items';
+import { updateItemDetails, deleteItemWithQueue } from '../lib/items';
 import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../lib/haptics';
 import { CATEGORY_LABELS, type ItemCategory } from '../constants/defaultItems';
+import type { Item } from '../lib/items';
 import { useTheme } from '../hooks/useTheme';
 import type { AppColors } from '../constants/theme';
 import ScalePressable from './ScalePressable';
 
 const CATEGORIES: ItemCategory[] = ['fridge', 'freezer', 'pantry'];
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
 const CATEGORY_EMOJI: Record<ItemCategory, string> = {
   fridge: '🥛',
   freezer: '🧊',
@@ -22,49 +21,68 @@ const CATEGORY_EMOJI: Record<ItemCategory, string> = {
 };
 
 interface Props {
-  householdId: string;
-  userId: string;
+  item: Item;
   onClose: () => void;
 }
 
-export default function AddItemModal({ householdId, userId, onClose }: Props) {
+export default function EditItemModal({ item, onClose }: Props) {
   const { colors } = useTheme();
-  const { items, upsertItem } = useItemsStore();
-  const [name, setName] = useState('');
-  const [category, setCategory] = useState<ItemCategory>('fridge');
+  const { updateItem, removeItem, restoreItem } = useItemsStore();
+  const [name, setName] = useState(item.name);
+  const [category, setCategory] = useState<ItemCategory>(
+    (item.category as ItemCategory) ?? 'pantry',
+  );
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const ready = UUID_RE.test(householdId);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  async function handleAdd() {
-    if (!ready) {
-      setError('Still loading your household. Please close and reopen.');
-      void hapticWarning();
-      return;
-    }
-    const normalized = name.trim();
-    if (!normalized) { setError('Enter an item name.'); void hapticWarning(); return; }
-    const existing = items.find((i) => i.name.trim().toLowerCase() === normalized.toLowerCase());
-    if (existing) {
-      setError(`"${existing.name}" is already in your pantry.`);
-      void hapticWarning();
-      return;
-    }
+  const isDirty = name.trim() !== item.name || category !== item.category;
+
+  async function handleSave() {
+    const trimmed = name.trim();
+    if (!trimmed) { setError('Name cannot be empty.'); return; }
     setError('');
-    setLoading(true);
+    setSaving(true);
+    updateItem(item.id, { name: trimmed, category });
     try {
-      const item = await addItem(householdId, normalized, category, userId);
-      upsertItem(item);
+      await updateItemDetails(item.id, { name: trimmed, category });
       void hapticSuccess();
       onClose();
     } catch (e: any) {
-      setError(e.message ?? 'Could not add item.');
+      updateItem(item.id, { name: item.name, category: item.category });
+      setError(e?.message ?? 'Could not save. Try again.');
       void hapticError();
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
+  }
+
+  function handleDelete() {
+    Alert.alert('Delete item', `Remove "${item.name}" from your pantry?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          void hapticWarning();
+          setDeleting(true);
+          removeItem(item.id);
+          try {
+            await deleteItemWithQueue(item.id);
+            void hapticSuccess();
+            onClose();
+          } catch (e: any) {
+            restoreItem(item);
+            setError(e?.message ?? 'Could not delete. Try again.');
+            void hapticError();
+          } finally {
+            setDeleting(false);
+          }
+        },
+      },
+    ]);
   }
 
   return (
@@ -78,11 +96,11 @@ export default function AddItemModal({ householdId, userId, onClose }: Props) {
 
           <View style={styles.sheetHeader}>
             <View>
-              <Text style={styles.title}>New item</Text>
-              <Text style={styles.subtitle}>Track what your household uses.</Text>
+              <Text style={styles.title}>Edit item</Text>
+              <Text style={styles.subtitle}>Rename or recategorize.</Text>
             </View>
             <View style={styles.sheetIcon}>
-              <Ionicons name="add" size={20} color={colors.primary} />
+              <Ionicons name="create-outline" size={18} color={colors.primary} />
             </View>
           </View>
 
@@ -94,13 +112,12 @@ export default function AddItemModal({ householdId, userId, onClose }: Props) {
 
           <TextInput
             style={styles.input}
-            placeholder="Milk, eggs, rice..."
-            autoFocus
             value={name}
             onChangeText={(t) => { setName(t); if (error) setError(''); }}
-            onSubmitEditing={handleAdd}
+            onSubmitEditing={handleSave}
             returnKeyType="done"
             placeholderTextColor={colors.placeholder}
+            autoFocus
           />
 
           <Text style={styles.label}>Category</Text>
@@ -124,16 +141,32 @@ export default function AddItemModal({ householdId, userId, onClose }: Props) {
           </View>
 
           <ScalePressable
-            style={[styles.addBtn, (!ready || loading) && styles.addBtnDisabled]}
-            onPress={handleAdd}
-            disabled={!ready || loading}
+            style={[styles.saveBtn, (!isDirty || saving) && styles.saveBtnDisabled]}
+            onPress={handleSave}
+            disabled={!isDirty || saving}
           >
-            {loading
+            {saving
               ? <ActivityIndicator color="#fff" />
-              : <Text style={styles.addBtnText}>Add to pantry</Text>}
+              : <Text style={styles.saveBtnText}>Save changes</Text>}
           </ScalePressable>
 
-          <ScalePressable style={styles.cancelBtn} profile="chip" onPress={() => { void hapticSelection(); onClose(); }}>
+          <ScalePressable
+            profile="danger"
+            style={styles.deleteBtn}
+            onPress={handleDelete}
+            disabled={deleting}
+          >
+            {deleting
+              ? <ActivityIndicator color={colors.danger} />
+              : (
+                <>
+                  <Ionicons name="trash-outline" size={16} color={colors.danger} />
+                  <Text style={styles.deleteBtnText}>Delete item</Text>
+                </>
+              )}
+          </ScalePressable>
+
+          <ScalePressable style={styles.cancelBtn} profile="chip" onPress={onClose}>
             <Text style={styles.cancelText}>Cancel</Text>
           </ScalePressable>
         </View>
@@ -170,18 +203,13 @@ function makeStyles(colors: AppColors) {
       marginBottom: 18,
     },
     sheetIcon: {
-      width: 46, height: 46, borderRadius: 23,
+      width: 44, height: 44, borderRadius: 22,
       alignItems: 'center', justifyContent: 'center',
       backgroundColor: colors.primarySoft,
     },
-    title: { fontSize: 22, fontWeight: '800', color: colors.ink, marginBottom: 4, letterSpacing: -0.2 },
+    title: { fontSize: 22, fontWeight: '800', color: colors.ink, marginBottom: 2, letterSpacing: -0.2 },
     subtitle: { fontSize: 14, color: colors.muted },
-    errorBox: {
-      backgroundColor: colors.dangerSoft,
-      borderRadius: 12,
-      padding: 12,
-      marginBottom: 12,
-    },
+    errorBox: { backgroundColor: colors.dangerSoft, borderRadius: 12, padding: 12, marginBottom: 12 },
     errorText: { color: colors.danger, fontSize: 14, lineHeight: 20 },
     input: {
       borderWidth: 1,
@@ -193,6 +221,7 @@ function makeStyles(colors: AppColors) {
       marginBottom: 20,
       color: colors.ink,
       backgroundColor: colors.background,
+      fontWeight: '700',
     },
     label: {
       fontSize: 12, fontWeight: '800',
@@ -203,34 +232,32 @@ function makeStyles(colors: AppColors) {
     },
     categoryRow: { flexDirection: 'row', gap: 10, marginBottom: 24 },
     catBtn: {
-      flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-      flexDirection: 'column',
-      paddingVertical: 14,
-      borderRadius: 14,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.background,
-      gap: 6,
+      flex: 1, alignItems: 'center', justifyContent: 'center',
+      flexDirection: 'column', paddingVertical: 14,
+      borderRadius: 14, borderWidth: 1, borderColor: colors.border,
+      backgroundColor: colors.background, gap: 6,
     },
-    catBtnActive: {
-      borderColor: colors.primary,
-      backgroundColor: colors.primarySoft,
-    },
+    catBtnActive: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
     catEmoji: { fontSize: 22 },
     catLabel: { fontSize: 12, color: colors.muted, fontWeight: '700' },
     catLabelActive: { color: colors.primary },
-    addBtn: {
+    saveBtn: {
       backgroundColor: colors.primary,
-      borderRadius: 14,
-      paddingVertical: 16,
-      alignItems: 'center',
-      marginBottom: 10,
+      borderRadius: 14, paddingVertical: 16,
+      alignItems: 'center', marginBottom: 10,
     },
-    addBtnDisabled: { backgroundColor: colors.disabled },
-    addBtnText: { color: '#FFFFFF', fontSize: 17, fontWeight: '800' },
-    cancelBtn: { paddingVertical: 14, alignItems: 'center' },
+    saveBtnDisabled: { backgroundColor: colors.disabled },
+    saveBtnText: { color: '#FFFFFF', fontSize: 17, fontWeight: '800' },
+    deleteBtn: {
+      flexDirection: 'row', gap: 8,
+      alignItems: 'center', justifyContent: 'center',
+      paddingVertical: 14, borderRadius: 14,
+      backgroundColor: colors.dangerSoft,
+      borderWidth: 1, borderColor: colors.danger + '33',
+      marginBottom: 8,
+    },
+    deleteBtnText: { color: colors.danger, fontSize: 15, fontWeight: '800' },
+    cancelBtn: { paddingVertical: 12, alignItems: 'center' },
     cancelText: { color: colors.muted, fontSize: 16, fontWeight: '600' },
   });
 }

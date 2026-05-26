@@ -150,3 +150,17 @@ export async function ensureDefaultItems(householdId: string, userId?: string | 
   if (error) throw error;
   return missing.length;
 }
+
+export async function updateItemDetails(
+  itemId: string,
+  updates: { name?: string; category?: string },
+): Promise<Item> {
+  const { data, error } = await supabase
+    .from('items')
+    .update(updates)
+    .eq('id', itemId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as Item;
+}

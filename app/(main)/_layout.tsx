@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { View, StyleSheet } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import type { ColorValue } from 'react-native';
@@ -9,7 +10,8 @@ import { useRealtime } from '../../lib/realtime';
 import { useHouseholdStore } from '../../store/household';
 import { useStoresStore } from '../../store/stores';
 import { useShoppingStore } from '../../store/shopping';
-import { colors } from '../../constants/theme';
+import { useTheme } from '../../hooks/useTheme';
+import ArrivalBanner from '../../components/ArrivalBanner';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -20,6 +22,7 @@ function tabIcon(name: IoniconName, focusedName: IoniconName) {
 }
 
 export default function MainLayout() {
+  const { colors } = useTheme();
   const householdId = useHouseholdStore((s) => s.household?.id);
   const setStores = useStoresStore((s) => s.setStores);
   const setShoppingEntries = useShoppingStore((s) => s.setEntries);
@@ -57,64 +60,72 @@ export default function MainLayout() {
   }, [householdId, setStores, setShoppingEntries]);
 
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.muted,
-        tabBarStyle: {
-          backgroundColor: colors.surface,
-          borderTopColor: colors.border,
-          borderTopWidth: 1,
-          paddingTop: 8,
-          paddingBottom: 8,
-          height: 76,
-        },
-        tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '800',
-          marginTop: 2,
-        },
-        tabBarIconStyle: {
-          marginBottom: 0,
-        },
-      }}
-    >
-      <Tabs.Screen
-        name="pantry"
-        options={{
-          title: 'Pantry',
-          tabBarIcon: tabIcon('nutrition-outline', 'nutrition'),
+    <View style={styles.root}>
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          tabBarActiveTintColor: colors.primary,
+          tabBarInactiveTintColor: colors.muted,
+          tabBarStyle: {
+            backgroundColor: colors.surface,
+            borderTopColor: colors.border,
+            borderTopWidth: 1,
+            paddingTop: 8,
+            paddingBottom: 8,
+            paddingHorizontal: 12,
+            height: 76,
+          },
+          tabBarLabelStyle: {
+            fontSize: 11,
+            fontWeight: '800',
+            marginTop: 2,
+          },
+          tabBarIconStyle: {
+            marginBottom: 0,
+          },
         }}
-      />
-      <Tabs.Screen
-        name="grocery"
-        options={{
-          title: 'Shopping',
-          tabBarIcon: tabIcon('cart-outline', 'cart'),
-        }}
-      />
-      <Tabs.Screen
-        name="receipts"
-        options={{
-          title: 'Receipts',
-          tabBarIcon: tabIcon('receipt-outline', 'receipt'),
-        }}
-      />
-      <Tabs.Screen
-        name="stores"
-        options={{
-          title: 'Stores',
-          tabBarIcon: tabIcon('storefront-outline', 'storefront'),
-        }}
-      />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          title: 'Settings',
-          tabBarIcon: tabIcon('settings-outline', 'settings'),
-        }}
-      />
-    </Tabs>
+      >
+        <Tabs.Screen
+          name="pantry"
+          options={{
+            title: 'Pantry',
+            tabBarIcon: tabIcon('nutrition-outline', 'nutrition'),
+          }}
+        />
+        <Tabs.Screen
+          name="grocery"
+          options={{
+            title: 'Shopping',
+            tabBarIcon: tabIcon('cart-outline', 'cart'),
+          }}
+        />
+        <Tabs.Screen
+          name="receipts"
+          options={{
+            title: 'Receipts',
+            tabBarIcon: tabIcon('receipt-outline', 'receipt'),
+          }}
+        />
+        <Tabs.Screen
+          name="stores"
+          options={{
+            title: 'Stores',
+            tabBarIcon: tabIcon('storefront-outline', 'storefront'),
+          }}
+        />
+        <Tabs.Screen
+          name="settings"
+          options={{
+            title: 'Settings',
+            tabBarIcon: tabIcon('settings-outline', 'settings'),
+          }}
+        />
+      </Tabs>
+      <ArrivalBanner />
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+});

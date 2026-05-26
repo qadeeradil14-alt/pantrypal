@@ -1,13 +1,15 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View, Text, FlatList, StyleSheet,
   ActivityIndicator, ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
+import { getSpendByStore } from '../../../lib/receipts';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useItemsStore } from '../../../store/items';
 import { useAuthStore } from '../../../store/auth';
+import { useHouseholdStore } from '../../../store/household';
 import { useStoresStore } from '../../../store/stores';
 import { useShoppingStore, type ShoppingEntry } from '../../../store/shopping';
 import { markItemGotItWithQueue } from '../../../lib/items';
@@ -15,20 +17,26 @@ import { completeShoppingEntryWithQueue } from '../../../lib/shoppingList';
 import { hapticError, hapticSelection, hapticSuccess } from '../../../lib/haptics';
 import type { Item } from '../../../lib/items';
 import { CATEGORY_LABELS } from '../../../constants/defaultItems';
-import { colors, radii, shadow } from '../../../constants/theme';
+import { radii, shadow } from '../../../constants/theme';
+import type { AppColors } from '../../../constants/theme';
+import { useTheme } from '../../../hooks/useTheme';
 import ScalePressable from '../../../components/ScalePressable';
+import EmptyState from '../../../components/EmptyState';
 
-const ARRIVAL_WINDOW_SECS = 120;
+const WEEKLY_BUDGET = 150;
 
 export default function GroceryScreen() {
+  const { colors } = useTheme();
   const { items, updateItem } = useItemsStore();
   const { session } = useAuthStore();
+  const householdId = useHouseholdStore((s) => s.household?.id);
   const { stores, activeStoreId, setActiveStore } = useStoresStore();
   const { entries, removeEntry, upsertEntry } = useShoppingStore();
   const [shoppingMode, setShoppingMode] = useState(false);
   const [tapping, setTapping] = useState<string | null>(null);
-  const [arrivalCountdown, setArrivalCountdown] = useState<number | null>(null);
-  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [weeklySpend, setWeeklySpend] = useState(0);
+
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   useEffect(() => {
     const tag = 'shopping-mode';
@@ -39,33 +47,47 @@ export default function GroceryScreen() {
 
   useEffect(() => {
     if (!activeStoreId) return;
-    setArrivalCountdown(ARRIVAL_WINDOW_SECS);
     setShoppingMode(true);
-    countdownRef.current = setInterval(() => {
-      setArrivalCountdown((prev) => {
-        if (prev === null || prev <= 1) {
-          if (countdownRef.current) clearInterval(countdownRef.current);
-          return null;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => { if (countdownRef.current) clearInterval(countdownRef.current); };
   }, [activeStoreId]);
 
-  const activeStore = stores.find((s) => s.id === activeStoreId);
-  const sourceItemMap = new Map(items.map((item) => [item.id, item]));
-  const activeEntries = entries.filter((e) => e.status === 'active');
-  const lowItems = activeEntries
-    .filter((entry) => {
-      const linked = entry.source_item_id ? sourceItemMap.get(entry.source_item_id) : null;
-      if (!activeStoreId) return true;
-      if (!linked) return true;
-      return linked.preferred_store_id === activeStoreId || linked.preferred_store_id == null;
-    })
-    .sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
+  useEffect(() => {
+    if (!householdId) return;
+    getSpendByStore(householdId)
+      .then((rows) => {
+        const total = rows.reduce((sum, r) => sum + r.total, 0);
+        setWeeklySpend(total);
+      })
+      .catch(() => {});
+  }, [householdId]);
 
-  async function handleGotIt(entry: ShoppingEntry) {
+  const activeStore = useMemo(
+    () => stores.find((s) => s.id === activeStoreId),
+    [stores, activeStoreId],
+  );
+
+  const sourceItemMap = useMemo(
+    () => new Map(items.map((item) => [item.id, item])),
+    [items],
+  );
+
+  const lowItems = useMemo(() => {
+    const activeEntries = entries.filter((e) => e.status === 'active');
+    return activeEntries
+      .filter((entry) => {
+        const linked = entry.source_item_id ? sourceItemMap.get(entry.source_item_id) : null;
+        if (!activeStoreId) return true;
+        if (!linked) return true;
+        return linked.preferred_store_id === activeStoreId || linked.preferred_store_id == null;
+      })
+      .sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
+  }, [entries, sourceItemMap, activeStoreId]);
+
+  const spendProgress = useMemo(
+    () => Math.min(weeklySpend / WEEKLY_BUDGET, 1),
+    [weeklySpend],
+  );
+
+  const handleGotIt = useCallback(async (entry: ShoppingEntry) => {
     const userId = session?.user.id ?? '';
     void hapticSelection();
     setTapping(entry.id);
@@ -98,10 +120,7 @@ export default function GroceryScreen() {
     } finally {
       setTapping(null);
     }
-  }
-
-  const formatCountdown = (s: number) =>
-    `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  }, [session?.user.id, removeEntry, upsertEntry, updateItem]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -137,17 +156,28 @@ export default function GroceryScreen() {
             {lowItems.length === 1 ? 'thing to grab' : 'things to grab'}
           </Text>
         </View>
-        {arrivalCountdown !== null ? (
-          <View style={[styles.countdownPill, shoppingMode && styles.countdownPillActive]}>
-            <Ionicons name="timer-outline" size={18} color={colors.low} />
-            <Text style={styles.countdownText}>{formatCountdown(arrivalCountdown)}</Text>
+        <View style={styles.statusRight}>
+          {activeStore ? (
+            <View style={styles.storePill}>
+              <Ionicons name="storefront-outline" size={14} color={colors.primary} />
+              <Text style={styles.storePillText} numberOfLines={1}>{activeStore.name}</Text>
+            </View>
+          ) : (
+            <View style={styles.storePill}>
+              <Ionicons name="bag-handle-outline" size={14} color={colors.muted} />
+              <Text style={[styles.storePillText, { color: colors.muted }]}>All stores</Text>
+            </View>
+          )}
+          <View style={styles.budgetRow}>
+            <View style={styles.budgetBar}>
+              <View style={[styles.budgetFill, {
+                width: `${Math.round(spendProgress * 100)}%` as any,
+                backgroundColor: spendProgress > 0.9 ? colors.low : spendProgress > 0.65 ? colors.warning : colors.success,
+              }]} />
+            </View>
+            <Text style={styles.budgetLabel}>${Math.round(weeklySpend)} / ${WEEKLY_BUDGET}</Text>
           </View>
-        ) : (
-          <View style={[styles.countdownPill, shoppingMode && styles.countdownPillActive]}>
-            <Ionicons name="bag-handle-outline" size={18} color={shoppingMode ? colors.accent : colors.primary} />
-            <Text style={styles.readyText}>{shoppingMode ? 'Keep awake' : 'Ready'}</Text>
-          </View>
-        )}
+        </View>
       </View>
 
       {stores.length > 0 && (
@@ -186,13 +216,11 @@ export default function GroceryScreen() {
       )}
 
       {lowItems.length === 0 ? (
-        <View style={styles.empty}>
-          <View style={styles.emptyIconWrap}>
-            <Ionicons name="checkmark-circle-outline" size={64} color={colors.primary} />
-          </View>
-          <Text style={styles.emptyTitle}>All stocked up</Text>
-          <Text style={styles.emptySub}>Mark items low from the Pantry tab and they will show up here.</Text>
-        </View>
+        <EmptyState
+          emoji="✅"
+          title="All stocked up"
+          subtitle="Mark items low from the Pantry tab and they'll show up here when it's time to shop."
+        />
       ) : (
         <FlatList
           data={lowItems}
@@ -240,127 +268,139 @@ export default function GroceryScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 18,
-    paddingBottom: 14,
-  },
-  headerLeft: { flex: 1, gap: 2 },
-  eyebrow: { fontSize: 13, color: colors.primary, fontWeight: '800' },
-  headerTitle: { fontSize: 32, fontWeight: '800', color: colors.ink, letterSpacing: -0.6 },
-  modeBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderRadius: 999,
-    paddingHorizontal: 13,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: colors.faint,
-    backgroundColor: colors.surface,
-  },
-  modeBtnActive: { backgroundColor: colors.surfaceDeep, borderColor: colors.surfaceDeep },
-  modeBtnText: { fontSize: 14, fontWeight: '800', color: colors.primaryDeep },
-  modeBtnTextActive: { color: colors.surface },
-  statusCard: {
-    marginHorizontal: 16,
-    marginBottom: 14,
-    borderRadius: radii.xl,
-    backgroundColor: colors.surface,
-    borderWidth: 0,
-    padding: 22,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    ...shadow,
-  },
-  statusCardActive: { backgroundColor: colors.surfaceDeep, borderColor: colors.surfaceDeep },
-  statusKicker: { fontSize: 13, color: colors.primary, fontWeight: '900', marginBottom: 4 },
-  statusKickerActive: { color: colors.accentSoft },
-  statusNumber: { fontSize: 54, lineHeight: 58, fontWeight: '800', color: colors.ink },
-  statusNumberActive: { color: colors.surface },
-  statusLabel: { fontSize: 15, color: colors.muted, fontWeight: '800' },
-  statusLabelActive: { color: '#D9CDBD' },
-  countdownPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    backgroundColor: colors.surfaceWarm,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-  },
-  countdownPillActive: { backgroundColor: '#0B1324' },
-  countdownText: { color: colors.low, fontWeight: '800', fontSize: 15 },
-  readyText: { color: colors.primary, fontWeight: '800', fontSize: 13 },
-  storeBar: { height: 50, flexGrow: 0, flexShrink: 0, backgroundColor: colors.background },
-  storeBarContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    gap: 8,
-    alignItems: 'center',
-    flexDirection: 'row',
-  },
-  chip: {
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: colors.faint,
-    backgroundColor: colors.surface,
-  },
-  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipText: { fontSize: 13, fontWeight: '800', color: colors.muted },
-  chipTextActive: { color: colors.surface },
-  list: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 120 },
-  separator: { height: 10 },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 15,
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.faint,
-    gap: 12,
-    ...shadow,
-  },
-  rowShop: { paddingVertical: 20, borderColor: colors.accentSoft },
-  checkbox: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: 2,
-    borderColor: colors.faint,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-  },
-  checkboxTapping: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
-  checkboxShop: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
-  rowBody: { flex: 1 },
-  itemName: { fontSize: 18, color: colors.ink, fontWeight: '700' },
-  itemNameShop: { fontSize: 21 },
-  itemMeta: { fontSize: 13, color: colors.muted, marginTop: 3, fontWeight: '600' },
-  tapHint: { fontSize: 12, color: colors.muted, fontWeight: '900' },
-  empty: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 48,
-  },
-  emptyIconWrap: {
-    backgroundColor: colors.primarySoft,
-    borderRadius: radii.xl,
-    padding: 16,
-    marginBottom: 8,
-  },
-  emptyTitle: { fontSize: 23, fontWeight: '900', color: colors.ink },
-  emptySub: { fontSize: 16, color: colors.muted, textAlign: 'center', lineHeight: 23 },
-});
+function makeStyles(colors: AppColors) {
+  return StyleSheet.create({
+    safe: { flex: 1, backgroundColor: colors.background },
+    header: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 20,
+      paddingTop: 18,
+      paddingBottom: 14,
+    },
+    headerLeft: { flex: 1, gap: 2 },
+    eyebrow: { fontSize: 13, color: colors.primary, fontWeight: '800' },
+    headerTitle: { fontSize: 26, fontWeight: '800', color: colors.ink, letterSpacing: -0.4 },
+    modeBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      borderRadius: 999,
+      paddingHorizontal: 13,
+      paddingVertical: 10,
+      borderWidth: 1,
+      borderColor: colors.faint,
+      backgroundColor: colors.surface,
+    },
+    modeBtnActive: { backgroundColor: colors.surfaceDeep, borderColor: colors.surfaceDeep },
+    modeBtnText: { fontSize: 14, fontWeight: '800', color: colors.primaryDeep },
+    modeBtnTextActive: { color: colors.surface },
+    statusCard: {
+      marginHorizontal: 16,
+      marginBottom: 12,
+      borderRadius: radii.lg,
+      backgroundColor: colors.surface,
+      borderWidth: 0,
+      padding: 16,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      ...shadow,
+    },
+    statusCardActive: { backgroundColor: colors.surfaceDeep, borderColor: colors.surfaceDeep },
+    statusKicker: { fontSize: 13, color: colors.primary, fontWeight: '900', marginBottom: 4 },
+    statusKickerActive: { color: colors.accentSoft },
+    statusNumber: { fontSize: 38, lineHeight: 42, fontWeight: '800', color: colors.ink },
+    statusNumberActive: { color: colors.surface },
+    statusLabel: { fontSize: 14, color: colors.muted, fontWeight: '700' },
+    statusLabelActive: { color: colors.inkSoft },
+    statusRight: { alignItems: 'flex-end', gap: 10, flex: 1, maxWidth: 140 },
+    storePill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      backgroundColor: colors.primarySoft,
+      borderRadius: 999,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      alignSelf: 'flex-end',
+    },
+    storePillText: { fontSize: 12, fontWeight: '800', color: colors.primary, maxWidth: 100 },
+    budgetRow: { alignItems: 'flex-end', gap: 4 },
+    budgetBar: {
+      width: 110,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: colors.faint,
+      overflow: 'hidden',
+    },
+    budgetFill: { height: 6, borderRadius: 3 },
+    budgetLabel: { fontSize: 11, color: colors.muted, fontWeight: '700' },
+    storeBar: { height: 50, flexGrow: 0, flexShrink: 0, backgroundColor: colors.background },
+    storeBarContent: {
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      gap: 8,
+      alignItems: 'center',
+      flexDirection: 'row',
+    },
+    chip: {
+      borderRadius: 999,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderWidth: 1,
+      borderColor: colors.faint,
+      backgroundColor: colors.surface,
+    },
+    chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+    chipText: { fontSize: 13, fontWeight: '800', color: colors.muted },
+    chipTextActive: { color: colors.surface },
+    list: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 120 },
+    separator: { height: 10 },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: 12,
+      backgroundColor: colors.surface,
+      borderRadius: radii.md,
+      borderWidth: 1,
+      borderColor: colors.faint,
+      gap: 12,
+      ...shadow,
+    },
+    rowShop: { paddingVertical: 16, borderColor: colors.accentSoft },
+    checkbox: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      borderWidth: 2,
+      borderColor: colors.faint,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: colors.surface,
+    },
+    checkboxTapping: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+    checkboxShop: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
+    rowBody: { flex: 1 },
+    itemName: { fontSize: 16, color: colors.ink, fontWeight: '700' },
+    itemNameShop: { fontSize: 18 },
+    itemMeta: { fontSize: 13, color: colors.muted, marginTop: 3, fontWeight: '600' },
+    tapHint: { fontSize: 12, color: colors.muted, fontWeight: '900' },
+    empty: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: 10,
+      paddingHorizontal: 48,
+    },
+    emptyIconWrap: {
+      backgroundColor: colors.primarySoft,
+      borderRadius: radii.xl,
+      padding: 16,
+      marginBottom: 8,
+    },
+    emptyTitle: { fontSize: 23, fontWeight: '900', color: colors.ink },
+    emptySub: { fontSize: 16, color: colors.muted, textAlign: 'center', lineHeight: 23 },
+  });
+}
