@@ -1,0 +1,8 @@
+appId: com.pantrypal.app
+---
+- launchApp:
+    clearState: true
+- runFlow: ../subflows/sign-in.yaml
+- runFlow: ../subflows/create-household.yaml
+- runFlow: ../subflows/pantry-milk-low.yaml
+- runFlow: ../subflows/grocery-got-milk.yaml

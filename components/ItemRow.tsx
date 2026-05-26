@@ -8,6 +8,7 @@ import { setItemStoreWithQueue } from '../lib/stores';
 import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../lib/haptics';
 import type { Item } from '../lib/items';
 import { CATEGORY_LABELS } from '../constants/defaultItems';
+import { pantryItemTestId } from '../lib/testIds';
 import { getItemEmoji } from '../constants/itemEmojis';
 import { useTheme } from '../hooks/useTheme';
 import type { AppColors } from '../constants/theme';
@@ -174,6 +175,7 @@ function ItemRowComponent({ item, userId, onEditPress }: Props) {
       friction={2}
     >
       <ScalePressable
+        testID={pantryItemTestId(item.name)}
         style={styles.card}
         onPress={handleTap}
         onLongPress={handleLongPress}

@@ -1,0 +1,14 @@
+appId: com.pantrypal.app
+---
+- tapOn:
+    id: tab-grocery
+- extendedWaitUntil:
+    visible:
+      id: grocery-item-milk
+    timeout: 15000
+- tapOn:
+    id: grocery-item-milk
+- extendedWaitUntil:
+    notVisible:
+      id: grocery-item-milk
+    timeout: 15000

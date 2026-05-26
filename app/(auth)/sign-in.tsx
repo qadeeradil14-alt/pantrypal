@@ -71,6 +71,7 @@ export default function SignInScreen() {
       {error ? <View style={styles.errorBox}><Text style={styles.errorText}>{error}</Text></View> : null}
 
       <TextInput
+        testID="auth-sign-in-email"
         style={styles.input}
         placeholder="Email"
         keyboardType="email-address"
@@ -81,6 +82,7 @@ export default function SignInScreen() {
         placeholderTextColor={colors.placeholder}
       />
       <TextInput
+        testID="auth-sign-in-password"
         style={styles.input}
         placeholder="Password"
         secureTextEntry
@@ -90,7 +92,12 @@ export default function SignInScreen() {
         placeholderTextColor={colors.placeholder}
       />
 
-      <TouchableOpacity style={styles.btn} onPress={handleSignIn} disabled={loading}>
+      <TouchableOpacity
+        testID="auth-sign-in-submit"
+        style={styles.btn}
+        onPress={handleSignIn}
+        disabled={loading}
+      >
         {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.btnText}>Sign in</Text>}
       </TouchableOpacity>
 

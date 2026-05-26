@@ -24,7 +24,12 @@ export default function CreateOrJoinScreen() {
       </View>
 
       <View style={styles.actions}>
-        <TouchableOpacity style={styles.primaryBtn} onPress={() => router.push('/(setup)/create-household')} activeOpacity={0.85}>
+        <TouchableOpacity
+          testID="setup-create-household"
+          style={styles.primaryBtn}
+          onPress={() => router.push('/(setup)/create-household')}
+          activeOpacity={0.85}
+        >
           <Ionicons name="add-circle-outline" size={20} color="#FFFFFF" />
           <Text style={styles.primaryBtnText}>Create a household</Text>
         </TouchableOpacity>

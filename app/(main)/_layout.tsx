@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { View, StyleSheet, AppState } from 'react-native';
+import { View, StyleSheet, AppState, Pressable } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import type { ColorValue } from 'react-native';
@@ -136,6 +136,9 @@ export default function MainLayout() {
           options={{
             title: 'Pantry',
             tabBarIcon: tabIcon('nutrition-outline', 'nutrition'),
+            tabBarButton: ({ ref: _ref, ...props }) => (
+              <Pressable {...props} testID="tab-pantry" accessibilityRole="button" />
+            ),
           }}
         />
         <Tabs.Screen
@@ -143,6 +146,9 @@ export default function MainLayout() {
           options={{
             title: 'Shopping',
             tabBarIcon: tabIcon('cart-outline', 'cart'),
+            tabBarButton: ({ ref: _ref, ...props }) => (
+              <Pressable {...props} testID="tab-grocery" accessibilityRole="button" />
+            ),
           }}
         />
         <Tabs.Screen

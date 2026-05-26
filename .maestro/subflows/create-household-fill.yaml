@@ -1,0 +1,7 @@
+appId: com.pantrypal.app
+---
+- tapOn:
+    id: setup-household-name
+- inputText: ${MAESTRO_HOUSEHOLD_NAME}
+- tapOn:
+    id: setup-household-create

@@ -11,18 +11,31 @@ export default function CheckScreen() {
   const { setHousehold } = useHouseholdStore();
 
   useEffect(() => {
-    if (!session?.user) return;
+    if (!session?.user) {
+      router.replace('/(auth)/welcome');
+      return;
+    }
 
-    getMyHousehold(session.user.id).then((data) => {
-      if (data?.households) {
-        const h = data.households as any;
-        setHousehold({ id: h.id, name: h.name, inviteCode: h.invite_code, role: data.role });
-        router.replace('/(main)/pantry');
-      } else {
+    getMyHousehold(session.user.id)
+      .then((data) => {
+        const raw = data?.households;
+        const h = Array.isArray(raw) ? raw[0] : raw;
+        if (h && data?.role) {
+          setHousehold({
+            id: h.id,
+            name: h.name,
+            inviteCode: h.invite_code,
+            role: data.role,
+          });
+          router.replace('/(main)/pantry');
+        } else {
+          router.replace('/(setup)/create-or-join');
+        }
+      })
+      .catch(() => {
         router.replace('/(setup)/create-or-join');
-      }
-    });
-  }, [session]);
+      });
+  }, [session, router, setHousehold]);
 
   return (
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>

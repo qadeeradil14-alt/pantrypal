@@ -1,0 +1,4 @@
+appId: com.pantrypal.app
+---
+- tapOn:
+    id: setup-create-household

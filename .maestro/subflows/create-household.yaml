@@ -1,0 +1,22 @@
+appId: com.pantrypal.app
+---
+- runFlow:
+    when:
+      visible:
+        id: setup-create-household
+    file: create-household-tap-or-join.yaml
+- runFlow:
+    when:
+      visible:
+        id: setup-household-name
+    file: create-household-fill.yaml
+- runFlow:
+    when:
+      visible:
+        id: setup-continue-pantry
+    file: create-household-continue.yaml
+- extendedWaitUntil:
+    visible:
+      id: pantry-search-input
+    timeout: 90000
+    optional: true

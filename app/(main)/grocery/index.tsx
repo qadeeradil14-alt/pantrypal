@@ -17,6 +17,7 @@ import { completeShoppingEntryWithQueue } from '../../../lib/shoppingList';
 import { hapticError, hapticSelection, hapticSuccess } from '../../../lib/haptics';
 import type { Item } from '../../../lib/items';
 import { CATEGORY_LABELS } from '../../../constants/defaultItems';
+import { groceryItemTestId } from '../../../lib/testIds';
 import { radii, shadow } from '../../../constants/theme';
 import type { AppColors } from '../../../constants/theme';
 import { useTheme } from '../../../hooks/useTheme';
@@ -237,6 +238,7 @@ export default function GroceryScreen() {
 
             return (
               <ScalePressable
+                testID={groceryItemTestId(entry.name)}
                 profile="card"
                 style={[styles.row, shoppingMode && styles.rowShop]}
                 onPress={() => handleGotIt(entry)}

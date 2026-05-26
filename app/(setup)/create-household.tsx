@@ -71,7 +71,12 @@ export default function CreateHouseholdScreen() {
             <Ionicons name="share-outline" size={18} color="#FFFFFF" />
             <Text style={styles.primaryBtnText}>Share invite code</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.secondaryBtn} onPress={() => router.replace('/(main)/pantry')} activeOpacity={0.7}>
+          <TouchableOpacity
+            testID="setup-continue-pantry"
+            style={styles.secondaryBtn}
+            onPress={() => router.replace('/(main)/pantry')}
+            activeOpacity={0.7}
+          >
             <Text style={styles.secondaryBtnText}>Continue to pantry →</Text>
           </TouchableOpacity>
         </View>
@@ -95,6 +100,7 @@ export default function CreateHouseholdScreen() {
       {error ? <View style={styles.errorBox}><Text style={styles.errorText}>{error}</Text></View> : null}
 
       <TextInput
+        testID="setup-household-name"
         style={styles.input}
         placeholder="Household name"
         autoCapitalize="words"
@@ -106,7 +112,12 @@ export default function CreateHouseholdScreen() {
         placeholderTextColor={colors.placeholder}
       />
 
-      <TouchableOpacity style={[styles.primaryBtn, loading && styles.btnDisabled]} onPress={handleCreate} disabled={loading}>
+      <TouchableOpacity
+        testID="setup-household-create"
+        style={[styles.primaryBtn, loading && styles.btnDisabled]}
+        onPress={handleCreate}
+        disabled={loading}
+      >
         {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Create household</Text>}
       </TouchableOpacity>
     </KeyboardAvoidingView>

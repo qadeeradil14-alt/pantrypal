@@ -239,6 +239,7 @@ export default function PantryScreen() {
       <View style={styles.searchWrap}>
         <Ionicons name="search-outline" size={16} color={colors.muted} />
         <TextInput
+          testID="pantry-search-input"
           style={styles.searchInput}
           placeholder="Search your pantry..."
           placeholderTextColor={colors.placeholder}
