@@ -1,0 +1,18 @@
+appId: com.pantrypal.app
+---
+- tapOn:
+    id: tab-pantry
+- extendedWaitUntil:
+    visible:
+      id: pantry-search-input
+    timeout: 15000
+
+# Tap Milk once to mark low (assumes Milk starts stocked on a fresh test household).
+- scrollUntilVisible:
+    element:
+      id: pantry-item-milk
+    direction: DOWN
+    timeout: 20000
+    centerElement: true
+- tapOn:
+    id: pantry-item-milk

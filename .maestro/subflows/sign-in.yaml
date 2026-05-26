@@ -1,0 +1,28 @@
+appId: com.pantrypal.app
+---
+- runFlow:
+    when:
+      visible:
+        id: auth-welcome-sign-in
+    file: welcome-to-sign-in.yaml
+
+- runFlow:
+    when:
+      visible:
+        id: auth-sign-in-email
+    commands:
+      - tapOn:
+          id: auth-sign-in-email
+      - inputText: ${MAESTRO_EMAIL}
+      - tapOn:
+          id: auth-sign-in-password
+      - inputText: ${MAESTRO_PASSWORD}
+      - tapOn:
+          id: auth-sign-in-submit
+
+# Existing household → pantry; new user → setup (handled by create-household.yaml).
+- extendedWaitUntil:
+    visible:
+      id: pantry-search-input
+    timeout: 90000
+    optional: true
