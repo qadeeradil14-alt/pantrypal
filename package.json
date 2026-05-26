@@ -7,6 +7,7 @@
     "@react-native-async-storage/async-storage": "2.2.0",
     "@supabase/supabase-js": "^2.106.1",
     "expo": "~56.0.4",
+    "expo-build-properties": "^56.0.14",
     "expo-constants": "~56.0.15",
     "expo-file-system": "~56.0.7",
     "expo-font": "~56.0.5",
