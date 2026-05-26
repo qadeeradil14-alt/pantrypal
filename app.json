@@ -42,7 +42,8 @@
         }
       ],
       "expo-font",
-      "./plugins/withGradleProperties"
+      "./plugins/withGradleProperties",
+      "./plugins/withGradleWrapper"
     ],
     "ios": {
       "supportsTablet": true,
