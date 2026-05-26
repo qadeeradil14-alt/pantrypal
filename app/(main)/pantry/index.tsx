@@ -41,9 +41,16 @@ function normalizeCategory(value: string | null | undefined): ItemCategory | nul
   return CATEGORY_SET.has(normalized) ? normalized : null;
 }
 
-function getFirstName(email: string): string {
-  const local = email.split('@')[0];
-  return local.charAt(0).toUpperCase() + local.slice(1);
+function getFirstName(email: string, metadata?: Record<string, any> | null): string {
+  // Prefer Supabase user_metadata name fields
+  const metaName: string | undefined =
+    metadata?.full_name ?? metadata?.name ?? metadata?.first_name;
+  if (metaName) {
+    return metaName.split(' ')[0];
+  }
+  // Fall back to email local part: strip trailing digits, capitalise
+  const local = email.split('@')[0].replace(/\d+$/, '');
+  return local.charAt(0).toUpperCase() + local.slice(1) || 'there';
 }
 
 const STREAK_KEY = 'pantry_streak';
@@ -201,7 +208,10 @@ export default function PantryScreen() {
     [queryFiltered, items],
   );
 
-  const firstName = useMemo(() => getFirstName(session?.user.email ?? 'there'), [session?.user.email]);
+  const firstName = useMemo(
+    () => getFirstName(session?.user.email ?? 'there', session?.user.user_metadata),
+    [session?.user.email, session?.user.user_metadata],
+  );
 
   const healthScore = useMemo(() => {
     if (items.length === 0) return 100;
