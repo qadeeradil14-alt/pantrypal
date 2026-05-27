@@ -38,6 +38,7 @@ function makeOptimisticItem(
     got_it_by: null,
     added_by: isUuid(userId) ? userId : null,
     preferred_store_id: null,
+    expires_at: null,
     updated_at: ts,
     created_at: ts,
   };
@@ -64,6 +65,7 @@ export interface Item {
   got_it_by: string | null;
   added_by: string | null;
   preferred_store_id: string | null;
+  expires_at: string | null;
   updated_at: string;
   created_at: string;
 }
@@ -210,7 +212,7 @@ export async function ensureDefaultItems(householdId: string, userId?: string | 
 
 export async function updateItemDetails(
   itemId: string,
-  updates: { name?: string; category?: string },
+  updates: { name?: string; category?: string; expires_at?: string | null },
   expectedUpdatedAt?: string,
 ): Promise<Item> {
   let query = supabase.from('items').update(updates).eq('id', itemId);
@@ -227,7 +229,7 @@ export async function updateItemDetails(
 
 export async function updateItemDetailsWithQueue(
   itemId: string,
-  updates: { name?: string; category?: string },
+  updates: { name?: string; category?: string; expires_at?: string | null },
   expectedUpdatedAt: string,
 ): Promise<{ queued: boolean; item?: Item }> {
   if (isOfflineItemId(itemId)) {

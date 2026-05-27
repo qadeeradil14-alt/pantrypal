@@ -43,6 +43,7 @@ export default function GroceryScreen() {
   const [shoppingMode, setShoppingMode] = useState(false);
   const [tapping, setTapping] = useState<string | null>(null);
   const [weeklySpend, setWeeklySpend] = useState(0);
+  const [startCount, setStartCount] = useState(0);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -57,6 +58,17 @@ export default function GroceryScreen() {
     if (!activeStoreId) return;
     setShoppingMode(true);
   }, [activeStoreId]);
+
+  // Capture how many items were pending when shopping mode started (for progress display).
+  useEffect(() => {
+    if (shoppingMode) {
+      setStartCount((prev) => prev === 0 ? lowItems.length : prev);
+    } else {
+      setStartCount(0);
+    }
+  // Only update startCount when shoppingMode *turns on*, not when lowItems drains.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shoppingMode]);
 
   useEffect(() => {
     if (!householdId) return;
@@ -182,18 +194,31 @@ export default function GroceryScreen() {
             color={shoppingMode ? colors.surface : colors.primaryDeep}
           />
           <Text style={[styles.modeBtnText, shoppingMode && styles.modeBtnTextActive]}>
-            {shoppingMode ? 'In store' : 'Shop'}
+            {shoppingMode ? 'Done' : 'Shop'}
           </Text>
         </ScalePressable>
       </View>
 
       <View style={[styles.statusCard, shoppingMode && styles.statusCardActive]}>
         <View>
-          <Text style={[styles.statusKicker, shoppingMode && styles.statusKickerActive]}>{shoppingMode ? 'In progress' : 'To buy'}</Text>
-          <Text style={[styles.statusNumber, shoppingMode && styles.statusNumberActive]}>{lowItems.length}</Text>
-          <Text style={[styles.statusLabel, shoppingMode && styles.statusLabelActive]}>
-            {lowItems.length === 1 ? 'thing to grab' : 'things to grab'}
-          </Text>
+          {shoppingMode && startCount > 0 ? (
+            <>
+              <Text style={[styles.statusKicker, styles.statusKickerActive]}>In progress</Text>
+              <Text style={[styles.statusNumber, styles.statusNumberActive]}>
+                {Math.max(0, startCount - lowItems.length)}
+                <Text style={[styles.statusNumberDim]}> / {startCount}</Text>
+              </Text>
+              <Text style={[styles.statusLabel, styles.statusLabelActive]}>grabbed</Text>
+            </>
+          ) : (
+            <>
+              <Text style={[styles.statusKicker, shoppingMode && styles.statusKickerActive]}>{shoppingMode ? 'In progress' : 'To buy'}</Text>
+              <Text style={[styles.statusNumber, shoppingMode && styles.statusNumberActive]}>{lowItems.length}</Text>
+              <Text style={[styles.statusLabel, shoppingMode && styles.statusLabelActive]}>
+                {lowItems.length === 1 ? 'thing to grab' : 'things to grab'}
+              </Text>
+            </>
+          )}
         </View>
         <View style={styles.statusRight}>
           {activeStore ? (
@@ -280,9 +305,13 @@ export default function GroceryScreen() {
 
       {lowItems.length === 0 ? (
         <EmptyState
-          emoji="✅"
-          title="All stocked up"
-          subtitle="Mark items low from the Pantry tab and they'll show up here when it's time to shop."
+          emoji={shoppingMode && startCount > 0 ? '🎉' : '✅'}
+          title={shoppingMode && startCount > 0 ? 'All grabbed!' : 'All stocked up'}
+          subtitle={
+            shoppingMode && startCount > 0
+              ? `You picked up all ${startCount} ${startCount === 1 ? 'item' : 'items'}. Tap Done when you're finished.`
+              : "Mark items low from the Pantry tab and they'll show up here when it's time to shop."
+          }
         />
       ) : (
         <SectionList
@@ -413,6 +442,7 @@ function makeStyles(colors: AppColors) {
     statusNumberActive: { color: colors.surface },
     statusLabel: { fontSize: 14, color: colors.muted, fontFamily: fonts.bodyMedium },
     statusLabelActive: { color: colors.inkSoft },
+    statusNumberDim: { fontSize: 24, color: colors.inkSoft, fontFamily: fonts.mono },
     statusRight: { alignItems: 'flex-end', gap: 9, flex: 1, maxWidth: 154 },
     storePill: {
       flexDirection: 'row',

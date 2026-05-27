@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  View, Text, FlatList, StyleSheet, TouchableOpacity,
+  View, Text, FlatList, StyleSheet,
   ActivityIndicator, Alert, RefreshControl,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -10,6 +10,7 @@ import { useHouseholdStore } from '../../../store/household';
 import { useAuthStore } from '../../../store/auth';
 import { uploadReceipt, fetchReceipts, getSpendByStore, type Receipt } from '../../../lib/receipts';
 import { radii, shadow, fonts } from '../../../constants/theme';
+import ScalePressable from '../../../components/ScalePressable';
 import type { AppColors } from '../../../constants/theme';
 import { useTheme } from '../../../hooks/useTheme';
 import EmptyState from '../../../components/EmptyState';
@@ -131,22 +132,21 @@ export default function ReceiptsScreen() {
           <Text style={styles.eyebrow}>Spending</Text>
           <Text style={styles.headerTitle}>Receipts</Text>
         </View>
-        <TouchableOpacity
+        <ScalePressable
           style={[styles.addBtn, !canUpload && styles.addBtnDisabled]}
           onPress={handleAdd}
           disabled={!canUpload}
-          activeOpacity={0.8}
         >
           {uploading
-            ? <ActivityIndicator color={colors.surface} size="small" />
+            ? <ActivityIndicator color="#FFFFFF" size="small" />
             : (
               <>
-                <Ionicons name="scan-outline" size={18} color={colors.surface} />
+                <Ionicons name="scan-outline" size={18} color="#FFFFFF" />
                 <Text style={styles.addBtnText}>Scan</Text>
               </>
             )
           }
-        </TouchableOpacity>
+        </ScalePressable>
       </View>
 
       <FlatList
@@ -244,7 +244,7 @@ function makeStyles(colors: AppColors) {
       paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14,
     },
     headerLeft: { flex: 1, gap: 2 },
-    eyebrow: { fontSize: 13, color: colors.primary, fontFamily: fonts.bodySemiBold },
+    eyebrow: { fontSize: 12, color: colors.primary, fontFamily: fonts.bodySemiBold, textTransform: 'uppercase', letterSpacing: 0.5 },
     headerTitle: { fontSize: 30, fontFamily: fonts.displayExtraBold, color: colors.ink },
     addBtn: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
@@ -252,7 +252,7 @@ function makeStyles(colors: AppColors) {
       paddingHorizontal: 14, paddingVertical: 10, minWidth: 82,
     },
     addBtnDisabled: { backgroundColor: colors.disabled },
-    addBtnText: { color: colors.surface, fontSize: 15, fontFamily: fonts.bodySemiBold },
+    addBtnText: { color: '#FFFFFF', fontSize: 15, fontFamily: fonts.bodySemiBold },
     summaryCard: {
       marginHorizontal: 16, marginBottom: 14, backgroundColor: colors.surfaceWarm, borderRadius: radii.xl,
       padding: 18, borderWidth: 1, borderColor: colors.border, ...shadow,

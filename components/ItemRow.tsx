@@ -141,6 +141,18 @@ function ItemRowComponent({ item, userId, onEditPress }: Props) {
     [item.category],
   );
 
+  const expiryInfo = useMemo(() => {
+    if (!item.expires_at) return null;
+    const now = Date.now();
+    const exp = new Date(item.expires_at).getTime();
+    const diffDays = Math.ceil((exp - now) / (1000 * 60 * 60 * 24));
+    if (diffDays < 0) return { label: 'Expired', urgent: true };
+    if (diffDays === 0) return { label: 'Expires today', urgent: true };
+    if (diffDays <= 3) return { label: `${diffDays}d left`, urgent: true };
+    if (diffDays <= 7) return { label: `${diffDays}d left`, urgent: false };
+    return null; // > 7 days away — no chip shown
+  }, [item.expires_at]);
+
   const renderRightActions = (progress: Animated.AnimatedInterpolation<number>) => {
     const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [80, 0] });
     return (
@@ -188,6 +200,13 @@ function ItemRowComponent({ item, userId, onEditPress }: Props) {
             {categoryLabel}{assignedStoreName ? ` · ${assignedStoreName}` : ''}
           </Text>
         </View>
+        {expiryInfo && (
+          <View style={[styles.expiryChip, expiryInfo.urgent && styles.expiryChipUrgent]}>
+            <Text style={[styles.expiryChipText, expiryInfo.urgent && styles.expiryChipTextUrgent]}>
+              {expiryInfo.label}
+            </Text>
+          </View>
+        )}
         {item.is_low ? (
           <View style={styles.lowBadge}>
             <View style={styles.lowDot} />
@@ -244,6 +263,15 @@ function makeStyles(colors: AppColors) {
       backgroundColor: colors.success,
       opacity: 0.85,
     },
+    expiryChip: {
+      borderRadius: 999,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      backgroundColor: colors.warningSoft,
+    },
+    expiryChipUrgent: { backgroundColor: colors.dangerSoft },
+    expiryChipText: { fontSize: 11, fontFamily: fonts.bodySemiBold, color: colors.warning },
+    expiryChipTextUrgent: { color: colors.danger },
     swipeAction: {
       justifyContent: 'center',
       alignItems: 'center',

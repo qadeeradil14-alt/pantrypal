@@ -30,6 +30,21 @@ interface Props {
   onClose: () => void;
 }
 
+function formatDateForInput(iso: string | null | undefined): string {
+  if (!iso) return '';
+  return iso.slice(0, 10); // 'YYYY-MM-DD'
+}
+
+function parseDateInput(s: string): string | null | undefined {
+  const trimmed = s.trim();
+  if (!trimmed) return null; // clear it
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    const d = new Date(trimmed + 'T12:00:00Z');
+    if (!isNaN(d.getTime())) return d.toISOString();
+  }
+  return undefined; // invalid — keep as-is
+}
+
 export default function EditItemModal({ item, onClose }: Props) {
   const { colors } = useTheme();
   const { updateItem, removeItem, restoreItem } = useItemsStore();
@@ -37,48 +52,55 @@ export default function EditItemModal({ item, onClose }: Props) {
   const [category, setCategory] = useState<ItemCategory>(
     (item.category as ItemCategory) ?? 'pantry',
   );
+  const [expiresAt, setExpiresAt] = useState(formatDateForInput(item.expires_at));
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const isDirty = name.trim() !== item.name || category !== item.category;
+  const isDirty = name.trim() !== item.name || category !== item.category || expiresAt !== formatDateForInput(item.expires_at);
 
   async function handleSave() {
     const trimmed = name.trim();
     if (!trimmed) { setError('Name cannot be empty.'); return; }
+    const parsedExpiry = parseDateInput(expiresAt);
+    if (parsedExpiry === undefined && expiresAt.trim() !== '') {
+      setError('Use YYYY-MM-DD format for the expiry date (e.g. 2025-12-31).');
+      return;
+    }
     setError('');
     setSaving(true);
-    const prev = { name: item.name, category: item.category };
-    updateItem(item.id, { name: trimmed, category });
+    const prev = { name: item.name, category: item.category, expires_at: item.expires_at };
+    updateItem(item.id, { name: trimmed, category, expires_at: parsedExpiry ?? null });
     try {
       if (isOfflineItemId(item.id)) {
-        setError('This item will sync when you’re back online.');
+        setError("This item will sync when you're back online.");
         void hapticWarning();
         return;
       }
       const { queued, item: saved } = await updateItemDetailsWithQueue(
         item.id,
-        { name: trimmed, category },
+        { name: trimmed, category, expires_at: parsedExpiry ?? null },
         item.updated_at,
       );
       if (saved) {
         updateItem(item.id, {
           name: saved.name,
           category: saved.category as ItemCategory,
+          expires_at: saved.expires_at,
           updated_at: saved.updated_at,
         });
       }
       void hapticSuccess();
       if (queued) {
-        setError('Saved offline — will sync when you’re back online.');
+        setError("Saved offline — will sync when you're back online.");
         setTimeout(onClose, 900);
         return;
       }
       onClose();
     } catch (e: unknown) {
-      updateItem(item.id, prev);
+      updateItem(item.id, prev as any);
       if (e instanceof ItemConflictError) {
         setError(e.message);
       } else {
@@ -171,6 +193,18 @@ export default function EditItemModal({ item, onClose }: Props) {
             })}
           </View>
 
+          <Text style={styles.label}>Best before</Text>
+          <TextInput
+            style={[styles.input, styles.expiryInput]}
+            value={expiresAt}
+            onChangeText={(t) => { setExpiresAt(t); if (error) setError(''); }}
+            placeholder="YYYY-MM-DD  (optional)"
+            placeholderTextColor={colors.placeholder}
+            keyboardType="numbers-and-punctuation"
+            returnKeyType="done"
+            maxLength={10}
+          />
+
           <ScalePressable
             style={[styles.saveBtn, (!isDirty || saving) && styles.saveBtnDisabled]}
             onPress={handleSave}
@@ -261,6 +295,7 @@ function makeStyles(colors: AppColors) {
       marginBottom: 10,
       letterSpacing: 0.5,
     },
+    expiryInput: { marginBottom: 20, fontFamily: fonts.mono, fontSize: 15 },
     categoryRow: { flexDirection: 'row', gap: 10, marginBottom: 24 },
     catBtn: {
       flex: 1, alignItems: 'center', justifyContent: 'center',

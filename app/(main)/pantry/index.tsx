@@ -57,6 +57,7 @@ function getFirstName(email: string, metadata?: Record<string, any> | null): str
 
 const STREAK_KEY = 'pantry_streak';
 const STREAK_DATE_KEY = 'pantry_streak_date';
+const NOTIF_PROMPT_KEY = 'pantrypal:notif:prompted:v1';
 
 async function computeStreak(allStocked: boolean): Promise<number> {
   const today = new Date().toDateString();
@@ -82,6 +83,8 @@ export default function PantryScreen() {
   const [query, setQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<'all' | ItemCategory>('all');
   const [streak, setStreak] = useState(0);
+  // 'unknown' = not yet prompted, 'enabled' = user tapped Enable, 'declined' = user tapped Not now
+  const [notifPromptState, setNotifPromptState] = useState<'unknown' | 'enabled' | 'declined' | 'loading'>('loading');
   const householdId = household?.id ?? null;
   const canAdd = !!householdId;
 
@@ -139,11 +142,24 @@ export default function PantryScreen() {
       .finally(() => setLoading(false));
   }, [load]);
 
+  // Check AsyncStorage to see if we've already asked about notifications.
   useEffect(() => {
-    if (household && session?.user.id) {
-      void registerPushToken(household.id, session.user.id).catch(() => {});
-    }
+    AsyncStorage.getItem(NOTIF_PROMPT_KEY).then((val) => {
+      setNotifPromptState(val === 'enabled' ? 'enabled' : val === 'declined' ? 'declined' : 'unknown');
+    }).catch(() => setNotifPromptState('unknown'));
+  }, []);
+
+  const handleEnableNotifs = useCallback(() => {
+    if (!household?.id || !session?.user.id) return;
+    setNotifPromptState('enabled');
+    void AsyncStorage.setItem(NOTIF_PROMPT_KEY, 'enabled');
+    void registerPushToken(household.id, session.user.id).catch(() => {});
   }, [household?.id, session?.user.id]);
+
+  const handleDismissNotifPrompt = useCallback(() => {
+    setNotifPromptState('declined');
+    void AsyncStorage.setItem(NOTIF_PROMPT_KEY, 'declined');
+  }, []);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -264,6 +280,27 @@ export default function PantryScreen() {
 
   const listHeader = useMemo(() => (
     <>
+      {notifPromptState === 'unknown' && (
+        <View style={styles.notifCard}>
+          <View style={styles.notifCardLeft}>
+            <View style={styles.notifIconWrap}>
+              <Ionicons name="notifications-outline" size={18} color={colors.primary} />
+            </View>
+            <View style={styles.notifCardBody}>
+              <Text style={styles.notifCardTitle}>Stay stocked up</Text>
+              <Text style={styles.notifCardSub}>Get a nudge when something runs low.</Text>
+            </View>
+          </View>
+          <View style={styles.notifCardActions}>
+            <ScalePressable profile="chip" style={styles.notifDismiss} onPress={handleDismissNotifPrompt}>
+              <Text style={styles.notifDismissText}>Not now</Text>
+            </ScalePressable>
+            <ScalePressable style={styles.notifEnable} onPress={handleEnableNotifs}>
+              <Text style={styles.notifEnableText}>Enable</Text>
+            </ScalePressable>
+          </View>
+        </View>
+      )}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Text style={styles.greeting} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>Hi, {firstName} 👋</Text>
@@ -374,7 +411,7 @@ export default function PantryScreen() {
       )}
     </>
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ), [firstName, household?.name, styles, colors, categoryStats, selectedCategory, lowItems, filtered, handleGotIt, query, healthScore, streak]);
+  ), [firstName, household?.name, styles, colors, categoryStats, selectedCategory, lowItems, filtered, handleGotIt, query, healthScore, streak, notifPromptState, handleEnableNotifs, handleDismissNotifPrompt]);
 
   if (loading) {
     return (
@@ -506,6 +543,38 @@ function makeStyles(colors: AppColors) {
     centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     list: { paddingHorizontal: 16, paddingBottom: 120 },
     separator: { height: 8 },
+
+    notifCard: {
+      marginHorizontal: 16,
+      marginTop: 14,
+      marginBottom: 4,
+      borderRadius: 16,
+      backgroundColor: colors.primarySoft,
+      borderWidth: 1,
+      borderColor: colors.primary + '33',
+      padding: 14,
+      gap: 10,
+    },
+    notifCardLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    notifIconWrap: {
+      width: 36, height: 36, borderRadius: 18,
+      alignItems: 'center', justifyContent: 'center',
+      backgroundColor: colors.surface,
+    },
+    notifCardBody: { flex: 1 },
+    notifCardTitle: { fontSize: 14, fontFamily: fonts.bodySemiBold, color: colors.ink },
+    notifCardSub: { fontSize: 13, color: colors.muted, fontFamily: fonts.body, marginTop: 1 },
+    notifCardActions: { flexDirection: 'row', gap: 8, justifyContent: 'flex-end' },
+    notifDismiss: {
+      borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8,
+      backgroundColor: colors.surface,
+    },
+    notifDismissText: { fontSize: 13, color: colors.muted, fontFamily: fonts.bodySemiBold },
+    notifEnable: {
+      borderRadius: 999, paddingHorizontal: 16, paddingVertical: 8,
+      backgroundColor: colors.primary,
+    },
+    notifEnableText: { fontSize: 13, color: '#FFFFFF', fontFamily: fonts.bodySemiBold },
 
     header: {
       flexDirection: 'row',
