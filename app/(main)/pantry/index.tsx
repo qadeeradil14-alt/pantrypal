@@ -10,7 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useHouseholdStore } from '../../../store/household';
 import { useAuthStore } from '../../../store/auth';
 import { useItemsStore } from '../../../store/items';
-import { ensureDefaultItems, fetchItems, markItemOkWithQueue } from '../../../lib/items';
+import { addItemWithQueue, ensureDefaultItems, fetchItems, markItemOkWithQueue } from '../../../lib/items';
 import { registerPushToken } from '../../../lib/notifications';
 import { hapticSelection, hapticSuccess } from '../../../lib/haptics';
 import ItemRow from '../../../components/ItemRow';
@@ -18,7 +18,9 @@ import AddItemModal from '../../../components/AddItemModal';
 import EmptyState from '../../../components/EmptyState';
 import SyncStatusPill from '../../../components/SyncStatusPill';
 import EditItemModal from '../../../components/EditItemModal';
+import BarcodeScannerModal from '../../../components/BarcodeScannerModal';
 import type { Item } from '../../../lib/items';
+import type { BarcodeProduct } from '../../../lib/barcodes';
 import ScalePressable from '../../../components/ScalePressable';
 import { CATEGORY_LABELS, type ItemCategory } from '../../../constants/defaultItems';
 import { getItemEmoji } from '../../../constants/itemEmojis';
@@ -71,10 +73,11 @@ export default function PantryScreen() {
   const { colors, isDark } = useTheme();
   const { household } = useHouseholdStore();
   const { session } = useAuthStore();
-  const { items, setItems, updateItem } = useItemsStore();
+  const { items, setItems, updateItem, upsertItem } = useItemsStore();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [query, setQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<'all' | ItemCategory>('all');
@@ -157,6 +160,40 @@ export default function PantryScreen() {
       updateItem(itemId, { is_low: true });
     }
   }, [session?.user.id, updateItem]);
+
+  const openScanner = useCallback(() => {
+    void hapticSelection();
+    if (!canAdd) {
+      Alert.alert('Still loading', 'Please try again in a moment.');
+      return;
+    }
+    setShowScanner(true);
+  }, [canAdd]);
+
+  const handleAddScannedProduct = useCallback(async (product: BarcodeProduct): Promise<'added' | 'updated'> => {
+    if (!householdId) throw new Error('Household not ready.');
+
+    const existing = items.find((item) => item.name.trim().toLowerCase() === product.name.trim().toLowerCase());
+    if (existing) {
+      const previous = {
+        is_low: existing.is_low,
+        marked_low_by: existing.marked_low_by,
+        got_it_by: existing.got_it_by,
+      };
+      updateItem(existing.id, { is_low: false, marked_low_by: null, got_it_by: session?.user.id ?? null });
+      try {
+        await markItemOkWithQueue(existing.id);
+        return 'updated';
+      } catch {
+        updateItem(existing.id, previous);
+        throw new Error('Could not update item.');
+      }
+    }
+
+    const { item } = await addItemWithQueue(householdId, product.name, product.category, session?.user.id ?? '');
+    upsertItem(item);
+    return 'added';
+  }, [householdId, items, session?.user.id, updateItem, upsertItem]);
 
   const q = useMemo(() => query.toLowerCase().trim(), [query]);
 
@@ -389,30 +426,48 @@ export default function PantryScreen() {
         keyboardDismissMode="on-drag"
       />
 
-      <View style={styles.fabWrap} pointerEvents="box-none">
-        <Animated.View style={[
-          styles.fabRing,
-          { transform: [{ scale: pulseScale }], opacity: pulseOpacity },
-        ]} />
+      <View style={styles.fabStack} pointerEvents="box-none">
         <Pressable
+          testID="pantry-barcode-scan-button"
+          accessibilityRole="button"
+          accessibilityLabel="Scan barcode"
+          hitSlop={10}
           style={({ pressed }) => [
-            styles.fab,
-            !canAdd && styles.fabDisabled,
-            { transform: [{ scale: pressed ? 0.90 : 1 }] },
+            styles.scanFab,
+            !canAdd && styles.scanFabDisabled,
+            { transform: [{ scale: pressed ? 0.92 : 1 }] },
           ]}
-          onPress={() => {
-            void hapticSelection();
-            if (!canAdd) {
-              Alert.alert('Still loading', 'Please try again in a moment.');
-              return;
-            }
-            setShowAdd(true);
-          }}
+          onPress={openScanner}
+          disabled={!canAdd}
         >
-          <Animated.View style={{ transform: [{ rotate: iconRotation }] }}>
-            <Ionicons name="add" size={26} color="#FFFFFF" />
-          </Animated.View>
+          <Ionicons name="barcode-outline" size={22} color={canAdd ? colors.primary : colors.muted} />
         </Pressable>
+
+        <View style={styles.fabWrap} pointerEvents="box-none">
+          <Animated.View style={[
+            styles.fabRing,
+            { transform: [{ scale: pulseScale }], opacity: pulseOpacity },
+          ]} />
+          <Pressable
+            style={({ pressed }) => [
+              styles.fab,
+              !canAdd && styles.fabDisabled,
+              { transform: [{ scale: pressed ? 0.90 : 1 }] },
+            ]}
+            onPress={() => {
+              void hapticSelection();
+              if (!canAdd) {
+                Alert.alert('Still loading', 'Please try again in a moment.');
+                return;
+              }
+              setShowAdd(true);
+            }}
+          >
+            <Animated.View style={{ transform: [{ rotate: iconRotation }] }}>
+              <Ionicons name="add" size={26} color="#FFFFFF" />
+            </Animated.View>
+          </Pressable>
+        </View>
       </View>
 
       {showAdd && household?.id && (
@@ -422,6 +477,16 @@ export default function PantryScreen() {
           onClose={() => setShowAdd(false)}
         />
       )}
+
+      <BarcodeScannerModal
+        visible={showScanner}
+        onClose={() => setShowScanner(false)}
+        onAddProduct={handleAddScannedProduct}
+        onManualAdd={() => {
+          setShowScanner(false);
+          setShowAdd(true);
+        }}
+      />
 
       {editingItem && (
         <EditItemModal
@@ -600,10 +665,30 @@ function makeStyles(colors: AppColors) {
     },
     lowBadgeText: { fontSize: 11, color: colors.warning, fontFamily: fonts.bodySemiBold },
 
-    fabWrap: {
+    fabStack: {
       position: 'absolute',
       bottom: 28,
       right: 20,
+      alignItems: 'center',
+      gap: 12,
+    },
+    scanFab: {
+      width: 46,
+      height: 46,
+      borderRadius: 23,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+      shadowColor: colors.primary,
+      shadowOffset: { width: 0, height: 5 },
+      shadowOpacity: 0.18,
+      shadowRadius: 12,
+      elevation: 6,
+    },
+    scanFabDisabled: { backgroundColor: colors.faint },
+    fabWrap: {
       width: 52,
       height: 52,
       alignItems: 'center',

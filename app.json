@@ -48,6 +48,14 @@
           "cameraPermission": "PantryPal needs camera access so you can scan grocery receipts."
         }
       ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "PantryPal needs camera access so you can scan grocery barcodes.",
+          "barcodeScannerEnabled": true,
+          "recordAudioAndroid": false
+        }
+      ],
       "expo-font",
       "./plugins/withGradleProperties",
       "./plugins/withGradleWrapper"
@@ -91,6 +99,9 @@
         "android.permission.CAMERA",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_LOCATION"
+      ],
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {

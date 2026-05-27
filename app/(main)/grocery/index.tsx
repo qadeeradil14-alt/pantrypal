@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  View, Text, FlatList, StyleSheet,
+  View, Text, SectionList, StyleSheet,
   ActivityIndicator, ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,7 +16,8 @@ import { markItemGotItWithQueue } from '../../../lib/items';
 import { completeShoppingEntryWithQueue } from '../../../lib/shoppingList';
 import { hapticError, hapticSelection, hapticSuccess } from '../../../lib/haptics';
 import type { Item } from '../../../lib/items';
-import { CATEGORY_LABELS } from '../../../constants/defaultItems';
+import { CATEGORY_LABELS, type ItemCategory } from '../../../constants/defaultItems';
+import { resolveStoreSection } from '../../../constants/storeSections';
 import { groceryItemTestId } from '../../../lib/testIds';
 import { radii, shadow, fonts } from '../../../constants/theme';
 import type { AppColors } from '../../../constants/theme';
@@ -26,6 +27,10 @@ import EmptyState from '../../../components/EmptyState';
 import SyncStatusPill from '../../../components/SyncStatusPill';
 
 const WEEKLY_BUDGET = 150;
+
+function normalizeShoppingCategory(category: ShoppingEntry['category']): ItemCategory {
+  return category === 'spice_rack' ? 'pantry' : category;
+}
 
 export default function GroceryScreen() {
   const { colors } = useTheme();
@@ -81,8 +86,38 @@ export default function GroceryScreen() {
         if (!linked) return true;
         return linked.preferred_store_id === activeStoreId || linked.preferred_store_id == null;
       })
-      .sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
+      .sort((a, b) => {
+        const sectionA = resolveStoreSection(a.name, normalizeShoppingCategory(a.category), a.aisle);
+        const sectionB = resolveStoreSection(b.name, normalizeShoppingCategory(b.category), b.aisle);
+        return sectionA.order - sectionB.order || sectionA.label.localeCompare(sectionB.label) || a.name.localeCompare(b.name);
+      });
   }, [entries, sourceItemMap, activeStoreId]);
+
+  const shoppingSections = useMemo(() => {
+    const groups = new Map<string, { title: string; icon: string; order: number; data: ShoppingEntry[] }>();
+
+    lowItems.forEach((entry) => {
+      const section = resolveStoreSection(entry.name, normalizeShoppingCategory(entry.category), entry.aisle);
+      const current = groups.get(section.key);
+      if (current) {
+        current.data.push(entry);
+        return;
+      }
+      groups.set(section.key, {
+        title: section.label,
+        icon: section.icon,
+        order: section.order,
+        data: [entry],
+      });
+    });
+
+    return Array.from(groups.values())
+      .map((section) => ({
+        ...section,
+        data: section.data.sort((a, b) => a.name.localeCompare(b.name)),
+      }))
+      .sort((a, b) => a.order - b.order || a.title.localeCompare(b.title));
+  }, [lowItems]);
 
   const spendProgress = useMemo(
     () => Math.min(weeklySpend / WEEKLY_BUDGET, 1),
@@ -171,6 +206,12 @@ export default function GroceryScreen() {
               <Text style={[styles.storePillText, { color: colors.muted }]}>All stores</Text>
             </View>
           )}
+          <View style={styles.routePill}>
+            <Ionicons name="map-outline" size={14} color={colors.primary} />
+            <Text style={styles.routePillText}>
+              {shoppingSections.length} {shoppingSections.length === 1 ? 'section' : 'sections'}
+            </Text>
+          </View>
           <View style={styles.budgetRow}>
             <View style={styles.budgetBar}>
               <View style={[styles.budgetFill, {
@@ -218,6 +259,24 @@ export default function GroceryScreen() {
         </ScrollView>
       )}
 
+      {shoppingSections.length > 1 && (
+        <View style={styles.routeCard}>
+          <View style={styles.routeCardHeader}>
+            <Ionicons name="navigate-outline" size={16} color={colors.primary} />
+            <Text style={styles.routeCardTitle}>Store route</Text>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.routeSteps}>
+            {shoppingSections.map((section, index) => (
+              <View key={section.title} style={styles.routeStep}>
+                <Text style={styles.routeStepNumber}>{index + 1}</Text>
+                <Ionicons name={section.icon as any} size={15} color={colors.primary} />
+                <Text style={styles.routeStepText}>{section.title}</Text>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
       {lowItems.length === 0 ? (
         <EmptyState
           emoji="✅"
@@ -225,16 +284,25 @@ export default function GroceryScreen() {
           subtitle="Mark items low from the Pantry tab and they'll show up here when it's time to shop."
         />
       ) : (
-        <FlatList
-          data={lowItems}
+        <SectionList
+          sections={shoppingSections}
           keyExtractor={(entry) => entry.id}
+          renderSectionHeader={({ section }) => (
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionIcon}>
+                <Ionicons name={section.icon as any} size={15} color={colors.primary} />
+              </View>
+              <Text style={styles.sectionTitle}>{section.title}</Text>
+              <Text style={styles.sectionCount}>{section.data.length}</Text>
+            </View>
+          )}
           renderItem={({ item: entry }) => {
             const sourceItem = entry.source_item_id ? sourceItemMap.get(entry.source_item_id) : null;
             const storeName = sourceItem?.preferred_store_id
               ? stores.find((s) => s.id === sourceItem.preferred_store_id)?.name
               : null;
             const isTapping = tapping === entry.id;
-            const categoryLabel = CATEGORY_LABELS[entry.category as keyof typeof CATEGORY_LABELS] ?? entry.category;
+            const categoryLabel = CATEGORY_LABELS[normalizeShoppingCategory(entry.category)];
 
             return (
               <ScalePressable
@@ -264,8 +332,10 @@ export default function GroceryScreen() {
             );
           }}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
+          SectionSeparatorComponent={() => <View style={styles.sectionSeparator} />}
           contentContainerStyle={styles.list}
           contentInsetAdjustmentBehavior="automatic"
+          stickySectionHeadersEnabled={false}
         />
       )}
     </SafeAreaView>
@@ -320,7 +390,7 @@ function makeStyles(colors: AppColors) {
     statusNumberActive: { color: colors.surface },
     statusLabel: { fontSize: 14, color: colors.muted, fontFamily: fonts.bodyMedium },
     statusLabelActive: { color: colors.inkSoft },
-    statusRight: { alignItems: 'flex-end', gap: 10, flex: 1, maxWidth: 140 },
+    statusRight: { alignItems: 'flex-end', gap: 9, flex: 1, maxWidth: 154 },
     storePill: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -332,6 +402,19 @@ function makeStyles(colors: AppColors) {
       alignSelf: 'flex-end',
     },
     storePillText: { fontSize: 12, fontFamily: fonts.bodySemiBold, color: colors.primary, maxWidth: 100 },
+    routePill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      backgroundColor: colors.surface,
+      borderRadius: 999,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      alignSelf: 'flex-end',
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    routePillText: { fontSize: 12, fontFamily: fonts.bodySemiBold, color: colors.primary },
     budgetRow: { alignItems: 'flex-end', gap: 4 },
     budgetBar: {
       width: 110,
@@ -350,6 +433,47 @@ function makeStyles(colors: AppColors) {
       alignItems: 'center',
       flexDirection: 'row',
     },
+    routeCard: {
+      marginHorizontal: 16,
+      marginBottom: 10,
+      borderRadius: radii.md,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingVertical: 12,
+      gap: 10,
+    },
+    routeCardHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 7,
+      paddingHorizontal: 14,
+    },
+    routeCardTitle: { fontSize: 14, color: colors.ink, fontFamily: fonts.bodySemiBold },
+    routeSteps: { gap: 8, paddingHorizontal: 14 },
+    routeStep: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: colors.primarySoft,
+      borderRadius: 999,
+      paddingHorizontal: 10,
+      paddingVertical: 7,
+    },
+    routeStepNumber: {
+      minWidth: 18,
+      height: 18,
+      borderRadius: 9,
+      overflow: 'hidden',
+      backgroundColor: colors.surface,
+      color: colors.primary,
+      textAlign: 'center',
+      fontSize: 11,
+      lineHeight: 18,
+      fontFamily: fonts.monoMedium,
+      fontVariant: ['tabular-nums'],
+    },
+    routeStepText: { fontSize: 12, color: colors.primary, fontFamily: fonts.bodySemiBold },
     chip: {
       borderRadius: 999,
       paddingHorizontal: 14,
@@ -363,6 +487,25 @@ function makeStyles(colors: AppColors) {
     chipTextActive: { color: colors.surface },
     list: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 120 },
     separator: { height: 10 },
+    sectionSeparator: { height: 10 },
+    sectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingTop: 10,
+      paddingBottom: 8,
+      backgroundColor: colors.background,
+    },
+    sectionIcon: {
+      width: 26,
+      height: 26,
+      borderRadius: 13,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.primarySoft,
+    },
+    sectionTitle: { flex: 1, fontSize: 18, color: colors.ink, fontFamily: fonts.displayItalic, letterSpacing: 0 },
+    sectionCount: { fontSize: 13, color: colors.muted, fontFamily: fonts.monoMedium, fontVariant: ['tabular-nums'] },
     row: {
       flexDirection: 'row',
       alignItems: 'center',
