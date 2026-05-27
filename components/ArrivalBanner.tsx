@@ -6,6 +6,12 @@ import { useStoresStore } from '../store/stores';
 import { useTheme } from '../hooks/useTheme';
 import { fonts, type AppColors } from '../constants/theme';
 
+// Banner is always dark-on-cream regardless of theme — it's a high-contrast
+// toast that must be readable in any lighting condition.
+const BANNER_BG   = '#131211';
+const BANNER_TEXT = '#F0EDE8';
+const BANNER_COPPER = '#D4874E';
+
 export default function ArrivalBanner() {
   const { colors } = useTheme();
   const router = useRouter();
@@ -62,13 +68,13 @@ export default function ArrivalBanner() {
           <Text style={styles.bold}>Someone arrived at {activeStore.name}!</Text>
           {'\n'}Tap to open the shopping list.
         </Text>
-        <Ionicons name="chevron-forward" size={16} color={colors.surface} style={{ opacity: 0.7 }} />
+        <Ionicons name="chevron-forward" size={16} color={BANNER_TEXT} style={{ opacity: 0.6 }} />
       </Pressable>
     </Animated.View>
   );
 }
 
-function makeStyles(colors: AppColors) {
+function makeStyles(_colors: AppColors) {
   return StyleSheet.create({
     banner: {
       position: 'absolute',
@@ -77,11 +83,13 @@ function makeStyles(colors: AppColors) {
       right: 16,
       zIndex: 999,
       borderRadius: 18,
-      backgroundColor: colors.ink,
+      backgroundColor: BANNER_BG,
+      borderWidth: 1,
+      borderColor: BANNER_COPPER + '40',  // copper tint border at 25% opacity
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: 0.22,
-      shadowRadius: 16,
+      shadowOpacity: 0.28,
+      shadowRadius: 18,
       elevation: 12,
     },
     inner: {
@@ -92,7 +100,7 @@ function makeStyles(colors: AppColors) {
       gap: 12,
     },
     icon: { fontSize: 26 },
-    text: { flex: 1, fontSize: 13, color: colors.surface, lineHeight: 19, fontFamily: fonts.body },
-    bold: { fontFamily: fonts.bodySemiBold, fontSize: 14 },
+    text: { flex: 1, fontSize: 13, color: BANNER_TEXT, lineHeight: 19, fontFamily: fonts.body },
+    bold: { fontFamily: fonts.bodySemiBold, fontSize: 14, color: BANNER_TEXT },
   });
 }

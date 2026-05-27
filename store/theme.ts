@@ -14,7 +14,7 @@ export const useThemeStore = create<ThemeStore>()(
       toggle: () => set({ isDark: !get().isDark }),
     }),
     {
-      name: 'pantrypal:theme:v1',
+      name: 'pantrypal:theme:v2',
       storage: createJSONStorage(() => AsyncStorage),
     },
   ),

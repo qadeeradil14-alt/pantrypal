@@ -38,36 +38,38 @@ export const lightColors = {
 };
 
 export const darkColors: typeof lightColors = {
-  background: '#1C1812',    // espresso
-  surface: '#2E231A',       // lifted — cards must stand out from background
-  primary: '#D4874E',       // copper
-  primarySoft: '#2A1A0A',
+  // Charcoal-first: warmth lives in the copper accent, not the canvas.
+  // Surfaces are near-neutral so cards read clearly without a brown haze.
+  background: '#131211',    // near-black — cool enough to drop the brown cast
+  surface: '#1F1D1B',       // dark charcoal card — clear lift from background
+  primary: '#D4874E',       // copper — the single warm anchor
+  primarySoft: '#261608',
   primaryDeep: '#E09A5F',
-  ink: '#F0E8DC',           // cream
-  inkSoft: '#E8D8C4',
-  muted: '#9C8A76',
-  placeholder: '#6A5A4A',
-  faint: '#251C14',
-  border: '#4A3A2C',        // stronger border so cards have a clear edge
+  ink: '#F0EDE8',           // crisp near-white, less saturated than before
+  inkSoft: '#E4E0DA',
+  muted: '#8C8784',         // neutral-gray, not warm-gray
+  placeholder: '#5C5856',
+  faint: '#181716',
+  border: '#2E2C2A',        // near-neutral border — cards stand out cleanly
   success: '#5A9E70',
   successSoft: '#0D2A14',
   warning: '#D4874E',       // copper doubles as "low" warning in dark mode
-  warningSoft: '#2A1A0A',
+  warningSoft: '#261608',
   danger: '#C05050',
   dangerSoft: '#2A0D0D',
   low: '#D4874E',
-  lowSoft: '#2A1A0A',
+  lowSoft: '#261608',
   lowText: '#F0C890',
   lowBadgeBg: '#3A2010',
   lowBadgeText: '#F0C890',
-  disabled: '#3A3028',
+  disabled: '#323030',
   dangerText: '#E07070',
   accent: '#5A9E70',
   accentSoft: '#0D2A14',
-  surfaceDeep: '#0F0D0A',
-  surfaceWarm: '#2E231A',
-  surfaceTint: '#2A1A0A',
-  inkSoftAlt: '#E8D8C4',
+  surfaceDeep: '#0B0A09',
+  surfaceWarm: '#1F1D1B',
+  surfaceTint: '#261608',
+  inkSoftAlt: '#E4E0DA',
   lowText2: '#F0C890',
 };
 
