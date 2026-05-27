@@ -29,3 +29,19 @@ export async function completeShoppingEntryWithQueue(entryId: string): Promise<{
     () => completeShoppingEntry(entryId),
   );
 }
+
+export async function setShoppingEntryAisle(entryId: string, aisle: string | null): Promise<void> {
+  const { error } = await supabase
+    .from('shopping_list')
+    .update({ aisle: aisle?.trim() || null })
+    .eq('id', entryId);
+  if (error) throw error;
+}
+
+export async function setShoppingEntryAisleWithQueue(entryId: string, aisle: string | null): Promise<{ queued: boolean }> {
+  return runWithOfflineQueue(
+    'set_shopping_entry_aisle',
+    { entryId, aisle },
+    () => setShoppingEntryAisle(entryId, aisle),
+  );
+}

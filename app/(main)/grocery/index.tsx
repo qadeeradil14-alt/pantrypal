@@ -13,8 +13,9 @@ import { useHouseholdStore } from '../../../store/household';
 import { useStoresStore } from '../../../store/stores';
 import { useShoppingStore, type ShoppingEntry } from '../../../store/shopping';
 import { markItemGotItWithQueue } from '../../../lib/items';
-import { completeShoppingEntryWithQueue } from '../../../lib/shoppingList';
+import { completeShoppingEntryWithQueue, setShoppingEntryAisleWithQueue } from '../../../lib/shoppingList';
 import { hapticError, hapticSelection, hapticSuccess } from '../../../lib/haptics';
+import { Alert } from 'react-native';
 import type { Item } from '../../../lib/items';
 import { CATEGORY_LABELS, type ItemCategory } from '../../../constants/defaultItems';
 import { resolveStoreSection } from '../../../constants/storeSections';
@@ -304,12 +305,34 @@ export default function GroceryScreen() {
             const isTapping = tapping === entry.id;
             const categoryLabel = CATEGORY_LABELS[normalizeShoppingCategory(entry.category)];
 
+            function handleSetAisle() {
+              void hapticSelection();
+              Alert.prompt(
+                'Store aisle',
+                `Custom section for "${entry.name}" — e.g. "Aisle 7" or "Back wall".`,
+                async (text) => {
+                  const aisle = text?.trim() || null;
+                  const prev = entry.aisle;
+                  upsertEntry({ ...entry, aisle });
+                  try {
+                    await setShoppingEntryAisleWithQueue(entry.id, aisle);
+                  } catch {
+                    upsertEntry({ ...entry, aisle: prev });
+                  }
+                },
+                'plain-text',
+                entry.aisle ?? '',
+              );
+            }
+
             return (
               <ScalePressable
                 testID={groceryItemTestId(entry.name)}
                 profile="card"
                 style={[styles.row, shoppingMode && styles.rowShop]}
                 onPress={() => handleGotIt(entry)}
+                onLongPress={handleSetAisle}
+                delayLongPress={400}
                 disabled={isTapping}
               >
                 <View style={[styles.lead, shoppingMode && styles.leadShop, isTapping && styles.leadTapping]}>

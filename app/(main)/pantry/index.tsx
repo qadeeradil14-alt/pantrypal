@@ -271,16 +271,18 @@ export default function PantryScreen() {
         </View>
         <View style={styles.headerStats}>
           <SyncStatusPill />
-          <View style={[styles.healthPill, { backgroundColor: healthScore >= 80 ? colors.successSoft : healthScore >= 50 ? colors.warningSoft : colors.lowSoft }]}>
-            <Text style={[styles.healthPillText, { color: healthScore >= 80 ? colors.success : healthScore >= 50 ? colors.warning : colors.low }]}>
-              {healthScore}%
-            </Text>
-          </View>
-          {streak > 0 && (
-            <View style={styles.streakPill}>
-              <Text style={styles.streakText}>🔥 {streak}</Text>
+          <View style={styles.statsRow}>
+            <View style={[styles.healthPill, { backgroundColor: healthScore >= 80 ? colors.successSoft : healthScore >= 50 ? colors.warningSoft : colors.lowSoft }]}>
+              <Text style={[styles.healthPillText, { color: healthScore >= 80 ? colors.success : healthScore >= 50 ? colors.warning : colors.low }]}>
+                {healthScore}%
+              </Text>
             </View>
-          )}
+            {streak > 0 && (
+              <View style={styles.streakPill}>
+                <Text style={styles.streakText}>🔥 {streak}</Text>
+              </View>
+            )}
+          </View>
         </View>
       </View>
 
@@ -513,8 +515,9 @@ function makeStyles(colors: AppColors) {
       paddingTop: 16,
       paddingBottom: 14,
     },
-    headerLeft: { flex: 1, gap: 2 },
-    headerStats: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    headerLeft: { flex: 1, gap: 2, paddingRight: 12 },
+    headerStats: { flexDirection: 'column', alignItems: 'flex-end', gap: 6 },
+    statsRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     healthPill: {
       borderRadius: 999,
       paddingHorizontal: 10,

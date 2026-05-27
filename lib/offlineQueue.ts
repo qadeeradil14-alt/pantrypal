@@ -12,6 +12,7 @@ type MutationType =
   | 'delete_item'
   | 'set_item_store'
   | 'complete_shopping_entry'
+  | 'set_shopping_entry_aisle'
   | 'add_item'
   | 'update_item'
   | 'add_store'
@@ -24,6 +25,7 @@ type MutationPayloadMap = {
   delete_item: { itemId: string };
   set_item_store: { itemId: string; storeId: string | null };
   complete_shopping_entry: { entryId: string };
+  set_shopping_entry_aisle: { entryId: string; aisle: string | null };
   add_item: { householdId: string; name: string; category: string; userId: string };
   update_item: {
     itemId: string;
