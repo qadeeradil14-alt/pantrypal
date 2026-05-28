@@ -45,7 +45,7 @@ export default function GroceryScreen() {
   const weeklyBudget = useSettingsStore((s) => s.weeklyBudget);
   const [weeklySpend, setWeeklySpend] = useState(0);
   const [startCount, setStartCount] = useState(0);
-  const startCountCaptured = useRef(false);
+  const [grabbedCount, setGrabbedCount] = useState(0);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -109,21 +109,19 @@ export default function GroceryScreen() {
       });
   }, [entries, sourceItemMap, stores, activeStoreId]);
 
-  // Capture the item count at the start of a shopping session for progress display.
-  // We can't depend solely on shoppingMode because entries may still be loading
-  // when mode activates (geofence trigger). Also watches lowItems.length so we
-  // latch the first non-zero value if entries load after mode turns on.
+  // Keep startCount as a running high-water mark: max(startCount, pending + grabbed).
+  // This handles three real cases a one-shot snapshot misses:
+  //   1. Entries load after mode activates (geofence trigger on cold start)
+  //   2. Partner marks items low mid-session (realtime insert)
+  //   3. Items sit in lowItems for 520ms after tap while purchasedIds visual plays
   useEffect(() => {
     if (!shoppingMode) {
-      startCountCaptured.current = false;
       setStartCount(0);
+      setGrabbedCount(0);
       return;
     }
-    if (!startCountCaptured.current && lowItems.length > 0) {
-      startCountCaptured.current = true;
-      setStartCount(lowItems.length);
-    }
-  }, [shoppingMode, lowItems.length]);
+    setStartCount((prev) => Math.max(prev, lowItems.length + grabbedCount));
+  }, [shoppingMode, lowItems.length, grabbedCount]);
 
 
   const shoppingSections = useMemo(() => {
@@ -156,7 +154,7 @@ export default function GroceryScreen() {
 
   const spendProgress = useMemo(
     () => Math.min(weeklySpend / weeklyBudget, 1),
-    [weeklySpend],
+    [weeklySpend, weeklyBudget],
   );
 
   const handleGotIt = useCallback(async (entry: ShoppingEntry) => {
@@ -164,6 +162,7 @@ export default function GroceryScreen() {
     void hapticSelection();
     setTapping(entry.id);
     setPurchasedIds((prev) => new Set(prev).add(entry.id));
+    setGrabbedCount((prev) => prev + 1);
     if (entry.source_item_id) {
       updateItem(entry.source_item_id, { is_low: false, got_it_by: userId, macro_status: 'in_stock' as Item['macro_status'] });
     }
@@ -202,6 +201,7 @@ export default function GroceryScreen() {
         next.delete(entry.id);
         return next;
       });
+      setGrabbedCount((prev) => Math.max(0, prev - 1));
       if (entry.source_item_id) {
         updateItem(entry.source_item_id, { is_low: true, got_it_by: null, macro_status: 'running_low' as Item['macro_status'] });
       }
@@ -244,7 +244,7 @@ export default function GroceryScreen() {
             <>
               <Text style={[styles.statusKicker, styles.statusKickerActive]}>In progress</Text>
               <Text style={[styles.statusNumber, styles.statusNumberActive]}>
-                {Math.max(0, startCount - lowItems.length)}
+                {grabbedCount}
                 <Text style={[styles.statusNumberDim]}> / {startCount}</Text>
               </Text>
               <Text style={[styles.statusLabel, styles.statusLabelActive]}>grabbed</Text>
