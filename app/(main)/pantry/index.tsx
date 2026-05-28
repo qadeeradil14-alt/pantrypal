@@ -14,7 +14,6 @@ import { useStoresStore } from '../../../store/stores';
 import { addItemWithQueue, ensureDefaultItems, fetchItems, markItemOkWithQueue } from '../../../lib/items';
 import { setItemStoreWithQueue, type Store } from '../../../lib/stores';
 import { recordLocalOverride } from '../../../lib/realtime';
-import { fetchRecentActivity, formatActivityTime, type ActivityEvent } from '../../../lib/activity';
 import { registerPushToken } from '../../../lib/notifications';
 import { hapticError, hapticSelection, hapticSuccess } from '../../../lib/haptics';
 import SwipeableItemRow from '../../../components/SwipeableItemRow';
@@ -104,7 +103,6 @@ export default function PantryScreen() {
   const [sortMode, setSortMode] = useState<SortMode>('category');
   const [liftedItem, setLiftedItem] = useState<Item | null>(null);
   const [streak, setStreak] = useState(0);
-  const [activity, setActivity] = useState<ActivityEvent[]>([]);
   // 'unknown' = not yet prompted, 'enabled' = user tapped Enable, 'declined' = user tapped Not now
   const [notifPromptState, setNotifPromptState] = useState<'unknown' | 'enabled' | 'declined' | 'loading'>('loading');
   const householdId = household?.id ?? null;
@@ -132,10 +130,6 @@ export default function PantryScreen() {
       .finally(() => setLoading(false));
   }, [load]);
 
-  useEffect(() => {
-    if (!householdId || !session?.user.id) return;
-    fetchRecentActivity(householdId, session.user.id).then(setActivity).catch(() => {});
-  }, [householdId, session?.user.id]);
 
   // Check AsyncStorage to see if we've already asked about notifications.
   useEffect(() => {
@@ -440,31 +434,6 @@ export default function PantryScreen() {
         </View>
       </View>
 
-      {/* Activity feed — recent household events */}
-      {activity.length > 0 && (
-        <View style={styles.activityCard}>
-          {activity.map((event, idx) => (
-            <View
-              key={event.itemId + event.type}
-              style={[styles.activityRow, idx > 0 && styles.activityRowBorder]}
-            >
-              <View style={[
-                styles.activityDot,
-                event.type === 'marked_low' ? styles.activityDotLow : styles.activityDotGot,
-              ]} />
-              <Text style={styles.activityText} numberOfLines={1}>
-                <Text style={styles.activityActor}>
-                  {event.isSelf ? 'You' : 'Partner'}
-                </Text>
-                {event.type === 'marked_low' ? ' flagged ' : ' picked up '}
-                <Text style={styles.activityItem}>{event.itemName}</Text>
-              </Text>
-              <Text style={styles.activityTime}>{formatActivityTime(event.updatedAt)}</Text>
-            </View>
-          ))}
-        </View>
-      )}
-
       {/* Notification nudge below greeting */}
       {notifPromptState === 'unknown' && (
         <View style={styles.notifCard}>
@@ -549,7 +518,7 @@ export default function PantryScreen() {
       </View>
     </>
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ), [firstName, household?.name, styles, colors, filtered.length, query, streak, activity, notifPromptState, handleEnableNotifs, handleDismissNotifPrompt, selectedStore, canAdd, openScanner, storePicker, sortMode]);
+  ), [firstName, household?.name, styles, colors, filtered.length, query, streak, notifPromptState, handleEnableNotifs, handleDismissNotifPrompt, selectedStore, canAdd, openScanner, storePicker, sortMode]);
 
   if (loading) {
     return (
@@ -700,31 +669,6 @@ function makeStyles(colors: AppColors) {
     centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     list: { paddingHorizontal: 16, paddingBottom: 120 },
     separator: { height: 8 },
-
-    activityCard: {
-      marginTop: 14,
-      marginBottom: 4,
-      borderRadius: 16,
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
-      overflow: 'hidden',
-    },
-    activityRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 10,
-      paddingHorizontal: 14,
-      paddingVertical: 11,
-    },
-    activityRowBorder: { borderTopWidth: 1, borderTopColor: colors.border },
-    activityDot: { width: 7, height: 7, borderRadius: 4, flexShrink: 0 },
-    activityDotLow: { backgroundColor: colors.warning },
-    activityDotGot: { backgroundColor: colors.success },
-    activityText: { flex: 1, fontSize: 13, color: colors.muted, fontFamily: fonts.body },
-    activityActor: { fontFamily: fonts.bodySemiBold, color: colors.ink },
-    activityItem: { fontFamily: fonts.bodySemiBold, color: colors.ink },
-    activityTime: { fontSize: 11, color: colors.muted, fontFamily: fonts.mono, flexShrink: 0 },
 
     notifCard: {
       marginHorizontal: 0,

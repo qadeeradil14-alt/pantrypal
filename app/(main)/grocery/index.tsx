@@ -27,6 +27,7 @@ import ScalePressable from '../../../components/ScalePressable';
 import EmptyState from '../../../components/EmptyState';
 import SyncStatusPill from '../../../components/SyncStatusPill';
 import { useSettingsStore } from '../../../store/settings';
+import { fetchRecentActivity, formatActivityTime, type ActivityEvent } from '../../../lib/activity';
 
 function normalizeShoppingCategory(category: ShoppingEntry['category']): ItemCategory {
   return category === 'spice_rack' ? 'pantry' : category;
@@ -44,6 +45,7 @@ export default function GroceryScreen() {
   const [purchasedIds, setPurchasedIds] = useState<Set<string>>(() => new Set());
   const weeklyBudget = useSettingsStore((s) => s.weeklyBudget);
   const [weeklySpend, setWeeklySpend] = useState(0);
+  const [activity, setActivity] = useState<ActivityEvent[]>([]);
   const [startCount, setStartCount] = useState(0);
   const [grabbedCount, setGrabbedCount] = useState(0);
 
@@ -70,6 +72,11 @@ export default function GroceryScreen() {
       })
       .catch(() => {});
   }, [householdId]);
+
+  useEffect(() => {
+    if (!householdId || !session?.user.id) return;
+    fetchRecentActivity(householdId, session.user.id).then(setActivity).catch(() => {});
+  }, [householdId, session?.user.id]);
 
   const activeStore = useMemo(
     () => stores.find((s) => s.id === activeStoreId),
@@ -280,6 +287,29 @@ export default function GroceryScreen() {
           </View>
         </View>
       </View>
+
+      {!shoppingMode && activity.length > 0 && (
+        <View style={styles.activityCard}>
+          <Text style={styles.activityLabel}>Recent</Text>
+          {activity.map((event, idx) => (
+            <View
+              key={event.itemId + event.type}
+              style={[styles.activityRow, idx > 0 && styles.activityRowBorder]}
+            >
+              <View style={[
+                styles.activityDot,
+                event.type === 'marked_low' ? styles.activityDotLow : styles.activityDotGot,
+              ]} />
+              <Text style={styles.activityText} numberOfLines={1}>
+                <Text style={styles.activityActor}>{event.isSelf ? 'You' : 'Partner'}</Text>
+                {event.type === 'marked_low' ? ' flagged ' : ' picked up '}
+                <Text style={styles.activityItem}>{event.itemName}</Text>
+              </Text>
+              <Text style={styles.activityTime}>{formatActivityTime(event.updatedAt)}</Text>
+            </View>
+          ))}
+        </View>
+      )}
 
       {stores.length > 0 && totalActiveCount > 0 && (
         <ScrollView
@@ -704,5 +734,40 @@ function makeStyles(colors: AppColors) {
     },
     emptyTitle: { fontSize: 23, fontFamily: fonts.display, color: colors.ink },
     emptySub: { fontSize: 16, color: colors.muted, textAlign: 'center', lineHeight: 23, fontFamily: fonts.body },
+
+    activityCard: {
+      marginHorizontal: 16,
+      marginBottom: 10,
+      borderRadius: radii.md,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      overflow: 'hidden',
+    },
+    activityLabel: {
+      fontSize: 11,
+      fontFamily: fonts.bodySemiBold,
+      color: colors.muted,
+      textTransform: 'uppercase',
+      letterSpacing: 0.4,
+      paddingHorizontal: 14,
+      paddingTop: 10,
+      paddingBottom: 6,
+    },
+    activityRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+    },
+    activityRowBorder: { borderTopWidth: 1, borderTopColor: colors.border },
+    activityDot: { width: 6, height: 6, borderRadius: 3, flexShrink: 0 },
+    activityDotLow: { backgroundColor: colors.warning },
+    activityDotGot: { backgroundColor: colors.success },
+    activityText: { flex: 1, fontSize: 13, color: colors.muted, fontFamily: fonts.body },
+    activityActor: { fontFamily: fonts.bodySemiBold, color: colors.ink },
+    activityItem: { fontFamily: fonts.bodySemiBold, color: colors.ink },
+    activityTime: { fontSize: 11, color: colors.muted, fontFamily: fonts.mono, flexShrink: 0 },
   });
 }
