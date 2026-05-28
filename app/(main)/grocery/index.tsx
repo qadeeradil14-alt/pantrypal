@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   View, Text, SectionList, StyleSheet,
-  ActivityIndicator, ScrollView,
+  ActivityIndicator, ScrollView, Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
@@ -15,9 +15,9 @@ import { useShoppingStore, type ShoppingEntry } from '../../../store/shopping';
 import { markItemGotItWithQueue } from '../../../lib/items';
 import { completeShoppingEntryWithQueue, setShoppingEntryAisleWithQueue } from '../../../lib/shoppingList';
 import { hapticError, hapticSelection, hapticSuccess } from '../../../lib/haptics';
-import { Alert } from 'react-native';
 import type { Item } from '../../../lib/items';
 import { CATEGORY_LABELS, type ItemCategory } from '../../../constants/defaultItems';
+import { getItemEmoji } from '../../../constants/itemEmojis';
 import { resolveStoreSection } from '../../../constants/storeSections';
 import { groceryItemTestId } from '../../../lib/testIds';
 import { radii, shadow, fonts } from '../../../constants/theme';
@@ -26,8 +26,7 @@ import { useTheme } from '../../../hooks/useTheme';
 import ScalePressable from '../../../components/ScalePressable';
 import EmptyState from '../../../components/EmptyState';
 import SyncStatusPill from '../../../components/SyncStatusPill';
-
-const WEEKLY_BUDGET = 150;
+import { useSettingsStore } from '../../../store/settings';
 
 function normalizeShoppingCategory(category: ShoppingEntry['category']): ItemCategory {
   return category === 'spice_rack' ? 'pantry' : category;
@@ -42,8 +41,11 @@ export default function GroceryScreen() {
   const { entries, removeEntry, upsertEntry } = useShoppingStore();
   const [shoppingMode, setShoppingMode] = useState(false);
   const [tapping, setTapping] = useState<string | null>(null);
+  const [purchasedIds, setPurchasedIds] = useState<Set<string>>(() => new Set());
+  const weeklyBudget = useSettingsStore((s) => s.weeklyBudget);
   const [weeklySpend, setWeeklySpend] = useState(0);
   const [startCount, setStartCount] = useState(0);
+  const startCountCaptured = useRef(false);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -58,17 +60,6 @@ export default function GroceryScreen() {
     if (!activeStoreId) return;
     setShoppingMode(true);
   }, [activeStoreId]);
-
-  // Capture how many items were pending when shopping mode started (for progress display).
-  useEffect(() => {
-    if (shoppingMode) {
-      setStartCount((prev) => prev === 0 ? lowItems.length : prev);
-    } else {
-      setStartCount(0);
-    }
-  // Only update startCount when shoppingMode *turns on*, not when lowItems drains.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shoppingMode]);
 
   useEffect(() => {
     if (!householdId) return;
@@ -90,50 +81,81 @@ export default function GroceryScreen() {
     [items],
   );
 
+  // Total active entries regardless of store filter — used to keep the store
+  // chip bar visible even when the selected store has 0 items.
+  const totalActiveCount = useMemo(
+    () => entries.filter((e) => e.status === 'active').length,
+    [entries],
+  );
+
   const lowItems = useMemo(() => {
-    const activeEntries = entries.filter((e) => e.status === 'active');
+    const activeEntries = entries.filter((e) => {
+      if (e.status !== 'active') return false;
+      if (activeStoreId) {
+        const linked = e.source_item_id ? sourceItemMap.get(e.source_item_id) : null;
+        return linked?.preferred_store_id === activeStoreId;
+      }
+      return true;
+    });
     return activeEntries
-      .filter((entry) => {
-        const linked = entry.source_item_id ? sourceItemMap.get(entry.source_item_id) : null;
-        if (!activeStoreId) return true;
-        if (!linked) return true;
-        return linked.preferred_store_id === activeStoreId || linked.preferred_store_id == null;
-      })
       .sort((a, b) => {
+        const linkedA = a.source_item_id ? sourceItemMap.get(a.source_item_id) : null;
+        const linkedB = b.source_item_id ? sourceItemMap.get(b.source_item_id) : null;
+        const storeA = linkedA?.preferred_store_id ? stores.find((s) => s.id === linkedA.preferred_store_id)?.name ?? 'No store set' : 'No store set';
+        const storeB = linkedB?.preferred_store_id ? stores.find((s) => s.id === linkedB.preferred_store_id)?.name ?? 'No store set' : 'No store set';
         const sectionA = resolveStoreSection(a.name, normalizeShoppingCategory(a.category), a.aisle);
         const sectionB = resolveStoreSection(b.name, normalizeShoppingCategory(b.category), b.aisle);
-        return sectionA.order - sectionB.order || sectionA.label.localeCompare(sectionB.label) || a.name.localeCompare(b.name);
+        return storeA.localeCompare(storeB) || sectionA.order - sectionB.order || sectionA.label.localeCompare(sectionB.label) || a.name.localeCompare(b.name);
       });
-  }, [entries, sourceItemMap, activeStoreId]);
+  }, [entries, sourceItemMap, stores, activeStoreId]);
+
+  // Capture the item count at the start of a shopping session for progress display.
+  // We can't depend solely on shoppingMode because entries may still be loading
+  // when mode activates (geofence trigger). Also watches lowItems.length so we
+  // latch the first non-zero value if entries load after mode turns on.
+  useEffect(() => {
+    if (!shoppingMode) {
+      startCountCaptured.current = false;
+      setStartCount(0);
+      return;
+    }
+    if (!startCountCaptured.current && lowItems.length > 0) {
+      startCountCaptured.current = true;
+      setStartCount(lowItems.length);
+    }
+  }, [shoppingMode, lowItems.length]);
+
 
   const shoppingSections = useMemo(() => {
-    const groups = new Map<string, { title: string; icon: string; order: number; data: ShoppingEntry[] }>();
+    const groups = new Map<string, { title: string; storeId: string | null; data: ShoppingEntry[] }>();
 
     lowItems.forEach((entry) => {
-      const section = resolveStoreSection(entry.name, normalizeShoppingCategory(entry.category), entry.aisle);
-      const current = groups.get(section.key);
-      if (current) {
-        current.data.push(entry);
+      const linked = entry.source_item_id ? sourceItemMap.get(entry.source_item_id) : null;
+      const store = linked?.preferred_store_id ? stores.find((s) => s.id === linked.preferred_store_id) : null;
+      const key = store?.id ?? 'unassigned';
+      const existing = groups.get(key);
+      if (existing) {
+        existing.data.push(entry);
         return;
       }
-      groups.set(section.key, {
-        title: section.label,
-        icon: section.icon,
-        order: section.order,
+      groups.set(key, {
+        title: store?.name ?? 'No store set',
+        storeId: store?.id ?? null,
         data: [entry],
       });
     });
 
     return Array.from(groups.values())
-      .map((section) => ({
-        ...section,
-        data: section.data.sort((a, b) => a.name.localeCompare(b.name)),
-      }))
-      .sort((a, b) => a.order - b.order || a.title.localeCompare(b.title));
-  }, [lowItems]);
+      .sort((a, b) => {
+        // "No store set" (unassigned) always goes last
+        if (a.title === 'No store set') return 1;
+        if (b.title === 'No store set') return -1;
+        return a.title.localeCompare(b.title);
+      });
+  }, [lowItems, sourceItemMap, stores]);
 
   const spendProgress = useMemo(
-    () => Math.min(weeklySpend / WEEKLY_BUDGET, 1),
+    () => Math.min(weeklySpend / weeklyBudget, 1),
     [weeklySpend],
   );
 
@@ -141,28 +163,45 @@ export default function GroceryScreen() {
     const userId = session?.user.id ?? '';
     void hapticSelection();
     setTapping(entry.id);
-    removeEntry(entry.id);
+    setPurchasedIds((prev) => new Set(prev).add(entry.id));
     if (entry.source_item_id) {
       updateItem(entry.source_item_id, { is_low: false, got_it_by: userId, macro_status: 'in_stock' as Item['macro_status'] });
     }
 
     try {
+      const finishVisual = () => {
+        setTimeout(() => {
+          removeEntry(entry.id);
+          setPurchasedIds((prev) => {
+            const next = new Set(prev);
+            next.delete(entry.id);
+            return next;
+          });
+        }, 520);
+      };
       if (entry.source_item_id) {
         const result = await markItemGotItWithQueue(entry.source_item_id, userId);
         if (result.queued) {
           void hapticSelection();
+          finishVisual();
           return;
         }
       } else {
         const result = await completeShoppingEntryWithQueue(entry.id);
         if (result.queued) {
           void hapticSelection();
+          finishVisual();
           return;
         }
       }
       void hapticSuccess();
+      finishVisual();
     } catch {
-      upsertEntry(entry);
+      setPurchasedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(entry.id);
+        return next;
+      });
       if (entry.source_item_id) {
         updateItem(entry.source_item_id, { is_low: true, got_it_by: null, macro_status: 'running_low' as Item['macro_status'] });
       }
@@ -212,7 +251,9 @@ export default function GroceryScreen() {
             </>
           ) : (
             <>
-              <Text style={[styles.statusKicker, shoppingMode && styles.statusKickerActive]}>{shoppingMode ? 'In progress' : 'To buy'}</Text>
+              <Text style={[styles.statusKicker, shoppingMode && styles.statusKickerActive]}>
+                {shoppingMode && lowItems.length > 0 ? 'In progress' : 'To buy'}
+              </Text>
               <Text style={[styles.statusNumber, shoppingMode && styles.statusNumberActive]}>{lowItems.length}</Text>
               <Text style={[styles.statusLabel, shoppingMode && styles.statusLabelActive]}>
                 {lowItems.length === 1 ? 'thing to grab' : 'things to grab'}
@@ -221,36 +262,26 @@ export default function GroceryScreen() {
           )}
         </View>
         <View style={styles.statusRight}>
-          {activeStore ? (
+          {activeStore && (
             <View style={styles.storePill}>
               <Ionicons name="storefront-outline" size={14} color={colors.primary} />
               <Text style={styles.storePillText} numberOfLines={1}>{activeStore.name}</Text>
             </View>
-          ) : (
-            <View style={styles.storePill}>
-              <Ionicons name="bag-handle-outline" size={14} color={colors.muted} />
-              <Text style={[styles.storePillText, { color: colors.muted }]}>All stores</Text>
-            </View>
           )}
-          <View style={styles.routePill}>
-            <Ionicons name="map-outline" size={14} color={colors.primary} />
-            <Text style={styles.routePillText}>
-              {shoppingSections.length} {shoppingSections.length === 1 ? 'section' : 'sections'}
-            </Text>
-          </View>
-          <View style={styles.budgetRow}>
+          <View style={styles.budgetSection}>
+            <Text style={styles.budgetTitle}>Weekly spend</Text>
             <View style={styles.budgetBar}>
               <View style={[styles.budgetFill, {
                 width: `${Math.round(spendProgress * 100)}%` as any,
-                backgroundColor: spendProgress > 0.9 ? colors.low : spendProgress > 0.65 ? colors.warning : colors.success,
+                backgroundColor: spendProgress > 0.9 ? colors.danger : spendProgress > 0.65 ? colors.warning : colors.success,
               }]} />
             </View>
-            <Text style={styles.budgetLabel}>${Math.round(weeklySpend)} / ${WEEKLY_BUDGET}</Text>
+            <Text style={styles.budgetLabel}>${Math.round(weeklySpend)} / ${weeklyBudget}</Text>
           </View>
         </View>
       </View>
 
-      {stores.length > 0 && (
+      {stores.length > 0 && totalActiveCount > 0 && (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -285,17 +316,23 @@ export default function GroceryScreen() {
         </ScrollView>
       )}
 
-      {shoppingSections.length > 1 && (
+      {shoppingSections.length > 0 && (
         <View style={styles.routeCard}>
           <View style={styles.routeCardHeader}>
             <Ionicons name="navigate-outline" size={16} color={colors.primary} />
-            <Text style={styles.routeCardTitle}>Store route</Text>
+            <Text style={styles.routeCardTitle}>
+              {shoppingSections.length} {shoppingSections.length === 1 ? 'stop' : 'stops'}
+            </Text>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.routeSteps}>
             {shoppingSections.map((section, index) => (
               <View key={section.title} style={styles.routeStep}>
                 <Text style={styles.routeStepNumber}>{index + 1}</Text>
-                <Ionicons name={section.icon as any} size={15} color={colors.primary} />
+                <Ionicons
+                  name={section.storeId ? 'storefront-outline' : 'help-circle-outline'}
+                  size={15}
+                  color={colors.primary}
+                />
                 <Text style={styles.routeStepText}>{section.title}</Text>
               </View>
             ))}
@@ -305,11 +342,31 @@ export default function GroceryScreen() {
 
       {lowItems.length === 0 ? (
         <EmptyState
-          emoji={shoppingMode && startCount > 0 ? '🎉' : '✅'}
-          title={shoppingMode && startCount > 0 ? 'All grabbed!' : 'All stocked up'}
+          emoji={
+            shoppingMode && startCount > 0
+              ? '🍽️'
+              : activeStoreId
+              ? '🏪'
+              : shoppingMode
+              ? '🛒'
+              : '🧺'
+          }
+          title={
+            shoppingMode && startCount > 0
+              ? 'All grabbed!'
+              : activeStoreId
+              ? `Nothing at ${activeStore?.name ?? 'this store'}`
+              : shoppingMode
+              ? 'List is clear'
+              : 'All stocked up'
+          }
           subtitle={
             shoppingMode && startCount > 0
               ? `You picked up all ${startCount} ${startCount === 1 ? 'item' : 'items'}. Tap Done when you're finished.`
+              : activeStoreId
+              ? 'No low items are assigned to this store. Tap All stores above to see the full list.'
+              : shoppingMode
+              ? "Nothing on the list right now. Mark items low from the Pantry tab and they'll appear here."
               : "Mark items low from the Pantry tab and they'll show up here when it's time to shop."
           }
         />
@@ -319,11 +376,17 @@ export default function GroceryScreen() {
           keyExtractor={(entry) => entry.id}
           renderSectionHeader={({ section }) => (
             <View style={styles.sectionHeader}>
-              <View style={styles.sectionIcon}>
-                <Ionicons name={section.icon as any} size={15} color={colors.primary} />
+              <View style={styles.sectionIconWrap}>
+                <Ionicons
+                  name={section.storeId ? 'storefront-outline' : 'location-outline'}
+                  size={15}
+                  color={colors.primary}
+                />
               </View>
               <Text style={styles.sectionTitle}>{section.title}</Text>
-              <Text style={styles.sectionCount}>{section.data.length}</Text>
+              <View style={styles.sectionBadge}>
+                <Text style={styles.sectionBadgeText}>{section.data.length}</Text>
+              </View>
             </View>
           )}
           renderItem={({ item: entry }) => {
@@ -332,7 +395,9 @@ export default function GroceryScreen() {
               ? stores.find((s) => s.id === sourceItem.preferred_store_id)?.name
               : null;
             const isTapping = tapping === entry.id;
+            const purchased = purchasedIds.has(entry.id);
             const categoryLabel = CATEGORY_LABELS[normalizeShoppingCategory(entry.category)];
+            const emoji = getItemEmoji(entry.name, entry.category ?? '');
 
             function handleSetAisle() {
               void hapticSelection();
@@ -358,28 +423,35 @@ export default function GroceryScreen() {
               <ScalePressable
                 testID={groceryItemTestId(entry.name)}
                 profile="card"
-                style={[styles.row, shoppingMode && styles.rowShop]}
+                style={[styles.row, shoppingMode && styles.rowShop, purchased && styles.rowPurchased]}
                 onPress={() => handleGotIt(entry)}
                 onLongPress={handleSetAisle}
                 delayLongPress={400}
                 disabled={isTapping}
               >
-                <View style={[styles.lead, shoppingMode && styles.leadShop, isTapping && styles.leadTapping]}>
+                <View style={[styles.lead, shoppingMode && styles.leadShop, isTapping && styles.leadTapping, purchased && styles.leadPurchased]}>
                   {isTapping ? (
                     <ActivityIndicator size="small" color={colors.primary} />
+                  ) : purchased ? (
+                    <Ionicons name="checkmark" size={13} color={colors.surface} />
                   ) : shoppingMode ? (
                     <Ionicons name="checkmark" size={13} color={colors.accent} />
                   ) : null}
                 </View>
+                <Text style={styles.itemEmoji}>{emoji}</Text>
                 <View style={styles.rowBody}>
-                  <Text style={[styles.itemName, shoppingMode && styles.itemNameShop]}>
+                  <Text style={[styles.itemName, shoppingMode && styles.itemNameShop, purchased && styles.itemPurchased]}>
                     {entry.name}
                   </Text>
-                  <Text style={styles.itemMeta}>
-                    {categoryLabel}{storeName ? ` · ${storeName}` : ''}
+                  <Text style={[styles.itemMeta, purchased && styles.itemMetaPurchased]}>
+                    {purchased ? 'Purchased ✓' : categoryLabel}{storeName && !purchased ? ` · ${storeName}` : ''}
                   </Text>
                 </View>
-                <Text style={styles.tapHint}>{shoppingMode ? 'Got it' : 'Tap'}</Text>
+                {(shoppingMode || purchased) && (
+                  <Text style={[styles.tapHint, purchased && styles.tapHintPurchased]}>
+                    {purchased ? 'Done' : 'Got it'}
+                  </Text>
+                )}
               </ScalePressable>
             );
           }}
@@ -435,14 +507,14 @@ function makeStyles(colors: AppColors) {
       alignItems: 'center',
       ...shadow,
     },
-    statusCardActive: { backgroundColor: colors.surfaceDeep, borderColor: colors.surfaceDeep },
+    statusCardActive: { backgroundColor: colors.primarySoft, borderColor: colors.primary + '40' },
     statusKicker: { fontSize: 13, color: colors.primary, fontFamily: fonts.bodySemiBold, marginBottom: 4 },
-    statusKickerActive: { color: colors.accentSoft },
+    statusKickerActive: { color: colors.primary },
     statusNumber: { fontSize: 38, lineHeight: 46, fontFamily: fonts.mono, color: colors.ink },
-    statusNumberActive: { color: colors.surface },
+    statusNumberActive: { color: colors.primaryDeep },
     statusLabel: { fontSize: 14, color: colors.muted, fontFamily: fonts.bodyMedium },
-    statusLabelActive: { color: colors.inkSoft },
-    statusNumberDim: { fontSize: 24, color: colors.inkSoft, fontFamily: fonts.mono },
+    statusLabelActive: { color: colors.muted },
+    statusNumberDim: { fontSize: 24, color: colors.muted, fontFamily: fonts.mono },
     statusRight: { alignItems: 'flex-end', gap: 9, flex: 1, maxWidth: 154 },
     storePill: {
       flexDirection: 'row',
@@ -468,6 +540,8 @@ function makeStyles(colors: AppColors) {
       borderColor: colors.border,
     },
     routePillText: { fontSize: 12, fontFamily: fonts.bodySemiBold, color: colors.primary },
+    budgetSection: { alignItems: 'flex-end', gap: 4 },
+    budgetTitle: { fontSize: 11, color: colors.muted, fontFamily: fonts.bodyMedium },
     budgetRow: { alignItems: 'flex-end', gap: 4 },
     budgetBar: {
       width: 110,
@@ -526,7 +600,7 @@ function makeStyles(colors: AppColors) {
       fontFamily: fonts.monoMedium,
       fontVariant: ['tabular-nums'],
     },
-    routeStepText: { fontSize: 12, color: colors.primary, fontFamily: fonts.bodySemiBold },
+    routeStepText: { fontSize: 12, color: colors.primary, fontFamily: fonts.bodySemiBold, maxWidth: 140 },
     chip: {
       borderRadius: 999,
       paddingHorizontal: 14,
@@ -545,20 +619,32 @@ function makeStyles(colors: AppColors) {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 8,
-      paddingTop: 10,
-      paddingBottom: 8,
+      paddingTop: 14,
+      paddingBottom: 10,
+      paddingHorizontal: 2,
       backgroundColor: colors.background,
     },
-    sectionIcon: {
-      width: 26,
-      height: 26,
-      borderRadius: 13,
+    sectionIconWrap: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: colors.primarySoft,
     },
-    sectionTitle: { flex: 1, fontSize: 18, color: colors.ink, fontFamily: fonts.displayItalic, letterSpacing: 0 },
-    sectionCount: { fontSize: 13, color: colors.muted, fontFamily: fonts.monoMedium, fontVariant: ['tabular-nums'] },
+    sectionTitle: { flex: 1, fontSize: 20, color: colors.ink, fontFamily: fonts.displayItalic, letterSpacing: 0 },
+    sectionBadge: {
+      backgroundColor: colors.primarySoft,
+      borderRadius: 999,
+      paddingHorizontal: 9,
+      paddingVertical: 2,
+    },
+    sectionBadgeText: {
+      fontSize: 12,
+      fontFamily: fonts.monoMedium,
+      color: colors.primary,
+      fontVariant: ['tabular-nums'],
+    },
     row: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -571,6 +657,11 @@ function makeStyles(colors: AppColors) {
       ...shadow,
     },
     rowShop: { paddingVertical: 16, borderColor: colors.accentSoft },
+    rowPurchased: {
+      backgroundColor: colors.successSoft,
+      borderColor: colors.success,
+      opacity: 0.86,
+    },
     lead: {
       width: 22,
       height: 22,
@@ -585,11 +676,19 @@ function makeStyles(colors: AppColors) {
       borderColor: colors.accent,
       backgroundColor: colors.accentSoft,
     },
+    leadPurchased: {
+      borderColor: colors.success,
+      backgroundColor: colors.success,
+    },
+    itemEmoji: { fontSize: 22, width: 28, textAlign: 'center' },
     rowBody: { flex: 1 },
     itemName: { fontSize: 16, color: colors.ink, fontFamily: fonts.bodyMedium },
     itemNameShop: { fontSize: 18 },
+    itemPurchased: { textDecorationLine: 'line-through', color: colors.muted },
     itemMeta: { fontSize: 13, color: colors.muted, marginTop: 3, fontFamily: fonts.body },
+    itemMetaPurchased: { color: colors.success, fontFamily: fonts.bodySemiBold },
     tapHint: { fontSize: 12, color: colors.muted, fontFamily: fonts.bodySemiBold },
+    tapHintPurchased: { color: colors.success },
     empty: {
       flex: 1,
       justifyContent: 'center',

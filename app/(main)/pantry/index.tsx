@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   View, Text, SectionList, StyleSheet, ScrollView,
   ActivityIndicator, RefreshControl, TextInput, Alert,
-  Animated, Easing, Pressable,
+  Pressable,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -10,37 +10,55 @@ import { Ionicons } from '@expo/vector-icons';
 import { useHouseholdStore } from '../../../store/household';
 import { useAuthStore } from '../../../store/auth';
 import { useItemsStore } from '../../../store/items';
+import { useStoresStore } from '../../../store/stores';
 import { addItemWithQueue, ensureDefaultItems, fetchItems, markItemOkWithQueue } from '../../../lib/items';
+import { setItemStoreWithQueue, type Store } from '../../../lib/stores';
+import { recordLocalOverride } from '../../../lib/realtime';
+import { fetchRecentActivity, formatActivityTime, type ActivityEvent } from '../../../lib/activity';
 import { registerPushToken } from '../../../lib/notifications';
-import { hapticSelection, hapticSuccess } from '../../../lib/haptics';
-import ItemRow from '../../../components/ItemRow';
+import { hapticError, hapticSelection, hapticSuccess } from '../../../lib/haptics';
+import SwipeableItemRow from '../../../components/SwipeableItemRow';
+import LiftAssignPanel from '../../../components/LiftAssignPanel';
 import AddItemModal from '../../../components/AddItemModal';
 import EmptyState from '../../../components/EmptyState';
 import SyncStatusPill from '../../../components/SyncStatusPill';
 import EditItemModal from '../../../components/EditItemModal';
 import BarcodeScannerModal from '../../../components/BarcodeScannerModal';
+import StoreLogo from '../../../components/StoreLogo';
 import type { Item } from '../../../lib/items';
 import type { BarcodeProduct } from '../../../lib/barcodes';
+import { pantryStoreTargetTestId } from '../../../lib/testIds';
 import ScalePressable from '../../../components/ScalePressable';
-import { CATEGORY_LABELS, type ItemCategory } from '../../../constants/defaultItems';
-import { getItemEmoji } from '../../../constants/itemEmojis';
 import { useTheme } from '../../../hooks/useTheme';
 import type { AppColors } from '../../../constants/theme';
 import { fonts } from '../../../constants/theme';
 
-const CATEGORY_ORDER: ItemCategory[] = ['fridge', 'freezer', 'pantry'];
-const CATEGORY_SET = new Set<ItemCategory>(CATEGORY_ORDER);
+type SortMode = 'alpha' | 'category' | 'store';
 
-const CATEGORY_EMOJI: Record<ItemCategory, string> = {
-  fridge: '🥛',
-  freezer: '🧊',
-  pantry: '🧺',
+interface PantrySection {
+  title: string;
+  data: Item[];
+  key: string;
+  count: number;
+  isLow?: boolean;
+  emoji?: string;
+}
+
+const CATEGORY_EMOJI: Record<string, string> = {
+  produce: '🥬', vegetables: '🥦', vegetable: '🥦', fruits: '🍎', fruit: '🍎',
+  dairy: '🥛', meat: '🥩', 'meat & seafood': '🥩', seafood: '🐟', fish: '🐟',
+  bakery: '🍞', bread: '🍞', beverages: '🥤', beverage: '🥤', drinks: '🥤',
+  snacks: '🍿', snack: '🍿', frozen: '🧊', canned: '🥫', 'canned goods': '🥫',
+  grains: '🌾', grain: '🌾', 'grains & pasta': '🌾', pasta: '🍝', rice: '🍚',
+  condiments: '🧂', condiment: '🧂', spices: '🌶️', 'herbs & spices': '🌶️',
+  breakfast: '🥣', cereal: '🥣', legumes: '🫘', legume: '🫘', beans: '🫘',
+  nuts: '🥜', nut: '🥜', oils: '🫙', oil: '🫙', sauces: '🍅', sauce: '🍅',
+  sweets: '🍬', desserts: '🍰', baking: '🧁', eggs: '🥚', egg: '🥚',
+  cleaning: '🧹', household: '🏠', 'personal care': '🧴', other: '📦',
 };
 
-
-function normalizeCategory(value: string | null | undefined): ItemCategory | null {
-  const normalized = (value ?? '').toLowerCase().trim() as ItemCategory;
-  return CATEGORY_SET.has(normalized) ? normalized : null;
+function getCategoryEmoji(cat: string): string {
+  return CATEGORY_EMOJI[cat.toLowerCase().trim()] ?? '🛒';
 }
 
 function getFirstName(email: string, metadata?: Record<string, any> | null): string {
@@ -71,18 +89,22 @@ async function computeStreak(allStocked: boolean): Promise<number> {
 }
 
 export default function PantryScreen() {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const { household } = useHouseholdStore();
   const { session } = useAuthStore();
   const { items, setItems, updateItem, upsertItem } = useItemsStore();
+  const stores = useStoresStore((state) => state.stores);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [query, setQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<'all' | ItemCategory>('all');
+  const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
+  const [sortMode, setSortMode] = useState<SortMode>('category');
+  const [liftedItem, setLiftedItem] = useState<Item | null>(null);
   const [streak, setStreak] = useState(0);
+  const [activity, setActivity] = useState<ActivityEvent[]>([]);
   // 'unknown' = not yet prompted, 'enabled' = user tapped Enable, 'declined' = user tapped Not now
   const [notifPromptState, setNotifPromptState] = useState<'unknown' | 'enabled' | 'declined' | 'loading'>('loading');
   const householdId = household?.id ?? null;
@@ -90,41 +112,9 @@ export default function PantryScreen() {
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const fabPulse = useRef(new Animated.Value(0)).current;
-  const fabRotate = useRef(new Animated.Value(0)).current;
+  const listRef = useRef<SectionList<Item>>(null);
+  const storeTargetRefs = useRef<Record<string, any>>({});
 
-  // Only pulse when pantry is empty — avoids a forever-running animation
-  useEffect(() => {
-    if (items.length > 0) {
-      fabPulse.setValue(0);
-      return;
-    }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(fabPulse, {
-          toValue: 1, duration: 1600,
-          easing: Easing.out(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(fabPulse, { toValue: 0, duration: 0, useNativeDriver: true }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [fabPulse, items.length]);
-
-  useEffect(() => {
-    Animated.spring(fabRotate, {
-      toValue: showAdd ? 1 : 0,
-      useNativeDriver: true,
-      tension: 120,
-      friction: 8,
-    }).start();
-  }, [showAdd, fabRotate]);
-
-  const pulseScale = fabPulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.75] });
-  const pulseOpacity = fabPulse.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0.55, 0.35, 0] });
-  const iconRotation = fabRotate.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '45deg'] });
 
   const load = useCallback(async () => {
     if (!householdId) { setItems([]); return; }
@@ -141,6 +131,11 @@ export default function PantryScreen() {
       .catch(() => Alert.alert('Could not load items', 'Please try again.'))
       .finally(() => setLoading(false));
   }, [load]);
+
+  useEffect(() => {
+    if (!householdId || !session?.user.id) return;
+    fetchRecentActivity(householdId, session.user.id).then(setActivity).catch(() => {});
+  }, [householdId, session?.user.id]);
 
   // Check AsyncStorage to see if we've already asked about notifications.
   useEffect(() => {
@@ -166,16 +161,6 @@ export default function PantryScreen() {
     try { await load(); } catch { Alert.alert('Refresh failed', 'Please try again.'); }
     setRefreshing(false);
   }, [load]);
-
-  const handleGotIt = useCallback(async (itemId: string) => {
-    void hapticSuccess();
-    updateItem(itemId, { is_low: false, marked_low_by: null, got_it_by: session?.user.id ?? null });
-    try {
-      await markItemOkWithQueue(itemId);
-    } catch {
-      updateItem(itemId, { is_low: true });
-    }
-  }, [session?.user.id, updateItem]);
 
   const openScanner = useCallback(() => {
     void hapticSelection();
@@ -218,68 +203,269 @@ export default function PantryScreen() {
     [items, q],
   );
 
+  const selectedStore = useMemo(
+    () => stores.find((store) => store.id === selectedStoreId) ?? null,
+    [stores, selectedStoreId],
+  );
+
   const filtered = useMemo(
-    () => (selectedCategory === 'all'
-      ? queryFiltered
-      : queryFiltered.filter((i) => normalizeCategory(i.category) === selectedCategory)),
-    [queryFiltered, selectedCategory],
+    () => queryFiltered
+      .filter((item) => !selectedStoreId || item.preferred_store_id === selectedStoreId)
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    [queryFiltered, selectedStoreId],
   );
 
-  const sections = useMemo(() => {
-    const visibleCategories = selectedCategory === 'all' ? CATEGORY_ORDER : [selectedCategory as ItemCategory];
-    return visibleCategories
-      .map((cat) => {
-        const catItems = filtered.filter((i) => normalizeCategory(i.category) === cat);
-        const low = catItems.filter((i) => i.is_low).sort((a, b) => a.name.localeCompare(b.name));
-        const ok = catItems.filter((i) => !i.is_low).sort((a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        return {
-          title: CATEGORY_LABELS[cat],
-          emoji: CATEGORY_EMOJI[cat],
-          data: [...low, ...ok],
-          key: cat,
-          count: catItems.length,
-          lowCount: low.length,
-        };
-      })
-      .filter((s) => s.data.length > 0);
-  }, [filtered, selectedCategory]);
+  const sections = useMemo((): PantrySection[] => {
+    const lowItems = filtered.filter((i) => i.is_low).sort((a, b) => a.name.localeCompare(b.name));
+    const normalItems = filtered.filter((i) => !i.is_low).sort((a, b) => a.name.localeCompare(b.name));
+    const result: PantrySection[] = [];
 
-  const lowItems = useMemo(
-    () => items.filter((i) => i.is_low).sort((a, b) => a.name.localeCompare(b.name)),
-    [items],
-  );
+    if (lowItems.length > 0) {
+      result.push({ title: 'Needs attention', data: lowItems, key: '__low__', count: lowItems.length, isLow: true });
+    }
 
-  const categoryStats = useMemo(
-    () => CATEGORY_ORDER.map((cat) => ({
-      key: cat as ItemCategory,
-      label: CATEGORY_LABELS[cat],
-      emoji: CATEGORY_EMOJI[cat],
-      count: queryFiltered.filter((i) => normalizeCategory(i.category) === cat).length,
-      low: items.filter((i) => normalizeCategory(i.category) === cat && i.is_low).length,
-    })),
-    [queryFiltered, items],
-  );
+    if (sortMode === 'alpha') {
+      result.push({
+        title: selectedStore ? selectedStore.name : 'My Groceries',
+        data: normalItems,
+        key: '__all__',
+        count: normalItems.length,
+      });
+    } else if (sortMode === 'category') {
+      const byCat = new Map<string, Item[]>();
+      normalItems.forEach((item) => {
+        const cat = item.category
+          ? item.category.charAt(0).toUpperCase() + item.category.slice(1)
+          : 'Other';
+        if (!byCat.has(cat)) byCat.set(cat, []);
+        byCat.get(cat)!.push(item);
+      });
+      [...byCat.keys()]
+        .sort((a, b) => a === 'Other' ? 1 : b === 'Other' ? -1 : a.localeCompare(b))
+        .forEach((cat) => {
+          result.push({
+            title: cat,
+            data: byCat.get(cat)!,
+            key: `cat-${cat}`,
+            count: byCat.get(cat)!.length,
+            emoji: getCategoryEmoji(cat),
+          });
+        });
+    } else {
+      // store grouping
+      const byStore = new Map<string, Item[]>();
+      normalItems.forEach((item) => {
+        const st = stores.find((s) => s.id === item.preferred_store_id);
+        const key = st?.name ?? 'No store set';
+        if (!byStore.has(key)) byStore.set(key, []);
+        byStore.get(key)!.push(item);
+      });
+      [...byStore.keys()]
+        .sort((a, b) => a === 'No store set' ? 1 : b === 'No store set' ? -1 : a.localeCompare(b))
+        .forEach((storeName) => {
+          result.push({
+            title: storeName,
+            data: byStore.get(storeName)!,
+            key: `store-${storeName}`,
+            count: byStore.get(storeName)!.length,
+            emoji: storeName === 'No store set' ? '📍' : '🏪',
+          });
+        });
+    }
+
+    return result;
+  }, [filtered, sortMode, selectedStore, stores]);
+
+  const storeCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    items.forEach((item) => {
+      if (item.preferred_store_id) {
+        counts.set(item.preferred_store_id, (counts.get(item.preferred_store_id) ?? 0) + 1);
+      }
+    });
+    return counts;
+  }, [items]);
 
   const firstName = useMemo(
     () => getFirstName(session?.user.email ?? 'there', session?.user.user_metadata),
     [session?.user.email, session?.user.user_metadata],
   );
 
-  const healthScore = useMemo(() => {
-    if (items.length === 0) return 100;
-    const stocked = items.filter((i) => !i.is_low).length;
-    return Math.round((stocked / items.length) * 100);
-  }, [items]);
+  const allStocked = items.length > 0 && items.every((i) => !i.is_low);
 
-  const allStocked = healthScore === 100 && items.length > 0;
+  // Guard: don't call computeStreak while items is still empty (initial load).
+  // Without this guard, the pre-load empty-items state sets allStocked=false
+  // and computeStreak zeroes the streak + stamps today's date, so the real
+  // load that follows can never increment past 0.
+  useEffect(() => {
+    if (loading) return;
+    computeStreak(allStocked).then(setStreak).catch(() => {});
+  }, [allStocked, loading]);
 
   useEffect(() => {
-    computeStreak(allStocked).then(setStreak).catch(() => {});
-  }, [allStocked]);
+    if (selectedStoreId && !stores.some((store) => store.id === selectedStoreId)) {
+      setSelectedStoreId(null);
+    }
+  }, [selectedStoreId, stores]);
+
+  const handleResetAll = useCallback(async () => {
+    const lowOnes = items.filter((i) => i.is_low);
+    if (lowOnes.length === 0) return;
+    void hapticSelection();
+    // Optimistic update
+    lowOnes.forEach((item) => updateItem(item.id, { is_low: false, marked_low_by: null, got_it_by: null }));
+    try {
+      await Promise.all(lowOnes.map((item) => markItemOkWithQueue(item.id)));
+      void hapticSuccess();
+    } catch {
+      // Restore on failure
+      lowOnes.forEach((item) => updateItem(item.id, { is_low: item.is_low, marked_low_by: item.marked_low_by, got_it_by: item.got_it_by }));
+      void hapticError();
+    }
+  }, [items, updateItem]);
+
+  const assignItemToStore = useCallback(async (item: Item, storeId: string | null) => {
+    const previousStoreId = item.preferred_store_id;
+    // Register the override BEFORE updating Zustand so the realtime echo
+    // that arrives a few hundred ms later doesn't revert our change.
+    recordLocalOverride(item.id, { preferred_store_id: storeId });
+    updateItem(item.id, { preferred_store_id: storeId });
+    void hapticSelection();
+    try {
+      const result = await setItemStoreWithQueue(item.id, storeId);
+      if (!result.queued) void hapticSuccess();
+    } catch {
+      updateItem(item.id, { preferred_store_id: previousStoreId });
+      void hapticError();
+    }
+  }, [updateItem]);
+
+
+  const handleItemAdded = useCallback((item: Item) => {
+    setQuery('');
+    if (selectedStoreId && item.preferred_store_id !== selectedStoreId) {
+      setSelectedStoreId(item.preferred_store_id ?? null);
+    }
+  }, [selectedStoreId]);
+
+  const storePicker = useMemo(() => (
+    <View style={styles.storeSection}>
+      <View style={styles.storeSectionHeader}>
+        <Text style={styles.storeSectionTitle}>Stores</Text>
+      </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        nestedScrollEnabled
+        style={styles.storeScroll}
+        contentContainerStyle={styles.storeRow}
+        scrollEventThrottle={64}
+      >
+        {stores.length === 0 ? (
+          <View style={styles.emptyStoreTarget}>
+            <Text style={styles.emptyStoreText}>Add stores to assign groceries.</Text>
+          </View>
+        ) : (
+          <>
+            <Pressable
+              testID={pantryStoreTargetTestId('all-groceries')}
+              style={({ pressed }) => [
+                styles.storeTarget,
+                !selectedStoreId && styles.storeTargetActive,
+                pressed && styles.storeTargetPressed,
+              ]}
+              onPress={() => {
+                void hapticSelection();
+                setSelectedStoreId(null);
+              }}
+            >
+              <View style={styles.allStoreIcon}>
+                <Ionicons name="list-outline" size={18} color={!selectedStoreId ? colors.primary : colors.muted} />
+              </View>
+              <Text style={styles.storeTargetName} numberOfLines={1}>All groceries</Text>
+              <Text style={styles.storeTargetCount}>{items.length}</Text>
+            </Pressable>
+            {stores.map((store: Store) => {
+              const active = selectedStoreId === store.id;
+              return (
+                <Pressable
+                  key={store.id}
+                  testID={pantryStoreTargetTestId(store.name)}
+                  style={({ pressed }) => [
+                    styles.storeTarget,
+                    active && styles.storeTargetActive,
+                    pressed && styles.storeTargetPressed,
+                  ]}
+                  onPress={() => {
+                    void hapticSelection();
+                    setSelectedStoreId(active ? null : store.id);
+                  }}
+                >
+                  <StoreLogo name={store.name} size={34} domain={store.brand_domain} logoUrl={store.logo_url} />
+                  <Text style={styles.storeTargetName} numberOfLines={1}>{store.name}</Text>
+                  <Text style={styles.storeTargetCount}>{storeCounts.get(store.id) ?? 0}</Text>
+                </Pressable>
+              );
+            })}
+          </>
+        )}
+      </ScrollView>
+    </View>
+  ), [styles, colors, stores, selectedStoreId, items.length, storeCounts]);
+
+  const sortLabels: Record<SortMode, string> = { alpha: 'A–Z', category: 'Category', store: 'Store' };
+  const sortIcons: Record<SortMode, React.ComponentProps<typeof Ionicons>['name']> = {
+    alpha: 'text-outline',
+    category: 'grid-outline',
+    store: 'storefront-outline',
+  };
 
   const listHeader = useMemo(() => (
     <>
+      {/* Greeting first */}
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          <Text style={styles.greeting} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>Hi, {firstName} 👋</Text>
+          <Text style={styles.householdSub}>{household?.name ?? 'Your pantry'}</Text>
+        </View>
+        <View style={styles.headerStats}>
+          <SyncStatusPill />
+          {streak > 0 && (
+            <View style={styles.statsRow}>
+              <View style={styles.streakPill}>
+                <Text style={styles.streakText}>🔥 {streak}</Text>
+              </View>
+            </View>
+          )}
+        </View>
+      </View>
+
+      {/* Activity feed — recent household events */}
+      {activity.length > 0 && (
+        <View style={styles.activityCard}>
+          {activity.map((event, idx) => (
+            <View
+              key={event.itemId + event.type}
+              style={[styles.activityRow, idx > 0 && styles.activityRowBorder]}
+            >
+              <View style={[
+                styles.activityDot,
+                event.type === 'marked_low' ? styles.activityDotLow : styles.activityDotGot,
+              ]} />
+              <Text style={styles.activityText} numberOfLines={1}>
+                <Text style={styles.activityActor}>
+                  {event.isSelf ? 'You' : 'Partner'}
+                </Text>
+                {event.type === 'marked_low' ? ' flagged ' : ' picked up '}
+                <Text style={styles.activityItem}>{event.itemName}</Text>
+              </Text>
+              <Text style={styles.activityTime}>{formatActivityTime(event.updatedAt)}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* Notification nudge below greeting */}
       {notifPromptState === 'unknown' && (
         <View style={styles.notifCard}>
           <View style={styles.notifCardLeft}>
@@ -301,117 +487,69 @@ export default function PantryScreen() {
           </View>
         </View>
       )}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.greeting} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>Hi, {firstName} 👋</Text>
-          <Text style={styles.householdSub}>{household?.name ?? 'Your pantry'}</Text>
-        </View>
-        <View style={styles.headerStats}>
-          <SyncStatusPill />
-          <View style={styles.statsRow}>
-            <View style={[styles.healthPill, { backgroundColor: healthScore >= 80 ? colors.successSoft : healthScore >= 50 ? colors.warningSoft : colors.lowSoft }]}>
-              <Text style={[styles.healthPillText, { color: healthScore >= 80 ? colors.success : healthScore >= 50 ? colors.warning : colors.low }]}>
-                {healthScore}%
-              </Text>
-            </View>
-            {streak > 0 && (
-              <View style={styles.streakPill}>
-                <Text style={styles.streakText}>🔥 {streak}</Text>
-              </View>
-            )}
-          </View>
-        </View>
-      </View>
+
+      {storePicker}
 
       <View style={styles.searchWrap}>
         <Ionicons name="search-outline" size={16} color={colors.muted} />
         <TextInput
           testID="pantry-search-input"
           style={styles.searchInput}
-          placeholder="Search your pantry..."
+          placeholder="Search groceries..."
           placeholderTextColor={colors.placeholder}
           value={query}
           onChangeText={setQuery}
           clearButtonMode="while-editing"
           returnKeyType="search"
         />
+        <Pressable
+          testID="pantry-barcode-scan-button"
+          accessibilityRole="button"
+          accessibilityLabel="Scan barcode"
+          hitSlop={8}
+          style={({ pressed }) => [
+            styles.searchAction,
+            !canAdd && styles.searchActionDisabled,
+            pressed && canAdd && styles.searchActionPressed,
+          ]}
+          onPress={openScanner}
+          disabled={!canAdd}
+        >
+          <Ionicons name="barcode-outline" size={18} color={canAdd ? colors.primary : colors.muted} />
+        </Pressable>
       </View>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        nestedScrollEnabled
-        style={styles.filterScroll}
-        contentContainerStyle={styles.filterRow}
-      >
-        {(['all', ...CATEGORY_ORDER] as Array<'all' | ItemCategory>).map((key) => {
-          const active = selectedCategory === key;
-          const stat = categoryStats.find((s) => s.key === key);
-          const label = key === 'all' ? 'All' : CATEGORY_LABELS[key];
-          const emoji = key === 'all' ? '🏠' : CATEGORY_EMOJI[key];
-          const hasLow = stat ? stat.low > 0 : false;
+      <View style={styles.masterHeader}>
+        <View style={styles.masterTitleWrap}>
+          <Text style={styles.masterTitle}>{selectedStore ? selectedStore.name : 'My Groceries'}</Text>
+          {selectedStore && (
+            <Pressable hitSlop={8} onPress={() => { void hapticSelection(); setSelectedStoreId(null); }}>
+              <Text style={styles.masterReset}>All groceries</Text>
+            </Pressable>
+          )}
+        </View>
+        <Text style={styles.masterCount}>{filtered.length}</Text>
+      </View>
+
+      {/* Sort toggle */}
+      <View style={styles.sortRow}>
+        {(['alpha', 'category', 'store'] as SortMode[]).map((mode) => {
+          const active = sortMode === mode;
           return (
-            <ScalePressable
-              key={key}
-              profile="chip"
-              style={[styles.filterPill, active && styles.filterPillActive]}
-              onPress={() => {
-                void hapticSelection();
-                setSelectedCategory(active && key !== 'all' ? 'all' : key);
-              }}
+            <Pressable
+              key={mode}
+              style={[styles.sortPill, active && styles.sortPillActive]}
+              onPress={() => { void hapticSelection(); setSortMode(mode); }}
             >
-              <Text style={styles.filterPillEmoji}>{emoji}</Text>
-              <Text style={[styles.filterPillText, active && styles.filterPillTextActive]}>{label}</Text>
-              {stat && <Text style={[styles.filterPillCount, active && styles.filterPillCountActive]}>{stat.count}</Text>}
-              {hasLow && !active && <View style={styles.filterLowDot} />}
-            </ScalePressable>
+              <Ionicons name={sortIcons[mode]} size={12} color={active ? colors.primary : colors.muted} />
+              <Text style={[styles.sortPillText, active && styles.sortPillTextActive]}>{sortLabels[mode]}</Text>
+            </Pressable>
           );
         })}
-      </ScrollView>
-
-      {lowItems.length > 0 && (
-        <View style={styles.section}>
-          <View style={styles.sectionRow}>
-            <Text style={styles.sectionIcon}>⚠️</Text>
-            <Text style={styles.sectionTitle}>Running Low</Text>
-            <View style={styles.sectionBadge}>
-              <Text style={styles.sectionBadgeText}>{lowItems.length}</Text>
-            </View>
-          </View>
-          {lowItems.map((item) => (
-            <View key={item.id} style={styles.lowCard}>
-              <Text style={styles.lowCardEmoji}>
-                {getItemEmoji(item.name, item.category ?? '')}
-              </Text>
-              <View style={styles.lowCardContent}>
-                <Text style={styles.lowCardName} numberOfLines={1}>{item.name}</Text>
-                <Text style={styles.lowCardCat}>
-                  {CATEGORY_LABELS[normalizeCategory(item.category) ?? 'pantry']}
-                </Text>
-              </View>
-              <ScalePressable
-                style={styles.gotItBtn}
-                profile="chip"
-                onPress={() => void handleGotIt(item.id)}
-              >
-                <Text style={styles.gotItText}>Got it</Text>
-              </ScalePressable>
-            </View>
-          ))}
-        </View>
-      )}
-
-      {filtered.length > 0 && (
-        <View style={styles.allItemsRow}>
-          <Text style={styles.sectionTitle}>
-            {selectedCategory === 'all' ? 'All Items' : CATEGORY_LABELS[selectedCategory as ItemCategory]}
-          </Text>
-          <Text style={styles.allItemsCount}>{filtered.length}</Text>
-        </View>
-      )}
+      </View>
     </>
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ), [firstName, household?.name, styles, colors, categoryStats, selectedCategory, lowItems, filtered, handleGotIt, query, healthScore, streak, notifPromptState, handleEnableNotifs, handleDismissNotifPrompt]);
+  ), [firstName, household?.name, styles, colors, filtered.length, query, streak, activity, notifPromptState, handleEnableNotifs, handleDismissNotifPrompt, selectedStore, canAdd, openScanner, storePicker, sortMode]);
 
   if (loading) {
     return (
@@ -424,95 +562,103 @@ export default function PantryScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <SectionList
+        ref={listRef}
         sections={sections}
         keyExtractor={(item) => item.id}
-        extraData={[items, isDark]}
+        extraData={items}
         ListHeaderComponent={listHeader}
         renderItem={({ item }) => (
-          <ItemRow
+          <SwipeableItemRow
             item={item}
             userId={session?.user.id ?? ''}
             onEditPress={setEditingItem}
+            onLiftPress={setLiftedItem}
           />
         )}
-        renderSectionHeader={({ section }) => (
-          <View style={styles.listSectionHeader}>
-            <Text style={styles.listSectionEmoji}>{section.emoji}</Text>
-            <Text style={styles.listSectionTitle}>{section.title}</Text>
-            {section.lowCount > 0 && (
-              <View style={styles.lowBadge}>
-                <Text style={styles.lowBadgeText}>{section.lowCount} low</Text>
+        renderSectionHeader={({ section }) => {
+          const s = section as unknown as PantrySection;
+          if (s.isLow) {
+            return (
+              <View style={styles.needsAttentionHeader}>
+                <Text style={styles.sectionEmoji}>⚠️</Text>
+                <Text style={styles.needsAttentionTitle}>Needs attention</Text>
+                <View style={styles.needsAttentionBadge}>
+                  <Text style={styles.needsAttentionBadgeText}>{s.count}</Text>
+                </View>
+                <Pressable
+                  hitSlop={10}
+                  style={({ pressed }) => [styles.resetAllBtn, pressed && { opacity: 0.65 }]}
+                  onPress={handleResetAll}
+                >
+                  <Ionicons name="refresh-outline" size={11} color={colors.warning} />
+                  <Text style={styles.resetAllText}>Reset all</Text>
+                </Pressable>
               </View>
-            )}
-            <Text style={styles.listSectionCount}>{section.count}</Text>
-          </View>
-        )}
+            );
+          }
+          if (sortMode === 'alpha') return null;
+          return (
+            <View style={styles.categorySectionHeader}>
+              {s.emoji ? <Text style={styles.sectionEmoji}>{s.emoji}</Text> : null}
+              <Text style={styles.categorySectionTitle}>{s.title}</Text>
+              <Text style={styles.categorySectionCount}>{s.count}</Text>
+            </View>
+          );
+        }}
         ListEmptyComponent={
           <EmptyState
             emoji={q ? '🔍' : '🌿'}
-            title={q ? `No results for "${query}"` : 'Nothing here yet'}
-            subtitle={q ? 'Try a different search term.' : 'Add the first item your household uses regularly.'}
-            action={q ? undefined : { label: 'Add first item', onPress: () => { void hapticSelection(); setShowAdd(true); } }}
+            title={q ? `No results for "${query}"` : selectedStore ? `Nothing for ${selectedStore.name}` : 'Nothing here yet'}
+            subtitle={q ? 'Try a different search term.' : selectedStore ? 'Add a grocery to this store or return to the full list.' : 'Add the first item your household uses regularly.'}
+            action={q
+              ? undefined
+              : {
+                label: selectedStore ? `Add to ${selectedStore.name}` : 'Add first item',
+                onPress: () => { void hapticSelection(); setShowAdd(true); },
+              }}
           />
         }
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
         }
         contentContainerStyle={styles.list}
+        contentInsetAdjustmentBehavior="automatic"
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         stickySectionHeadersEnabled={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
+        scrollEventThrottle={16}
       />
 
       <View style={styles.fabStack} pointerEvents="box-none">
         <Pressable
-          testID="pantry-barcode-scan-button"
           accessibilityRole="button"
-          accessibilityLabel="Scan barcode"
-          hitSlop={10}
+          accessibilityLabel="Add grocery"
           style={({ pressed }) => [
-            styles.scanFab,
-            !canAdd && styles.scanFabDisabled,
-            { transform: [{ scale: pressed ? 0.92 : 1 }] },
+            styles.fab,
+            !canAdd && styles.fabDisabled,
+            pressed && canAdd && styles.fabPressed,
           ]}
-          onPress={openScanner}
+          onPress={() => {
+            void hapticSelection();
+            if (!canAdd) {
+              Alert.alert('Still loading', 'Please try again in a moment.');
+              return;
+            }
+            setShowAdd(true);
+          }}
           disabled={!canAdd}
         >
-          <Ionicons name="barcode-outline" size={22} color={canAdd ? colors.primary : colors.muted} />
+          <Ionicons name="add" size={24} color="#FFFFFF" />
         </Pressable>
-
-        <View style={styles.fabWrap} pointerEvents="box-none">
-          <Animated.View style={[
-            styles.fabRing,
-            { transform: [{ scale: pulseScale }], opacity: pulseOpacity },
-          ]} />
-          <Pressable
-            style={({ pressed }) => [
-              styles.fab,
-              !canAdd && styles.fabDisabled,
-              { transform: [{ scale: pressed ? 0.90 : 1 }] },
-            ]}
-            onPress={() => {
-              void hapticSelection();
-              if (!canAdd) {
-                Alert.alert('Still loading', 'Please try again in a moment.');
-                return;
-              }
-              setShowAdd(true);
-            }}
-          >
-            <Animated.View style={{ transform: [{ rotate: iconRotation }] }}>
-              <Ionicons name="add" size={26} color="#FFFFFF" />
-            </Animated.View>
-          </Pressable>
-        </View>
       </View>
 
       {showAdd && household?.id && (
         <AddItemModal
           householdId={household.id}
           userId={session?.user.id ?? ''}
+          initialStoreId={selectedStoreId ?? undefined}
+          onAdded={handleItemAdded}
           onClose={() => setShowAdd(false)}
         />
       )}
@@ -533,6 +679,17 @@ export default function PantryScreen() {
           onClose={() => setEditingItem(null)}
         />
       )}
+
+      <LiftAssignPanel
+        item={liftedItem}
+        stores={stores}
+        visible={liftedItem !== null}
+        onAssign={(storeId) => {
+          if (liftedItem) void assignItemToStore(liftedItem, storeId);
+          setLiftedItem(null);
+        }}
+        onClose={() => setLiftedItem(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -544,8 +701,33 @@ function makeStyles(colors: AppColors) {
     list: { paddingHorizontal: 16, paddingBottom: 120 },
     separator: { height: 8 },
 
+    activityCard: {
+      marginTop: 14,
+      marginBottom: 4,
+      borderRadius: 16,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      overflow: 'hidden',
+    },
+    activityRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 11,
+    },
+    activityRowBorder: { borderTopWidth: 1, borderTopColor: colors.border },
+    activityDot: { width: 7, height: 7, borderRadius: 4, flexShrink: 0 },
+    activityDotLow: { backgroundColor: colors.warning },
+    activityDotGot: { backgroundColor: colors.success },
+    activityText: { flex: 1, fontSize: 13, color: colors.muted, fontFamily: fonts.body },
+    activityActor: { fontFamily: fonts.bodySemiBold, color: colors.ink },
+    activityItem: { fontFamily: fonts.bodySemiBold, color: colors.ink },
+    activityTime: { fontSize: 11, color: colors.muted, fontFamily: fonts.mono, flexShrink: 0 },
+
     notifCard: {
-      marginHorizontal: 16,
+      marginHorizontal: 0,
       marginTop: 14,
       marginBottom: 4,
       borderRadius: 16,
@@ -580,19 +762,13 @@ function makeStyles(colors: AppColors) {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingHorizontal: 20,
+      paddingHorizontal: 4,
       paddingTop: 16,
       paddingBottom: 14,
     },
     headerLeft: { flex: 1, gap: 2, paddingRight: 12 },
     headerStats: { flexDirection: 'column', alignItems: 'flex-end', gap: 6 },
     statsRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    healthPill: {
-      borderRadius: 999,
-      paddingHorizontal: 10,
-      paddingVertical: 5,
-    },
-    healthPillText: { fontSize: 13, fontFamily: fonts.monoMedium, fontVariant: ['tabular-nums'] },
     streakPill: {
       borderRadius: 999,
       paddingHorizontal: 10,
@@ -607,7 +783,7 @@ function makeStyles(colors: AppColors) {
       flexDirection: 'row',
       alignItems: 'center',
       backgroundColor: colors.surface,
-      marginHorizontal: 16,
+      marginHorizontal: 0,
       marginBottom: 16,
       borderRadius: 14,
       borderWidth: 1,
@@ -616,6 +792,180 @@ function makeStyles(colors: AppColors) {
       gap: 8,
     },
     searchInput: { flex: 1, paddingVertical: 12, fontSize: 15, color: colors.ink, fontFamily: fonts.body },
+    searchAction: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.primarySoft,
+    },
+    searchActionPressed: { opacity: 0.75, transform: [{ scale: 0.96 }] },
+    searchActionDisabled: { backgroundColor: colors.faint },
+
+    storeSection: { marginBottom: 20, marginHorizontal: -16 },
+    storeSectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 10,
+      paddingHorizontal: 16,
+    },
+    storeSectionTitle: { fontSize: 17, fontFamily: fonts.displayItalic, color: colors.ink, letterSpacing: 0 },
+    storeSectionHint: { fontSize: 12, fontFamily: fonts.bodySemiBold, color: colors.muted },
+    storeScroll: { flexGrow: 0 },
+    storeRow: { flexDirection: 'row', gap: 8, paddingLeft: 16, paddingRight: 16 },
+    storeTarget: {
+      width: 112,
+      height: 96,
+      borderRadius: 16,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 10,
+      gap: 5,
+    },
+    storeTargetActive: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primarySoft,
+    },
+    storeTargetPressed: { opacity: 0.86 },
+    allStoreIcon: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    storeTargetName: { fontSize: 12, lineHeight: 15, fontFamily: fonts.bodySemiBold, color: colors.ink },
+    storeTargetCount: {
+      alignSelf: 'flex-start',
+      minWidth: 22,
+      textAlign: 'center',
+      borderRadius: 999,
+      overflow: 'hidden',
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+      backgroundColor: colors.primarySoft,
+      color: colors.primary,
+      fontSize: 11,
+      fontFamily: fonts.monoMedium,
+      fontVariant: ['tabular-nums'],
+    },
+    emptyStoreTarget: {
+      minHeight: 74,
+      minWidth: 240,
+      justifyContent: 'center',
+      borderRadius: 18,
+      borderWidth: 1,
+      borderStyle: 'dashed',
+      borderColor: colors.border,
+      paddingHorizontal: 16,
+      backgroundColor: colors.surface,
+    },
+    emptyStoreText: { fontSize: 14, fontFamily: fonts.bodyMedium, color: colors.muted },
+    masterHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 10,
+    },
+    masterTitleWrap: { flex: 1, gap: 3 },
+    masterTitle: { fontSize: 24, fontFamily: fonts.displayExtraBoldItalic, color: colors.ink, letterSpacing: 0 },
+    masterReset: { fontSize: 13, fontFamily: fonts.bodySemiBold, color: colors.primary },
+    masterCount: { fontSize: 14, fontFamily: fonts.monoMedium, color: colors.muted, fontVariant: ['tabular-nums'] },
+
+    // Sort toggle
+    sortRow: {
+      flexDirection: 'row',
+      gap: 6,
+      marginBottom: 14,
+    },
+    sortPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 999,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    sortPillActive: {
+      backgroundColor: colors.primarySoft,
+      borderColor: colors.primary,
+    },
+    sortPillText: { fontSize: 12, fontFamily: fonts.bodySemiBold, color: colors.muted },
+    sortPillTextActive: { color: colors.primary },
+
+    // Section headers
+    needsAttentionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 7,
+      paddingVertical: 10,
+      paddingHorizontal: 2,
+      backgroundColor: colors.background,
+    },
+    needsAttentionTitle: {
+      flex: 1,
+      fontSize: 15,
+      fontFamily: fonts.bodySemiBold,
+      color: colors.warning,
+    },
+    needsAttentionBadge: {
+      backgroundColor: colors.warningSoft,
+      borderRadius: 999,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+    },
+    needsAttentionBadgeText: {
+      fontSize: 12,
+      fontFamily: fonts.monoMedium,
+      color: colors.warning,
+      fontVariant: ['tabular-nums'],
+    },
+    resetAllBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      borderRadius: 999,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      backgroundColor: colors.warningSoft,
+      borderWidth: 1,
+      borderColor: colors.warning + '35',
+    },
+    resetAllText: {
+      fontSize: 12,
+      fontFamily: fonts.bodySemiBold,
+      color: colors.warning,
+    },
+    categorySectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 7,
+      paddingVertical: 10,
+      paddingHorizontal: 2,
+      backgroundColor: colors.background,
+    },
+    sectionEmoji: { fontSize: 15 },
+    categorySectionTitle: {
+      flex: 1,
+      fontSize: 15,
+      fontFamily: fonts.bodySemiBold,
+      color: colors.ink,
+    },
+    categorySectionCount: {
+      fontSize: 12,
+      fontFamily: fonts.monoMedium,
+      color: colors.muted,
+      fontVariant: ['tabular-nums'],
+    },
 
     filterScroll: {
       marginBottom: 20,
@@ -626,7 +976,7 @@ function makeStyles(colors: AppColors) {
       alignItems: 'center',
       gap: 8,
       paddingHorizontal: 16,
-      paddingRight: 24,
+      paddingRight: 8,
     },
     filterPill: {
       flexDirection: 'row',
@@ -673,7 +1023,7 @@ function makeStyles(colors: AppColors) {
       backgroundColor: colors.warning,
     },
 
-    section: { marginHorizontal: 16, marginBottom: 20 },
+    section: { marginHorizontal: 0, marginBottom: 20 },
     sectionRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
     sectionIcon: { fontSize: 15 },
     sectionTitle: { fontSize: 17, fontFamily: fonts.displayItalic, color: colors.ink, flex: 1, letterSpacing: 0 },
@@ -708,20 +1058,11 @@ function makeStyles(colors: AppColors) {
     },
     gotItText: { color: '#FFFFFF', fontSize: 13, fontFamily: fonts.bodySemiBold },
 
-    allItemsRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: 16,
-      marginBottom: 12,
-    },
-    allItemsCount: { fontSize: 14, fontFamily: fonts.monoMedium, color: colors.muted, fontVariant: ['tabular-nums'] },
-
     listSectionHeader: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
-      paddingHorizontal: 16,
+      paddingHorizontal: 0,
       paddingTop: 14,
       paddingBottom: 8,
       backgroundColor: colors.background,
@@ -739,55 +1080,24 @@ function makeStyles(colors: AppColors) {
 
     fabStack: {
       position: 'absolute',
-      bottom: 28,
       right: 20,
+      bottom: 98,
       alignItems: 'center',
-      gap: 12,
+      justifyContent: 'center',
     },
-    scanFab: {
+    fab: {
       width: 46,
       height: 46,
       borderRadius: 23,
-      backgroundColor: colors.surface,
+      backgroundColor: colors.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
       borderWidth: 1,
-      borderColor: colors.border,
-      alignItems: 'center',
-      justifyContent: 'center',
-      shadowColor: colors.primary,
-      shadowOffset: { width: 0, height: 5 },
-      shadowOpacity: 0.18,
-      shadowRadius: 12,
-      elevation: 6,
+      borderColor: colors.primary,
+      boxShadow: '0 6px 14px rgba(212, 135, 78, 0.34)',
     },
-    scanFabDisabled: { backgroundColor: colors.faint },
-    fabWrap: {
-      width: 52,
-      height: 52,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    fabRing: {
-      position: 'absolute',
-      width: 52,
-      height: 52,
-      borderRadius: 26,
-      backgroundColor: colors.primary,
-    },
-    fab: {
-      width: 52,
-      height: 52,
-      borderRadius: 26,
-      backgroundColor: colors.primary,
-      alignItems: 'center',
-      justifyContent: 'center',
-      shadowColor: colors.primary,
-      shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: 0.45,
-      shadowRadius: 14,
-      elevation: 9,
-    },
-    fabDisabled: { backgroundColor: colors.disabled },
-
+    fabPressed: { opacity: 0.9, transform: [{ scale: 0.94 }] },
+    fabDisabled: { backgroundColor: colors.disabled, borderColor: colors.disabled },
     empty: {
       paddingTop: 48,
       alignItems: 'center',
@@ -797,5 +1107,6 @@ function makeStyles(colors: AppColors) {
     emptyEmoji: { fontSize: 52 },
     emptyTitle: { fontSize: 20, fontFamily: fonts.display, color: colors.ink, textAlign: 'center' },
     emptySub: { fontSize: 15, color: colors.muted, textAlign: 'center', lineHeight: 22, fontFamily: fonts.body },
+
   });
 }

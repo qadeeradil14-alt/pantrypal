@@ -1,13 +1,14 @@
 import { useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet,
-  Alert, Share, ActivityIndicator, ScrollView, Switch,
+  Alert, Share, ActivityIndicator, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../store/auth';
 import { useHouseholdStore } from '../../store/household';
 import { useItemsStore } from '../../store/items';
+import { useSettingsStore } from '../../store/settings';
 import { signOut } from '../../lib/auth';
 import { supabase } from '../../lib/supabase';
 import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../../lib/haptics';
@@ -17,10 +18,11 @@ import type { AppColors } from '../../constants/theme';
 import ScalePressable from '../../components/ScalePressable';
 
 export default function SettingsScreen() {
-  const { colors, isDark, toggleTheme } = useTheme();
+  const { colors } = useTheme();
   const { session, setSession } = useAuthStore();
   const { household, clearHousehold } = useHouseholdStore();
   const { setItems } = useItemsStore();
+  const { weeklyBudget, setWeeklyBudget } = useSettingsStore();
   const [signingOut, setSigningOut] = useState(false);
   const [savingName, setSavingName] = useState(false);
 
@@ -64,6 +66,23 @@ export default function SettingsScreen() {
     }
   }
 
+  function handleEditBudget() {
+    Alert.prompt(
+      'Weekly budget',
+      'Set your weekly grocery spend target.',
+      (value) => {
+        const parsed = parseFloat(value ?? '');
+        if (!isNaN(parsed) && parsed > 0) {
+          setWeeklyBudget(Math.round(parsed));
+          void hapticSuccess();
+        }
+      },
+      'plain-text',
+      String(weeklyBudget),
+      'numeric',
+    );
+  }
+
   function handleEditName() {
     const current = session?.user?.user_metadata?.full_name ?? '';
     Alert.prompt(
@@ -96,7 +115,7 @@ export default function SettingsScreen() {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <Text style={styles.eyebrow}>Account</Text>
-          <Text style={styles.headerTitle}>Settings</Text>
+          <Text style={styles.headerTitle} testID="settings-header">Settings</Text>
         </View>
 
         <View style={styles.heroCard}>
@@ -106,24 +125,6 @@ export default function SettingsScreen() {
           </View>
           <View style={styles.heroIcon}>
             <Ionicons name="settings-outline" size={20} color={colors.primary} />
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Appearance</Text>
-          <View style={styles.card}>
-            <View style={styles.row}>
-              <View style={styles.rowLabelWrap}>
-                <Ionicons name={isDark ? 'moon' : 'sunny-outline'} size={17} color={colors.muted} />
-                <Text style={styles.rowLabel}>Dark mode</Text>
-              </View>
-              <Switch
-                value={isDark}
-                onValueChange={() => { void hapticSelection(); toggleTheme(); }}
-                trackColor={{ false: colors.faint, true: colors.primary }}
-                thumbColor="#FFFFFF"
-              />
-            </View>
           </View>
         </View>
 
@@ -186,6 +187,25 @@ export default function SettingsScreen() {
               </View>
               <Text style={styles.rowValue} numberOfLines={1}>{session?.user.email ?? '—'}</Text>
             </View>
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Shopping</Text>
+          <View style={styles.card}>
+            <ScalePressable
+              style={styles.row}
+              onPress={() => { void hapticSelection(); handleEditBudget(); }}
+            >
+              <View style={styles.rowLabelWrap}>
+                <Ionicons name="wallet-outline" size={17} color={colors.muted} />
+                <Text style={styles.rowLabel}>Weekly budget</Text>
+              </View>
+              <View style={styles.rowEditWrap}>
+                <Text style={styles.rowValue}>${weeklyBudget}</Text>
+                <Ionicons name="pencil-outline" size={14} color={colors.muted} />
+              </View>
+            </ScalePressable>
           </View>
         </View>
 
