@@ -436,11 +436,13 @@ function AddStoreModal({
     const lons = places.map((p) => p.longitude);
     const minLat = Math.min(...lats), maxLat = Math.max(...lats);
     const minLon = Math.min(...lons), maxLon = Math.max(...lons);
+    // Clamp to valid MapView ranges — longitudeDelta > 360 crashes react-native-maps
+    // (happens with global chains like Kmart that appear on multiple continents in Nominatim)
     return {
       latitude: (minLat + maxLat) / 2,
       longitude: (minLon + maxLon) / 2,
-      latitudeDelta: Math.max((maxLat - minLat) * 1.6, 0.03),
-      longitudeDelta: Math.max((maxLon - minLon) * 1.6, 0.03),
+      latitudeDelta: Math.min(Math.max((maxLat - minLat) * 1.6, 0.03), 170),
+      longitudeDelta: Math.min(Math.max((maxLon - minLon) * 1.6, 0.03), 350),
     };
   }, [places, selectedPlace]);
 
@@ -498,7 +500,7 @@ function AddStoreModal({
                   disabled={!manualAddress.trim() || geocoding}
                 >
                   {geocoding
-                    ? <ActivityIndicator color="#fff" />
+                    ? <ActivityIndicator color={colors.surface} />
                     : <Text style={styles.saveBtnText}>Look up address</Text>
                   }
                 </ScalePressable>
@@ -556,7 +558,7 @@ function AddStoreModal({
                   disabled={!selectedPlace || saving}
                 >
                   {saving
-                    ? <ActivityIndicator color="#fff" />
+                    ? <ActivityIndicator color={colors.surface} />
                     : <Text style={styles.saveBtnText}>
                         {geocodedPlace ? 'Add store at this address' : 'Add selected location'}
                       </Text>
@@ -693,7 +695,7 @@ function AddStoreModal({
             disabled={!name.trim() || saving}
           >
             {saving
-              ? <ActivityIndicator color="#fff" />
+              ? <ActivityIndicator color={colors.surface} />
               : <Text style={styles.saveBtnText}>
                   {name.trim() && !address.trim() ? 'Add store & search nearby' : 'Add store'}
                 </Text>
@@ -725,8 +727,8 @@ function makeStyles(colors: AppColors, placeCardWidth = 210) {
       paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14,
     },
     headerLeft: { flex: 1, gap: 2 },
-    eyebrow: { fontSize: 12, color: colors.primary, fontFamily: fonts.bodySemiBold, textTransform: 'uppercase', letterSpacing: 0.5 },
-    headerTitle: { fontSize: 26, fontFamily: fonts.displayExtraBold, color: colors.ink, letterSpacing: 0 },
+    eyebrow: { fontSize: 13, color: colors.primary, fontFamily: fonts.bodySemiBold },
+    headerTitle: { fontSize: 26, fontFamily: fonts.displayExtraBoldItalic, color: colors.ink, letterSpacing: 0 },
     addBtn: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
       gap: 4, backgroundColor: colors.primary, borderRadius: 999,

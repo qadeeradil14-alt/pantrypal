@@ -380,12 +380,31 @@ async function searchNominatimStores(storeName: string, suffix = '', limit = 12)
   );
   if (!res.ok) throw new Error('Could not search nearby stores.');
   const results = await res.json();
-  return (results as any[]).map((result) => ({
+  const places = (results as any[]).map((result) => ({
     name: bestPlaceName(result, storeName),
     address: formatNominatimAddress(result) ?? result?.display_name ?? storeName,
     latitude: parseFloat(result.lat),
     longitude: parseFloat(result.lon),
   })).filter((place) => Number.isFinite(place.latitude) && Number.isFinite(place.longitude));
+
+  // If results span > 30° in any direction (i.e. multiple continents), keep only
+  // the cluster closest to the median point. Prevents MapView crash (longitudeDelta > 360)
+  // for global chains like Kmart that Nominatim returns from AU, NZ, and the US.
+  if (places.length > 1) {
+    const lats = places.map((p) => p.latitude);
+    const lons = places.map((p) => p.longitude);
+    const latSpread = Math.max(...lats) - Math.min(...lats);
+    const lonSpread = Math.max(...lons) - Math.min(...lons);
+    if (latSpread > 30 || lonSpread > 30) {
+      const medLat = lats.reduce((a, b) => a + b, 0) / lats.length;
+      const medLon = lons.reduce((a, b) => a + b, 0) / lons.length;
+      const dist = (p: { latitude: number; longitude: number }) =>
+        Math.abs(p.latitude - medLat) + Math.abs(p.longitude - medLon);
+      const anchor = places.reduce((best, p) => dist(p) < dist(best) ? p : best, places[0]);
+      return places.filter((p) => Math.abs(p.latitude - anchor.latitude) < 15 && Math.abs(p.longitude - anchor.longitude) < 15);
+    }
+  }
+  return places;
 }
 
 function formatNominatimAddress(result: any): string | undefined {
