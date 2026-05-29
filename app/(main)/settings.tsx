@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet,
   Alert, Share, ActivityIndicator, ScrollView,
 } from 'react-native';
+import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../store/auth';
@@ -11,29 +12,50 @@ import { useItemsStore } from '../../store/items';
 import { useSettingsStore } from '../../store/settings';
 import { signOut } from '../../lib/auth';
 import { supabase } from '../../lib/supabase';
+import { updateHouseholdName, leaveHousehold } from '../../lib/households';
 import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../../lib/haptics';
 import { useTheme } from '../../hooks/useTheme';
 import { fonts } from '../../constants/theme';
 import type { AppColors } from '../../constants/theme';
 import ScalePressable from '../../components/ScalePressable';
 
+const appVersion = Constants.expoConfig?.version ?? '—';
+
+function userInitials(name?: string | null, email?: string | null): string {
+  if (name?.trim()) {
+    const parts = name.trim().split(/\s+/);
+    return parts.length >= 2
+      ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+      : parts[0].slice(0, 2).toUpperCase();
+  }
+  if (email) return email[0].toUpperCase();
+  return '?';
+}
+
 export default function SettingsScreen() {
   const { colors } = useTheme();
   const { session, setSession } = useAuthStore();
-  const { household, clearHousehold } = useHouseholdStore();
+  const { household, setHousehold, clearHousehold } = useHouseholdStore();
   const { setItems } = useItemsStore();
   const { weeklyBudget, setWeeklyBudget } = useSettingsStore();
   const [signingOut, setSigningOut] = useState(false);
   const [savingName, setSavingName] = useState(false);
+  const [savingHouseholdName, setSavingHouseholdName] = useState(false);
+  const [leavingHousehold, setLeavingHousehold] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  const displayName = session?.user?.user_metadata?.full_name
+    || session?.user?.user_metadata?.name
+    || null;
+  const initials = userInitials(displayName, session?.user?.email);
 
   async function handleSignOut() {
     Alert.alert('Sign out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
       {
-        text: 'Sign out',
-        style: 'destructive',
+        text: 'Sign out', style: 'destructive',
         onPress: async () => {
           void hapticWarning();
           setSigningOut(true);
@@ -53,12 +75,26 @@ export default function SettingsScreen() {
     ]);
   }
 
+  async function handleCopyCode() {
+    if (!household?.inviteCode) return;
+    void hapticSelection();
+    try {
+      const Clipboard = await import('expo-clipboard');
+      await Clipboard.setStringAsync(household.inviteCode);
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 2000);
+    } catch {
+      // Clipboard unavailable (e.g. Expo Go cache) — fall back to share sheet
+      await Share.share({ message: household.inviteCode });
+    }
+  }
+
   async function handleShare() {
     if (!household?.inviteCode) return;
     try {
       void hapticSelection();
       await Share.share({
-        message: `Join my household on PantryPal! Use invite code: ${household.inviteCode}`,
+        message: `Hey! I'm using PantryPal to manage our household pantry together 🏠\n\nJoin with invite code: ${household.inviteCode}`,
       });
     } catch (e: any) {
       Alert.alert('Could not share', e?.message ?? 'Please try again.');
@@ -69,13 +105,15 @@ export default function SettingsScreen() {
   function handleEditBudget() {
     Alert.prompt(
       'Weekly budget',
-      'Set your weekly grocery spend target.',
+      'Set your weekly grocery spend target (e.g. 200).',
       (value) => {
         const parsed = parseFloat(value ?? '');
-        if (!isNaN(parsed) && parsed > 0) {
-          setWeeklyBudget(Math.round(parsed));
-          void hapticSuccess();
+        if (isNaN(parsed) || parsed <= 0) {
+          Alert.alert('Invalid amount', 'Please enter a number greater than 0.');
+          return;
         }
+        setWeeklyBudget(Math.round(parsed));
+        void hapticSuccess();
       },
       'plain-text',
       String(weeklyBudget),
@@ -83,8 +121,8 @@ export default function SettingsScreen() {
     );
   }
 
-  function handleEditName() {
-    const current = session?.user?.user_metadata?.full_name ?? '';
+  function handleEditDisplayName() {
+    const current = displayName ?? '';
     Alert.prompt(
       'Display name',
       'Shown in your pantry greeting.',
@@ -110,6 +148,59 @@ export default function SettingsScreen() {
     );
   }
 
+  function handleEditHouseholdName() {
+    if (!household) return;
+    Alert.prompt(
+      'Household name',
+      'Rename your household.',
+      async (name) => {
+        if (!name?.trim()) return;
+        setSavingHouseholdName(true);
+        try {
+          await updateHouseholdName(household.id, name.trim());
+          setHousehold({ ...household, name: name.trim() });
+          void hapticSuccess();
+        } catch (e: any) {
+          Alert.alert('Could not rename', e?.message ?? 'Try again.');
+          void hapticError();
+        } finally {
+          setSavingHouseholdName(false);
+        }
+      },
+      'plain-text',
+      household.name,
+    );
+  }
+
+  function handleLeaveHousehold() {
+    Alert.alert(
+      'Leave household?',
+      "You'll lose access to this pantry. You can join a new one with an invite code.",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Leave', style: 'destructive',
+          onPress: async () => {
+            if (!household || !session?.user?.id) return;
+            void hapticWarning();
+            setLeavingHousehold(true);
+            try {
+              await leaveHousehold(household.id, session.user.id);
+              clearHousehold();
+              setItems([]);
+              void hapticSuccess();
+            } catch (e: any) {
+              Alert.alert('Could not leave', e?.message ?? 'Try again.');
+              void hapticError();
+            } finally {
+              setLeavingHousehold(false);
+            }
+          },
+        },
+      ],
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -118,34 +209,57 @@ export default function SettingsScreen() {
           <Text style={styles.headerTitle} testID="settings-header">Settings</Text>
         </View>
 
+        {/* Hero — user identity card */}
         <View style={styles.heroCard}>
-          <View style={styles.heroLeft}>
-            <Text style={styles.heroTitle}>{household?.name ?? 'Household'}</Text>
-            <Text style={styles.heroLabel} numberOfLines={1}>{session?.user.email ?? 'Signed in'}</Text>
+          <View style={styles.heroAvatar}>
+            <Text style={styles.heroInitials}>{initials}</Text>
           </View>
-          <View style={styles.heroIcon}>
-            <Ionicons name="settings-outline" size={20} color={colors.primary} />
+          <View style={styles.heroInfo}>
+            <Text style={styles.heroName} numberOfLines={1}>
+              {displayName || session?.user?.email?.split('@')[0] || 'Your account'}
+            </Text>
+            <Text style={styles.heroEmail} numberOfLines={1}>{session?.user.email ?? ''}</Text>
           </View>
         </View>
 
+        {/* Household */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Household</Text>
           <View style={styles.card}>
-            <View style={styles.row}>
+            <ScalePressable
+              style={styles.row}
+              onPress={() => { void hapticSelection(); handleEditHouseholdName(); }}
+            >
               <View style={styles.rowLabelWrap}>
                 <Ionicons name="home-outline" size={17} color={colors.muted} />
                 <Text style={styles.rowLabel}>Name</Text>
               </View>
-              <Text style={styles.rowValue}>{household?.name ?? '—'}</Text>
-            </View>
+              <View style={styles.rowEditWrap}>
+                {savingHouseholdName
+                  ? <ActivityIndicator size="small" color={colors.primary} />
+                  : <Text style={styles.rowValue} numberOfLines={1}>{household?.name ?? '—'}</Text>
+                }
+                <Ionicons name="pencil-outline" size={14} color={colors.muted} />
+              </View>
+            </ScalePressable>
             {household?.inviteCode ? (
-              <View style={[styles.row, styles.rowBorderTop]}>
+              <ScalePressable
+                style={[styles.row, styles.rowBorderTop]}
+                onPress={handleCopyCode}
+              >
                 <View style={styles.rowLabelWrap}>
                   <Ionicons name="key-outline" size={17} color={colors.muted} />
                   <Text style={styles.rowLabel}>Invite code</Text>
                 </View>
-                <Text style={styles.rowCode}>{household.inviteCode}</Text>
-              </View>
+                <View style={styles.rowEditWrap}>
+                  <Text style={styles.rowCode}>{household.inviteCode}</Text>
+                  <Ionicons
+                    name={codeCopied ? 'checkmark-circle' : 'copy-outline'}
+                    size={15}
+                    color={codeCopied ? colors.success : colors.muted}
+                  />
+                </View>
+              </ScalePressable>
             ) : null}
           </View>
           {household?.inviteCode ? (
@@ -154,17 +268,18 @@ export default function SettingsScreen() {
               onPress={() => { void hapticSelection(); void handleShare(); }}
             >
               <Ionicons name="share-outline" size={17} color={colors.primary} />
-              <Text style={styles.shareBtnText}>Share invite code</Text>
+              <Text style={styles.shareBtnText}>Share invite link</Text>
             </ScalePressable>
           ) : null}
         </View>
 
+        {/* Account */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Account</Text>
           <View style={styles.card}>
             <ScalePressable
               style={styles.row}
-              onPress={() => { void hapticSelection(); handleEditName(); }}
+              onPress={() => { void hapticSelection(); handleEditDisplayName(); }}
             >
               <View style={styles.rowLabelWrap}>
                 <Ionicons name="person-outline" size={17} color={colors.muted} />
@@ -173,9 +288,7 @@ export default function SettingsScreen() {
               <View style={styles.rowEditWrap}>
                 {savingName
                   ? <ActivityIndicator size="small" color={colors.primary} />
-                  : <Text style={styles.rowValue} numberOfLines={1}>
-                      {session?.user?.user_metadata?.full_name || session?.user?.user_metadata?.name || '—'}
-                    </Text>
+                  : <Text style={styles.rowValue} numberOfLines={1}>{displayName || '—'}</Text>
                 }
                 <Ionicons name="pencil-outline" size={14} color={colors.muted} />
               </View>
@@ -190,6 +303,7 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* Shopping */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Shopping</Text>
           <View style={styles.card}>
@@ -209,10 +323,31 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* Danger zone */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Danger zone</Text>
+          <View style={styles.card}>
+            <ScalePressable
+              style={styles.row}
+              onPress={() => { void hapticSelection(); handleLeaveHousehold(); }}
+              disabled={leavingHousehold}
+            >
+              <View style={styles.rowLabelWrap}>
+                <Ionicons name="exit-outline" size={17} color={colors.danger} />
+                <Text style={[styles.rowLabel, { color: colors.danger }]}>Leave household</Text>
+              </View>
+              {leavingHousehold
+                ? <ActivityIndicator size="small" color={colors.danger} />
+                : <Ionicons name="chevron-forward" size={16} color={colors.danger} />
+              }
+            </ScalePressable>
+          </View>
+        </View>
+
         <ScalePressable
           profile="danger"
           style={styles.signOutBtn}
-          onPress={() => { void hapticSelection(); handleSignOut(); }}
+          onPress={() => { void hapticSelection(); void handleSignOut(); }}
           disabled={signingOut}
         >
           {signingOut
@@ -224,6 +359,8 @@ export default function SettingsScreen() {
               </>
             )}
         </ScalePressable>
+
+        <Text style={styles.versionText}>PantryPal v{appVersion}</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -232,23 +369,28 @@ export default function SettingsScreen() {
 function makeStyles(colors: AppColors) {
   return StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.background },
-    content: { paddingBottom: 40 },
+    content: { paddingBottom: 48 },
     header: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 10 },
     eyebrow: { fontSize: 12, color: colors.primary, fontFamily: fonts.bodySemiBold, textTransform: 'uppercase', letterSpacing: 0.5 },
     headerTitle: { fontSize: 28, fontFamily: fonts.displayExtraBold, color: colors.ink, letterSpacing: 0 },
+
+    // Hero
     heroCard: {
       marginHorizontal: 16, marginBottom: 16, borderRadius: 20,
       backgroundColor: colors.surface, padding: 16,
-      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      flexDirection: 'row', alignItems: 'center', gap: 14,
       borderWidth: 1, borderColor: colors.border,
     },
-    heroLeft: { flex: 1, paddingRight: 12 },
-    heroTitle: { fontSize: 20, fontFamily: fonts.display, color: colors.ink, letterSpacing: 0 },
-    heroLabel: { fontSize: 15, color: colors.muted, fontFamily: fonts.body, marginTop: 4 },
-    heroIcon: {
-      width: 44, height: 44, borderRadius: 22,
-      alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primarySoft,
+    heroAvatar: {
+      width: 52, height: 52, borderRadius: 26,
+      backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.primary + '30',
+      alignItems: 'center', justifyContent: 'center', flexShrink: 0,
     },
+    heroInitials: { fontSize: 20, fontFamily: fonts.bodySemiBold, color: colors.primary },
+    heroInfo: { flex: 1, gap: 3 },
+    heroName: { fontSize: 18, fontFamily: fonts.bodySemiBold, color: colors.ink },
+    heroEmail: { fontSize: 13, color: colors.muted, fontFamily: fonts.body },
+
     section: { marginTop: 14, paddingHorizontal: 20 },
     sectionLabel: {
       fontSize: 11, fontFamily: fonts.bodySemiBold, color: colors.muted,
@@ -265,9 +407,9 @@ function makeStyles(colors: AppColors) {
     rowBorderTop: { borderTopWidth: 1, borderTopColor: colors.border },
     rowLabelWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     rowLabel: { fontSize: 15, color: colors.muted, fontFamily: fonts.bodyMedium },
-    rowEditWrap: { flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: '55%' },
-    rowValue: { fontSize: 16, color: colors.ink, fontFamily: fonts.bodyMedium, maxWidth: '100%', textAlign: 'right' },
-    rowCode: { fontSize: 16, color: colors.ink, fontFamily: fonts.mono, maxWidth: '58%', textAlign: 'right', letterSpacing: 0.4 },
+    rowEditWrap: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 },
+    rowValue: { fontSize: 16, color: colors.ink, fontFamily: fonts.bodyMedium, flexShrink: 1, textAlign: 'right' },
+    rowCode: { fontSize: 16, color: colors.ink, fontFamily: fonts.mono, flexShrink: 1, textAlign: 'right', letterSpacing: 0.5 },
     shareBtn: {
       marginTop: 10, paddingVertical: 14, alignItems: 'center', justifyContent: 'center',
       flexDirection: 'row', gap: 8, borderRadius: 16, borderWidth: 1, borderColor: colors.primary,
@@ -275,11 +417,15 @@ function makeStyles(colors: AppColors) {
     },
     shareBtnText: { color: colors.primary, fontSize: 15, fontFamily: fonts.bodySemiBold },
     signOutBtn: {
-      marginHorizontal: 20, marginTop: 28,
+      marginHorizontal: 20, marginTop: 20,
       flexDirection: 'row', gap: 8, justifyContent: 'center',
       backgroundColor: colors.dangerSoft, borderRadius: 16,
       paddingVertical: 16, alignItems: 'center', borderWidth: 1, borderColor: colors.danger + '33',
     },
     signOutText: { color: colors.danger, fontSize: 17, fontFamily: fonts.bodySemiBold },
+    versionText: {
+      textAlign: 'center', marginTop: 20,
+      fontSize: 12, color: colors.faint, fontFamily: fonts.mono,
+    },
   });
 }

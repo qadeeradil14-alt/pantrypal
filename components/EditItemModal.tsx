@@ -5,25 +5,20 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useItemsStore } from '../store/items';
+import { useStoresStore } from '../store/stores';
 import {
   ItemConflictError,
   isOfflineItemId,
   updateItemDetailsWithQueue,
   deleteItemWithQueue,
 } from '../lib/items';
+import { setItemStoreWithQueue } from '../lib/stores';
 import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../lib/haptics';
-import { CATEGORY_LABELS, type ItemCategory } from '../constants/defaultItems';
 import type { Item } from '../lib/items';
 import { useTheme } from '../hooks/useTheme';
 import { fonts, type AppColors } from '../constants/theme';
 import ScalePressable from './ScalePressable';
-
-const CATEGORIES: ItemCategory[] = ['fridge', 'freezer', 'pantry'];
-const CATEGORY_EMOJI: Record<ItemCategory, string> = {
-  fridge: '🥛',
-  freezer: '🧊',
-  pantry: '🧺',
-};
+import StoreLogo from './StoreLogo';
 
 interface Props {
   item: Item;
@@ -48,10 +43,9 @@ function parseDateInput(s: string): string | null | undefined {
 export default function EditItemModal({ item, onClose }: Props) {
   const { colors } = useTheme();
   const { updateItem, removeItem, restoreItem } = useItemsStore();
+  const stores = useStoresStore((state) => state.stores);
   const [name, setName] = useState(item.name);
-  const [category, setCategory] = useState<ItemCategory>(
-    (item.category as ItemCategory) ?? 'pantry',
-  );
+  const [storeId, setStoreId] = useState<string | null>(item.preferred_store_id);
   const [expiresAt, setExpiresAt] = useState(formatDateForInput(item.expires_at));
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -59,7 +53,7 @@ export default function EditItemModal({ item, onClose }: Props) {
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const isDirty = name.trim() !== item.name || category !== item.category || expiresAt !== formatDateForInput(item.expires_at);
+  const isDirty = name.trim() !== item.name || storeId !== item.preferred_store_id || expiresAt !== formatDateForInput(item.expires_at);
 
   async function handleSave() {
     const trimmed = name.trim();
@@ -71,29 +65,37 @@ export default function EditItemModal({ item, onClose }: Props) {
     }
     setError('');
     setSaving(true);
-    const prev = { name: item.name, category: item.category, expires_at: item.expires_at };
-    updateItem(item.id, { name: trimmed, category, expires_at: parsedExpiry ?? null });
+    const prev = { name: item.name, expires_at: item.expires_at, preferred_store_id: item.preferred_store_id };
+    updateItem(item.id, { name: trimmed, expires_at: parsedExpiry ?? null, preferred_store_id: storeId });
     try {
       if (isOfflineItemId(item.id)) {
         setError("This item will sync when you're back online.");
         void hapticWarning();
         return;
       }
-      const { queued, item: saved } = await updateItemDetailsWithQueue(
-        item.id,
-        { name: trimmed, category, expires_at: parsedExpiry ?? null },
-        item.updated_at,
-      );
-      if (saved) {
+      const detailsDirty = trimmed !== item.name || expiresAt !== formatDateForInput(item.expires_at);
+      const storeDirty = storeId !== item.preferred_store_id;
+      const detailsResult = detailsDirty
+        ? await updateItemDetailsWithQueue(
+          item.id,
+          { name: trimmed, expires_at: parsedExpiry ?? null },
+          item.updated_at,
+        )
+        : { queued: false, item: undefined };
+      if (storeDirty) {
+        await setItemStoreWithQueue(item.id, storeId);
+      }
+      if (detailsResult.item) {
+        const saved = detailsResult.item;
         updateItem(item.id, {
           name: saved.name,
-          category: saved.category as ItemCategory,
           expires_at: saved.expires_at,
+          preferred_store_id: storeId,
           updated_at: saved.updated_at,
         });
       }
       void hapticSuccess();
-      if (queued) {
+      if (detailsResult.queued) {
         setError("Saved offline — will sync when you're back online.");
         setTimeout(onClose, 900);
         return;
@@ -150,7 +152,7 @@ export default function EditItemModal({ item, onClose }: Props) {
           <View style={styles.sheetHeader}>
             <View>
               <Text style={styles.title}>Edit item</Text>
-              <Text style={styles.subtitle}>Rename or recategorize.</Text>
+              <Text style={styles.subtitle}>Rename or assign a store.</Text>
             </View>
             <View style={styles.sheetIcon}>
               <Ionicons name="create-outline" size={18} color={colors.primary} />
@@ -173,25 +175,31 @@ export default function EditItemModal({ item, onClose }: Props) {
             autoFocus
           />
 
-          <Text style={styles.label}>Category</Text>
-          <View style={styles.categoryRow}>
-            {CATEGORIES.map((cat) => {
-              const active = category === cat;
+          <Text style={styles.label}>Store</Text>
+          {stores.length === 0 ? (
+            <View style={styles.noStoresBox}>
+              <Text style={styles.noStoresText}>No stores saved yet.</Text>
+            </View>
+          ) : (
+            <View style={styles.storeGrid}>
+              {stores.map((store) => {
+              const active = storeId === store.id;
               return (
                 <ScalePressable
-                  key={cat}
+                  key={store.id}
                   profile="chip"
-                  style={[styles.catBtn, active && styles.catBtnActive]}
-                  onPress={() => { void hapticSelection(); setCategory(cat); }}
+                  style={[styles.storeBtn, active && styles.storeBtnActive]}
+                  onPress={() => { void hapticSelection(); setStoreId(active ? null : store.id); }}
                 >
-                  <Text style={styles.catEmoji}>{CATEGORY_EMOJI[cat]}</Text>
-                  <Text style={[styles.catLabel, active && styles.catLabelActive]}>
-                    {CATEGORY_LABELS[cat]}
+                  <StoreLogo name={store.name} size={32} domain={store.brand_domain} logoUrl={store.logo_url} />
+                  <Text style={[styles.storeLabel, active && styles.storeLabelActive]} numberOfLines={1}>
+                    {store.name}
                   </Text>
                 </ScalePressable>
               );
             })}
-          </View>
+            </View>
+          )}
 
           <Text style={styles.label}>Best before</Text>
           <TextInput
@@ -296,17 +304,38 @@ function makeStyles(colors: AppColors) {
       letterSpacing: 0.5,
     },
     expiryInput: { marginBottom: 20, fontFamily: fonts.mono, fontSize: 15 },
-    categoryRow: { flexDirection: 'row', gap: 10, marginBottom: 24 },
-    catBtn: {
-      flex: 1, alignItems: 'center', justifyContent: 'center',
-      flexDirection: 'column', paddingVertical: 14,
-      borderRadius: 14, borderWidth: 1, borderColor: colors.border,
-      backgroundColor: colors.background, gap: 6,
+    storeGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 10,
+      marginBottom: 24,
     },
-    catBtnActive: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
-    catEmoji: { fontSize: 22 },
-    catLabel: { fontSize: 12, color: colors.muted, fontFamily: fonts.bodySemiBold },
-    catLabelActive: { color: colors.primary },
+    storeBtn: {
+      width: '31%',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexDirection: 'column',
+      paddingVertical: 12,
+      paddingHorizontal: 6,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+      gap: 6,
+    },
+    storeBtnActive: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+    storeLabel: { fontSize: 12, color: colors.muted, fontFamily: fonts.bodySemiBold, textAlign: 'center' },
+    storeLabelActive: { color: colors.primary },
+    noStoresBox: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderStyle: 'dashed',
+      borderRadius: 14,
+      backgroundColor: colors.background,
+      padding: 14,
+      marginBottom: 24,
+    },
+    noStoresText: { fontSize: 13, color: colors.muted, lineHeight: 19, fontFamily: fonts.bodyMedium },
     saveBtn: {
       backgroundColor: colors.primary,
       borderRadius: 14, paddingVertical: 16,

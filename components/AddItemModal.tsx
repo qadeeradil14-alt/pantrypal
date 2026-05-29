@@ -1,42 +1,50 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   Modal, View, Text, TextInput,
   StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useItemsStore } from '../store/items';
+import { useStoresStore } from '../store/stores';
 import { addItemWithQueue } from '../lib/items';
+import { setItemStoreWithQueue } from '../lib/stores';
 import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../lib/haptics';
-import { CATEGORY_LABELS, type ItemCategory } from '../constants/defaultItems';
 import { useTheme } from '../hooks/useTheme';
 import { fonts, type AppColors } from '../constants/theme';
 import ScalePressable from './ScalePressable';
+import StoreLogo from './StoreLogo';
+import type { Item } from '../lib/items';
 
-const CATEGORIES: ItemCategory[] = ['fridge', 'freezer', 'pantry'];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-const CATEGORY_EMOJI: Record<ItemCategory, string> = {
-  fridge: '🥛',
-  freezer: '🧊',
-  pantry: '🧺',
-};
 
 interface Props {
   householdId: string;
   userId: string;
+  initialStoreId?: string | null;
+  onAdded?: (item: Item) => void;
   onClose: () => void;
 }
 
-export default function AddItemModal({ householdId, userId, onClose }: Props) {
+export default function AddItemModal({ householdId, userId, initialStoreId, onAdded, onClose }: Props) {
   const { colors } = useTheme();
   const { items, upsertItem } = useItemsStore();
+  const stores = useStoresStore((state) => state.stores);
   const [name, setName] = useState('');
-  const [category, setCategory] = useState<ItemCategory>('fridge');
+  const [storeId, setStoreId] = useState<string | null>(initialStoreId ?? stores[0]?.id ?? null);
+  const [storeTouched, setStoreTouched] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const ready = UUID_RE.test(householdId);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  useEffect(() => {
+    if (initialStoreId !== undefined) {
+      setStoreId(initialStoreId);
+      return;
+    }
+    if (!storeTouched && !storeId && stores.length > 0) setStoreId(stores[0].id);
+  }, [initialStoreId, storeId, storeTouched, stores]);
 
   async function handleAdd() {
     if (!ready) {
@@ -48,15 +56,34 @@ export default function AddItemModal({ householdId, userId, onClose }: Props) {
     if (!normalized) { setError('Enter an item name.'); void hapticWarning(); return; }
     const existing = items.find((i) => i.name.trim().toLowerCase() === normalized.toLowerCase());
     if (existing) {
-      setError(`"${existing.name}" is already in your pantry.`);
+      if (storeId && existing.preferred_store_id !== storeId) {
+        const updated = { ...existing, preferred_store_id: storeId };
+        upsertItem(updated);
+        setLoading(true);
+        try {
+          await setItemStoreWithQueue(existing.id, storeId);
+          onAdded?.(updated);
+          void hapticSuccess();
+          onClose();
+        } catch (e: any) {
+          upsertItem(existing);
+          setError(e.message ?? 'Could not update item.');
+          void hapticError();
+        } finally {
+          setLoading(false);
+        }
+        return;
+      }
+      setError(`"${existing.name}" is already in My Groceries.`);
       void hapticWarning();
       return;
     }
     setError('');
     setLoading(true);
     try {
-      const { item, queued } = await addItemWithQueue(householdId, normalized, category, userId);
+      const { item, queued } = await addItemWithQueue(householdId, normalized, 'pantry', userId, storeId);
       upsertItem(item);
+      onAdded?.(item);
       void hapticSuccess();
       if (queued) {
         setError('Saved offline — will sync when you’re back online.');
@@ -83,8 +110,8 @@ export default function AddItemModal({ householdId, userId, onClose }: Props) {
 
           <View style={styles.sheetHeader}>
             <View>
-              <Text style={styles.title}>New item</Text>
-              <Text style={styles.subtitle}>Track what your household uses.</Text>
+              <Text style={styles.title}>New grocery</Text>
+              <Text style={styles.subtitle}>Add it to My Groceries.</Text>
             </View>
             <View style={styles.sheetIcon}>
               <Ionicons name="add" size={20} color={colors.primary} />
@@ -108,25 +135,35 @@ export default function AddItemModal({ householdId, userId, onClose }: Props) {
             placeholderTextColor={colors.placeholder}
           />
 
-          <Text style={styles.label}>Category</Text>
-          <View style={styles.categoryRow}>
-            {CATEGORIES.map((cat) => {
-              const active = category === cat;
-              return (
-                <ScalePressable
-                  key={cat}
-                  profile="chip"
-                  style={[styles.catBtn, active && styles.catBtnActive]}
-                  onPress={() => { void hapticSelection(); setCategory(cat); }}
-                >
-                  <Text style={styles.catEmoji}>{CATEGORY_EMOJI[cat]}</Text>
-                  <Text style={[styles.catLabel, active && styles.catLabelActive]}>
-                    {CATEGORY_LABELS[cat]}
-                  </Text>
-                </ScalePressable>
-              );
-            })}
-          </View>
+          <Text style={styles.label}>Store</Text>
+          {stores.length === 0 ? (
+            <View style={styles.noStoresBox}>
+              <Text style={styles.noStoresText}>No stores yet. Add stores from the Stores tab, or add this unassigned.</Text>
+            </View>
+          ) : (
+            <View style={styles.storeGrid}>
+              {stores.map((store) => {
+                const active = storeId === store.id;
+                return (
+                  <ScalePressable
+                    key={store.id}
+                    profile="chip"
+                    style={[styles.storeBtn, active && styles.storeBtnActive]}
+                    onPress={() => {
+                      void hapticSelection();
+                      setStoreTouched(true);
+                      setStoreId(active ? null : store.id);
+                    }}
+                  >
+                    <StoreLogo name={store.name} size={34} domain={store.brand_domain} logoUrl={store.logo_url} />
+                    <Text style={[styles.storeLabel, active && styles.storeLabelActive]} numberOfLines={1}>
+                      {store.name}
+                    </Text>
+                  </ScalePressable>
+                );
+              })}
+            </View>
+          )}
 
           <ScalePressable
             style={[styles.addBtn, (!ready || loading) && styles.addBtnDisabled]}
@@ -135,7 +172,7 @@ export default function AddItemModal({ householdId, userId, onClose }: Props) {
           >
             {loading
               ? <ActivityIndicator color="#fff" />
-              : <Text style={styles.addBtnText}>Add to pantry</Text>}
+              : <Text style={styles.addBtnText}>{storeId ? 'Add to store' : 'Add unassigned'}</Text>}
           </ScalePressable>
 
           <ScalePressable style={styles.cancelBtn} profile="chip" onPress={() => { void hapticSelection(); onClose(); }}>
@@ -206,26 +243,41 @@ function makeStyles(colors: AppColors) {
       marginBottom: 10,
       letterSpacing: 0.5,
     },
-    categoryRow: { flexDirection: 'row', gap: 10, marginBottom: 24 },
-    catBtn: {
-      flex: 1,
+    storeGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 10,
+      marginBottom: 24,
+    },
+    storeBtn: {
+      width: '31%',
       alignItems: 'center',
       justifyContent: 'center',
       flexDirection: 'column',
-      paddingVertical: 14,
+      paddingVertical: 12,
+      paddingHorizontal: 6,
       borderRadius: 14,
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.background,
       gap: 6,
     },
-    catBtnActive: {
+    storeBtnActive: {
       borderColor: colors.primary,
       backgroundColor: colors.primarySoft,
     },
-    catEmoji: { fontSize: 22 },
-    catLabel: { fontSize: 12, color: colors.muted, fontFamily: fonts.bodySemiBold },
-    catLabelActive: { color: colors.primary },
+    storeLabel: { fontSize: 12, color: colors.muted, fontFamily: fonts.bodySemiBold, textAlign: 'center' },
+    storeLabelActive: { color: colors.primary },
+    noStoresBox: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderStyle: 'dashed',
+      borderRadius: 14,
+      backgroundColor: colors.background,
+      padding: 14,
+      marginBottom: 24,
+    },
+    noStoresText: { fontSize: 13, color: colors.muted, lineHeight: 19, fontFamily: fonts.bodyMedium },
     addBtn: {
       backgroundColor: colors.primary,
       borderRadius: 14,

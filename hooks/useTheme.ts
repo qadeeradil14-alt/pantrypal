@@ -1,12 +1,11 @@
-import { useThemeStore } from '../store/theme';
-import { lightColors, darkColors, radii, shadow, tightShadow, fonts } from '../constants/theme';
+import { lightColors, radii, shadow, tightShadow, fonts } from '../constants/theme';
 
+// Dark mode has been removed — PantryPal is light-only.
 export function useTheme() {
-  const { isDark, toggle } = useThemeStore();
   return {
-    colors: isDark ? darkColors : lightColors,
-    isDark,
-    toggleTheme: toggle,
+    colors: lightColors,
+    isDark: false,
+    toggleTheme: () => {},
     radii,
     shadow,
     tightShadow,

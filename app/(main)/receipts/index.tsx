@@ -1,52 +1,92 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useFocusEffect } from 'expo-router';
 import {
-  View, Text, FlatList, StyleSheet,
+  View, Text, SectionList, StyleSheet,
   ActivityIndicator, Alert, RefreshControl,
+  Modal, ScrollView, Pressable,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useHouseholdStore } from '../../../store/household';
 import { useAuthStore } from '../../../store/auth';
-import { uploadReceipt, fetchReceipts, getSpendByStore, type Receipt } from '../../../lib/receipts';
+import { useSettingsStore } from '../../../store/settings';
+import { useItemsStore } from '../../../store/items';
+import { useStoresStore } from '../../../store/stores';
+import { uploadReceipt, fetchReceipts, getSpendSummary, type Receipt, type SpendSummary } from '../../../lib/receipts';
+import { fetchRecentActivity, formatActivityTime, type ActivityEvent } from '../../../lib/activity';
 import { radii, shadow, fonts } from '../../../constants/theme';
 import ScalePressable from '../../../components/ScalePressable';
 import type { AppColors } from '../../../constants/theme';
 import { useTheme } from '../../../hooks/useTheme';
 import EmptyState from '../../../components/EmptyState';
 
+interface ReceiptSection {
+  title: string;
+  data: Receipt[];
+}
+
+function groupReceiptsByTime(receipts: Receipt[]): ReceiptSection[] {
+  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const fourteenDaysAgo = Date.now() - 14 * 24 * 60 * 60 * 1000;
+
+  const thisWeek = receipts.filter((r) => new Date(r.created_at).getTime() >= sevenDaysAgo);
+  const lastWeek = receipts.filter((r) => {
+    const t = new Date(r.created_at).getTime();
+    return t >= fourteenDaysAgo && t < sevenDaysAgo;
+  });
+  const earlier = receipts.filter((r) => new Date(r.created_at).getTime() < fourteenDaysAgo);
+
+  const sections: ReceiptSection[] = [];
+  if (thisWeek.length > 0) sections.push({ title: 'This week', data: thisWeek });
+  if (lastWeek.length > 0) sections.push({ title: 'Last week', data: lastWeek });
+  if (earlier.length > 0) sections.push({ title: 'Earlier', data: earlier });
+  return sections;
+}
+
 export default function ReceiptsScreen() {
   const { colors } = useTheme();
   const { household } = useHouseholdStore();
   const { session } = useAuthStore();
+  const weeklyBudget = useSettingsStore((s) => s.weeklyBudget);
+  const { items } = useItemsStore();
+  const stores = useStoresStore((s) => s.stores);
   const householdId = household?.id ?? null;
   const userId = session?.user?.id ?? null;
+
   const [receipts, setReceipts] = useState<Receipt[]>([]);
-  const [spendByStore, setSpendByStore] = useState<{ store: string; total: number }[]>([]);
+  const [spend, setSpend] = useState<SpendSummary>({ weeklyTotal: 0, monthlyTotal: 0, byStore: [] });
+  const [activity, setActivity] = useState<ActivityEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const canUpload = !!householdId && !!userId && !uploading;
+  const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
+  const [showAllPurchases, setShowAllPurchases] = useState(false);
 
+  const canUpload = !!householdId && !!userId && !uploading;
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const load = useCallback(async () => {
-    if (!householdId) {
+    if (!householdId || !userId) {
       setReceipts([]);
-      setSpendByStore([]);
+      setSpend({ weeklyTotal: 0, monthlyTotal: 0, byStore: [] });
       return;
     }
-    const [r, s] = await Promise.all([
+    const [r, s, a] = await Promise.all([
       fetchReceipts(householdId),
-      getSpendByStore(householdId),
+      getSpendSummary(householdId),
+      fetchRecentActivity(householdId, userId, 10),
     ]);
     setReceipts(r);
-    setSpendByStore(s);
-  }, [householdId]);
+    setSpend(s);
+    setActivity(a);
+  }, [householdId, userId]);
 
   useEffect(() => { load().finally(() => setLoading(false)); }, [load]);
 
-  // Auto-poll every 12s while any receipt is still processing
+  // Re-fetch activity every time the tab comes into focus so new grabs appear immediately
+  useFocusEffect(useCallback(() => { void load(); }, [load]));
+
   useEffect(() => {
     const hasProcessing = receipts.some((r) => r.status === 'processing');
     if (!hasProcessing) return;
@@ -62,43 +102,30 @@ export default function ReceiptsScreen() {
 
   async function handleCapture(source: 'camera' | 'library') {
     if (!householdId || !userId) {
-      Alert.alert('Not ready yet', 'Please wait for your household/session to finish loading.');
+      Alert.alert('Not ready yet', 'Please wait for your household to finish loading.');
       return;
     }
     try {
       const permission = source === 'camera'
         ? await ImagePicker.requestCameraPermissionsAsync()
         : await ImagePicker.requestMediaLibraryPermissionsAsync();
-
       if (!permission.granted) {
         Alert.alert('Permission needed', `Please allow ${source} access in Settings.`);
         return;
       }
-
       const result = source === 'camera'
         ? await ImagePicker.launchCameraAsync({ quality: 0.8, base64: false })
-        : await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ['images'],
-            quality: 0.8,
-          });
-
+        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
       if (result.canceled || !result.assets[0]) return;
-
       const asset = result.assets[0];
       setUploading(true);
-
-      const receipt = await uploadReceipt(
-        householdId,
-        userId,
-        asset.uri,
-        asset.mimeType ?? 'image/jpeg',
-      );
+      const receipt = await uploadReceipt(householdId, userId, asset.uri, asset.mimeType ?? 'image/jpeg');
       setReceipts((prev) => [receipt, ...prev]);
       Alert.alert('Receipt uploaded', 'Processing your receipt — this takes about 30 seconds.');
     } catch (e: any) {
       const message = e?.message ?? 'Try again.';
       if (source === 'camera' && message.toLowerCase().includes('camera not available')) {
-        Alert.alert('Camera unavailable', 'Camera is not available here. Use "Choose from Library" instead.');
+        Alert.alert('Camera unavailable', 'Use "Choose from Library" instead.');
       } else {
         Alert.alert('Upload failed', message);
       }
@@ -115,11 +142,18 @@ export default function ReceiptsScreen() {
     ]);
   }
 
-  const totalThisMonth = spendByStore.reduce((sum, s) => sum + s.total, 0);
+  const sections = useMemo(() => groupReceiptsByTime(receipts), [receipts]);
+  const budgetProgress = Math.min(spend.weeklyTotal / weeklyBudget, 1);
+  const budgetColor = budgetProgress > 0.9 ? colors.danger : budgetProgress > 0.65 ? colors.warning : colors.success;
+  const maxStoreTotal = Math.max(...spend.byStore.map((s) => s.total), 1);
+  const allPurchases = activity.filter((e) => e.type === 'picked_up');
+  const recentPurchases = showAllPurchases ? allPurchases : allPurchases.slice(0, 3);
+
+  const sourceItemMap = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
 
   if (loading) {
     return (
-      <View style={styles.centered}>
+      <View style={[styles.centered, { backgroundColor: colors.background }]}>
         <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
@@ -130,7 +164,7 @@ export default function ReceiptsScreen() {
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Text style={styles.eyebrow}>Spending</Text>
-          <Text style={styles.headerTitle}>Receipts</Text>
+          <Text style={styles.headerTitle} testID="receipts-header">Receipts</Text>
         </View>
         <ScalePressable
           style={[styles.addBtn, !canUpload && styles.addBtnDisabled]}
@@ -144,36 +178,151 @@ export default function ReceiptsScreen() {
                 <Ionicons name="scan-outline" size={18} color="#FFFFFF" />
                 <Text style={styles.addBtnText}>Scan</Text>
               </>
-            )
-          }
+            )}
         </ScalePressable>
       </View>
 
-      <FlatList
-        data={receipts}
+      <SectionList
+        sections={sections}
         keyExtractor={(r) => r.id}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+        stickySectionHeadersEnabled={false}
         ListHeaderComponent={
           <View>
-            <View style={styles.summaryCard}>
-              <View>
-                <Text style={styles.summaryLabel}>Processed this month</Text>
-                <Text style={styles.summaryTotal}>${totalThisMonth.toFixed(2)}</Text>
-              </View>
-              <View style={styles.summaryIcon}>
-                <Ionicons name="receipt-outline" size={24} color={colors.primary} />
-              </View>
-              {spendByStore.map((s) => (
-                <View key={s.store} style={styles.storeRow}>
-                  <Text style={styles.storeName}>{s.store}</Text>
-                  <Text style={styles.storeAmount}>${s.total.toFixed(2)}</Text>
+            {/* Budget tracker */}
+            <View style={styles.budgetCard}>
+              <View style={styles.budgetCardTop}>
+                <View>
+                  <Text style={styles.budgetLabel}>This week</Text>
+                  <Text style={styles.budgetAmount}>${Math.round(spend.weeklyTotal)}</Text>
+                  <Text style={styles.budgetSub}>of ${weeklyBudget} budget</Text>
                 </View>
-              ))}
+                <View style={[styles.budgetIconWrap, { backgroundColor: budgetColor + '18' }]}>
+                  <Ionicons name="wallet-outline" size={24} color={budgetColor} />
+                </View>
+              </View>
+              <View style={styles.budgetBarTrack}>
+                <View style={[styles.budgetBarFill, {
+                  width: `${Math.round(budgetProgress * 100)}%` as any,
+                  backgroundColor: budgetColor,
+                }]} />
+              </View>
+              <Text style={[styles.budgetBarLabel, { color: budgetColor }]}>
+                {budgetProgress >= 1
+                  ? 'Over budget'
+                  : `$${Math.round(weeklyBudget - spend.weeklyTotal)} remaining`}
+              </Text>
             </View>
-            <Text style={styles.sectionLabel}>Recent receipts</Text>
+
+            {/* Store breakdown with bars */}
+            {spend.byStore.length > 0 && (
+              <View style={styles.storeCard}>
+                <Text style={styles.sectionLabel}>Last 30 days by store</Text>
+                {spend.byStore.map((s) => (
+                  <View key={s.store} style={styles.storeRow}>
+                    <Text style={styles.storeName} numberOfLines={1}>{s.store}</Text>
+                    <View style={styles.storeBarWrap}>
+                      <View style={styles.storeBarTrack}>
+                        <View style={[styles.storeBarFill, {
+                          width: `${Math.round((s.total / maxStoreTotal) * 100)}%` as any,
+                        }]} />
+                      </View>
+                      <Text style={styles.storeAmount}>${Math.round(s.total)}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Recent purchases */}
+            {recentPurchases.length > 0 && (
+              <View style={styles.recentCard}>
+                <Text style={styles.sectionLabel}>Recent purchases</Text>
+                {recentPurchases.map((event) => {
+                  const sourceItem = sourceItemMap.get(event.itemId);
+                  const storeName = sourceItem?.preferred_store_id
+                    ? stores.find((s) => s.id === sourceItem.preferred_store_id)?.name
+                    : null;
+                  return (
+                    <View key={event.itemId + event.type} style={styles.recentRow}>
+                      <View style={styles.recentDot} />
+                      <View style={styles.recentBody}>
+                        <Text style={styles.recentName} numberOfLines={1}>{event.itemName}</Text>
+                        <Text style={styles.recentMeta}>
+                          Purchased{storeName ? ` · ${storeName}` : ''}
+                        </Text>
+                      </View>
+                      <Text style={styles.recentTime}>{formatActivityTime(event.updatedAt)}</Text>
+                    </View>
+                  );
+                })}
+                {allPurchases.length > 3 && (
+                  <ScalePressable
+                    onPress={() => setShowAllPurchases((v) => !v)}
+                    style={styles.showMoreBtn}
+                  >
+                    <Text style={styles.showMoreText}>
+                      {showAllPurchases ? 'Show less' : `Show ${allPurchases.length - 3} more`}
+                    </Text>
+                    <Ionicons
+                      name={showAllPurchases ? 'chevron-up' : 'chevron-down'}
+                      size={13}
+                      color={colors.primary}
+                    />
+                  </ScalePressable>
+                )}
+              </View>
+            )}
+
+            {receipts.length > 0 && (
+              <Text style={styles.receiptsSectionTitle}>Receipts</Text>
+            )}
           </View>
         }
-        renderItem={({ item }) => <ReceiptCard receipt={item} />}
+        renderSectionHeader={({ section }) => (
+          <View style={styles.timeSectionHeader}>
+            <Text style={styles.timeSectionTitle}>{section.title}</Text>
+          </View>
+        )}
+        renderItem={({ item }) => (
+          <ScalePressable
+            profile="card"
+            style={styles.card}
+            onPress={() => setSelectedReceipt(item)}
+          >
+            <View style={styles.cardIcon}>
+              <Ionicons name="receipt-outline" size={18} color={colors.primary} />
+            </View>
+            <View style={styles.cardBody}>
+              <View style={styles.cardTop}>
+                <View style={styles.cardMeta}>
+                  <Text style={styles.cardStore}>{item.store_name ?? 'Unknown store'}</Text>
+                  <Text style={styles.cardDate}>
+                    {item.transaction_date
+                      ? new Date(item.transaction_date).toLocaleDateString()
+                      : new Date(item.created_at).toLocaleDateString()}
+                  </Text>
+                </View>
+                <View style={styles.cardRight}>
+                  {item.total_amount != null && (
+                    <Text style={styles.cardTotal}>${item.total_amount.toFixed(2)}</Text>
+                  )}
+                  <StatusPill status={item.status} colors={colors} styles={styles} />
+                </View>
+              </View>
+              {item.receipt_items && item.receipt_items.length > 0 && (
+                <Text style={styles.cardItems}>
+                  {item.receipt_items.length} items
+                  {item.receipt_items.filter((i) => i.matched_item_id).length > 0 &&
+                    ` · ${item.receipt_items.filter((i) => i.matched_item_id).length} matched to pantry`}
+                </Text>
+              )}
+            </View>
+            <Ionicons name="chevron-forward" size={14} color={colors.muted} />
+          </ScalePressable>
+        )}
+        ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+        SectionSeparatorComponent={() => <View style={{ height: 4 }} />}
         ListEmptyComponent={
           <EmptyState
             emoji="🧾"
@@ -184,53 +333,83 @@ export default function ReceiptsScreen() {
         }
         contentContainerStyle={styles.list}
       />
+
+      {/* Receipt detail modal */}
+      <Modal
+        visible={!!selectedReceipt}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setSelectedReceipt(null)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setSelectedReceipt(null)} />
+        <View style={styles.modalSheet}>
+          <View style={styles.modalHandle} />
+          <View style={styles.modalHeader}>
+            <View>
+              <Text style={styles.modalStore}>{selectedReceipt?.store_name ?? 'Unknown store'}</Text>
+              <Text style={styles.modalDate}>
+                {selectedReceipt?.transaction_date
+                  ? new Date(selectedReceipt.transaction_date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+                  : selectedReceipt ? new Date(selectedReceipt.created_at).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : ''}
+              </Text>
+            </View>
+            {selectedReceipt?.total_amount != null && (
+              <Text style={styles.modalTotal}>${selectedReceipt.total_amount.toFixed(2)}</Text>
+            )}
+          </View>
+
+          {selectedReceipt?.receipt_items && selectedReceipt.receipt_items.length > 0 ? (
+            <ScrollView style={styles.modalList} showsVerticalScrollIndicator={false}>
+              {selectedReceipt.receipt_items.map((item, idx) => (
+                <View key={item.id} style={[styles.modalItem, idx > 0 && styles.modalItemBorder]}>
+                  <View style={styles.modalItemLeft}>
+                    <Text style={styles.modalItemName}>{item.name}</Text>
+                    {item.quantity > 1 && (
+                      <Text style={styles.modalItemQty}>× {item.quantity}</Text>
+                    )}
+                    {item.matched_item_id && (
+                      <View style={styles.matchedPill}>
+                        <Ionicons name="checkmark-circle" size={11} color={colors.success} />
+                        <Text style={styles.matchedText}>In pantry</Text>
+                      </View>
+                    )}
+                  </View>
+                  {item.total_price != null && (
+                    <Text style={styles.modalItemPrice}>${item.total_price.toFixed(2)}</Text>
+                  )}
+                </View>
+              ))}
+            </ScrollView>
+          ) : (
+            <View style={styles.modalEmpty}>
+              {selectedReceipt?.status === 'processing' ? (
+                <>
+                  <ActivityIndicator color={colors.primary} />
+                  <Text style={styles.modalEmptyText}>Processing receipt…</Text>
+                </>
+              ) : (
+                <Text style={styles.modalEmptyText}>No line items found.</Text>
+              )}
+            </View>
+          )}
+
+          <ScalePressable style={styles.modalCloseBtn} onPress={() => setSelectedReceipt(null)}>
+            <Text style={styles.modalCloseBtnText}>Close</Text>
+          </ScalePressable>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
-function ReceiptCard({ receipt }: { receipt: Receipt }) {
-  const { colors } = useTheme();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
-
-  const statusColor = receipt.status === 'done' ? colors.primary : receipt.status === 'failed' ? colors.danger : colors.low;
-  const statusLabel = receipt.status === 'done' ? 'Done' : receipt.status === 'failed' ? 'Failed' : 'Processing…';
-  const statusIcon = receipt.status === 'done'
-    ? 'checkmark-circle'
-    : receipt.status === 'failed'
-      ? 'alert-circle'
-      : 'time-outline';
-
+function StatusPill({ status, colors, styles }: { status: Receipt['status']; colors: AppColors; styles: ReturnType<typeof makeStyles> }) {
+  const color = status === 'done' ? colors.success : status === 'failed' ? colors.danger : colors.warning;
+  const label = status === 'done' ? 'Done' : status === 'failed' ? 'Failed' : 'Processing…';
+  const icon = status === 'done' ? 'checkmark-circle' : status === 'failed' ? 'alert-circle' : 'time-outline';
   return (
-    <View style={styles.card}>
-      <View style={styles.cardIcon}>
-        <Ionicons name="receipt-outline" size={18} color={colors.primary} />
-      </View>
-      <View style={styles.cardTop}>
-        <View>
-          <Text style={styles.cardStore}>{receipt.store_name ?? 'Unknown store'}</Text>
-          <Text style={styles.cardDate}>
-            {receipt.transaction_date
-              ? new Date(receipt.transaction_date).toLocaleDateString()
-              : new Date(receipt.created_at).toLocaleDateString()}
-          </Text>
-        </View>
-        <View style={styles.cardRight}>
-          {receipt.total_amount != null && (
-            <Text style={styles.cardTotal}>${receipt.total_amount.toFixed(2)}</Text>
-          )}
-          <View style={[styles.statusPill, { backgroundColor: statusColor + '22' }]}>
-            <Ionicons name={statusIcon} size={13} color={statusColor} />
-            <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
-          </View>
-        </View>
-      </View>
-      {receipt.receipt_items && receipt.receipt_items.length > 0 && (
-        <Text style={styles.cardItems}>
-          {receipt.receipt_items.length} items
-          {receipt.receipt_items.filter(i => i.matched_item_id).length > 0 &&
-            ` · ${receipt.receipt_items.filter(i => i.matched_item_id).length} matched to pantry`}
-        </Text>
-      )}
+    <View style={[styles.statusPill, { backgroundColor: color + '22' }]}>
+      <Ionicons name={icon} size={12} color={color} />
+      <Text style={[styles.statusText, { color }]}>{label}</Text>
     </View>
   );
 }
@@ -238,7 +417,7 @@ function ReceiptCard({ receipt }: { receipt: Receipt }) {
 function makeStyles(colors: AppColors) {
   return StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.background },
-    centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },
+    centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     header: {
       flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
       paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14,
@@ -253,37 +432,121 @@ function makeStyles(colors: AppColors) {
     },
     addBtnDisabled: { backgroundColor: colors.disabled },
     addBtnText: { color: '#FFFFFF', fontSize: 15, fontFamily: fonts.bodySemiBold },
-    summaryCard: {
-      marginHorizontal: 16, marginBottom: 14, backgroundColor: colors.surfaceWarm, borderRadius: radii.xl,
-      padding: 18, borderWidth: 1, borderColor: colors.border, ...shadow,
+
+    // Budget card
+    budgetCard: {
+      marginHorizontal: 16, marginBottom: 12, backgroundColor: colors.surface,
+      borderRadius: radii.xl, padding: 18, borderWidth: 1, borderColor: colors.border, ...shadow,
     },
-    summaryIcon: {
-      position: 'absolute', right: 18, top: 18, width: 46, height: 46, borderRadius: 23,
-      alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface,
+    budgetCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
+    budgetIconWrap: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+    budgetLabel: { fontSize: 13, color: colors.muted, fontFamily: fonts.bodyMedium, marginBottom: 4 },
+    budgetAmount: { fontSize: 42, lineHeight: 50, fontFamily: fonts.mono, color: colors.ink },
+    budgetSub: { fontSize: 13, color: colors.muted, fontFamily: fonts.body, marginTop: 2 },
+    budgetBarTrack: { height: 8, borderRadius: 4, backgroundColor: colors.faint, overflow: 'hidden', marginBottom: 6 },
+    budgetBarFill: { height: 8, borderRadius: 4 },
+    budgetBarLabel: { fontSize: 12, fontFamily: fonts.bodySemiBold },
+
+    // Store breakdown
+    storeCard: {
+      marginHorizontal: 16, marginBottom: 12, backgroundColor: colors.surface,
+      borderRadius: radii.lg, padding: 16, borderWidth: 1, borderColor: colors.border,
     },
-    summaryLabel: { fontSize: 14, color: colors.muted, fontFamily: fonts.bodyMedium, marginBottom: 4 },
-    summaryTotal: { fontSize: 42, lineHeight: 52, fontFamily: fonts.mono, color: colors.ink, marginBottom: 16 },
-    storeRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.border },
-    storeName: { fontSize: 15, color: colors.muted, fontFamily: fonts.bodyMedium },
-    storeAmount: { fontSize: 15, fontFamily: fonts.mono, color: colors.ink },
-    sectionLabel: { paddingHorizontal: 20, paddingBottom: 8, fontSize: 12, fontFamily: fonts.bodySemiBold, color: colors.muted, textTransform: 'uppercase' },
+    sectionLabel: {
+      fontSize: 11, fontFamily: fonts.bodySemiBold, color: colors.muted,
+      textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 12,
+    },
+    storeRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 10 },
+    storeName: { fontSize: 13, color: colors.ink, fontFamily: fonts.bodyMedium, width: 100 },
+    storeBarWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
+    storeBarTrack: { flex: 1, height: 6, borderRadius: 3, backgroundColor: colors.faint, overflow: 'hidden' },
+    storeBarFill: { height: 6, borderRadius: 3, backgroundColor: colors.primary },
+    storeAmount: { fontSize: 13, fontFamily: fonts.mono, color: colors.ink, width: 44, textAlign: 'right' },
+
+    // Recent purchases
+    recentCard: {
+      marginHorizontal: 16, marginBottom: 12, backgroundColor: colors.surface,
+      borderRadius: radii.lg, padding: 16, borderWidth: 1, borderColor: colors.border,
+    },
+    recentRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
+    recentDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: colors.success, flexShrink: 0 },
+    recentBody: { flex: 1, gap: 2 },
+    recentName: { fontSize: 14, fontFamily: fonts.bodySemiBold, color: colors.ink },
+    recentMeta: { fontSize: 12, color: colors.muted, fontFamily: fonts.body },
+    recentTime: { fontSize: 11, color: colors.muted, fontFamily: fonts.mono, flexShrink: 0 },
+    showMoreBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 4,
+      paddingTop: 10,
+      paddingBottom: 2,
+    },
+    showMoreText: { fontSize: 13, color: colors.primary, fontFamily: fonts.bodySemiBold },
+
+    // Receipts list
+    receiptsSectionTitle: {
+      fontSize: 11, fontFamily: fonts.bodySemiBold, color: colors.muted,
+      textTransform: 'uppercase', letterSpacing: 0.4,
+      paddingHorizontal: 20, paddingTop: 8, paddingBottom: 4,
+    },
+    timeSectionHeader: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 6 },
+    timeSectionTitle: { fontSize: 13, fontFamily: fonts.bodySemiBold, color: colors.muted },
     list: { paddingBottom: 120 },
     card: {
-      backgroundColor: colors.surface, marginHorizontal: 16, marginBottom: 10,
+      flexDirection: 'row', alignItems: 'center',
+      backgroundColor: colors.surface, marginHorizontal: 16,
       borderRadius: radii.lg, padding: 14, borderWidth: 1, borderColor: colors.border,
-      flexDirection: 'row', gap: 12,
+      gap: 12, ...shadow,
     },
     cardIcon: {
       width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center',
       backgroundColor: colors.primarySoft, flexShrink: 0,
     },
-    cardTop: { flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-    cardStore: { fontSize: 17, fontFamily: fonts.bodyMedium, color: colors.ink },
+    cardBody: { flex: 1, flexDirection: 'column' },
+    cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+    cardMeta: { flex: 1, paddingRight: 8 },
+    cardStore: { fontSize: 16, fontFamily: fonts.bodyMedium, color: colors.ink },
     cardDate: { fontSize: 13, color: colors.muted, marginTop: 2, fontFamily: fonts.body },
-    cardRight: { alignItems: 'flex-end', gap: 6 },
-    cardTotal: { fontSize: 18, fontFamily: fonts.mono, color: colors.ink },
-    statusPill: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 },
-    statusText: { fontSize: 12, fontFamily: fonts.bodySemiBold },
-    cardItems: { fontSize: 13, color: colors.muted, marginTop: 10, fontFamily: fonts.bodyMedium },
+    cardRight: { alignItems: 'flex-end', gap: 5 },
+    cardTotal: { fontSize: 17, fontFamily: fonts.mono, color: colors.ink },
+    statusPill: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 999, paddingHorizontal: 7, paddingVertical: 3 },
+    statusText: { fontSize: 11, fontFamily: fonts.bodySemiBold },
+    cardItems: { fontSize: 12, color: colors.muted, marginTop: 6, fontFamily: fonts.body },
+
+    // Modal / Detail sheet
+    modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
+    modalSheet: {
+      backgroundColor: colors.background, borderTopLeftRadius: 24, borderTopRightRadius: 24,
+      paddingBottom: 40, maxHeight: '80%',
+    },
+    modalHandle: {
+      width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border,
+      alignSelf: 'center', marginTop: 12, marginBottom: 8,
+    },
+    modalHeader: {
+      flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
+      paddingHorizontal: 20, paddingVertical: 16,
+      borderBottomWidth: 1, borderBottomColor: colors.border,
+    },
+    modalStore: { fontSize: 20, fontFamily: fonts.display, color: colors.ink },
+    modalDate: { fontSize: 13, color: colors.muted, fontFamily: fonts.body, marginTop: 3 },
+    modalTotal: { fontSize: 28, fontFamily: fonts.mono, color: colors.ink },
+    modalList: { paddingHorizontal: 20, paddingTop: 8 },
+    modalItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, gap: 10 },
+    modalItemBorder: { borderTopWidth: 1, borderTopColor: colors.border },
+    modalItemLeft: { flex: 1, gap: 4 },
+    modalItemName: { fontSize: 15, fontFamily: fonts.bodyMedium, color: colors.ink },
+    modalItemQty: { fontSize: 12, color: colors.muted, fontFamily: fonts.body },
+    modalItemPrice: { fontSize: 15, fontFamily: fonts.mono, color: colors.ink },
+    matchedPill: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    matchedText: { fontSize: 11, color: colors.success, fontFamily: fonts.bodySemiBold },
+    modalEmpty: { padding: 40, alignItems: 'center', gap: 12 },
+    modalEmptyText: { fontSize: 15, color: colors.muted, fontFamily: fonts.body },
+    modalCloseBtn: {
+      marginHorizontal: 20, marginTop: 16, paddingVertical: 15,
+      backgroundColor: colors.faint, borderRadius: radii.lg, alignItems: 'center',
+    },
+    modalCloseBtnText: { fontSize: 16, fontFamily: fonts.bodySemiBold, color: colors.ink },
   });
 }

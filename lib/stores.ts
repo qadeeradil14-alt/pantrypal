@@ -22,6 +22,9 @@ function makeOptimisticStore(householdId: string, name: string, address?: string
     latitude: null,
     longitude: null,
     radius_meters: 150,
+    store_brand_id: null,
+    brand_domain: null,
+    logo_url: null,
     created_at: ts,
   };
 }
@@ -34,7 +37,27 @@ export interface Store {
   latitude: number | null;
   longitude: number | null;
   radius_meters: number;
+  store_brand_id: string | null;
+  brand_domain: string | null;
+  logo_url: string | null;
   created_at: string;
+}
+
+export interface StoreBrand {
+  id: string;
+  name: string;
+  aliases: string[];
+  domain: string | null;
+  logo_url: string | null;
+  priority: number;
+  search_text: string;
+}
+
+export interface StorePlace {
+  name: string;
+  address: string;
+  latitude: number;
+  longitude: number;
 }
 
 export const PRESET_STORES = [
@@ -42,6 +65,42 @@ export const PRESET_STORES = [
   'Publix', 'Target', 'Aldi', 'Whole Foods', 'Trader Joe\'s',
   'H-E-B', 'Safeway', 'Meijer', 'Giant', 'Stop & Shop',
 ];
+
+const FALLBACK_STORE_BRANDS: StoreBrand[] = [
+  { id: 'fallback-walmart', name: 'Walmart', aliases: ['Supercenter', 'Walmart Supercenter'], domain: 'walmart.com', logo_url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5b/Walmart_logo_%282025%29.svg/960px-Walmart_logo_%282025%29.svg.png', priority: 100, search_text: 'walmart supercenter walmart supercenter' },
+  { id: 'fallback-sams-club', name: "Sam's Club", aliases: ['Sams Club', 'Sam Club'], domain: 'samsclub.com', logo_url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/Sam%27s_Club_Logo_2020.svg/960px-Sam%27s_Club_Logo_2020.svg.png', priority: 95, search_text: 'sam club sams club sam club' },
+  { id: 'fallback-costco', name: 'Costco', aliases: ['Costco Wholesale'], domain: 'costco.com', logo_url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/59/Costco_Wholesale_logo_2010-10-26.svg/960px-Costco_Wholesale_logo_2010-10-26.svg.png', priority: 95, search_text: 'costco costco wholesale' },
+  { id: 'fallback-kroger', name: 'Kroger', aliases: [], domain: 'kroger.com', logo_url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/69/Kroger_logo_%281961-2019%29.svg/960px-Kroger_logo_%281961-2019%29.svg.png', priority: 90, search_text: 'kroger' },
+  { id: 'fallback-food-lion', name: 'Food Lion', aliases: [], domain: 'foodlion.com', logo_url: 'https://upload.wikimedia.org/wikipedia/commons/f/f8/Food_lion.png', priority: 90, search_text: 'food lion' },
+  { id: 'fallback-publix', name: 'Publix', aliases: [], domain: 'publix.com', logo_url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/95/Publix_Logo.svg/960px-Publix_Logo.svg.png', priority: 90, search_text: 'publix' },
+  { id: 'fallback-target', name: 'Target', aliases: [], domain: 'target.com', logo_url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/9a/Target_logo.svg/960px-Target_logo.svg.png', priority: 90, search_text: 'target' },
+  { id: 'fallback-aldi', name: 'ALDI', aliases: ['Aldi'], domain: 'aldi.us', logo_url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e5/Aldi_S%C3%BCd_2017_logo.svg/960px-Aldi_S%C3%BCd_2017_logo.svg.png', priority: 85, search_text: 'aldi' },
+  { id: 'fallback-whole-foods', name: 'Whole Foods Market', aliases: ['Whole Foods'], domain: 'wholefoodsmarket.com', logo_url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/Whole_Foods_Market_201x_logo.svg/960px-Whole_Foods_Market_201x_logo.svg.png', priority: 85, search_text: 'whole foods market whole foods' },
+  { id: 'fallback-trader-joes', name: "Trader Joe's", aliases: ['Trader Joes'], domain: 'traderjoes.com', logo_url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/Trader_Joes_Logo.svg/960px-Trader_Joes_Logo.svg.png', priority: 85, search_text: 'trader joes trader joe' },
+  { id: 'fallback-heb', name: 'H-E-B', aliases: ['HEB', 'H E B'], domain: 'heb.com', logo_url: null, priority: 80, search_text: 'h e b heb' },
+  { id: 'fallback-safeway', name: 'Safeway', aliases: [], domain: 'safeway.com', logo_url: null, priority: 80, search_text: 'safeway' },
+  { id: 'fallback-meijer', name: 'Meijer', aliases: [], domain: 'meijer.com', logo_url: null, priority: 80, search_text: 'meijer' },
+  { id: 'fallback-giant-food', name: 'Giant Food', aliases: ['Giant'], domain: 'giantfood.com', logo_url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ac/Giant_Food_2008_logo.svg/960px-Giant_Food_2008_logo.svg.png', priority: 75, search_text: 'giant food giant' },
+  { id: 'fallback-stop-shop', name: 'Stop & Shop', aliases: ['Stop and Shop'], domain: 'stopandshop.com', logo_url: null, priority: 75, search_text: 'stop and shop stop shop' },
+  { id: 'fallback-wegmans', name: 'Wegmans', aliases: [], domain: 'wegmans.com', logo_url: null, priority: 70, search_text: 'wegmans' },
+  { id: 'fallback-lidl', name: 'Lidl', aliases: [], domain: 'lidl.com', logo_url: null, priority: 70, search_text: 'lidl' },
+  { id: 'fallback-dollar-general', name: 'Dollar General', aliases: [], domain: 'dollargeneral.com', logo_url: null, priority: 65, search_text: 'dollar general' },
+  { id: 'fallback-family-dollar', name: 'Family Dollar', aliases: [], domain: 'familydollar.com', logo_url: null, priority: 65, search_text: 'family dollar' },
+  { id: 'fallback-dollar-tree', name: 'Dollar Tree', aliases: [], domain: 'dollartree.com', logo_url: null, priority: 65, search_text: 'dollar tree' },
+];
+
+function fallbackStoreBrands(query: string): StoreBrand[] {
+  const q = normalizeSearch(query);
+  if (q.length < 2) return [];
+  return FALLBACK_STORE_BRANDS
+    .filter((brand) => normalizeSearch(brand.search_text).includes(q))
+    .sort((a, b) => b.priority - a.priority || a.name.localeCompare(b.name))
+    .slice(0, 12);
+}
+
+function normalizeSearch(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
 
 export async function fetchStores(householdId: string): Promise<Store[]> {
   const { data, error } = await supabase
@@ -53,10 +112,27 @@ export async function fetchStores(householdId: string): Promise<Store[]> {
   return data as Store[];
 }
 
+export async function searchStoreBrands(query: string): Promise<StoreBrand[]> {
+  const q = query.trim();
+  if (q.length < 2) return [];
+  const fallback = fallbackStoreBrands(q);
+  const { data, error } = await supabase
+    .from('store_brands')
+    .select('id, name, aliases, domain, logo_url, priority, search_text')
+    .ilike('search_text', `%${q.replace(/[%_]/g, '')}%`)
+    .order('priority', { ascending: false })
+    .order('name')
+    .limit(12);
+  if (error) return fallback;
+  const remote = data as StoreBrand[];
+  return remote.length > 0 ? remote : fallback;
+}
+
 export async function addStore(
   householdId: string,
   name: string,
   address?: string,
+  brand?: StoreBrand | null,
 ): Promise<Store> {
   const normalizedName = name.trim();
   const { data: existingStore } = await supabase
@@ -84,14 +160,95 @@ export async function addStore(
     }
   }
 
+  return insertStoreWithBrandFallback({
+    household_id: householdId,
+    name: normalizedName,
+    address: finalAddress,
+    latitude,
+    longitude,
+    store_brand_id: brand?.id.startsWith('fallback-') ? null : brand?.id ?? null,
+    brand_domain: brand?.domain ?? null,
+    logo_url: brand?.logo_url ?? null,
+  });
+}
+
+export async function addStoreFromPlace(householdId: string, place: StorePlace, brand?: StoreBrand | null): Promise<Store> {
+  const normalizedName = place.name.trim();
+  const { data: existingStore } = await supabase
+    .from('stores')
+    .select('*')
+    .eq('household_id', householdId)
+    .ilike('name', normalizedName)
+    .maybeSingle();
+  if (existingStore) return existingStore as Store;
+
+  return insertStoreWithBrandFallback({
+    household_id: householdId,
+    name: normalizedName,
+    address: place.address,
+    latitude: place.latitude,
+    longitude: place.longitude,
+    store_brand_id: brand?.id.startsWith('fallback-') ? null : brand?.id ?? null,
+    brand_domain: brand?.domain ?? null,
+    logo_url: brand?.logo_url ?? null,
+  });
+}
+
+function isMissingStoreBrandColumnError(error: any): boolean {
+  const message = `${error?.message ?? ''} ${error?.details ?? ''}`;
+  return message.includes('brand_domain') || message.includes('store_brand_id') || message.includes('logo_url');
+}
+
+async function insertStoreWithBrandFallback(payload: Record<string, any>): Promise<Store> {
   const { data, error } = await supabase
     .from('stores')
-    .insert({ household_id: householdId, name: normalizedName, address: finalAddress, latitude, longitude })
+    .insert(payload)
     .select()
     .single();
 
-  if (error) throw error;
-  return data as Store;
+  if (!error) return data as Store;
+  if (!isMissingStoreBrandColumnError(error)) throw error;
+
+  const {
+    store_brand_id: _storeBrandId,
+    brand_domain: _brandDomain,
+    logo_url: _logoUrl,
+    ...legacyPayload
+  } = payload;
+  const legacy = await supabase
+    .from('stores')
+    .insert(legacyPayload)
+    .select()
+    .single();
+  if (legacy.error) throw legacy.error;
+  return {
+    ...(legacy.data as Store),
+    store_brand_id: null,
+    brand_domain: payload.brand_domain ?? null,
+    logo_url: payload.logo_url ?? null,
+  };
+}
+
+export async function searchNearbyStores(storeName: string): Promise<StorePlace[]> {
+  const normalized = storeName.trim();
+  if (!normalized) return [];
+
+  try {
+    const permission = await Location.requestForegroundPermissionsAsync();
+    if (permission.status === 'granted') {
+      const here = await Location.getCurrentPositionAsync({});
+      const delta = 0.35;
+      const left = here.coords.longitude - delta;
+      const right = here.coords.longitude + delta;
+      const top = here.coords.latitude + delta;
+      const bottom = here.coords.latitude - delta;
+      const bounded = await searchNominatimStores(normalized, `&bounded=1&viewbox=${left},${top},${right},${bottom}`);
+      if (bounded.length > 0) return bounded;
+    }
+  } catch {
+  }
+
+  return searchNominatimStores(normalized);
 }
 
 export async function deleteStore(storeId: string) {
@@ -103,9 +260,10 @@ export async function addStoreWithQueue(
   householdId: string,
   name: string,
   address?: string,
+  brand?: StoreBrand | null,
 ): Promise<{ queued: boolean; store: Store }> {
   try {
-    const store = await addStore(householdId, name, address);
+    const store = await addStore(householdId, name, address, brand);
     return { queued: false, store };
   } catch (error) {
     if (!isTransientNetworkErrorForQueue(error)) throw error;
@@ -114,6 +272,8 @@ export async function addStoreWithQueue(
       householdId,
       name: name.trim(),
       address: address?.trim() || undefined,
+      brandDomain: brand?.domain ?? null,
+      logoUrl: brand?.logo_url ?? null,
     });
     return { queued: true, store };
   }
@@ -184,35 +344,48 @@ async function geocodeStoreName(
 
   try {
     const permission = await Location.requestForegroundPermissionsAsync();
-    if (permission.status !== 'granted') return null;
-    const here = await Location.getCurrentPositionAsync({});
-    const delta = 0.35;
-    const left = here.coords.longitude - delta;
-    const right = here.coords.longitude + delta;
-    const top = here.coords.latitude + delta;
-    const bottom = here.coords.latitude - delta;
-    const encoded = encodeURIComponent(storeName);
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encoded}&format=json&limit=1&addressdetails=1&bounded=1&viewbox=${left},${top},${right},${bottom}`,
-      {
-        headers: {
-          'User-Agent': 'PantryPal/1.0',
-          'Accept': 'application/json',
-          'Accept-Language': 'en-US,en;q=0.9',
-        },
-      },
-    );
-    if (!res.ok) return null;
-    const results = await res.json();
+    let results: StorePlace[] = [];
+    if (permission.status === 'granted') {
+      const here = await Location.getCurrentPositionAsync({});
+      const delta = 0.35;
+      const left = here.coords.longitude - delta;
+      const right = here.coords.longitude + delta;
+      const top = here.coords.latitude + delta;
+      const bottom = here.coords.latitude - delta;
+      results = await searchNominatimStores(storeName, `&bounded=1&viewbox=${left},${top},${right},${bottom}`, 1);
+    }
+    if (results.length === 0) results = await searchNominatimStores(storeName, '', 1);
     if (!results.length) return null;
     return {
-      latitude: parseFloat(results[0].lat),
-      longitude: parseFloat(results[0].lon),
-      address: formatNominatimAddress(results[0]),
+      latitude: results[0].latitude,
+      longitude: results[0].longitude,
+      address: results[0].address,
     };
   } catch {
     return null;
   }
+}
+
+async function searchNominatimStores(storeName: string, suffix = '', limit = 12): Promise<StorePlace[]> {
+  const encoded = encodeURIComponent(storeName);
+  const res = await fetch(
+    `https://nominatim.openstreetmap.org/search?q=${encoded}&format=json&limit=${limit}&addressdetails=1${suffix}`,
+    {
+      headers: {
+        'User-Agent': 'PantryPal/1.0',
+        'Accept': 'application/json',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+    },
+  );
+  if (!res.ok) throw new Error('Could not search nearby stores.');
+  const results = await res.json();
+  return (results as any[]).map((result) => ({
+    name: bestPlaceName(result, storeName),
+    address: formatNominatimAddress(result) ?? result?.display_name ?? storeName,
+    latitude: parseFloat(result.lat),
+    longitude: parseFloat(result.lon),
+  })).filter((place) => Number.isFinite(place.latitude) && Number.isFinite(place.longitude));
 }
 
 function formatNominatimAddress(result: any): string | undefined {
@@ -235,4 +408,9 @@ function formatNominatimAddress(result: any): string | undefined {
       .join(', ');
   }
   return undefined;
+}
+
+function bestPlaceName(result: any, fallback: string): string {
+  const named = result?.name ?? result?.address?.shop ?? result?.address?.amenity;
+  return typeof named === 'string' && named.trim() ? named.trim() : fallback;
 }

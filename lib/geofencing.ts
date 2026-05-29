@@ -11,7 +11,7 @@ export const GEOFENCE_TASK = 'PANTRYPAL_GEOFENCE';
 export const GEOFENCE_DEBOUNCE_MS = 3 * 60 * 1000;
 
 /** How long grocery "shopping mode" stays pinned after an arrival. */
-export const ACTIVE_STORE_TTL_MS = 2 * 60 * 1000;
+export const ACTIVE_STORE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 
 const GEOFENCE_DEBOUNCE_KEY = 'pantrypal:geofence:last-enter:v1';
 
@@ -115,13 +115,13 @@ async function hasRelevantShoppingAtStore(store: Store): Promise<boolean> {
   });
 }
 
-export async function scheduleLocalArrivalNotification(storeName: string) {
-  const minutes = Math.round(ACTIVE_STORE_TTL_MS / 60_000);
+export async function scheduleLocalArrivalNotification(storeName: string, storeId?: string) {
   await Notifications.scheduleNotificationAsync({
     content: {
-      title: `Arrived at ${storeName}`,
-      body: `You have about ${minutes} minutes to add anything to the shopping list.`,
+      title: `You're at ${storeName}`,
+      body: 'Your shopping list is ready. Tap to open it.',
       sound: 'default',
+      data: { storeId, type: 'arrival_self' },
     },
     trigger: null,
   });
@@ -152,7 +152,7 @@ export async function handleStoreGeofenceEnter(storeId: string): Promise<void> {
 
   const arrivedBy = await getArrivalUserId();
   await Promise.all([
-    scheduleLocalArrivalNotification(store.name),
+    scheduleLocalArrivalNotification(store.name, store.id),
     recordStoreArrival(store, arrivedBy),
   ]);
 

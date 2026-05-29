@@ -549,8 +549,8 @@ export default function PantryScreen() {
           if (s.isLow) {
             return (
               <View style={styles.needsAttentionHeader}>
-                <Text style={styles.sectionEmoji}>⚠️</Text>
-                <Text style={styles.needsAttentionTitle}>Needs attention</Text>
+                <Ionicons name="cart-outline" size={16} color={colors.warning} />
+                <Text style={styles.needsAttentionTitle}>Grab These</Text>
                 <View style={styles.needsAttentionBadge}>
                   <Text style={styles.needsAttentionBadgeText}>{s.count}</Text>
                 </View>

@@ -96,3 +96,44 @@ export async function getSpendByStore(householdId: string) {
     .map(([store, total]) => ({ store, total }))
     .sort((a, b) => b.total - a.total);
 }
+
+export interface SpendSummary {
+  weeklyTotal: number;
+  monthlyTotal: number;
+  byStore: { store: string; total: number }[];
+}
+
+export async function getSpendSummary(householdId: string): Promise<SpendSummary> {
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const sevenDaysAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
+
+  const { data, error } = await supabase
+    .from('receipts')
+    .select('store_name, total_amount, created_at')
+    .eq('household_id', householdId)
+    .eq('status', 'done')
+    .gte('created_at', thirtyDaysAgo.toISOString());
+
+  if (error) throw error;
+
+  let weeklyTotal = 0;
+  let monthlyTotal = 0;
+  const byStore: Record<string, number> = {};
+
+  for (const r of data ?? []) {
+    const amount = r.total_amount ?? 0;
+    monthlyTotal += amount;
+    if (new Date(r.created_at).getTime() >= sevenDaysAgoMs) weeklyTotal += amount;
+    const store = r.store_name ?? 'Unknown';
+    byStore[store] = (byStore[store] ?? 0) + amount;
+  }
+
+  return {
+    weeklyTotal,
+    monthlyTotal,
+    byStore: Object.entries(byStore)
+      .map(([store, total]) => ({ store, total }))
+      .sort((a, b) => b.total - a.total),
+  };
+}

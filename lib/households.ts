@@ -136,6 +136,22 @@ export async function joinHousehold(inviteCode: string, userId: string) {
   return household;
 }
 
+export async function updateHouseholdName(householdId: string, name: string) {
+  const { error } = await supabase
+    .from('households')
+    .update({ name: name.trim() })
+    .eq('id', householdId);
+  if (error) throw error;
+}
+
+export async function leaveHousehold(householdId: string, userId: string) {
+  const { error } = await supabase
+    .from('household_members')
+    .delete()
+    .match({ household_id: householdId, user_id: userId });
+  if (error) throw error;
+}
+
 export async function getMyHousehold(userId: string) {
   const { data, error } = await supabase
     .from('household_members')

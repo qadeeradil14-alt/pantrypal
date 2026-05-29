@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { View, StyleSheet, AppState, Pressable } from 'react-native';
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as Notifications from 'expo-notifications';
 import type { ColorValue } from 'react-native';
 import { fetchStores } from '../../lib/stores';
 import { fetchItems } from '../../lib/items';
@@ -11,8 +12,8 @@ import { startGeofencing, stopGeofencing, ACTIVE_STORE_TTL_MS } from '../../lib/
 import { useRealtime } from '../../lib/realtime';
 import { useHouseholdStore } from '../../store/household';
 import { useStoresStore } from '../../store/stores';
-import { useShoppingStore } from '../../store/shopping';
 import { useItemsStore } from '../../store/items';
+import { useShoppingStore } from '../../store/shopping';
 import { useTheme } from '../../hooks/useTheme';
 import { fonts } from '../../constants/theme';
 import ArrivalBanner from '../../components/ArrivalBanner';
@@ -27,15 +28,18 @@ function tabIcon(name: IoniconName, focusedName: IoniconName) {
 
 export default function MainLayout() {
   const { colors } = useTheme();
+  const router = useRouter();
   const householdId = useHouseholdStore((s) => s.household?.id);
   const setStores = useStoresStore((s) => s.setStores);
   const setItems = useItemsStore((s) => s.setItems);
   const setShoppingEntries = useShoppingStore((s) => s.setEntries);
   const activeStoreId = useStoresStore((s) => s.activeStoreId);
   const setActiveStore = useStoresStore((s) => s.setActiveStore);
+  const setArrivalStore = useStoresStore((s) => s.setArrivalStore);
   const activeStoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useRealtime(householdId ?? null);
 
+  // Auto-clear shopping mode after 2 hours (in case user forgets to tap Done)
   useEffect(() => {
     if (activeStoreTimerRef.current) clearTimeout(activeStoreTimerRef.current);
     if (!activeStoreId) return;
@@ -47,6 +51,28 @@ export default function MainLayout() {
     };
   }, [activeStoreId, setActiveStore]);
 
+  // Handle push notification taps:
+  // - Person at store taps their own arrival notification → open Shopping tab
+  // - Partner taps arrival notification (app was closed) → open Pantry to update list
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data as Record<string, any>;
+      const storeId: string | undefined = data?.storeId;
+      const type: string | undefined = data?.type;
+
+      if (type === 'arrival_self' && storeId) {
+        // The person who arrived tapped their own notification — open Shopping
+        setActiveStore(storeId);
+        router.push('/(main)/grocery');
+      } else if (storeId) {
+        // Partner tapped the push notification — show banner + go to Pantry to add items
+        setArrivalStore(storeId);
+        router.push('/(main)/pantry');
+      }
+    });
+    return () => sub.remove();
+  }, [router, setActiveStore, setArrivalStore]);
+
   useEffect(() => {
     if (!householdId) return;
     const sub = AppState.addEventListener('change', (state) => {
@@ -54,14 +80,14 @@ export default function MainLayout() {
       void (async () => {
         try {
           await flushMutationQueue();
-          const [stores, items, entries] = await Promise.all([
+          const [stores, items, shoppingEntries] = await Promise.all([
             fetchStores(householdId),
             fetchItems(householdId),
             fetchActiveShoppingList(householdId),
           ]);
           setStores(stores);
           setItems(items);
-          setShoppingEntries(entries);
+          setShoppingEntries(shoppingEntries);
           const geofenceStores = stores.filter((s) => s.latitude != null);
           if (geofenceStores.length > 0) {
             await stopGeofencing();
@@ -81,18 +107,13 @@ export default function MainLayout() {
     async function bootstrapStoresAndGeofencing() {
       if (!householdId) {
         setStores([]);
-        setShoppingEntries([]);
         await stopGeofencing();
         return;
       }
       try {
-        const [stores, shoppingEntries] = await Promise.all([
-          fetchStores(householdId),
-          fetchActiveShoppingList(householdId),
-        ]);
+        const stores = await fetchStores(householdId);
         if (cancelled) return;
         setStores(stores);
-        setShoppingEntries(shoppingEntries);
         await stopGeofencing();
         if (stores.some((s) => s.latitude != null && s.longitude != null)) {
           await startGeofencing(stores);
@@ -104,7 +125,7 @@ export default function MainLayout() {
 
     bootstrapStoresAndGeofencing();
     return () => { cancelled = true; };
-  }, [householdId, setStores, setShoppingEntries]);
+  }, [householdId, setStores]);
 
   return (
     <View style={styles.root}>
@@ -157,6 +178,9 @@ export default function MainLayout() {
           options={{
             title: 'Receipts',
             tabBarIcon: tabIcon('receipt-outline', 'receipt'),
+            tabBarButton: ({ ref: _ref, ...props }) => (
+              <Pressable {...props} testID="tab-receipts" accessibilityRole="button" />
+            ),
           }}
         />
         <Tabs.Screen
@@ -164,6 +188,9 @@ export default function MainLayout() {
           options={{
             title: 'Stores',
             tabBarIcon: tabIcon('storefront-outline', 'storefront'),
+            tabBarButton: ({ ref: _ref, ...props }) => (
+              <Pressable {...props} testID="tab-stores" accessibilityRole="button" />
+            ),
           }}
         />
         <Tabs.Screen
@@ -171,6 +198,9 @@ export default function MainLayout() {
           options={{
             title: 'Settings',
             tabBarIcon: tabIcon('settings-outline', 'settings'),
+            tabBarButton: ({ ref: _ref, ...props }) => (
+              <Pressable {...props} testID="tab-settings" accessibilityRole="button" />
+            ),
           }}
         />
       </Tabs>

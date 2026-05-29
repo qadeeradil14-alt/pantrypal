@@ -1,13 +1,20 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View, Text, FlatList, StyleSheet,
-  Alert, ActivityIndicator, TextInput, ScrollView, Modal,
+  Alert, ActivityIndicator, TextInput, ScrollView, Modal, useWindowDimensions,
+  KeyboardAvoidingView, Platform, RefreshControl,
 } from 'react-native';
+import { useFocusEffect } from 'expo-router';
+import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useHouseholdStore } from '../../../store/household';
 import { useStoresStore } from '../../../store/stores';
-import { fetchStores, addStoreWithQueue, deleteStoreWithQueue, PRESET_STORES, type Store } from '../../../lib/stores';
+import { useItemsStore } from '../../../store/items';
+import {
+  fetchStores, addStoreWithQueue, deleteStoreWithQueue, PRESET_STORES,
+  addStoreFromPlace, searchNearbyStores, searchStoreBrands, type Store, type StoreBrand, type StorePlace,
+} from '../../../lib/stores';
 import { startGeofencing, stopGeofencing } from '../../../lib/geofencing';
 import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../../../lib/haptics';
 import { fonts, radii, shadow } from '../../../constants/theme';
@@ -15,6 +22,7 @@ import type { AppColors } from '../../../constants/theme';
 import { useTheme } from '../../../hooks/useTheme';
 import ScalePressable from '../../../components/ScalePressable';
 import EmptyState from '../../../components/EmptyState';
+import StoreLogo from '../../../components/StoreLogo';
 
 function compactAddress(address: string, storeName: string): string {
   const raw = address.trim();
@@ -43,13 +51,26 @@ export default function StoresScreen() {
   const { colors } = useTheme();
   const { household } = useHouseholdStore();
   const { stores, setStores, addStore: addToStore, removeStore } = useStoresStore();
+  const { items } = useItemsStore();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const householdId = household?.id ?? null;
   const canManageStores = !!householdId;
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  // Count pantry items assigned to each store
+  const itemCountByStore = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const item of items) {
+      if (item.preferred_store_id) {
+        counts[item.preferred_store_id] = (counts[item.preferred_store_id] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }, [items]);
 
   const load = useCallback(async () => {
     if (!householdId) {
@@ -68,9 +89,18 @@ export default function StoresScreen() {
       .finally(() => setLoading(false));
   }, [load]);
 
+  // Re-fetch when tab comes into focus (picks up changes from other devices)
+  useFocusEffect(useCallback(() => { void load(); }, [load]));
+
   useEffect(() => {
     if (!householdId) setShowAdd(false);
   }, [householdId]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load().catch(() => {});
+    setRefreshing(false);
+  }, [load]);
 
   async function handleDelete(store: Store) {
     Alert.alert(`Remove ${store.name}?`, 'This will also clear it from all items assigned here.', [
@@ -111,7 +141,7 @@ export default function StoresScreen() {
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Text style={styles.eyebrow}>Stores</Text>
-          <Text style={styles.headerTitle}>My Stores</Text>
+          <Text style={styles.headerTitle} testID="stores-header">My Stores</Text>
         </View>
         <ScalePressable
           style={[styles.addBtn, !canManageStores && styles.addBtnDisabled]}
@@ -136,9 +166,9 @@ export default function StoresScreen() {
           <Text style={styles.heroLabel}>{stores.length === 1 ? 'store saved' : 'stores saved'}</Text>
         </View>
         <View style={styles.heroBadge}>
-          <Ionicons name="navigate-outline" size={18} color={colors.primary} />
+          <Ionicons name="location-outline" size={18} color={colors.primary} />
           <Text style={styles.heroBadgeText}>
-            {stores.filter((s) => s.latitude != null).length} active
+            {stores.filter((s) => s.latitude != null).length} with location
           </Text>
         </View>
       </View>
@@ -154,47 +184,48 @@ export default function StoresScreen() {
         <FlatList
           data={stores}
           keyExtractor={(s) => s.id}
-          renderItem={({ item }) => (
-            <View style={styles.row}>
-              <View style={[styles.storeIcon, item.latitude != null && styles.storeIconActive]}>
-                <Ionicons
-                  name={item.latitude != null ? 'navigate' : 'storefront-outline'}
-                  size={18}
-                  color={item.latitude != null ? colors.primary : colors.muted}
-                />
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+          renderItem={({ item }) => {
+            const itemCount = itemCountByStore[item.id] ?? 0;
+            return (
+              <View style={styles.row}>
+                <StoreLogo name={item.name} size={40} domain={item.brand_domain} logoUrl={item.logo_url} />
+                <View style={styles.rowLeft}>
+                  <Text style={styles.storeName}>{item.name}</Text>
+                  {item.address
+                    ? (
+                      <Text style={styles.storeAddress} numberOfLines={2} ellipsizeMode="tail">
+                        {compactAddress(item.address, item.name)}
+                      </Text>
+                    )
+                    : <Text style={styles.noAddress}>No address · geofencing off</Text>
+                  }
+                  {itemCount > 0 && (
+                    <Text style={styles.itemCount}>{itemCount} {itemCount === 1 ? 'item' : 'items'} assigned</Text>
+                  )}
+                </View>
+                <View style={styles.rowRight}>
+                  {item.latitude != null && (
+                    <View style={styles.geoPill}>
+                      <Ionicons name="location" size={13} color={colors.primary} />
+                      <Text style={styles.geoPillText}>Located</Text>
+                    </View>
+                  )}
+                  <ScalePressable
+                    profile="danger"
+                    onPress={() => {
+                      void hapticSelection();
+                      handleDelete(item);
+                    }}
+                    style={styles.deleteBtn}
+                    disabled={removingId === item.id}
+                  >
+                    <Text style={styles.deleteBtnText}>{removingId === item.id ? 'Removing…' : 'Remove'}</Text>
+                  </ScalePressable>
+                </View>
               </View>
-              <View style={styles.rowLeft}>
-                <Text style={styles.storeName}>{item.name}</Text>
-                {item.address
-                  ? (
-                    <Text style={styles.storeAddress} numberOfLines={2} ellipsizeMode="tail">
-                      {compactAddress(item.address, item.name)}
-                    </Text>
-                  )
-                  : <Text style={styles.noAddress}>No address — geofencing inactive</Text>
-                }
-              </View>
-              <View style={styles.rowRight}>
-                {item.latitude != null && (
-                  <View style={styles.geoPill}>
-                    <Ionicons name="location" size={13} color={colors.primary} />
-                    <Text style={styles.geoPillText}>Active</Text>
-                  </View>
-                )}
-                <ScalePressable
-                  profile="danger"
-                  onPress={() => {
-                    void hapticSelection();
-                    handleDelete(item);
-                  }}
-                  style={styles.deleteBtn}
-                  disabled={removingId === item.id}
-                >
-                  <Text style={styles.deleteBtnText}>{removingId === item.id ? 'Removing…' : 'Remove'}</Text>
-                </ScalePressable>
-              </View>
-            </View>
-          )}
+            );
+          }}
           contentContainerStyle={styles.list}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
         />
@@ -231,24 +262,141 @@ function AddStoreModal({
   onClose: () => void;
 }) {
   const { colors } = useTheme();
+  const { width } = useWindowDimensions();
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [saving, setSaving] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [geocoding, setGeocoding] = useState(false);
   const [error, setError] = useState('');
+  const [mapQuery, setMapQuery] = useState('');
+  const [places, setPlaces] = useState<StorePlace[]>([]);
+  const [selectedPlace, setSelectedPlace] = useState<StorePlace | null>(null);
+  const [manualAddress, setManualAddress] = useState('');
+  const [geocodedPlace, setGeocodedPlace] = useState<StorePlace | null>(null);
+  const [brands, setBrands] = useState<StoreBrand[]>([]);
+  const [selectedBrand, setSelectedBrand] = useState<StoreBrand | null>(null);
 
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const placeCardWidth = Math.min(320, Math.max(236, width - 112));
+  const styles = useMemo(() => makeStyles(colors, placeCardWidth), [colors, placeCardWidth]);
 
-  const existingNames = existingStores.map((s) => s.name.toLowerCase());
+  const existingNames = useMemo(() => existingStores.map((s) => s.name.toLowerCase()), [existingStores]);
   const presets = PRESET_STORES.filter((p) => !existingNames.includes(p.toLowerCase()));
 
+  useEffect(() => {
+    const q = name.trim();
+    if (q.length < 2) {
+      setBrands([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      searchStoreBrands(q)
+        .then((found) => setBrands(found.filter((brand) => !existingNames.includes(brand.name.toLowerCase()))))
+        .catch(() => setBrands([]));
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [existingNames, name]);
+
+  async function openNearbyPicker(storeName: string) {
+    const trimmed = storeName.trim();
+    if (!trimmed) return;
+    setSearching(true);
+    setError('');
+    setMapQuery(trimmed);
+    setGeocodedPlace(null);
+    setManualAddress('');
+    try {
+      const found = await searchNearbyStores(trimmed);
+      setPlaces(found);
+      setSelectedPlace(found[0] ?? null);
+      // If nothing found, stay in map view but show the manual address entry
+      if (found.length === 0) setError('');
+    } catch (e: any) {
+      setPlaces([]);
+      setSelectedPlace(null);
+      if (String(e?.message ?? '').toLowerCase().includes('location permission')) {
+        setMapQuery('');
+        setError('Location is off. Enter an address below to add this store manually.');
+      } else {
+        setError(e.message ?? 'Could not search nearby stores.');
+      }
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  async function handleGeocodeManual() {
+    const trimmed = manualAddress.trim();
+    if (!trimmed) return;
+    setGeocoding(true);
+    setError('');
+    try {
+      // Use expo-location geocodeAsync first, Nominatim as fallback
+      const Location = await import('expo-location');
+      let lat: number | null = null;
+      let lon: number | null = null;
+
+      try {
+        const native = await Location.geocodeAsync(`${trimmed}`);
+        if (native.length > 0) {
+          lat = native[0].latitude;
+          lon = native[0].longitude;
+        }
+      } catch { /* fallback below */ }
+
+      if (!lat || !lon) {
+        const encoded = encodeURIComponent(trimmed);
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?q=${encoded}&format=json&limit=1&addressdetails=1`,
+          { headers: { 'User-Agent': 'PantryPal/1.0', Accept: 'application/json' } },
+        );
+        const results = await res.json();
+        if (results.length > 0) {
+          lat = parseFloat(results[0].lat);
+          lon = parseFloat(results[0].lon);
+        }
+      }
+
+      if (!lat || !lon) {
+        setError("Couldn't find that address. Double-check it and try again.");
+        return;
+      }
+
+      const place: StorePlace = {
+        name: mapQuery || name.trim(),
+        address: trimmed,
+        latitude: lat,
+        longitude: lon,
+      };
+      setGeocodedPlace(place);
+      setSelectedPlace(place);
+      setPlaces([place]);
+      setError('');
+      void hapticSuccess();
+    } catch {
+      setError("Couldn't look up that address. Please try again.");
+    } finally {
+      setGeocoding(false);
+    }
+  }
+
   async function handleSave(storeName: string, storeAddress?: string) {
+    if (existingNames.includes(storeName.toLowerCase())) {
+      setError(`"${storeName}" is already in your stores.`);
+      void hapticError();
+      return;
+    }
+    if (!storeAddress?.trim()) {
+      await openNearbyPicker(storeName);
+      return;
+    }
     setSaving(true);
     setError('');
     try {
-      const { store, queued } = await addStoreWithQueue(householdId, storeName, storeAddress);
+      const { store, queued } = await addStoreWithQueue(householdId, storeName, storeAddress, selectedBrand);
       onAdd(store);
       if (queued) {
-        setError('Saved offline — will sync when you’re back online.');
+        setError("Saved offline — will sync when you're back online.");
       }
       void hapticSuccess();
     } catch (e: any) {
@@ -259,9 +407,185 @@ function AddStoreModal({
     }
   }
 
+  async function handleSavePlace(place: StorePlace) {
+    setSaving(true);
+    setError('');
+    try {
+      const store = await addStoreFromPlace(householdId, place, selectedBrand);
+      onAdd(store);
+      void hapticSuccess();
+    } catch (e: any) {
+      setError(e.message ?? 'Could not add store.');
+      void hapticError();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // Compute map region that fits all pins with padding — must be before any conditional return
+  const mapRegion = useMemo(() => {
+    if (places.length === 0) {
+      return selectedPlace
+        ? { latitude: selectedPlace.latitude, longitude: selectedPlace.longitude, latitudeDelta: 0.03, longitudeDelta: 0.03 }
+        : { latitude: 37.0902, longitude: -95.7129, latitudeDelta: 40, longitudeDelta: 40 };
+    }
+    if (places.length === 1) {
+      return { latitude: places[0].latitude, longitude: places[0].longitude, latitudeDelta: 0.03, longitudeDelta: 0.03 };
+    }
+    const lats = places.map((p) => p.latitude);
+    const lons = places.map((p) => p.longitude);
+    const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+    const minLon = Math.min(...lons), maxLon = Math.max(...lons);
+    return {
+      latitude: (minLat + maxLat) / 2,
+      longitude: (minLon + maxLon) / 2,
+      latitudeDelta: Math.max((maxLat - minLat) * 1.6, 0.03),
+      longitudeDelta: Math.max((maxLon - minLon) * 1.6, 0.03),
+    };
+  }, [places, selectedPlace]);
+
+  if (mapQuery) {
+    const noResults = !searching && places.length === 0 && !geocodedPlace;
+
+    return (
+      <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+        <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={styles.mapSheet}>
+            <View style={styles.handle} />
+            <View style={styles.mapHeader}>
+              <StoreLogo name={mapQuery} size={36} domain={selectedBrand?.domain} logoUrl={selectedBrand?.logo_url} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sheetTitle} numberOfLines={1}>{mapQuery}</Text>
+                <Text style={styles.sheetSubtitle}>
+                  {noResults ? 'Not found automatically — enter the address below.' : 'Tap a pin to select the right location.'}
+                </Text>
+              </View>
+              <ScalePressable profile="chip" style={styles.mapBackBtn} onPress={() => { setMapQuery(''); setError(''); }}>
+                <Text style={styles.mapBackText}>Back</Text>
+              </ScalePressable>
+            </View>
+
+            {error ? <View style={styles.errorBox}><Text style={styles.error}>{error}</Text></View> : null}
+
+            {searching ? (
+              <View style={styles.mapLoading}>
+                <ActivityIndicator color={colors.primary} />
+                <Text style={styles.mapLoadingText}>Searching nearby...</Text>
+              </View>
+            ) : noResults ? (
+              /* ── Manual address entry when auto-search finds nothing ── */
+              <View style={styles.manualWrap}>
+                <View style={styles.manualIconWrap}>
+                  <Ionicons name="location-outline" size={28} color={colors.primary} />
+                </View>
+                <Text style={styles.manualTitle}>Enter the address</Text>
+                <Text style={styles.manualSub}>
+                  We'll pin it on the map so geofencing works when you arrive.
+                </Text>
+                <TextInput
+                  style={styles.manualInput}
+                  placeholder="e.g. 123 Main St, Springfield, VA"
+                  placeholderTextColor={colors.placeholder}
+                  value={manualAddress}
+                  onChangeText={setManualAddress}
+                  returnKeyType="search"
+                  onSubmitEditing={handleGeocodeManual}
+                  autoFocus
+                />
+                <ScalePressable
+                  style={[styles.saveBtn, (!manualAddress.trim() || geocoding) && styles.saveBtnDisabled]}
+                  onPress={handleGeocodeManual}
+                  disabled={!manualAddress.trim() || geocoding}
+                >
+                  {geocoding
+                    ? <ActivityIndicator color="#fff" />
+                    : <Text style={styles.saveBtnText}>Look up address</Text>
+                  }
+                </ScalePressable>
+                <ScalePressable
+                  style={styles.skipBtn}
+                  profile="chip"
+                  onPress={() => {
+                    // Save without coordinates — no geofencing but store is saved
+                    void handleSave(mapQuery, undefined);
+                    setMapQuery('');
+                  }}
+                >
+                  <Text style={styles.skipText}>Save without address (no geofencing)</Text>
+                </ScalePressable>
+              </View>
+            ) : (
+              <>
+                <MapView style={styles.map} region={mapRegion}>
+                  {places.map((place) => (
+                    <Marker
+                      key={`${place.latitude}-${place.longitude}-${place.address}`}
+                      coordinate={{ latitude: place.latitude, longitude: place.longitude }}
+                      title={place.name}
+                      description={place.address}
+                      pinColor={selectedPlace === place ? colors.primary : '#9CA3AF'}
+                      onPress={() => setSelectedPlace(place)}
+                    />
+                  ))}
+                </MapView>
+
+                {/* Address cards — scrollable if multiple results, single card if geocoded */}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.placeList}>
+                  {places.map((place) => {
+                    const active = selectedPlace === place;
+                    return (
+                      <ScalePressable
+                        key={`${place.latitude}-${place.longitude}-${place.address}`}
+                        profile="chip"
+                        style={[styles.placeCard, active && styles.placeCardActive]}
+                        onPress={() => {
+                          void hapticSelection();
+                          setSelectedPlace(place);
+                        }}
+                      >
+                        <Text style={[styles.placeName, active && styles.placeNameActive]} numberOfLines={1}>{place.name}</Text>
+                        <Text style={styles.placeAddress} numberOfLines={2}>{place.address}</Text>
+                      </ScalePressable>
+                    );
+                  })}
+                </ScrollView>
+
+                <ScalePressable
+                  style={[styles.saveBtn, (!selectedPlace || saving) && styles.saveBtnDisabled]}
+                  onPress={() => selectedPlace && handleSavePlace(selectedPlace)}
+                  disabled={!selectedPlace || saving}
+                >
+                  {saving
+                    ? <ActivityIndicator color="#fff" />
+                    : <Text style={styles.saveBtnText}>
+                        {geocodedPlace ? 'Add store at this address' : 'Add selected location'}
+                      </Text>
+                  }
+                </ScalePressable>
+                <ScalePressable
+                  style={styles.skipBtn}
+                  profile="chip"
+                  onPress={() => {
+                    void handleSave(mapQuery, undefined);
+                    setMapQuery('');
+                  }}
+                >
+                  <Text style={styles.skipText}>Save without location (no geofencing)</Text>
+                </ScalePressable>
+              </>
+            )}
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+    );
+  }
+
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.overlay}>
+      <KeyboardAvoidingView
+        style={styles.overlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
         <View style={styles.sheet}>
           <View style={styles.handle} />
           <Text style={styles.sheetTitle}>Add store</Text>
@@ -278,11 +602,13 @@ function AddStoreModal({
                 style={styles.presetChip}
                 onPress={() => {
                   void hapticSelection();
-                  handleSave(p);
+                  void openNearbyPicker(p);
                 }}
                 disabled={saving}
               >
+                <StoreLogo name={p} size={24} />
                 <Text style={styles.presetChipText}>{p}</Text>
+                <Ionicons name="navigate-outline" size={12} color={colors.primary} style={{ opacity: 0.6 }} />
               </ScalePressable>
             ))}
           </ScrollView>
@@ -290,18 +616,73 @@ function AddStoreModal({
           <Text style={styles.label}>Custom store</Text>
           <TextInput
             style={styles.input}
-            placeholder="Store name"
+            placeholder="Store name (e.g. Kabul Halal Market)"
             value={name}
-            onChangeText={setName}
+            onChangeText={(text) => {
+              setName(text);
+              if (selectedBrand && selectedBrand.name !== text) setSelectedBrand(null);
+            }}
             placeholderTextColor={colors.placeholder}
           />
-          <TextInput
-            style={styles.input}
-            placeholder="Address (optional — enables geofencing)"
-            value={address}
-            onChangeText={setAddress}
-            placeholderTextColor={colors.placeholder}
-          />
+          {name.trim().length >= 2 && brands.length === 0 && !selectedBrand && (
+            <Text style={styles.noBrandsText}>No known brands matched — you can still add it as a custom store.</Text>
+          )}
+          {brands.length > 0 && (
+            <ScrollView style={styles.brandResults} scrollEnabled={brands.length > 3} nestedScrollEnabled>
+              {brands.map((brand) => {
+                const active = selectedBrand?.id === brand.id;
+                return (
+                  <ScalePressable
+                    key={brand.id}
+                    profile="chip"
+                    style={[styles.brandRow, active && styles.brandRowActive]}
+                    onPress={() => {
+                      void hapticSelection();
+                      setSelectedBrand(brand);
+                      setName(brand.name);
+                    }}
+                  >
+                    <StoreLogo name={brand.name} size={24} domain={brand.domain} logoUrl={brand.logo_url} />
+                    <Text style={[styles.brandName, active && styles.brandNameActive]} numberOfLines={1}>{brand.name}</Text>
+                  </ScalePressable>
+                );
+              })}
+            </ScrollView>
+          )}
+          {selectedBrand && brands.length === 0 && (
+            <View style={styles.selectedBrand}>
+              <StoreLogo name={selectedBrand.name} size={24} domain={selectedBrand.domain} logoUrl={selectedBrand.logo_url} />
+              <Text style={styles.selectedBrandText} numberOfLines={1}>{selectedBrand.name}</Text>
+              <ScalePressable
+                profile="chip"
+                style={styles.clearBrandBtn}
+                onPress={() => {
+                  void hapticSelection();
+                  setSelectedBrand(null);
+                }}
+              >
+                <Ionicons name="close" size={16} color={colors.primary} />
+              </ScalePressable>
+            </View>
+          )}
+          <View style={styles.addressWrap}>
+            <TextInput
+              style={[styles.input, { marginBottom: 0 }]}
+              placeholder="Street address (optional)"
+              value={address}
+              onChangeText={setAddress}
+              placeholderTextColor={colors.placeholder}
+              returnKeyType="done"
+            />
+            <View style={styles.addressHint}>
+              <Ionicons name="location-outline" size={13} color={colors.primary} />
+              <Text style={styles.addressHintText}>
+                {address.trim()
+                  ? 'Will be used for automatic arrival detection'
+                  : 'Leave empty to search nearby locations after tapping Add'}
+              </Text>
+            </View>
+          </View>
 
           <ScalePressable
             style={[styles.saveBtn, !name.trim() && styles.saveBtnDisabled]}
@@ -313,7 +694,9 @@ function AddStoreModal({
           >
             {saving
               ? <ActivityIndicator color="#fff" />
-              : <Text style={styles.saveBtnText}>Add store</Text>
+              : <Text style={styles.saveBtnText}>
+                  {name.trim() && !address.trim() ? 'Add store & search nearby' : 'Add store'}
+                </Text>
             }
           </ScalePressable>
 
@@ -328,12 +711,12 @@ function AddStoreModal({
             <Text style={styles.cancelText}>Cancel</Text>
           </ScalePressable>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
-function makeStyles(colors: AppColors) {
+function makeStyles(colors: AppColors, placeCardWidth = 210) {
   return StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.background },
     centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },
@@ -372,15 +755,11 @@ function makeStyles(colors: AppColors) {
       borderWidth: 1, borderColor: colors.border,
       flexDirection: 'row', alignItems: 'center', gap: 12,
     },
-    storeIcon: {
-      width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center',
-      backgroundColor: colors.surfaceWarm, flexShrink: 0,
-    },
-    storeIconActive: { backgroundColor: colors.primarySoft },
-    rowLeft: { flex: 1, gap: 4 },
+    rowLeft: { flex: 1, gap: 3 },
     storeName: { fontSize: 17, fontFamily: fonts.bodySemiBold, color: colors.ink },
     storeAddress: { fontSize: 13, color: colors.muted, lineHeight: 19, fontFamily: fonts.body },
-    noAddress: { fontSize: 13, color: colors.low, fontFamily: fonts.bodyMedium },
+    noAddress: { fontSize: 13, color: colors.muted, fontFamily: fonts.bodyMedium },
+    itemCount: { fontSize: 12, color: colors.primary, fontFamily: fonts.bodyMedium },
     rowRight: { alignItems: 'flex-end', gap: 8 },
     geoPill: {
       flexDirection: 'row', alignItems: 'center', gap: 4,
@@ -389,30 +768,186 @@ function makeStyles(colors: AppColors) {
     geoPillText: { fontSize: 12, color: colors.primary, fontFamily: fonts.bodySemiBold },
     deleteBtn: { padding: 4 },
     deleteBtnText: { color: colors.danger, fontSize: 13, fontFamily: fonts.bodySemiBold },
-    empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 12 },
-    emptyIconWrap: { backgroundColor: colors.primarySoft, borderRadius: radii.xl, padding: 16, marginBottom: 8 },
-    emptyTitle: { fontSize: 24, fontFamily: fonts.display, color: colors.ink, letterSpacing: 0 },
-    emptySub: { fontSize: 15, color: colors.muted, textAlign: 'center', lineHeight: 24, fontFamily: fonts.body },
-    emptyBtn: { backgroundColor: colors.primary, borderRadius: radii.md, paddingHorizontal: 24, paddingVertical: 14, marginTop: 8 },
-    emptyBtnDisabled: { backgroundColor: colors.disabled },
-    emptyBtnText: { color: colors.surface, fontSize: 16, fontFamily: fonts.bodySemiBold },
     overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(2, 6, 23, 0.36)' },
     sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 40, ...shadow },
+    mapSheet: {
+      backgroundColor: colors.surface,
+      borderTopLeftRadius: 28,
+      borderTopRightRadius: 28,
+      padding: 20,
+      paddingBottom: 34,
+      maxHeight: '86%',
+      ...shadow,
+    },
     handle: { width: 36, height: 4, backgroundColor: colors.faint, borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
+    mapHeader: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 12,
+      marginBottom: 12,
+    },
+    mapBackBtn: {
+      borderRadius: 999,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      backgroundColor: colors.primarySoft,
+    },
+    mapBackText: { color: colors.primary, fontSize: 13, fontFamily: fonts.bodySemiBold },
+    map: {
+      height: 280,
+      borderRadius: 18,
+      marginBottom: 12,
+      overflow: 'hidden',
+    },
+    mapLoading: {
+      height: 280,
+      borderRadius: 18,
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 10,
+    },
+    mapLoadingText: { color: colors.muted, fontSize: 14, fontFamily: fonts.bodySemiBold },
+    placeList: {
+      gap: 10,
+      paddingRight: 20,
+      paddingBottom: 14,
+    },
+    placeCard: {
+      width: placeCardWidth,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+      padding: 12,
+      gap: 4,
+    },
+    placeCardActive: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primarySoft,
+    },
+    placeName: { color: colors.ink, fontSize: 14, fontFamily: fonts.bodySemiBold },
+    placeNameActive: { color: colors.primary },
+    placeAddress: { color: colors.muted, fontSize: 12, fontFamily: fonts.bodyMedium, lineHeight: 17 },
     sheetTitle: { fontSize: 22, fontFamily: fonts.displayItalic, color: colors.ink, marginBottom: 4, letterSpacing: 0 },
     sheetSubtitle: { fontSize: 14, color: colors.muted, marginBottom: 18, fontFamily: fonts.body },
     errorBox: { backgroundColor: colors.dangerSoft, borderRadius: radii.sm, padding: 12, marginBottom: 12 },
     error: { color: colors.dangerText, fontSize: 14 },
     label: { fontSize: 12, fontFamily: fonts.bodySemiBold, color: colors.muted, textTransform: 'uppercase', marginBottom: 8 },
     presetsRow: { marginBottom: 20 },
-    presetsContent: { paddingRight: 10 },
-    presetChip: { backgroundColor: colors.primarySoft, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, marginRight: 8, borderWidth: 1, borderColor: colors.primarySoft },
+    presetsContent: { paddingRight: 20 },
+    noBrandsText: { fontSize: 13, color: colors.muted, fontFamily: fonts.body, marginBottom: 10, paddingHorizontal: 4 },
+    presetChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 7,
+      backgroundColor: colors.primarySoft,
+      borderRadius: 999,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      marginRight: 8,
+      borderWidth: 1,
+      borderColor: colors.primarySoft,
+    },
     presetChipText: { color: colors.primary, fontSize: 14, fontFamily: fonts.bodySemiBold },
     input: { borderWidth: 1, borderColor: colors.border, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 15, fontSize: 16, marginBottom: 12, color: colors.ink, backgroundColor: colors.background, fontFamily: fonts.body },
+    brandResults: { maxHeight: 180, marginBottom: 12, gap: 8 },
+    brandRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+      borderRadius: 16,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+    },
+    brandRowActive: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+    brandName: { flex: 1, color: colors.ink, fontSize: 15, fontFamily: fonts.bodySemiBold },
+    brandNameActive: { color: colors.primary },
+    selectedBrand: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      backgroundColor: colors.primarySoft,
+      borderRadius: 16,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      marginBottom: 12,
+    },
+    selectedBrandText: { flex: 1, color: colors.primary, fontSize: 15, fontFamily: fonts.bodySemiBold },
+    clearBrandBtn: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.surface,
+    },
+    addressWrap: { marginBottom: 16, gap: 6 },
+    addressHint: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 4 },
+    addressHintText: { fontSize: 12, color: colors.primary, fontFamily: fonts.bodyMedium, flex: 1 },
     saveBtn: { backgroundColor: colors.primary, borderRadius: radii.md, paddingVertical: 16, alignItems: 'center', marginBottom: 10 },
     saveBtnDisabled: { backgroundColor: colors.disabled },
     saveBtnText: { color: colors.surface, fontSize: 17, fontFamily: fonts.bodySemiBold },
     cancelBtn: { paddingVertical: 12, alignItems: 'center' },
     cancelText: { color: colors.muted, fontSize: 16, fontFamily: fonts.bodySemiBold },
+
+    // Manual address entry (when auto-search returns nothing)
+    manualWrap: {
+      paddingTop: 12,
+      paddingBottom: 8,
+      gap: 12,
+    },
+    manualIconWrap: {
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      backgroundColor: colors.primarySoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+      alignSelf: 'center',
+      marginBottom: 4,
+    },
+    manualTitle: {
+      fontSize: 18,
+      fontFamily: fonts.bodySemiBold,
+      color: colors.ink,
+      textAlign: 'center',
+    },
+    manualSub: {
+      fontSize: 14,
+      color: colors.muted,
+      textAlign: 'center',
+      lineHeight: 20,
+      fontFamily: fonts.body,
+      marginBottom: 4,
+    },
+    manualInput: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 16,
+      paddingHorizontal: 16,
+      paddingVertical: 15,
+      fontSize: 15,
+      color: colors.ink,
+      backgroundColor: colors.background,
+      fontFamily: fonts.body,
+    },
+    skipBtn: {
+      paddingVertical: 12,
+      alignItems: 'center',
+    },
+    skipText: {
+      fontSize: 13,
+      color: colors.muted,
+      fontFamily: fonts.bodyMedium,
+      textDecorationLine: 'underline',
+    },
   });
 }

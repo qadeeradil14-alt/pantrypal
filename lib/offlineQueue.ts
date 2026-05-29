@@ -26,14 +26,14 @@ type MutationPayloadMap = {
   set_item_store: { itemId: string; storeId: string | null };
   complete_shopping_entry: { entryId: string };
   set_shopping_entry_aisle: { entryId: string; aisle: string | null };
-  add_item: { householdId: string; name: string; category: string; userId: string };
+  add_item: { householdId: string; name: string; category: string; userId: string; preferredStoreId?: string | null };
   update_item: {
     itemId: string;
     name: string;
     category: string;
     expectedUpdatedAt: string;
   };
-  add_store: { householdId: string; name: string; address?: string };
+  add_store: { householdId: string; name: string; address?: string; brandDomain?: string | null; logoUrl?: string | null };
   delete_store: { storeId: string };
 };
 
@@ -190,6 +190,7 @@ async function runMutation(m: QueuedMutation): Promise<void> {
         name: payload.name,
         category: payload.category,
         added_by: payload.userId,
+        preferred_store_id: payload.preferredStoreId ?? null,
       });
       if (error) throw error;
       return;
@@ -217,6 +218,8 @@ async function runMutation(m: QueuedMutation): Promise<void> {
         address: payload.address?.trim() || null,
         latitude: null,
         longitude: null,
+        brand_domain: payload.brandDomain ?? null,
+        logo_url: payload.logoUrl ?? null,
       });
       if (error) throw error;
       return;

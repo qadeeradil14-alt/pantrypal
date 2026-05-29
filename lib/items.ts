@@ -25,6 +25,7 @@ function makeOptimisticItem(
   name: string,
   category: ItemCategory,
   userId: string,
+  preferredStoreId: string | null = null,
 ): Item {
   const ts = new Date().toISOString();
   return {
@@ -37,7 +38,7 @@ function makeOptimisticItem(
     marked_low_by: null,
     got_it_by: null,
     added_by: isUuid(userId) ? userId : null,
-    preferred_store_id: null,
+    preferred_store_id: preferredStoreId,
     expires_at: null,
     updated_at: ts,
     created_at: ts,
@@ -137,19 +138,26 @@ export async function addItemWithQueue(
   name: string,
   category: ItemCategory,
   userId: string,
+  preferredStoreId: string | null = null,
 ): Promise<{ queued: boolean; item: Item }> {
   try {
-    const item = await addItem(householdId, name, category, userId);
+    const item = await addItem(householdId, name, category, userId, preferredStoreId);
     return { queued: false, item };
   } catch (error) {
     if (!isTransientNetworkErrorForQueue(error)) throw error;
-    const item = makeOptimisticItem(householdId, name, category, userId);
-    await enqueueOfflineMutation('add_item', { householdId, name, category, userId });
+    const item = makeOptimisticItem(householdId, name, category, userId, preferredStoreId);
+    await enqueueOfflineMutation('add_item', { householdId, name, category, userId, preferredStoreId });
     return { queued: true, item };
   }
 }
 
-export async function addItem(householdId: string, name: string, category: ItemCategory, userId: string): Promise<Item> {
+export async function addItem(
+  householdId: string,
+  name: string,
+  category: ItemCategory,
+  userId: string,
+  preferredStoreId: string | null = null,
+): Promise<Item> {
   if (!isUuid(householdId)) {
     throw new Error('Household not loaded yet. Please close and reopen Add item.');
   }
@@ -158,7 +166,7 @@ export async function addItem(householdId: string, name: string, category: ItemC
 
   const { data, error } = await supabase
     .from('items')
-    .insert({ household_id: householdId, name, category, added_by: addedBy })
+    .insert({ household_id: householdId, name, category, added_by: addedBy, preferred_store_id: preferredStoreId })
     .select()
     .single();
 

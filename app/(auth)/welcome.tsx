@@ -1,7 +1,7 @@
 import { useRef, useState, useMemo } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet,
-  FlatList, Dimensions, Animated,
+  View, Text, StyleSheet,
+  FlatList, Animated, useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -9,8 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../../hooks/useTheme';
 import { fonts } from '../../constants/theme';
 import type { AppColors } from '../../constants/theme';
-
-const { width: W } = Dimensions.get('window');
+import ScalePressable from '../../components/ScalePressable';
 
 const SLIDES = [
   {
@@ -34,7 +33,8 @@ const SLIDES = [
 ];
 
 export default function WelcomeScreen() {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
+  const { width } = useWindowDimensions();
   const router = useRouter();
   const [page, setPage] = useState(0);
   const scrollX = useRef(new Animated.Value(0)).current;
@@ -52,7 +52,7 @@ export default function WelcomeScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <StatusBar style={isDark ? 'light' : 'dark'} />
+      <StatusBar style="dark" />
 
       <FlatList
         ref={flatRef}
@@ -63,9 +63,9 @@ export default function WelcomeScreen() {
         showsHorizontalScrollIndicator={false}
         scrollEventThrottle={16}
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: false })}
-        onMomentumScrollEnd={(e) => setPage(Math.round(e.nativeEvent.contentOffset.x / W))}
+        onMomentumScrollEnd={(e) => setPage(Math.round(e.nativeEvent.contentOffset.x / width))}
         renderItem={({ item }) => (
-          <View style={styles.slide}>
+          <View style={[styles.slide, { width }]}>
             <View style={styles.emojiWrap}>
               <Text style={styles.emoji}>{item.emoji}</Text>
             </View>
@@ -78,27 +78,27 @@ export default function WelcomeScreen() {
 
       <View style={styles.dots}>
         {SLIDES.map((_, i) => {
-          const inputRange = [(i - 1) * W, i * W, (i + 1) * W];
-          const width = scrollX.interpolate({ inputRange, outputRange: [6, 20, 6], extrapolate: 'clamp' });
+          const inputRange = [(i - 1) * width, i * width, (i + 1) * width];
+          const dotWidth = scrollX.interpolate({ inputRange, outputRange: [6, 20, 6], extrapolate: 'clamp' });
           const opacity = scrollX.interpolate({ inputRange, outputRange: [0.35, 1, 0.35], extrapolate: 'clamp' });
-          return <Animated.View key={i} style={[styles.dot, { width, opacity }]} />;
+          return <Animated.View key={i} style={[styles.dot, { width: dotWidth, opacity }]} />;
         })}
       </View>
 
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.primaryBtn} onPress={goNext} activeOpacity={0.85}>
+        <ScalePressable style={styles.primaryBtn} onPress={goNext}>
           <Text style={styles.primaryBtnText}>
             {page === SLIDES.length - 1 ? 'Get Started' : 'Next'}
           </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
+        </ScalePressable>
+        <ScalePressable
           testID="auth-welcome-sign-in"
           style={styles.secondaryBtn}
           onPress={() => router.push('/(auth)/sign-in')}
-          activeOpacity={0.7}
+          profile="chip"
         >
           <Text style={styles.secondaryBtnText}>I already have an account</Text>
-        </TouchableOpacity>
+        </ScalePressable>
       </View>
     </SafeAreaView>
   );
@@ -109,7 +109,6 @@ function makeStyles(colors: AppColors) {
     safe: { flex: 1, backgroundColor: colors.background },
     pager: { flex: 1 },
     slide: {
-      width: W,
       flex: 1,
       alignItems: 'center',
       justifyContent: 'center',
@@ -126,18 +125,14 @@ function makeStyles(colors: AppColors) {
       alignItems: 'center',
       justifyContent: 'center',
       marginBottom: 8,
-      shadowColor: colors.ink,
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.06,
-      shadowRadius: 12,
-      elevation: 3,
+      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.06)',
     },
     emoji: { fontSize: 52 },
     slideTitle: {
       fontSize: 36,
       fontFamily: fonts.displayExtraBold,
       color: colors.ink,
-      letterSpacing: -0.6,
+      letterSpacing: 0,
       textAlign: 'center',
       lineHeight: 46,
     },

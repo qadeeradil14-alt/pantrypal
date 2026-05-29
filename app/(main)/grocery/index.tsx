@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   View, Text, SectionList, StyleSheet,
-  ActivityIndicator, ScrollView, Alert,
+  ActivityIndicator, ScrollView, Alert, Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
-import { getSpendByStore } from '../../../lib/receipts';
+import { getSpendSummary } from '../../../lib/receipts';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useItemsStore } from '../../../store/items';
 import { useAuthStore } from '../../../store/auth';
@@ -25,9 +25,8 @@ import type { AppColors } from '../../../constants/theme';
 import { useTheme } from '../../../hooks/useTheme';
 import ScalePressable from '../../../components/ScalePressable';
 import EmptyState from '../../../components/EmptyState';
-import SyncStatusPill from '../../../components/SyncStatusPill';
+import StoreLogo from '../../../components/StoreLogo';
 import { useSettingsStore } from '../../../store/settings';
-import { fetchRecentActivity, formatActivityTime, type ActivityEvent } from '../../../lib/activity';
 
 function normalizeShoppingCategory(category: ShoppingEntry['category']): ItemCategory {
   return category === 'spice_rack' ? 'pantry' : category;
@@ -45,9 +44,27 @@ export default function GroceryScreen() {
   const [purchasedIds, setPurchasedIds] = useState<Set<string>>(() => new Set());
   const weeklyBudget = useSettingsStore((s) => s.weeklyBudget);
   const [weeklySpend, setWeeklySpend] = useState(0);
-  const [activity, setActivity] = useState<ActivityEvent[]>([]);
   const [startCount, setStartCount] = useState(0);
   const [grabbedCount, setGrabbedCount] = useState(0);
+
+  // Pulse animation for the Start button — draws attention before shopping begins
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (shoppingMode) {
+      pulseAnim.stopAnimation();
+      pulseAnim.setValue(1);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.08, duration: 700, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 700, useNativeDriver: true }),
+        Animated.delay(1000),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [shoppingMode, pulseAnim]);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -65,18 +82,11 @@ export default function GroceryScreen() {
 
   useEffect(() => {
     if (!householdId) return;
-    getSpendByStore(householdId)
-      .then((rows) => {
-        const total = rows.reduce((sum, r) => sum + r.total, 0);
-        setWeeklySpend(total);
-      })
+    getSpendSummary(householdId)
+      .then((s) => setWeeklySpend(s.weeklyTotal))
       .catch(() => {});
   }, [householdId]);
 
-  useEffect(() => {
-    if (!householdId || !session?.user.id) return;
-    fetchRecentActivity(householdId, session.user.id).then(setActivity).catch(() => {});
-  }, [householdId, session?.user.id]);
 
   const activeStore = useMemo(
     () => stores.find((s) => s.id === activeStoreId),
@@ -225,24 +235,25 @@ export default function GroceryScreen() {
           <Text style={styles.eyebrow}>{shoppingMode ? 'Shopping mode' : 'Grocery list'}</Text>
           <Text style={styles.headerTitle}>{activeStore ? activeStore.name : 'Shopping list'}</Text>
         </View>
-        <SyncStatusPill />
-        <ScalePressable
-          style={[styles.modeBtn, shoppingMode && styles.modeBtnActive]}
-          onPress={() => {
-            void hapticSelection();
-            setShoppingMode((v) => !v);
-            if (shoppingMode) setActiveStore(null);
-          }}
-        >
-          <Ionicons
-            name={shoppingMode ? 'checkmark-circle' : 'cart-outline'}
-            size={18}
-            color={shoppingMode ? colors.surface : colors.primaryDeep}
-          />
-          <Text style={[styles.modeBtnText, shoppingMode && styles.modeBtnTextActive]}>
-            {shoppingMode ? 'Done' : 'Shop'}
-          </Text>
-        </ScalePressable>
+        <Animated.View style={!shoppingMode && { transform: [{ scale: pulseAnim }] }}>
+          <ScalePressable
+            style={[styles.modeBtn, shoppingMode && styles.modeBtnActive]}
+            onPress={() => {
+              void hapticSelection();
+              setShoppingMode((v) => !v);
+              if (shoppingMode) setActiveStore(null);
+            }}
+          >
+            <Ionicons
+              name={shoppingMode ? 'checkmark-circle' : 'cart-outline'}
+              size={18}
+              color={colors.surface}
+            />
+            <Text style={[styles.modeBtnText, shoppingMode && styles.modeBtnTextActive]}>
+              {shoppingMode ? 'Done' : 'Start'}
+            </Text>
+          </ScalePressable>
+        </Animated.View>
       </View>
 
       <View style={[styles.statusCard, shoppingMode && styles.statusCardActive]}>
@@ -288,28 +299,6 @@ export default function GroceryScreen() {
         </View>
       </View>
 
-      {!shoppingMode && activity.length > 0 && (
-        <View style={styles.activityCard}>
-          <Text style={styles.activityLabel}>Recent</Text>
-          {activity.map((event, idx) => (
-            <View
-              key={event.itemId + event.type}
-              style={[styles.activityRow, idx > 0 && styles.activityRowBorder]}
-            >
-              <View style={[
-                styles.activityDot,
-                event.type === 'marked_low' ? styles.activityDotLow : styles.activityDotGot,
-              ]} />
-              <Text style={styles.activityText} numberOfLines={1}>
-                <Text style={styles.activityActor}>{event.isSelf ? 'You' : 'Partner'}</Text>
-                {event.type === 'marked_low' ? ' flagged ' : ' picked up '}
-                <Text style={styles.activityItem}>{event.itemName}</Text>
-              </Text>
-              <Text style={styles.activityTime}>{formatActivityTime(event.updatedAt)}</Text>
-            </View>
-          ))}
-        </View>
-      )}
 
       {stores.length > 0 && totalActiveCount > 0 && (
         <ScrollView
@@ -355,17 +344,21 @@ export default function GroceryScreen() {
             </Text>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.routeSteps}>
-            {shoppingSections.map((section, index) => (
-              <View key={section.title} style={styles.routeStep}>
-                <Text style={styles.routeStepNumber}>{index + 1}</Text>
-                <Ionicons
-                  name={section.storeId ? 'storefront-outline' : 'help-circle-outline'}
-                  size={15}
-                  color={colors.primary}
-                />
-                <Text style={styles.routeStepText}>{section.title}</Text>
-              </View>
-            ))}
+            {shoppingSections.map((section, index) => {
+              const store = section.storeId ? stores.find((s) => s.id === section.storeId) : null;
+              return (
+                <View key={section.title} style={styles.routeStep}>
+                  <Text style={styles.routeStepNumber}>{index + 1}</Text>
+                  <StoreLogo
+                    name={section.title}
+                    size={20}
+                    domain={store?.brand_domain}
+                    logoUrl={store?.logo_url}
+                  />
+                  <Text style={styles.routeStepText}>{section.title}</Text>
+                </View>
+              );
+            })}
           </ScrollView>
         </View>
       )}
@@ -406,13 +399,12 @@ export default function GroceryScreen() {
           keyExtractor={(entry) => entry.id}
           renderSectionHeader={({ section }) => (
             <View style={styles.sectionHeader}>
-              <View style={styles.sectionIconWrap}>
-                <Ionicons
-                  name={section.storeId ? 'storefront-outline' : 'location-outline'}
-                  size={15}
-                  color={colors.primary}
-                />
-              </View>
+              <StoreLogo
+                name={section.title}
+                size={28}
+                domain={section.storeId ? stores.find((s) => s.id === section.storeId)?.brand_domain : undefined}
+                logoUrl={section.storeId ? stores.find((s) => s.id === section.storeId)?.logo_url : undefined}
+              />
               <Text style={styles.sectionTitle}>{section.title}</Text>
               <View style={styles.sectionBadge}>
                 <Text style={styles.sectionBadgeText}>{section.data.length}</Text>
@@ -454,18 +446,16 @@ export default function GroceryScreen() {
                 testID={groceryItemTestId(entry.name)}
                 profile="card"
                 style={[styles.row, shoppingMode && styles.rowShop, purchased && styles.rowPurchased]}
-                onPress={() => handleGotIt(entry)}
-                onLongPress={handleSetAisle}
+                onPress={shoppingMode ? () => handleGotIt(entry) : undefined}
+                onLongPress={shoppingMode ? handleSetAisle : undefined}
                 delayLongPress={400}
-                disabled={isTapping}
+                disabled={!shoppingMode || isTapping}
               >
                 <View style={[styles.lead, shoppingMode && styles.leadShop, isTapping && styles.leadTapping, purchased && styles.leadPurchased]}>
                   {isTapping ? (
                     <ActivityIndicator size="small" color={colors.primary} />
                   ) : purchased ? (
                     <Ionicons name="checkmark" size={13} color={colors.surface} />
-                  ) : shoppingMode ? (
-                    <Ionicons name="checkmark" size={13} color={colors.accent} />
                   ) : null}
                 </View>
                 <Text style={styles.itemEmoji}>{emoji}</Text>
@@ -479,7 +469,7 @@ export default function GroceryScreen() {
                 </View>
                 {(shoppingMode || purchased) && (
                   <Text style={[styles.tapHint, purchased && styles.tapHintPurchased]}>
-                    {purchased ? 'Done' : 'Got it'}
+                    {purchased ? 'Done' : 'Grab'}
                   </Text>
                 )}
               </ScalePressable>
@@ -518,11 +508,11 @@ function makeStyles(colors: AppColors) {
       paddingHorizontal: 13,
       paddingVertical: 10,
       borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.surface,
+      borderColor: colors.primary,
+      backgroundColor: colors.primary,
     },
     modeBtnActive: { backgroundColor: colors.surfaceDeep, borderColor: colors.surfaceDeep },
-    modeBtnText: { fontSize: 14, fontFamily: fonts.bodySemiBold, color: colors.primaryDeep },
+    modeBtnText: { fontSize: 14, fontFamily: fonts.bodySemiBold, color: colors.surface },
     modeBtnTextActive: { color: colors.surface },
     statusCard: {
       marginHorizontal: 16,
@@ -735,39 +725,5 @@ function makeStyles(colors: AppColors) {
     emptyTitle: { fontSize: 23, fontFamily: fonts.display, color: colors.ink },
     emptySub: { fontSize: 16, color: colors.muted, textAlign: 'center', lineHeight: 23, fontFamily: fonts.body },
 
-    activityCard: {
-      marginHorizontal: 16,
-      marginBottom: 10,
-      borderRadius: radii.md,
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
-      overflow: 'hidden',
-    },
-    activityLabel: {
-      fontSize: 11,
-      fontFamily: fonts.bodySemiBold,
-      color: colors.muted,
-      textTransform: 'uppercase',
-      letterSpacing: 0.4,
-      paddingHorizontal: 14,
-      paddingTop: 10,
-      paddingBottom: 6,
-    },
-    activityRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 10,
-      paddingHorizontal: 14,
-      paddingVertical: 10,
-    },
-    activityRowBorder: { borderTopWidth: 1, borderTopColor: colors.border },
-    activityDot: { width: 6, height: 6, borderRadius: 3, flexShrink: 0 },
-    activityDotLow: { backgroundColor: colors.warning },
-    activityDotGot: { backgroundColor: colors.success },
-    activityText: { flex: 1, fontSize: 13, color: colors.muted, fontFamily: fonts.body },
-    activityActor: { fontFamily: fonts.bodySemiBold, color: colors.ink },
-    activityItem: { fontFamily: fonts.bodySemiBold, color: colors.ink },
-    activityTime: { fontSize: 11, color: colors.muted, fontFamily: fonts.mono, flexShrink: 0 },
   });
 }

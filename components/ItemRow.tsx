@@ -1,33 +1,33 @@
-import { memo, useMemo, useRef } from 'react';
-import { View, Text, StyleSheet, Alert, Animated } from 'react-native';
-import { Swipeable } from 'react-native-gesture-handler';
+import { memo, useMemo, useState } from 'react';
+import { View, Text, StyleSheet } from 'react-native';
 import { useItemsStore } from '../store/items';
 import { useStoresStore } from '../store/stores';
 import { deleteItemWithQueue, markItemLowWithQueue, markItemOkWithQueue } from '../lib/items';
 import { setItemStoreWithQueue } from '../lib/stores';
 import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../lib/haptics';
 import type { Item } from '../lib/items';
-import { CATEGORY_LABELS } from '../constants/defaultItems';
-import { pantryItemTestId } from '../lib/testIds';
+import { pantryItemStoreMetaTestId, pantryItemTestId } from '../lib/testIds';
 import { getItemEmoji } from '../constants/itemEmojis';
 import { useTheme } from '../hooks/useTheme';
 import { fonts, type AppColors } from '../constants/theme';
 import ScalePressable from './ScalePressable';
+import ItemActionSheet from './ItemActionSheet';
 
 interface Props {
   item: Item;
   userId: string;
   onEditPress?: (item: Item) => void;
+  onLiftPress?: (item: Item) => void;
 }
 
-function ItemRowComponent({ item, userId, onEditPress }: Props) {
+function ItemRowComponent({ item, userId, onEditPress, onLiftPress }: Props) {
   const { colors } = useTheme();
   const { removeItem, restoreItem, updateItem } = useItemsStore();
   const assignedStoreName = useStoresStore((state) =>
     state.stores.find((s) => s.id === item.preferred_store_id)?.name,
   );
   const stores = useStoresStore((state) => state.stores);
-  const swipeRef = useRef<Swipeable>(null);
+  const [showSheet, setShowSheet] = useState(false);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -48,7 +48,6 @@ function ItemRowComponent({ item, userId, onEditPress }: Props) {
         if (!result.queued) void hapticSuccess();
       }
     } catch (e: any) {
-      console.error('[ItemRow] update failed:', e?.message ?? e);
       void hapticError();
       updateItem(item.id, {
         is_low: item.is_low,
@@ -60,26 +59,11 @@ function ItemRowComponent({ item, userId, onEditPress }: Props) {
 
   function handleLongPress() {
     void hapticSelection();
-    const assignedStore = stores.find((s) => s.id === item.preferred_store_id);
-    const storeButtons = stores.map((s) => ({
-      text: s.id === item.preferred_store_id ? `${s.name} ✓` : s.name,
-      onPress: () => assignStore(s.id),
-    }));
-    Alert.alert(
-      item.name,
-      assignedStore
-        ? `Assigned to ${assignedStore.name}. Pick a store to reassign, or edit/delete.`
-        : 'Edit, assign a store, or delete this item.',
-      [
-        ...(onEditPress ? [{ text: '✏️  Edit name & category', onPress: () => onEditPress(item) }] : []),
-        ...storeButtons,
-        ...(item.preferred_store_id
-          ? [{ text: 'Clear store', style: 'destructive' as const, onPress: () => assignStore(null) }]
-          : []),
-        { text: 'Delete item', style: 'destructive' as const, onPress: handleDelete },
-        { text: 'Cancel', style: 'cancel' as const },
-      ],
-    );
+    if (onLiftPress) {
+      onLiftPress(item);
+    } else {
+      setShowSheet(true);
+    }
   }
 
   async function handleDelete() {
@@ -89,7 +73,6 @@ function ItemRowComponent({ item, userId, onEditPress }: Props) {
       const result = await deleteItemWithQueue(item.id);
       if (!result.queued) void hapticSuccess();
     } catch (e: any) {
-      console.error('[ItemRow] delete failed:', e?.message ?? e);
       void hapticError();
       restoreItem(item);
     }
@@ -103,44 +86,12 @@ function ItemRowComponent({ item, userId, onEditPress }: Props) {
       const result = await setItemStoreWithQueue(item.id, storeId);
       if (!result.queued) void hapticSuccess();
     } catch (e: any) {
-      console.error('[ItemRow] store assign failed:', e?.message ?? e);
       void hapticError();
       updateItem(item.id, { preferred_store_id: prev });
     }
   }
 
-  async function handleSwipeLeft() {
-    swipeRef.current?.close();
-    if (item.is_low) return;
-    void hapticWarning();
-    updateItem(item.id, { is_low: true, marked_low_by: userId, got_it_by: null });
-    try {
-      await markItemLowWithQueue(item.id, userId);
-    } catch {
-      void hapticError();
-      updateItem(item.id, { is_low: false, marked_low_by: null });
-    }
-  }
-
-  async function handleSwipeRight() {
-    swipeRef.current?.close();
-    if (!item.is_low) return;
-    void hapticSuccess();
-    updateItem(item.id, { is_low: false, marked_low_by: null, got_it_by: userId });
-    try {
-      await markItemOkWithQueue(item.id);
-    } catch {
-      void hapticError();
-      updateItem(item.id, { is_low: true, marked_low_by: item.marked_low_by });
-    }
-  }
-
   const emoji = useMemo(() => getItemEmoji(item.name, item.category ?? ''), [item.name, item.category]);
-  const categoryLabel = useMemo(
-    () => CATEGORY_LABELS[item.category as keyof typeof CATEGORY_LABELS] ?? item.category,
-    [item.category],
-  );
-
   const expiryInfo = useMemo(() => {
     if (!item.expires_at) return null;
     const now = Date.now();
@@ -150,54 +101,23 @@ function ItemRowComponent({ item, userId, onEditPress }: Props) {
     if (diffDays === 0) return { label: 'Expires today', urgent: true };
     if (diffDays <= 3) return { label: `${diffDays}d left`, urgent: true };
     if (diffDays <= 7) return { label: `${diffDays}d left`, urgent: false };
-    return null; // > 7 days away — no chip shown
+    return null;
   }, [item.expires_at]);
 
-  const renderRightActions = (progress: Animated.AnimatedInterpolation<number>) => {
-    const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [80, 0] });
-    return (
-      <Animated.View style={[styles.swipeAction, styles.swipeActionLow, { transform: [{ translateX }] }]}>
-        <Text style={styles.swipeActionEmoji}>⚠️</Text>
-        <Text style={styles.swipeActionLabel}>Low</Text>
-      </Animated.View>
-    );
-  };
-
-  const renderLeftActions = (progress: Animated.AnimatedInterpolation<number>) => {
-    const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [-80, 0] });
-    return (
-      <Animated.View style={[styles.swipeAction, styles.swipeActionGotIt, { transform: [{ translateX }] }]}>
-        <Text style={styles.swipeActionEmoji}>✅</Text>
-        <Text style={styles.swipeActionLabel}>Got it</Text>
-      </Animated.View>
-    );
-  };
-
   return (
-    <Swipeable
-      ref={swipeRef}
-      renderRightActions={item.is_low ? undefined : renderRightActions}
-      renderLeftActions={item.is_low ? renderLeftActions : undefined}
-      onSwipeableOpen={(dir) => {
-        if (dir === 'right') void handleSwipeLeft();
-        else void handleSwipeRight();
-      }}
-      overshootRight={false}
-      overshootLeft={false}
-      friction={2}
-    >
+    <>
       <ScalePressable
         testID={pantryItemTestId(item.name)}
         style={styles.card}
         onPress={handleTap}
         onLongPress={handleLongPress}
-        delayLongPress={400}
+        delayLongPress={500}
       >
         <Text style={styles.emoji}>{emoji}</Text>
         <View style={styles.content}>
           <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
-          <Text style={styles.meta} numberOfLines={1}>
-            {categoryLabel}{assignedStoreName ? ` · ${assignedStoreName}` : ''}
+          <Text testID={pantryItemStoreMetaTestId(item.name)} style={styles.meta} numberOfLines={1}>
+            {assignedStoreName ?? 'No store set'}
           </Text>
         </View>
         {expiryInfo && (
@@ -216,7 +136,17 @@ function ItemRowComponent({ item, userId, onEditPress }: Props) {
           <View style={styles.stockDot} accessibilityLabel="In stock" />
         )}
       </ScalePressable>
-    </Swipeable>
+
+      <ItemActionSheet
+        item={item}
+        stores={stores}
+        visible={showSheet}
+        onClose={() => setShowSheet(false)}
+        onEdit={onEditPress ? () => onEditPress(item) : undefined}
+        onAssignStore={assignStore}
+        onDelete={handleDelete}
+      />
+    </>
   );
 }
 
@@ -272,17 +202,5 @@ function makeStyles(colors: AppColors) {
     expiryChipUrgent: { backgroundColor: colors.dangerSoft },
     expiryChipText: { fontSize: 11, fontFamily: fonts.bodySemiBold, color: colors.warning },
     expiryChipTextUrgent: { color: colors.danger },
-    swipeAction: {
-      justifyContent: 'center',
-      alignItems: 'center',
-      width: 72,
-      borderRadius: 16,
-      marginVertical: 0,
-      gap: 3,
-    },
-    swipeActionLow: { backgroundColor: colors.warningSoft },
-    swipeActionGotIt: { backgroundColor: colors.successSoft },
-    swipeActionEmoji: { fontSize: 20 },
-    swipeActionLabel: { fontSize: 11, fontFamily: fonts.bodySemiBold, color: colors.ink },
   });
 }

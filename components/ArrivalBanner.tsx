@@ -8,21 +8,23 @@ import { fonts, type AppColors } from '../constants/theme';
 
 // Banner is always dark-on-cream regardless of theme — it's a high-contrast
 // toast that must be readable in any lighting condition.
-const BANNER_BG   = '#131211';
-const BANNER_TEXT = '#F0EDE8';
+const BANNER_BG     = '#131211';
+const BANNER_TEXT   = '#F0EDE8';
 const BANNER_COPPER = '#D4874E';
 
 export default function ArrivalBanner() {
   const { colors } = useTheme();
   const router = useRouter();
-  const { activeStoreId, stores, setActiveStore } = useStoresStore();
-  const translateY = useRef(new Animated.Value(-120)).current;
+  // Only watch arrivalStoreId — set exclusively by the realtime store_arrivals
+  // subscription when a *partner* arrives. Never triggered by chip taps.
+  const { arrivalStoreId, stores, setArrivalStore } = useStoresStore();
+  const translateY = useRef(new Animated.Value(-180)).current;
   const prevStoreId = useRef<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const activeStore = stores.find((s) => s.id === activeStoreId);
+  const arrivalStore = stores.find((s) => s.id === arrivalStoreId);
 
   function show() {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -32,27 +34,26 @@ export default function ArrivalBanner() {
       tension: 80,
       friction: 10,
     }).start();
-    timerRef.current = setTimeout(hide, 5000);
+    timerRef.current = setTimeout(() => hide(), 6000);
   }
 
-  function hide(clearShoppingMode = false) {
+  function hide() {
     Animated.timing(translateY, {
-      toValue: -120,
+      toValue: -180,
       duration: 300,
       useNativeDriver: true,
-    }).start();
-    if (clearShoppingMode) setActiveStore(null);
+    }).start(() => setArrivalStore(null));
   }
 
   useEffect(() => {
-    if (activeStoreId && activeStoreId !== prevStoreId.current) {
+    if (arrivalStoreId && arrivalStoreId !== prevStoreId.current) {
       show();
     }
-    prevStoreId.current = activeStoreId;
+    prevStoreId.current = arrivalStoreId;
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
-  }, [activeStoreId]);
+  }, [arrivalStoreId]);
 
-  if (!activeStore) return null;
+  if (!arrivalStore) return null;
 
   return (
     <Animated.View style={[styles.banner, { transform: [{ translateY }] }]}>
@@ -60,13 +61,14 @@ export default function ArrivalBanner() {
         style={styles.inner}
         onPress={() => {
           hide();
-          router.push('/(main)/grocery');
+          // Navigate to Pantry so the partner can quickly mark items low
+          router.push('/(main)/pantry');
         }}
       >
         <Text style={styles.icon}>🛒</Text>
         <Text style={styles.text} numberOfLines={2}>
-          <Text style={styles.bold}>Someone arrived at {activeStore.name}!</Text>
-          {'\n'}Tap to open the shopping list.
+          <Text style={styles.bold}>Someone arrived at {arrivalStore.name}!</Text>
+          {'\n'}Tap to update the shopping list.
         </Text>
         <Ionicons name="chevron-forward" size={16} color={BANNER_TEXT} style={{ opacity: 0.6 }} />
       </Pressable>
@@ -85,12 +87,8 @@ function makeStyles(_colors: AppColors) {
       borderRadius: 18,
       backgroundColor: BANNER_BG,
       borderWidth: 1,
-      borderColor: BANNER_COPPER + '40',  // copper tint border at 25% opacity
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: 0.28,
-      shadowRadius: 18,
-      elevation: 12,
+      borderColor: BANNER_COPPER + '40',
+      boxShadow: '0 6px 18px rgba(0, 0, 0, 0.28)',
     },
     inner: {
       flexDirection: 'row',

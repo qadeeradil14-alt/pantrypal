@@ -105,26 +105,20 @@ export default function BarcodeScannerModal({ visible, onClose, onAddProduct, on
     onManualAdd();
   }
 
-  return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={styles.root}>
-        <View style={styles.topBar}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Close scanner"
-            hitSlop={10}
-            style={({ pressed }) => [styles.closeBtn, { transform: [{ scale: pressed ? 0.94 : 1 }] }]}
-            onPress={onClose}
-          >
-            <Ionicons name="chevron-down" size={20} color={colors.ink} />
-          </Pressable>
-          <View style={styles.titleWrap}>
-            <Text style={styles.eyebrow}>Inventory scan</Text>
-            <Text style={styles.title}>Barcode</Text>
-          </View>
-          <View style={styles.closeSpacer} />
-        </View>
+  function handleClose() {
+    setBusy(false);
+    setSaving(false);
+    setProduct(null);
+    setLastCode('');
+    setMessage('');
+    setSavedLabel('');
+    void hapticSelection();
+    onClose();
+  }
 
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={handleClose}>
+      <View style={styles.root}>
         {!permission ? (
           <View style={styles.center}>
             <ActivityIndicator color={colors.primary} />
@@ -223,6 +217,21 @@ export default function BarcodeScannerModal({ visible, onClose, onAddProduct, on
             )}
           </View>
         )}
+        <Pressable
+          testID="barcode-scanner-close"
+          accessibilityRole="button"
+          accessibilityLabel="Close scanner"
+          style={({ pressed }) => [styles.topBar, pressed && styles.topBarPressed]}
+          onPress={handleClose}
+        >
+          <View style={styles.closeBtn} pointerEvents="none">
+            <Ionicons name="close" size={24} color="#FFFFFF" />
+          </View>
+          <View style={styles.titleWrap} pointerEvents="none">
+            <Text style={styles.eyebrow}>Inventory scan</Text>
+          </View>
+          <View style={styles.closeSpacer} pointerEvents="none" />
+        </Pressable>
       </View>
     </Modal>
   );
@@ -232,27 +241,34 @@ function makeStyles(colors: AppColors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.background },
     topBar: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      zIndex: 100,
+      elevation: 100,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
       paddingHorizontal: 16,
-      paddingTop: 18,
-      paddingBottom: 12,
-      backgroundColor: colors.background,
+      paddingTop: 54,
+      paddingBottom: 10,
+      backgroundColor: 'rgba(7, 14, 10, 0.72)',
     },
+    topBarPressed: { opacity: 0.92 },
     closeBtn: {
-      width: 42,
-      height: 42,
-      borderRadius: 21,
+      width: 50,
+      height: 50,
+      borderRadius: 25,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: colors.surface,
+      backgroundColor: 'rgba(255, 255, 255, 0.16)',
       borderWidth: 1,
-      borderColor: colors.border,
+      borderColor: 'rgba(255, 255, 255, 0.22)',
     },
     closeSpacer: {
-      width: 42,
-      height: 42,
+      width: 50,
+      height: 50,
     },
     titleWrap: { alignItems: 'center', gap: 1 },
     eyebrow: { fontSize: 12, color: colors.primary, fontFamily: fonts.bodySemiBold, textTransform: 'uppercase', letterSpacing: 0.5 },

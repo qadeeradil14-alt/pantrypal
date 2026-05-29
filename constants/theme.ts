@@ -1,76 +1,74 @@
-// ─── Slow Kitchen design system ───────────────────────────────────────────────
-// Dark-first. Espresso background, copper accent, cream ink.
+// ─── PantryPal design system ─────────────────────────────────────────────────
+// Neutral-first, with fresh grocery green as the main action color.
 // See DESIGN.md for full rationale, token reference, and light-mode values.
 
 export const lightColors = {
-  background: '#F5EFE6',
-  surface: '#FFFBF5',
-  primary: '#C07038',       // copper (darker for light mode contrast)
-  primarySoft: '#FFF0E0',
-  primaryDeep: '#A05A28',
-  ink: '#221A12',
-  inkSoft: '#3A2A1A',
-  muted: '#907660',
-  placeholder: '#B0A090',
-  faint: '#EDE4D8',
-  border: '#D8CABC',
-  success: '#3D6B4F',
+  background: '#F2F4ED',
+  surface: '#FFFFFF',
+  primary: '#2F7D5C',
+  primarySoft: '#EAF4EE',
+  primaryDeep: '#235F46',
+  ink: '#171A18',
+  inkSoft: '#303833',
+  muted: '#65736A',
+  placeholder: '#9AA59D',
+  faint: '#E8ECE7',
+  border: '#DDE4DE',
+  success: '#2F7D5C',
   successSoft: '#EAF4EE',
-  warning: '#C07038',       // copper doubles as "low" warning in light mode
-  warningSoft: '#FFF0E0',
-  danger: '#A03030',
-  dangerSoft: '#FFEDED',
-  low: '#C07038',
-  lowSoft: '#FFF0E0',
-  lowText: '#7A4010',
-  lowBadgeBg: '#F8D8A0',
-  lowBadgeText: '#7A4010',
-  disabled: '#C8BDB0',
+  warning: '#B56A24',
+  warningSoft: '#FFF3E4',
+  danger: '#A93838',
+  dangerSoft: '#FFECEC',
+  low: '#B56A24',
+  lowSoft: '#FFF3E4',
+  lowText: '#7B3F10',
+  lowBadgeBg: '#F9D7A5',
+  lowBadgeText: '#7B3F10',
+  disabled: '#C8D0CA',
   // compat aliases
   dangerText: '#991B1B',
-  accent: '#3D6B4F',
+  accent: '#2F7D5C',
   accentSoft: '#EAF4EE',
-  surfaceDeep: '#221A12',
-  surfaceWarm: '#F5EFE6',
-  surfaceTint: '#FFF0E0',
-  inkSoftAlt: '#3A2A1A',
-  lowText2: '#7A4010',
+  surfaceDeep: '#171A18',
+  surfaceWarm: '#F2F4ED',
+  surfaceTint: '#EAF4EE',
+  inkSoftAlt: '#303833',
+  lowText2: '#7B3F10',
 };
 
 export const darkColors: typeof lightColors = {
-  // Charcoal-first: warmth lives in the copper accent, not the canvas.
-  // Surfaces are near-neutral so cards read clearly without a brown haze.
-  background: '#131211',    // near-black — cool enough to drop the brown cast
-  surface: '#1F1D1B',       // dark charcoal card — clear lift from background
-  primary: '#D4874E',       // copper — the single warm anchor
-  primarySoft: '#261608',
-  primaryDeep: '#E09A5F',
-  ink: '#F0EDE8',           // crisp near-white, less saturated than before
-  inkSoft: '#E4E0DA',
-  muted: '#8C8784',         // neutral-gray, not warm-gray
-  placeholder: '#5C5856',
-  faint: '#181716',
-  border: '#2E2C2A',        // near-neutral border — cards stand out cleanly
-  success: '#5A9E70',
-  successSoft: '#0D2A14',
-  warning: '#D4874E',       // copper doubles as "low" warning in dark mode
-  warningSoft: '#261608',
-  danger: '#C05050',
-  dangerSoft: '#2A0D0D',
-  low: '#D4874E',
-  lowSoft: '#261608',
-  lowText: '#F0C890',
-  lowBadgeBg: '#3A2010',
-  lowBadgeText: '#F0C890',
-  disabled: '#323030',
-  dangerText: '#E07070',
-  accent: '#5A9E70',
-  accentSoft: '#0D2A14',
-  surfaceDeep: '#0B0A09',
-  surfaceWarm: '#1F1D1B',
-  surfaceTint: '#261608',
-  inkSoftAlt: '#E4E0DA',
-  lowText2: '#F0C890',
+  background: '#101412',
+  surface: '#1A201D',
+  primary: '#72C79A',
+  primarySoft: '#10271A',
+  primaryDeep: '#9BE0B8',
+  ink: '#EEF3EF',
+  inkSoft: '#DCE5DF',
+  muted: '#9AA69E',
+  placeholder: '#657069',
+  faint: '#151A17',
+  border: '#2A342E',
+  success: '#72C79A',
+  successSoft: '#10271A',
+  warning: '#E6A15E',
+  warningSoft: '#2C1D0F',
+  danger: '#E06C6C',
+  dangerSoft: '#2A1010',
+  low: '#E6A15E',
+  lowSoft: '#2C1D0F',
+  lowText: '#F4C796',
+  lowBadgeBg: '#3A2412',
+  lowBadgeText: '#F4C796',
+  disabled: '#303833',
+  dangerText: '#F08A8A',
+  accent: '#72C79A',
+  accentSoft: '#10271A',
+  surfaceDeep: '#080B09',
+  surfaceWarm: '#1A201D',
+  surfaceTint: '#10271A',
+  inkSoftAlt: '#DCE5DF',
+  lowText2: '#F4C796',
 };
 
 export type AppColors = typeof lightColors;
@@ -103,17 +101,9 @@ export const radii = {
 };
 
 export const shadow = {
-  shadowColor: '#1C1812',
-  shadowOffset: { width: 0, height: 4 },
-  shadowOpacity: 0.08,
-  shadowRadius: 12,
-  elevation: 3,
+  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)',
 };
 
 export const tightShadow = {
-  shadowColor: '#1C1812',
-  shadowOffset: { width: 0, height: 2 },
-  shadowOpacity: 0.06,
-  shadowRadius: 6,
-  elevation: 2,
+  boxShadow: '0 2px 6px rgba(0, 0, 0, 0.06)',
 };
