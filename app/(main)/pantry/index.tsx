@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useRouter } from 'expo-router';
 import {
   View, Text, SectionList, StyleSheet, ScrollView,
   ActivityIndicator, RefreshControl, TextInput, Alert,
@@ -89,6 +90,7 @@ async function computeStreak(allStocked: boolean): Promise<number> {
 
 export default function PantryScreen() {
   const { colors } = useTheme();
+  const router = useRouter();
   const { household } = useHouseholdStore();
   const { session } = useAuthStore();
   const { items, setItems, updateItem, upsertItem } = useItemsStore();
@@ -287,6 +289,14 @@ export default function PantryScreen() {
 
   const allStocked = items.length > 0 && items.every((i) => !i.is_low);
 
+  const expiringItems = useMemo(() => {
+    const now = Date.now();
+    const sevenDays = 7 * 24 * 60 * 60 * 1000;
+    return items
+      .filter((i) => i.expires_at && new Date(i.expires_at).getTime() - now <= sevenDays)
+      .sort((a, b) => new Date(a.expires_at!).getTime() - new Date(b.expires_at!).getTime());
+  }, [items]);
+
   // Guard: don't call computeStreak while items is still empty (initial load).
   // Without this guard, the pre-load empty-items state sets allStocked=false
   // and computeStreak zeroes the streak + stamps today's date, so the real
@@ -457,6 +467,33 @@ export default function PantryScreen() {
         </View>
       )}
 
+      {expiringItems.length > 0 && (
+        <View style={styles.expiryCard}>
+          <View style={styles.expiryCardHeader}>
+            <Ionicons name="time-outline" size={15} color={colors.danger} />
+            <Text style={styles.expiryCardTitle}>Expiring soon</Text>
+            <View style={styles.expiryBadge}>
+              <Text style={styles.expiryBadgeText}>{expiringItems.length}</Text>
+            </View>
+          </View>
+          {expiringItems.slice(0, 4).map((item) => {
+            const daysLeft = Math.ceil((new Date(item.expires_at!).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+            const urgent = daysLeft <= 2;
+            return (
+              <View key={item.id} style={styles.expiryRow}>
+                <Text style={styles.expiryItemName} numberOfLines={1}>{item.name}</Text>
+                <Text style={[styles.expiryDays, urgent && styles.expiryDaysUrgent]}>
+                  {daysLeft <= 0 ? 'Expired' : daysLeft === 1 ? 'Tomorrow' : `${daysLeft}d`}
+                </Text>
+              </View>
+            );
+          })}
+          {expiringItems.length > 4 && (
+            <Text style={styles.expiryMore}>+{expiringItems.length - 4} more</Text>
+          )}
+        </View>
+      )}
+
       {storePicker}
 
       <View style={styles.searchWrap}>
@@ -518,7 +555,7 @@ export default function PantryScreen() {
       </View>
     </>
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ), [firstName, household?.name, styles, colors, filtered.length, query, streak, notifPromptState, handleEnableNotifs, handleDismissNotifPrompt, selectedStore, canAdd, openScanner, storePicker, sortMode]);
+  ), [firstName, household?.name, styles, colors, filtered.length, query, streak, notifPromptState, handleEnableNotifs, handleDismissNotifPrompt, selectedStore, canAdd, openScanner, storePicker, sortMode, expiringItems]);
 
   if (loading) {
     return (
@@ -561,6 +598,14 @@ export default function PantryScreen() {
                 >
                   <Ionicons name="refresh-outline" size={11} color={colors.warning} />
                   <Text style={styles.resetAllText}>Reset all</Text>
+                </Pressable>
+                <Pressable
+                  hitSlop={10}
+                  style={({ pressed }) => [styles.shopBtn, pressed && { opacity: 0.65 }]}
+                  onPress={() => { void hapticSelection(); router.push('/(main)/grocery'); }}
+                >
+                  <Ionicons name="cart-outline" size={11} color={colors.primary} />
+                  <Text style={styles.shopBtnText}>Shop</Text>
                 </Pressable>
               </View>
             );
@@ -674,7 +719,7 @@ function makeStyles(colors: AppColors) {
       marginHorizontal: 0,
       marginTop: 14,
       marginBottom: 4,
-      borderRadius: 16,
+      borderRadius: 20,
       backgroundColor: colors.primarySoft,
       borderWidth: 1,
       borderColor: colors.primary + '33',
@@ -755,7 +800,7 @@ function makeStyles(colors: AppColors) {
       marginBottom: 10,
       paddingHorizontal: 16,
     },
-    storeSectionTitle: { fontSize: 17, fontFamily: fonts.displayItalic, color: colors.ink, letterSpacing: 0 },
+    storeSectionTitle: { fontSize: 22, fontFamily: fonts.displayItalic, color: colors.ink, letterSpacing: 0 },
     storeSectionHint: { fontSize: 12, fontFamily: fonts.bodySemiBold, color: colors.muted },
     storeScroll: { flexGrow: 0 },
     storeRow: { flexDirection: 'row', gap: 8, paddingLeft: 16, paddingRight: 16 },
@@ -889,6 +934,83 @@ function makeStyles(colors: AppColors) {
       fontFamily: fonts.bodySemiBold,
       color: colors.warning,
     },
+    shopBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      borderRadius: 999,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      backgroundColor: colors.primarySoft,
+      borderWidth: 1,
+      borderColor: colors.primary + '35',
+    },
+    shopBtnText: {
+      fontSize: 12,
+      fontFamily: fonts.bodySemiBold,
+      color: colors.primary,
+    },
+    expiryCard: {
+      marginTop: 14,
+      marginBottom: 4,
+      borderRadius: 20,
+      backgroundColor: colors.dangerSoft,
+      borderWidth: 1,
+      borderColor: colors.danger + '33',
+      padding: 14,
+      gap: 8,
+    },
+    expiryCardHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 7,
+      marginBottom: 2,
+    },
+    expiryCardTitle: {
+      flex: 1,
+      fontSize: 14,
+      fontFamily: fonts.bodySemiBold,
+      color: colors.ink,
+    },
+    expiryBadge: {
+      backgroundColor: colors.danger + '22',
+      borderRadius: 999,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+    },
+    expiryBadgeText: {
+      fontSize: 11,
+      fontFamily: fonts.monoMedium,
+      color: colors.danger,
+      fontVariant: ['tabular-nums'],
+    },
+    expiryRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingVertical: 3,
+    },
+    expiryItemName: {
+      flex: 1,
+      fontSize: 13,
+      fontFamily: fonts.bodyMedium,
+      color: colors.ink,
+    },
+    expiryDays: {
+      fontSize: 12,
+      fontFamily: fonts.monoMedium,
+      color: colors.muted,
+      fontVariant: ['tabular-nums'],
+    },
+    expiryDaysUrgent: {
+      color: colors.danger,
+    },
+    expiryMore: {
+      fontSize: 12,
+      fontFamily: fonts.body,
+      color: colors.muted,
+      marginTop: 2,
+    },
     categorySectionHeader: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -900,9 +1022,10 @@ function makeStyles(colors: AppColors) {
     sectionEmoji: { fontSize: 15 },
     categorySectionTitle: {
       flex: 1,
-      fontSize: 15,
-      fontFamily: fonts.bodySemiBold,
+      fontSize: 22,
+      fontFamily: fonts.displayItalic,
       color: colors.ink,
+      letterSpacing: 0,
     },
     categorySectionCount: {
       fontSize: 12,
@@ -1038,7 +1161,7 @@ function makeStyles(colors: AppColors) {
       justifyContent: 'center',
       borderWidth: 1,
       borderColor: colors.primary,
-      boxShadow: '0 6px 14px rgba(212, 135, 78, 0.34)',
+      boxShadow: `0 6px 14px ${colors.primary}55`,
     },
     fabPressed: { opacity: 0.9, transform: [{ scale: 0.94 }] },
     fabDisabled: { backgroundColor: colors.disabled, borderColor: colors.disabled },

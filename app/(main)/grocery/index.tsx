@@ -258,7 +258,13 @@ export default function GroceryScreen() {
 
       <View style={[styles.statusCard, shoppingMode && styles.statusCardActive]}>
         <View>
-          {shoppingMode && startCount > 0 ? (
+          {shoppingMode && startCount > 0 && lowItems.length === 0 ? (
+            <>
+              <Text style={[styles.statusKicker, styles.statusKickerActive]}>All done</Text>
+              <Text style={[styles.statusNumber, styles.statusNumberActive]}>{startCount}</Text>
+              <Text style={[styles.statusLabel, styles.statusLabelActive]}>grabbed</Text>
+            </>
+          ) : shoppingMode && startCount > 0 ? (
             <>
               <Text style={[styles.statusKicker, styles.statusKickerActive]}>In progress</Text>
               <Text style={[styles.statusNumber, styles.statusNumberActive]}>
@@ -270,7 +276,7 @@ export default function GroceryScreen() {
           ) : (
             <>
               <Text style={[styles.statusKicker, shoppingMode && styles.statusKickerActive]}>
-                {shoppingMode && lowItems.length > 0 ? 'In progress' : 'To buy'}
+                {shoppingMode ? 'List clear' : 'To buy'}
               </Text>
               <Text style={[styles.statusNumber, shoppingMode && styles.statusNumberActive]}>{lowItems.length}</Text>
               <Text style={[styles.statusLabel, shoppingMode && styles.statusLabelActive]}>
@@ -499,7 +505,7 @@ function makeStyles(colors: AppColors) {
     },
     headerLeft: { flex: 1, gap: 2 },
     eyebrow: { fontSize: 13, color: colors.primary, fontFamily: fonts.bodySemiBold },
-    headerTitle: { fontSize: 26, fontFamily: fonts.displayExtraBold, color: colors.ink, letterSpacing: 0 },
+    headerTitle: { fontSize: 26, fontFamily: fonts.displayExtraBoldItalic, color: colors.ink, letterSpacing: 0 },
     modeBtn: {
       flexDirection: 'row',
       alignItems: 'center',

@@ -4,6 +4,7 @@ import {
   Alert, Share, ActivityIndicator, ScrollView,
 } from 'react-native';
 import Constants from 'expo-constants';
+import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../store/auth';
@@ -77,15 +78,13 @@ export default function SettingsScreen() {
 
   async function handleCopyCode() {
     if (!household?.inviteCode) return;
-    void hapticSelection();
+    void hapticSuccess();
     try {
-      const Clipboard = await import('expo-clipboard');
       await Clipboard.setStringAsync(household.inviteCode);
       setCodeCopied(true);
       setTimeout(() => setCodeCopied(false), 2000);
     } catch {
-      // Clipboard unavailable (e.g. Expo Go cache) — fall back to share sheet
-      await Share.share({ message: household.inviteCode });
+      Alert.alert('Could not copy', 'Please copy the code manually: ' + household.inviteCode);
     }
   }
 
@@ -372,7 +371,7 @@ function makeStyles(colors: AppColors) {
     content: { paddingBottom: 48 },
     header: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 10 },
     eyebrow: { fontSize: 12, color: colors.primary, fontFamily: fonts.bodySemiBold, textTransform: 'uppercase', letterSpacing: 0.5 },
-    headerTitle: { fontSize: 28, fontFamily: fonts.displayExtraBold, color: colors.ink, letterSpacing: 0 },
+    headerTitle: { fontSize: 28, fontFamily: fonts.displayExtraBoldItalic, color: colors.ink, letterSpacing: 0 },
 
     // Hero
     heroCard: {

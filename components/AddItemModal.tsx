@@ -1,13 +1,13 @@
 import { useEffect, useState, useMemo } from 'react';
 import {
-  Modal, View, Text, TextInput,
+  Modal, View, Text, TextInput, ScrollView, Pressable,
   StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useItemsStore } from '../store/items';
 import { useStoresStore } from '../store/stores';
 import { addItemWithQueue } from '../lib/items';
-import { setItemStoreWithQueue } from '../lib/stores';
+import { addStoreWithQueue, setItemStoreWithQueue, PRESET_STORES } from '../lib/stores';
 import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../lib/haptics';
 import { useTheme } from '../hooks/useTheme';
 import { fonts, type AppColors } from '../constants/theme';
@@ -29,14 +29,23 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
   const { colors } = useTheme();
   const { items, upsertItem } = useItemsStore();
   const stores = useStoresStore((state) => state.stores);
+  const addStoreToList = useStoresStore((s) => s.addStore);
   const [name, setName] = useState('');
   const [storeId, setStoreId] = useState<string | null>(initialStoreId ?? stores[0]?.id ?? null);
   const [storeTouched, setStoreTouched] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [addingStore, setAddingStore] = useState(false);
+  const [newStoreName, setNewStoreName] = useState('');
+  const [storeAdding, setStoreAdding] = useState(false);
   const ready = UUID_RE.test(householdId);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const existingNames = useMemo(() => new Set(stores.map((s) => s.name.toLowerCase())), [stores]);
+  const presetSuggestions = useMemo(
+    () => PRESET_STORES.filter((p) => !existingNames.has(p.toLowerCase())).slice(0, 8),
+    [existingNames],
+  );
 
   useEffect(() => {
     if (initialStoreId !== undefined) {
@@ -45,6 +54,26 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
     }
     if (!storeTouched && !storeId && stores.length > 0) setStoreId(stores[0].id);
   }, [initialStoreId, storeId, storeTouched, stores]);
+
+  async function handleAddStore() {
+    const trimmed = newStoreName.trim();
+    if (!trimmed) return;
+    setStoreAdding(true);
+    try {
+      const { store } = await addStoreWithQueue(householdId, trimmed);
+      addStoreToList(store);
+      setStoreId(store.id);
+      setStoreTouched(true);
+      setAddingStore(false);
+      setNewStoreName('');
+      void hapticSuccess();
+    } catch (e: any) {
+      setError(e.message ?? 'Could not add store.');
+      void hapticError();
+    } finally {
+      setStoreAdding(false);
+    }
+  }
 
   async function handleAdd() {
     if (!ready) {
@@ -136,33 +165,85 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
           />
 
           <Text style={styles.label}>Store</Text>
-          {stores.length === 0 ? (
-            <View style={styles.noStoresBox}>
-              <Text style={styles.noStoresText}>No stores yet. Add stores from the Stores tab, or add this unassigned.</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.chipScroll}
+            contentContainerStyle={styles.chipRow}
+          >
+            {stores.map((store) => {
+              const active = storeId === store.id;
+              return (
+                <Pressable
+                  key={store.id}
+                  style={({ pressed }) => [styles.chip, active && styles.chipActive, pressed && { opacity: 0.75 }]}
+                  onPress={() => {
+                    void hapticSelection();
+                    setStoreTouched(true);
+                    setStoreId(active ? null : store.id);
+                  }}
+                >
+                  <Text style={[styles.chipText, active && styles.chipTextActive]} numberOfLines={1}>
+                    {store.name}
+                  </Text>
+                </Pressable>
+              );
+            })}
+            {!addingStore && (
+              <Pressable
+                style={({ pressed }) => [styles.chip, styles.chipAdd, pressed && { opacity: 0.75 }]}
+                onPress={() => { void hapticSelection(); setAddingStore(true); }}
+              >
+                <Ionicons name="add" size={14} color={colors.muted} />
+                <Text style={styles.chipAddText}>New</Text>
+              </Pressable>
+            )}
+          </ScrollView>
+
+          {addingStore && (
+            <View style={styles.newStoreRow}>
+              <TextInput
+                style={styles.newStoreInput}
+                placeholder="Store name…"
+                placeholderTextColor={colors.placeholder}
+                value={newStoreName}
+                onChangeText={setNewStoreName}
+                autoFocus
+                returnKeyType="done"
+                onSubmitEditing={() => { void handleAddStore(); }}
+              />
+              <Pressable
+                style={({ pressed }) => [styles.newStoreAdd, (!newStoreName.trim() || storeAdding) && styles.newStoreAddDisabled, pressed && { opacity: 0.8 }]}
+                onPress={() => { void handleAddStore(); }}
+                disabled={!newStoreName.trim() || storeAdding}
+              >
+                {storeAdding
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <Text style={styles.newStoreAddText}>Add</Text>}
+              </Pressable>
+              <Pressable onPress={() => { setAddingStore(false); setNewStoreName(''); }} hitSlop={8}>
+                <Text style={styles.newStoreCancelText}>Cancel</Text>
+              </Pressable>
             </View>
-          ) : (
-            <View style={styles.storeGrid}>
-              {stores.map((store) => {
-                const active = storeId === store.id;
-                return (
-                  <ScalePressable
-                    key={store.id}
-                    profile="chip"
-                    style={[styles.storeBtn, active && styles.storeBtnActive]}
-                    onPress={() => {
-                      void hapticSelection();
-                      setStoreTouched(true);
-                      setStoreId(active ? null : store.id);
-                    }}
-                  >
-                    <StoreLogo name={store.name} size={34} domain={store.brand_domain} logoUrl={store.logo_url} />
-                    <Text style={[styles.storeLabel, active && styles.storeLabelActive]} numberOfLines={1}>
-                      {store.name}
-                    </Text>
-                  </ScalePressable>
-                );
-              })}
-            </View>
+          )}
+
+          {addingStore && presetSuggestions.length > 0 && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.presetScroll}
+              contentContainerStyle={styles.presetRow}
+            >
+              {presetSuggestions.map((preset) => (
+                <Pressable
+                  key={preset}
+                  style={({ pressed }) => [styles.presetChip, pressed && { opacity: 0.7 }]}
+                  onPress={() => { void hapticSelection(); setNewStoreName(preset); }}
+                >
+                  <Text style={styles.presetChipText}>{preset}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
           )}
 
           <ScalePressable
@@ -193,8 +274,8 @@ function makeStyles(colors: AppColors) {
     },
     sheet: {
       backgroundColor: colors.surface,
-      borderTopLeftRadius: 28,
-      borderTopRightRadius: 28,
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
       padding: 24,
       paddingBottom: 40,
     },
@@ -243,41 +324,40 @@ function makeStyles(colors: AppColors) {
       marginBottom: 10,
       letterSpacing: 0.5,
     },
-    storeGrid: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 10,
-      marginBottom: 24,
+    chipScroll: { flexGrow: 0, marginBottom: 16 },
+    chipRow: { flexDirection: 'row', gap: 8 },
+    chip: {
+      borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8,
+      borderWidth: 1, borderColor: colors.border, backgroundColor: colors.background,
     },
-    storeBtn: {
-      width: '31%',
-      alignItems: 'center',
-      justifyContent: 'center',
-      flexDirection: 'column',
-      paddingVertical: 12,
-      paddingHorizontal: 6,
-      borderRadius: 14,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.background,
-      gap: 6,
+    chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+    chipText: { fontSize: 13, fontFamily: fonts.bodySemiBold, color: colors.muted },
+    chipTextActive: { color: '#fff' },
+    chipAdd: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    chipAddText: { fontSize: 13, fontFamily: fonts.bodySemiBold, color: colors.muted },
+    newStoreRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8,
     },
-    storeBtnActive: {
-      borderColor: colors.primary,
-      backgroundColor: colors.primarySoft,
+    newStoreInput: {
+      flex: 1, borderWidth: 1, borderColor: colors.primary, borderRadius: 10,
+      paddingHorizontal: 12, paddingVertical: 9, fontSize: 14,
+      color: colors.ink, backgroundColor: colors.background, fontFamily: fonts.body,
     },
-    storeLabel: { fontSize: 12, color: colors.muted, fontFamily: fonts.bodySemiBold, textAlign: 'center' },
-    storeLabelActive: { color: colors.primary },
-    noStoresBox: {
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderStyle: 'dashed',
-      borderRadius: 14,
-      backgroundColor: colors.background,
-      padding: 14,
-      marginBottom: 24,
+    newStoreAdd: {
+      backgroundColor: colors.primary, borderRadius: 10,
+      paddingHorizontal: 14, paddingVertical: 9,
+      alignItems: 'center', justifyContent: 'center', minWidth: 48,
     },
-    noStoresText: { fontSize: 13, color: colors.muted, lineHeight: 19, fontFamily: fonts.bodyMedium },
+    newStoreAddDisabled: { backgroundColor: colors.disabled },
+    newStoreAddText: { color: '#fff', fontSize: 13, fontFamily: fonts.bodySemiBold },
+    newStoreCancelText: { fontSize: 13, fontFamily: fonts.bodySemiBold, color: colors.muted },
+    presetScroll: { flexGrow: 0, marginBottom: 16 },
+    presetRow: { gap: 8, flexDirection: 'row' },
+    presetChip: {
+      borderRadius: 999, paddingHorizontal: 11, paddingVertical: 6,
+      backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+    },
+    presetChipText: { fontSize: 12, fontFamily: fonts.bodySemiBold, color: colors.ink },
     addBtn: {
       backgroundColor: colors.primary,
       borderRadius: 14,
