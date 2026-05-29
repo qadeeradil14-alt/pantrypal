@@ -4,7 +4,6 @@ import {
   Alert, Share, ActivityIndicator, ScrollView,
 } from 'react-native';
 import Constants from 'expo-constants';
-import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../store/auth';
@@ -80,11 +79,11 @@ export default function SettingsScreen() {
     if (!household?.inviteCode) return;
     void hapticSuccess();
     try {
-      await Clipboard.setStringAsync(household.inviteCode);
+      await Share.share({ message: household.inviteCode });
       setCodeCopied(true);
       setTimeout(() => setCodeCopied(false), 2000);
     } catch {
-      Alert.alert('Could not copy', 'Please copy the code manually: ' + household.inviteCode);
+      Alert.alert('Invite code', household.inviteCode);
     }
   }
 
@@ -312,11 +311,14 @@ export default function SettingsScreen() {
             >
               <View style={styles.rowLabelWrap}>
                 <Ionicons name="wallet-outline" size={17} color={colors.muted} />
-                <Text style={styles.rowLabel}>Weekly budget</Text>
+                <View>
+                  <Text style={styles.rowLabel}>Weekly budget</Text>
+                  <Text style={styles.rowSubLabel}>Tap to adjust your grocery target</Text>
+                </View>
               </View>
               <View style={styles.rowEditWrap}>
-                <Text style={styles.rowValue}>${weeklyBudget}</Text>
-                <Ionicons name="pencil-outline" size={14} color={colors.muted} />
+                <Text style={[styles.rowValue, { color: colors.primary, fontFamily: fonts.bodySemiBold }]}>${weeklyBudget}</Text>
+                <Ionicons name="pencil-outline" size={15} color={colors.primary} />
               </View>
             </ScalePressable>
           </View>
@@ -405,7 +407,8 @@ function makeStyles(colors: AppColors) {
     },
     rowBorderTop: { borderTopWidth: 1, borderTopColor: colors.border },
     rowLabelWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-    rowLabel: { fontSize: 15, color: colors.muted, fontFamily: fonts.bodyMedium },
+    rowLabel: { fontSize: 15, color: colors.ink, fontFamily: fonts.bodyMedium },
+    rowSubLabel: { fontSize: 12, color: colors.muted, fontFamily: fonts.body, marginTop: 1 },
     rowEditWrap: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 },
     rowValue: { fontSize: 16, color: colors.ink, fontFamily: fonts.bodyMedium, flexShrink: 1, textAlign: 'right' },
     rowCode: { fontSize: 16, color: colors.ink, fontFamily: fonts.mono, flexShrink: 1, textAlign: 'right', letterSpacing: 0.5 },

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useFocusEffect } from 'expo-router';
 import {
   View, Text, SectionList, StyleSheet,
   ActivityIndicator, ScrollView, Alert, Animated,
@@ -80,12 +81,18 @@ export default function GroceryScreen() {
     setShoppingMode(true);
   }, [activeStoreId]);
 
-  useEffect(() => {
+  const refreshSpend = useCallback(() => {
     if (!householdId) return;
     getSpendSummary(householdId)
       .then((s) => setWeeklySpend(s.weeklyTotal))
       .catch(() => {});
   }, [householdId]);
+
+  // Load on mount
+  useEffect(refreshSpend, [refreshSpend]);
+
+  // Refresh every time the Grocery tab comes back into focus (e.g. after adding a receipt)
+  useFocusEffect(useCallback(() => { refreshSpend(); }, [refreshSpend]));
 
 
   const activeStore = useMemo(
@@ -658,7 +665,7 @@ function makeStyles(colors: AppColors) {
       justifyContent: 'center',
       backgroundColor: colors.primarySoft,
     },
-    sectionTitle: { flex: 1, fontSize: 20, color: colors.ink, fontFamily: fonts.displayItalic, letterSpacing: 0 },
+    sectionTitle: { flex: 1, fontSize: 22, color: colors.ink, fontFamily: fonts.displayItalic, letterSpacing: 0 },
     sectionBadge: {
       backgroundColor: colors.primarySoft,
       borderRadius: 999,

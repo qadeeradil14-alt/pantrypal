@@ -12,8 +12,9 @@ import { useHouseholdStore } from '../../../store/household';
 import { useAuthStore } from '../../../store/auth';
 import { useSettingsStore } from '../../../store/settings';
 import { useItemsStore } from '../../../store/items';
+import { addItemWithQueue } from '../../../lib/items';
 import { useStoresStore } from '../../../store/stores';
-import { uploadReceipt, fetchReceipts, getSpendSummary, type Receipt, type SpendSummary } from '../../../lib/receipts';
+import { uploadReceipt, fetchReceipts, deleteReceipt, getSpendSummary, type Receipt, type SpendSummary } from '../../../lib/receipts';
 import { fetchRecentActivity, formatActivityTime, type ActivityEvent } from '../../../lib/activity';
 import { radii, shadow, fonts } from '../../../constants/theme';
 import ScalePressable from '../../../components/ScalePressable';
@@ -49,7 +50,7 @@ export default function ReceiptsScreen() {
   const { household } = useHouseholdStore();
   const { session } = useAuthStore();
   const weeklyBudget = useSettingsStore((s) => s.weeklyBudget);
-  const { items } = useItemsStore();
+  const { items, upsertItem } = useItemsStore();
   const stores = useStoresStore((s) => s.stores);
   const householdId = household?.id ?? null;
   const userId = session?.user?.id ?? null;
@@ -62,6 +63,9 @@ export default function ReceiptsScreen() {
   const [uploading, setUploading] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
   const [showAllPurchases, setShowAllPurchases] = useState(false);
+  const [pantryPickMode, setPantryPickMode] = useState(false);
+  const [selectedPantryIds, setSelectedPantryIds] = useState<Set<string>>(new Set());
+  const [addingToPantry, setAddingToPantry] = useState(false);
 
   const canUpload = !!householdId && !!userId && !uploading;
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -151,6 +155,32 @@ export default function ReceiptsScreen() {
 
   const sourceItemMap = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
 
+  useEffect(() => {
+    setPantryPickMode(false);
+    setSelectedPantryIds(new Set());
+  }, [selectedReceipt?.id]);
+
+  async function handleConfirmAddToPantry() {
+    if (!householdId || !userId || selectedPantryIds.size === 0) return;
+    setAddingToPantry(true);
+    try {
+      const toAdd = (selectedReceipt?.receipt_items ?? []).filter((i) => selectedPantryIds.has(i.id));
+      await Promise.all(
+        toAdd.map(async (ri) => {
+          const { item } = await addItemWithQueue(householdId, ri.name, 'pantry', userId);
+          upsertItem(item);
+        }),
+      );
+      setPantryPickMode(false);
+      setSelectedPantryIds(new Set());
+      Alert.alert('Added to Pantry', `${toAdd.length} ${toAdd.length === 1 ? 'item' : 'items'} added.`);
+    } catch {
+      Alert.alert('Could not add items', 'Please try again.');
+    } finally {
+      setAddingToPantry(false);
+    }
+  }
+
   if (loading) {
     return (
       <View style={[styles.centered, { backgroundColor: colors.background }]}>
@@ -172,10 +202,10 @@ export default function ReceiptsScreen() {
           disabled={!canUpload}
         >
           {uploading
-            ? <ActivityIndicator color="#FFFFFF" size="small" />
+            ? <ActivityIndicator color={colors.surface} size="small" />
             : (
               <>
-                <Ionicons name="scan-outline" size={18} color="#FFFFFF" />
+                <Ionicons name="scan-outline" size={18} color={colors.surface} />
                 <Text style={styles.addBtnText}>Scan</Text>
               </>
             )}
@@ -360,25 +390,50 @@ export default function ReceiptsScreen() {
 
           {selectedReceipt?.receipt_items && selectedReceipt.receipt_items.length > 0 ? (
             <ScrollView style={styles.modalList} showsVerticalScrollIndicator={false}>
-              {selectedReceipt.receipt_items.map((item, idx) => (
-                <View key={item.id} style={[styles.modalItem, idx > 0 && styles.modalItemBorder]}>
-                  <View style={styles.modalItemLeft}>
-                    <Text style={styles.modalItemName}>{item.name}</Text>
-                    {item.quantity > 1 && (
-                      <Text style={styles.modalItemQty}>× {item.quantity}</Text>
-                    )}
-                    {item.matched_item_id && (
-                      <View style={styles.matchedPill}>
-                        <Ionicons name="checkmark-circle" size={11} color={colors.success} />
-                        <Text style={styles.matchedText}>In pantry</Text>
+              {pantryPickMode && (
+                <Text style={styles.pickModeHint}>Select items to add to your pantry:</Text>
+              )}
+              {selectedReceipt.receipt_items
+                .filter((item) => !pantryPickMode || !item.matched_item_id)
+                .map((item, idx, arr) => {
+                  const isSelected = selectedPantryIds.has(item.id);
+                  return (
+                    <Pressable
+                      key={item.id}
+                      style={[styles.modalItem, idx > 0 && styles.modalItemBorder]}
+                      onPress={pantryPickMode && !item.matched_item_id ? () => {
+                        setSelectedPantryIds((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(item.id)) next.delete(item.id);
+                          else next.add(item.id);
+                          return next;
+                        });
+                      } : undefined}
+                      disabled={!pantryPickMode || !!item.matched_item_id}
+                    >
+                      {pantryPickMode && (
+                        <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+                          {isSelected && <Ionicons name="checkmark" size={12} color={colors.surface} />}
+                        </View>
+                      )}
+                      <View style={styles.modalItemLeft}>
+                        <Text style={styles.modalItemName}>{item.name}</Text>
+                        {item.quantity > 1 && (
+                          <Text style={styles.modalItemQty}>× {item.quantity}</Text>
+                        )}
+                        {item.matched_item_id && (
+                          <View style={styles.matchedPill}>
+                            <Ionicons name="checkmark-circle" size={11} color={colors.success} />
+                            <Text style={styles.matchedText}>In pantry</Text>
+                          </View>
+                        )}
                       </View>
-                    )}
-                  </View>
-                  {item.total_price != null && (
-                    <Text style={styles.modalItemPrice}>${item.total_price.toFixed(2)}</Text>
-                  )}
-                </View>
-              ))}
+                      {!pantryPickMode && item.total_price != null && (
+                        <Text style={styles.modalItemPrice}>${item.total_price.toFixed(2)}</Text>
+                      )}
+                    </Pressable>
+                  );
+                })}
             </ScrollView>
           ) : (
             <View style={styles.modalEmpty}>
@@ -393,9 +448,75 @@ export default function ReceiptsScreen() {
             </View>
           )}
 
-          <ScalePressable style={styles.modalCloseBtn} onPress={() => setSelectedReceipt(null)}>
-            <Text style={styles.modalCloseBtnText}>Close</Text>
-          </ScalePressable>
+          {pantryPickMode ? (
+            <View style={styles.modalActions}>
+              <ScalePressable
+                style={styles.modalCancelBtn}
+                onPress={() => { setPantryPickMode(false); setSelectedPantryIds(new Set()); }}
+              >
+                <Text style={styles.modalCancelBtnText}>Cancel</Text>
+              </ScalePressable>
+              <ScalePressable
+                style={[styles.modalConfirmBtn, (selectedPantryIds.size === 0 || addingToPantry) && styles.modalConfirmBtnDisabled]}
+                onPress={() => { void handleConfirmAddToPantry(); }}
+                disabled={selectedPantryIds.size === 0 || addingToPantry}
+              >
+                {addingToPantry
+                  ? <ActivityIndicator size="small" color={colors.surface} />
+                  : <Text style={styles.modalConfirmBtnText}>
+                      Add {selectedPantryIds.size > 0 ? selectedPantryIds.size : ''} to Pantry
+                    </Text>
+                }
+              </ScalePressable>
+            </View>
+          ) : (
+            <View style={styles.modalActions}>
+              {selectedReceipt?.status === 'done' && (selectedReceipt.receipt_items ?? []).some((i) => !i.matched_item_id) && (
+                <ScalePressable
+                  style={styles.modalAddPantryBtn}
+                  onPress={() => {
+                    const unmatched = (selectedReceipt.receipt_items ?? []).filter((i) => !i.matched_item_id);
+                    setSelectedPantryIds(new Set(unmatched.map((i) => i.id)));
+                    setPantryPickMode(true);
+                  }}
+                >
+                  <Ionicons name="nutrition-outline" size={16} color={colors.primary} />
+                  <Text style={styles.modalAddPantryBtnText}>Add to Pantry</Text>
+                </ScalePressable>
+              )}
+              <View style={styles.modalFooterRow}>
+                <ScalePressable
+                  style={styles.modalDeleteBtn}
+                  profile="chip"
+                  onPress={() => {
+                    if (!selectedReceipt) return;
+                    Alert.alert(
+                      'Delete Receipt',
+                      'This will permanently remove this receipt and its data.',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Delete', style: 'destructive',
+                          onPress: async () => {
+                            const id = selectedReceipt.id;
+                            setSelectedReceipt(null);
+                            await deleteReceipt(id).catch(() => {});
+                            setReceipts((prev) => prev.filter((r) => r.id !== id));
+                          },
+                        },
+                      ],
+                    );
+                  }}
+                >
+                  <Ionicons name="trash-outline" size={16} color={colors.danger} />
+                  <Text style={styles.modalDeleteBtnText}>Delete</Text>
+                </ScalePressable>
+                <ScalePressable style={styles.modalCloseBtn} onPress={() => setSelectedReceipt(null)}>
+                  <Text style={styles.modalCloseBtnText}>Close</Text>
+                </ScalePressable>
+              </View>
+            </View>
+          )}
         </View>
       </Modal>
     </SafeAreaView>
@@ -423,15 +544,15 @@ function makeStyles(colors: AppColors) {
       paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14,
     },
     headerLeft: { flex: 1, gap: 2 },
-    eyebrow: { fontSize: 12, color: colors.primary, fontFamily: fonts.bodySemiBold, textTransform: 'uppercase', letterSpacing: 0.5 },
-    headerTitle: { fontSize: 30, fontFamily: fonts.displayExtraBold, color: colors.ink },
+    eyebrow: { fontSize: 13, color: colors.primary, fontFamily: fonts.bodySemiBold },
+    headerTitle: { fontSize: 26, fontFamily: fonts.displayExtraBoldItalic, color: colors.ink, letterSpacing: 0 },
     addBtn: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
       gap: 6, backgroundColor: colors.primary, borderRadius: 999,
       paddingHorizontal: 14, paddingVertical: 10, minWidth: 82,
     },
     addBtnDisabled: { backgroundColor: colors.disabled },
-    addBtnText: { color: '#FFFFFF', fontSize: 15, fontFamily: fonts.bodySemiBold },
+    addBtnText: { color: colors.surface, fontSize: 15, fontFamily: fonts.bodySemiBold },
 
     // Budget card
     budgetCard: {
@@ -529,7 +650,7 @@ function makeStyles(colors: AppColors) {
       paddingHorizontal: 20, paddingVertical: 16,
       borderBottomWidth: 1, borderBottomColor: colors.border,
     },
-    modalStore: { fontSize: 20, fontFamily: fonts.display, color: colors.ink },
+    modalStore: { fontSize: 20, fontFamily: fonts.displayItalic, color: colors.ink },
     modalDate: { fontSize: 13, color: colors.muted, fontFamily: fonts.body, marginTop: 3 },
     modalTotal: { fontSize: 28, fontFamily: fonts.mono, color: colors.ink },
     modalList: { paddingHorizontal: 20, paddingTop: 8 },
@@ -543,10 +664,47 @@ function makeStyles(colors: AppColors) {
     matchedText: { fontSize: 11, color: colors.success, fontFamily: fonts.bodySemiBold },
     modalEmpty: { padding: 40, alignItems: 'center', gap: 12 },
     modalEmptyText: { fontSize: 15, color: colors.muted, fontFamily: fonts.body },
+    modalActions: { marginHorizontal: 20, marginTop: 12, gap: 8 },
+    modalFooterRow: { flexDirection: 'row', gap: 10 },
+    modalDeleteBtn: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+      gap: 6, paddingVertical: 15, borderRadius: radii.lg,
+      backgroundColor: colors.danger + '15',
+      borderWidth: 1, borderColor: colors.danger + '30',
+    },
+    modalDeleteBtnText: { fontSize: 15, fontFamily: fonts.bodySemiBold, color: colors.danger },
     modalCloseBtn: {
-      marginHorizontal: 20, marginTop: 16, paddingVertical: 15,
+      flex: 2, paddingVertical: 15,
       backgroundColor: colors.faint, borderRadius: radii.lg, alignItems: 'center',
     },
     modalCloseBtnText: { fontSize: 16, fontFamily: fonts.bodySemiBold, color: colors.ink },
+    modalAddPantryBtn: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+      gap: 8, paddingVertical: 14, borderRadius: radii.lg,
+      backgroundColor: colors.primarySoft,
+      borderWidth: 1, borderColor: colors.primary + '40',
+    },
+    modalAddPantryBtnText: { fontSize: 15, fontFamily: fonts.bodySemiBold, color: colors.primary },
+    pickModeHint: {
+      fontSize: 13, color: colors.muted, fontFamily: fonts.body,
+      paddingBottom: 10, paddingTop: 4,
+    },
+    checkbox: {
+      width: 22, height: 22, borderRadius: 6, borderWidth: 1.5,
+      borderColor: colors.border, alignItems: 'center', justifyContent: 'center',
+      flexShrink: 0,
+    },
+    checkboxSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
+    modalCancelBtn: {
+      paddingVertical: 14, borderRadius: radii.lg, alignItems: 'center',
+      backgroundColor: colors.faint,
+    },
+    modalCancelBtnText: { fontSize: 15, fontFamily: fonts.bodySemiBold, color: colors.muted },
+    modalConfirmBtn: {
+      paddingVertical: 14, borderRadius: radii.lg, alignItems: 'center',
+      backgroundColor: colors.primary,
+    },
+    modalConfirmBtnDisabled: { backgroundColor: colors.disabled },
+    modalConfirmBtnText: { fontSize: 15, fontFamily: fonts.bodySemiBold, color: colors.surface },
   });
 }

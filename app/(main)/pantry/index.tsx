@@ -116,6 +116,7 @@ export default function PantryScreen() {
   const storeTargetRefs = useRef<Record<string, any>>({});
 
 
+
   const load = useCallback(async () => {
     if (!householdId) { setItems([]); return; }
     let data = await fetchItems(householdId);
@@ -436,9 +437,16 @@ export default function PantryScreen() {
           <SyncStatusPill />
           {streak > 0 && (
             <View style={styles.statsRow}>
-              <View style={styles.streakPill}>
+              <ScalePressable
+                profile="chip"
+                style={styles.streakPill}
+                onPress={() => Alert.alert(
+                  `🔥 ${streak}-day streak!`,
+                  'You\'ve kept your pantry fully stocked for ' + streak + (streak === 1 ? ' day' : ' days') + ' in a row. Keep it up!',
+                )}
+              >
                 <Text style={styles.streakText}>🔥 {streak}</Text>
-              </View>
+              </ScalePressable>
             </View>
           )}
         </View>
@@ -526,32 +534,38 @@ export default function PantryScreen() {
       </View>
 
       <View style={styles.masterHeader}>
-        <View style={styles.masterTitleWrap}>
-          <Text style={styles.masterTitle}>{selectedStore ? selectedStore.name : 'My Groceries'}</Text>
-          {selectedStore && (
-            <Pressable hitSlop={8} onPress={() => { void hapticSelection(); setSelectedStoreId(null); }}>
-              <Text style={styles.masterReset}>All groceries</Text>
-            </Pressable>
-          )}
+        <Text style={styles.masterTitle} numberOfLines={1}>
+          {selectedStore ? selectedStore.name : 'My Groceries'}
+        </Text>
+        <View style={styles.sortRow}>
+          {(['alpha', 'category', 'store'] as SortMode[]).map((mode) => {
+            const active = sortMode === mode;
+            return (
+              <Pressable
+                key={mode}
+                hitSlop={6}
+                style={[styles.sortPill, active && styles.sortPillActive]}
+                onPress={() => { void hapticSelection(); setSortMode(mode); }}
+              >
+                {mode !== 'alpha' && <Ionicons name={sortIcons[mode]} size={12} color={active ? colors.primary : colors.muted} />}
+                <Text style={[styles.sortPillText, active && styles.sortPillTextActive]}>{sortLabels[mode]}</Text>
+              </Pressable>
+            );
+          })}
+          <Pressable
+            hitSlop={6}
+            style={styles.addChip}
+            onPress={() => {
+              void hapticSelection();
+              if (!canAdd) { Alert.alert('Still loading', 'Please try again in a moment.'); return; }
+              setShowAdd(true);
+            }}
+            disabled={!canAdd}
+          >
+            <Ionicons name="add" size={12} color={colors.muted} />
+            <Text style={styles.addChipText}>Add</Text>
+          </Pressable>
         </View>
-        <Text style={styles.masterCount}>{filtered.length}</Text>
-      </View>
-
-      {/* Sort toggle */}
-      <View style={styles.sortRow}>
-        {(['alpha', 'category', 'store'] as SortMode[]).map((mode) => {
-          const active = sortMode === mode;
-          return (
-            <Pressable
-              key={mode}
-              style={[styles.sortPill, active && styles.sortPillActive]}
-              onPress={() => { void hapticSelection(); setSortMode(mode); }}
-            >
-              <Ionicons name={sortIcons[mode]} size={12} color={active ? colors.primary : colors.muted} />
-              <Text style={[styles.sortPillText, active && styles.sortPillTextActive]}>{sortLabels[mode]}</Text>
-            </Pressable>
-          );
-        })}
       </View>
     </>
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -644,28 +658,6 @@ export default function PantryScreen() {
         scrollEventThrottle={16}
       />
 
-      <View style={styles.fabStack} pointerEvents="box-none">
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Add grocery"
-          style={({ pressed }) => [
-            styles.fab,
-            !canAdd && styles.fabDisabled,
-            pressed && canAdd && styles.fabPressed,
-          ]}
-          onPress={() => {
-            void hapticSelection();
-            if (!canAdd) {
-              Alert.alert('Still loading', 'Please try again in a moment.');
-              return;
-            }
-            setShowAdd(true);
-          }}
-          disabled={!canAdd}
-        >
-          <Ionicons name="add" size={24} color="#FFFFFF" />
-        </Pressable>
-      </View>
 
       {showAdd && household?.id && (
         <AddItemModal
@@ -745,15 +737,15 @@ function makeStyles(colors: AppColors) {
       borderRadius: 999, paddingHorizontal: 16, paddingVertical: 8,
       backgroundColor: colors.primary,
     },
-    notifEnableText: { fontSize: 13, color: '#FFFFFF', fontFamily: fonts.bodySemiBold },
+    notifEnableText: { fontSize: 13, color: colors.surface, fontFamily: fonts.bodySemiBold },
 
     header: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
       paddingHorizontal: 4,
-      paddingTop: 16,
-      paddingBottom: 14,
+      paddingTop: 12,
+      paddingBottom: 12,
     },
     headerLeft: { flex: 1, gap: 2, paddingRight: 12 },
     headerStats: { flexDirection: 'column', alignItems: 'flex-end', gap: 6 },
@@ -792,7 +784,7 @@ function makeStyles(colors: AppColors) {
     searchActionPressed: { opacity: 0.75, transform: [{ scale: 0.96 }] },
     searchActionDisabled: { backgroundColor: colors.faint },
 
-    storeSection: { marginBottom: 20, marginHorizontal: -16 },
+    storeSection: { marginBottom: 14, marginHorizontal: -16 },
     storeSectionHeader: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -857,28 +849,24 @@ function makeStyles(colors: AppColors) {
     },
     emptyStoreText: { fontSize: 14, fontFamily: fonts.bodyMedium, color: colors.muted },
     masterHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      marginBottom: 10,
+      flexDirection: 'column',
+      alignItems: 'flex-start',
+      gap: 12,
+      marginBottom: 14,
     },
-    masterTitleWrap: { flex: 1, gap: 3 },
-    masterTitle: { fontSize: 24, fontFamily: fonts.displayExtraBoldItalic, color: colors.ink, letterSpacing: 0 },
-    masterReset: { fontSize: 13, fontFamily: fonts.bodySemiBold, color: colors.primary },
-    masterCount: { fontSize: 14, fontFamily: fonts.monoMedium, color: colors.muted, fontVariant: ['tabular-nums'] },
+    masterTitle: { fontSize: 22, fontFamily: fonts.displayExtraBoldItalic, color: colors.ink, letterSpacing: 0 },
 
     // Sort toggle
     sortRow: {
       flexDirection: 'row',
       gap: 6,
-      marginBottom: 14,
     },
     sortPill: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 5,
       paddingHorizontal: 12,
-      paddingVertical: 6,
+      paddingVertical: 9,
       borderRadius: 999,
       backgroundColor: colors.surface,
       borderWidth: 1,
@@ -890,6 +878,18 @@ function makeStyles(colors: AppColors) {
     },
     sortPillText: { fontSize: 12, fontFamily: fonts.bodySemiBold, color: colors.muted },
     sortPillTextActive: { color: colors.primary },
+    addChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 12,
+      paddingVertical: 9,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    addChipText: { fontSize: 12, fontFamily: fonts.bodySemiBold, color: colors.muted },
 
     // Section headers
     needsAttentionHeader: {
@@ -1063,7 +1063,7 @@ function makeStyles(colors: AppColors) {
     },
     filterPillEmoji: { fontSize: 14 },
     filterPillText: { fontSize: 13, fontFamily: fonts.bodySemiBold, color: colors.ink },
-    filterPillTextActive: { color: '#FFFFFF' },
+    filterPillTextActive: { color: colors.surface },
     filterPillCount: {
       fontSize: 12,
       fontFamily: fonts.monoMedium,
@@ -1123,7 +1123,7 @@ function makeStyles(colors: AppColors) {
       paddingHorizontal: 14,
       paddingVertical: 8,
     },
-    gotItText: { color: '#FFFFFF', fontSize: 13, fontFamily: fonts.bodySemiBold },
+    gotItText: { color: colors.surface, fontSize: 13, fontFamily: fonts.bodySemiBold },
 
     listSectionHeader: {
       flexDirection: 'row',
@@ -1145,26 +1145,6 @@ function makeStyles(colors: AppColors) {
     },
     lowBadgeText: { fontSize: 11, color: colors.warning, fontFamily: fonts.bodySemiBold },
 
-    fabStack: {
-      position: 'absolute',
-      right: 20,
-      bottom: 98,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    fab: {
-      width: 46,
-      height: 46,
-      borderRadius: 23,
-      backgroundColor: colors.primary,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderWidth: 1,
-      borderColor: colors.primary,
-      boxShadow: `0 6px 14px ${colors.primary}55`,
-    },
-    fabPressed: { opacity: 0.9, transform: [{ scale: 0.94 }] },
-    fabDisabled: { backgroundColor: colors.disabled, borderColor: colors.disabled },
     empty: {
       paddingTop: 48,
       alignItems: 'center',

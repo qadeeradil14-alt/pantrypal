@@ -67,7 +67,15 @@ Deno.serve(async (req) => {
     if (downloadError || !imageData) throw new Error('Failed to download image');
 
     const arrayBuffer = await imageData.arrayBuffer();
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+    // btoa(String.fromCharCode(...largeUint8Array)) throws "Maximum call stack size exceeded"
+    // for iPhone photos (1-3MB). Convert in 8KB chunks instead.
+    const uint8 = new Uint8Array(arrayBuffer);
+    let binary = '';
+    const chunkSize = 8192;
+    for (let i = 0; i < uint8.length; i += chunkSize) {
+      binary += String.fromCharCode(...uint8.subarray(i, i + chunkSize));
+    }
+    const base64 = btoa(binary);
     const mimeType = imageUrl.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg';
 
     // Call OpenAI GPT-4o vision

@@ -62,6 +62,11 @@ export async function uploadReceipt(
   return receipt as Receipt;
 }
 
+export async function deleteReceipt(receiptId: string): Promise<void> {
+  const { error } = await supabase.from('receipts').delete().eq('id', receiptId);
+  if (error) throw error;
+}
+
 export async function fetchReceipts(householdId: string): Promise<Receipt[]> {
   const { data, error } = await supabase
     .from('receipts')
