@@ -84,7 +84,7 @@ export default function SettingsScreen() {
   async function handleCopyCode() {
     if (!household?.inviteCode || !inviteDeepLink) return;
     void hapticSuccess();
-    const textToCopy = `Join me on Stokit! 🏠\n\n1️⃣ Download the app: ${TESTFLIGHT_URL}\n2️⃣ Tap to join my household: ${inviteDeepLink}`;
+    const textToCopy = `Hey! Join my household on Stokit 🏠\n\nSTEP 1 — Install the app via TestFlight (tap this link on your iPhone):\n${TESTFLIGHT_URL}\n\nSTEP 2 — Once Stokit is installed, tap this to join my household:\n${inviteDeepLink}\n\n⚠️ Do NOT enter anything into TestFlight itself — just install the app from there, then use the link above to join.`;
     try {
       await Clipboard.setStringAsync(textToCopy);
       setCodeCopied(true);
@@ -99,7 +99,7 @@ export default function SettingsScreen() {
     try {
       void hapticSelection();
       await Share.share({
-        message: `Join my household on Stokit! 🏠\n\nWe track our pantry, grocery list, and spending together.\n\n1️⃣ Download the app:\n${TESTFLIGHT_URL}\n\n2️⃣ Then tap this to join my household:\n${inviteDeepLink}\n\nOr enter code manually: ${household.inviteCode}`,
+        message: `Hey! Join my household on Stokit 🏠\n\nSTEP 1 — Install the app (tap this link on your iPhone):\n${TESTFLIGHT_URL}\n\nSTEP 2 — Once Stokit is installed, tap this to join my household:\n${inviteDeepLink}\n\n⚠️ Do NOT enter anything into TestFlight — just install Stokit from there, then tap the Step 2 link above.`,
         url: TESTFLIGHT_URL,
       });
     } catch (e: any) {
