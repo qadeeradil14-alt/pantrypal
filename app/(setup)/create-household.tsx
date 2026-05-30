@@ -69,7 +69,7 @@ export default function CreateHouseholdScreen() {
 
         <View style={styles.actions}>
           <TouchableOpacity style={styles.primaryBtn} onPress={handleShare} activeOpacity={0.85}>
-            <Ionicons name="share-outline" size={18} color="#FFFFFF" />
+            <Ionicons name="share-outline" size={18} color={colors.onPrimary} />
             <Text style={styles.primaryBtnText}>Share invite code</Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -119,7 +119,7 @@ export default function CreateHouseholdScreen() {
         onPress={handleCreate}
         disabled={loading}
       >
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Create household</Text>}
+        {loading ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={styles.primaryBtnText}>Create household</Text>}
       </TouchableOpacity>
     </KeyboardAvoidingView>
   );
@@ -140,9 +140,14 @@ function makeStyles(colors: AppColors) {
     errorBox: { backgroundColor: colors.dangerSoft, borderRadius: 12, padding: 12, marginBottom: 16 },
     errorText: { color: colors.danger, fontSize: 14, lineHeight: 20 },
     input: {
-      borderWidth: 1, borderColor: colors.border, borderRadius: 14,
-      paddingHorizontal: 16, paddingVertical: 14, fontSize: 16,
-      marginBottom: 12, color: colors.ink, backgroundColor: colors.surface,
+      borderRadius: 14,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      fontSize: 16,
+      marginBottom: 12,
+      color: colors.ink,
+      backgroundColor: colors.faint,
+      fontFamily: fonts.body,
     },
     primaryBtn: {
       backgroundColor: colors.primary, borderRadius: 14,
@@ -150,7 +155,7 @@ function makeStyles(colors: AppColors) {
       flexDirection: 'row', justifyContent: 'center', gap: 8,
     },
     btnDisabled: { backgroundColor: colors.disabled },
-    primaryBtnText: { color: '#FFFFFF', fontSize: 17, fontFamily: fonts.bodySemiBold },
+    primaryBtnText: { color: colors.onPrimary, fontSize: 17, fontFamily: fonts.bodySemiBold },
     secondaryBtn: { paddingVertical: 14, alignItems: 'center' },
     secondaryBtnText: { color: colors.primary, fontSize: 16, fontFamily: fonts.bodyMedium },
     successHero: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
@@ -160,9 +165,11 @@ function makeStyles(colors: AppColors) {
       alignItems: 'center', justifyContent: 'center', marginBottom: 8,
     },
     codeCard: {
-      backgroundColor: colors.surface, borderRadius: 20, padding: 28,
-      alignItems: 'center', marginBottom: 32,
-      borderWidth: 1, borderColor: colors.border,
+      backgroundColor: colors.faint,
+      borderRadius: 20,
+      padding: 28,
+      alignItems: 'center',
+      marginBottom: 32,
     },
     codeLabel: { fontSize: 12, color: colors.muted, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1, fontFamily: fonts.bodySemiBold },
     codeValue: { fontSize: 38, fontFamily: fonts.mono, color: colors.ink, letterSpacing: 8 },

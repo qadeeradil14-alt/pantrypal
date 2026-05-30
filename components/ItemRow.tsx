@@ -194,8 +194,6 @@ function makeStyles(colors: AppColors) {
       paddingHorizontal: 14,
       paddingVertical: 14,
       gap: 12,
-      borderWidth: 1,
-      borderColor: colors.border,
     },
     emoji: { fontSize: 24 },
     content: { flex: 1, gap: 3 },

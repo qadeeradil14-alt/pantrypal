@@ -1,43 +1,34 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useMemo, useState, useCallback } from 'react';
 import {
-  Animated,
-  Modal,
+  Modal, View, Text, Animated, StyleSheet,
   Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../hooks/useTheme';
-import { fonts, type AppColors } from '../constants/theme';
-import StoreLogo from './StoreLogo';
+import { makeSheetStyles } from '../constants/sheetStyles';
 import { getItemEmoji } from '../constants/itemEmojis';
+import { hapticSelection } from '../lib/haptics';
 import type { Item } from '../lib/items';
-import type { Store } from '../lib/stores';
 
 interface Props {
-  item: Item;
-  stores: Store[];
+  item: Item | null;
   visible: boolean;
-  onClose: () => void;
-  onEdit?: () => void;
-  onAssignStore: (storeId: string | null) => void;
+  onEdit: () => void;
   onDelete: () => void;
+  onAssignStores: () => void;
+  onClose: () => void;
 }
 
 export default function ItemActionSheet({
-  item,
-  stores,
-  visible,
-  onClose,
-  onEdit,
-  onAssignStore,
-  onDelete,
+  item, visible, onEdit, onDelete, onAssignStores, onClose,
 }: Props) {
   const { colors } = useTheme();
-  const slideAnim = useRef(new Animated.Value(500)).current;
-  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const insets = useSafeAreaInsets();
+  const sheetStyles = useMemo(() => makeSheetStyles(colors), [colors]);
+
+  const slideAnim = useRef(new Animated.Value(300)).current;
+  const backdropAnim = useRef(new Animated.Value(0)).current;
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -47,362 +38,128 @@ export default function ItemActionSheet({
         Animated.spring(slideAnim, {
           toValue: 0,
           useNativeDriver: true,
-          damping: 22,
-          mass: 0.85,
-          stiffness: 220,
+          damping: 24,
+          mass: 0.9,
+          stiffness: 280,
         }),
-        Animated.timing(fadeAnim, {
+        Animated.timing(backdropAnim, {
           toValue: 1,
-          duration: 180,
+          duration: 200,
           useNativeDriver: true,
         }),
       ]).start();
     } else {
       Animated.parallel([
         Animated.timing(slideAnim, {
-          toValue: 500,
-          duration: 240,
+          toValue: 300,
+          duration: 220,
           useNativeDriver: true,
         }),
-        Animated.timing(fadeAnim, {
+        Animated.timing(backdropAnim, {
           toValue: 0,
-          duration: 200,
+          duration: 160,
           useNativeDriver: true,
         }),
       ]).start(() => setMounted(false));
     }
-  }, [visible, slideAnim, fadeAnim]);
-
-  const closeWithAnimation = useCallback((afterClose?: () => void) => {
-    Animated.parallel([
-      Animated.timing(slideAnim, {
-        toValue: 500,
-        duration: 220,
-        useNativeDriver: true,
-      }),
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 180,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      onClose();
-      afterClose?.();
-    });
-  }, [fadeAnim, onClose, slideAnim]);
+  }, [visible, slideAnim, backdropAnim]);
 
   const handleClose = useCallback(() => {
-    closeWithAnimation();
-  }, [closeWithAnimation]);
+    void hapticSelection();
+    onClose();
+  }, [onClose]);
 
-  const handleDelete = () => {
-    closeWithAnimation(onDelete);
-  };
+  if (!mounted && !visible) return null;
+  if (!item) return null;
 
-  const handleAssign = (storeId: string | null) => {
-    closeWithAnimation(() => onAssignStore(storeId));
-  };
-
-  const handleEdit = () => {
-    closeWithAnimation(() => onEdit?.());
-  };
-
-  const assignedStore = stores.find((s) => s.id === item.preferred_store_id);
   const emoji = getItemEmoji(item.name, item.category ?? '');
-  const styles = useMemo(() => makeStyles(colors), [colors]);
-
-  if (!mounted) return null;
 
   return (
-    <Modal transparent animationType="none" visible={mounted} onRequestClose={handleClose}>
-      {/* Backdrop */}
-      <Animated.View style={[styles.backdrop, { opacity: fadeAnim }]}>
+    <Modal
+      transparent
+      animationType="none"
+      visible={mounted}
+      onRequestClose={handleClose}
+      statusBarTranslucent
+    >
+      <Animated.View style={[sheetStyles.backdrop, { opacity: backdropAnim }]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
       </Animated.View>
 
-      {/* Sheet */}
       <Animated.View
-        style={[styles.sheet, { transform: [{ translateY: slideAnim }] }]}
-        pointerEvents="box-none"
+        style={[
+          sheetStyles.sheet,
+          {
+            paddingBottom: insets.bottom + 8,
+            transform: [{ translateY: slideAnim }],
+          },
+        ]}
       >
-        {/* Handle */}
-        <View style={styles.handle} />
+        <View style={sheetStyles.handle} />
 
-        {/* Item header */}
-        <View style={styles.itemHeader}>
-          <View style={styles.itemEmojiWrap}>
-            <Text style={styles.itemEmoji}>{emoji}</Text>
+        <View style={sheetStyles.header}>
+          <View style={sheetStyles.headerEmoji}>
+            <Text style={sheetStyles.headerEmojiText}>{emoji}</Text>
           </View>
-          <View style={styles.itemInfo}>
-            <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
-            <Text style={styles.itemSub} numberOfLines={1}>
-              {assignedStore ? `Assigned to ${assignedStore.name}` : 'No store assigned'}
+          <View style={sheetStyles.headerText}>
+            <Text style={sheetStyles.headerTitle} numberOfLines={1}>
+              {item.name}
             </Text>
+            {item.category ? (
+              <Text style={sheetStyles.headerSubtitle}>{item.category}</Text>
+            ) : null}
           </View>
-          <Pressable onPress={handleClose} hitSlop={10} style={styles.closeBtn}>
-            <Ionicons name="close" size={18} color={colors.muted} />
+          <Pressable hitSlop={12} onPress={handleClose} style={sheetStyles.closeBtn}>
+            <Ionicons name="close" size={22} color={colors.muted} />
           </Pressable>
         </View>
 
-        {/* Store row */}
-        {stores.length > 0 && (
-          <View style={styles.storeSection}>
-            <Text style={styles.storeSectionLabel}>Assign store</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.storeRow}
-            >
-              {stores.map((store) => {
-                const active = store.id === item.preferred_store_id;
-                return (
-                  <Pressable
-                    key={store.id}
-                    style={[styles.storeCard, active && styles.storeCardActive]}
-                    onPress={() => handleAssign(active ? null : store.id)}
-                  >
-                    <StoreLogo
-                      name={store.name}
-                      size={38}
-                      domain={store.brand_domain}
-                      logoUrl={store.logo_url}
-                    />
-                    <Text
-                      style={[styles.storeCardName, active && styles.storeCardNameActive]}
-                      numberOfLines={1}
-                    >
-                      {store.name}
-                    </Text>
-                    {active && (
-                      <View style={styles.storeCheck}>
-                        <Ionicons name="checkmark" size={10} color={colors.primary} />
-                      </View>
-                    )}
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </View>
-        )}
-
-        {/* Divider */}
-        <View style={styles.divider} />
-
-        {/* Actions */}
-        <View style={styles.actions}>
-          {onEdit && (
-            <Pressable
-              style={({ pressed }) => [styles.actionRow, pressed && styles.actionRowPressed]}
-              onPress={handleEdit}
-            >
-              <View style={[styles.actionIcon, { backgroundColor: colors.primarySoft }]}>
-                <Ionicons name="pencil-outline" size={17} color={colors.primary} />
-              </View>
-              <Text style={styles.actionLabel}>Edit grocery</Text>
-              <Ionicons name="chevron-forward" size={16} color={colors.muted} />
-            </Pressable>
-          )}
-
-          {item.preferred_store_id && (
-            <Pressable
-              style={({ pressed }) => [styles.actionRow, pressed && styles.actionRowPressed]}
-              onPress={() => handleAssign(null)}
-            >
-              <View style={[styles.actionIcon, { backgroundColor: colors.faint }]}>
-                <Ionicons name="storefront-outline" size={17} color={colors.muted} />
-              </View>
-              <Text style={styles.actionLabel}>Clear store assignment</Text>
-              <Ionicons name="chevron-forward" size={16} color={colors.muted} />
-            </Pressable>
-          )}
+        <View style={sheetStyles.group}>
+          <Pressable
+            style={({ pressed }) => [
+              sheetStyles.actionRow,
+              sheetStyles.groupRowDivider,
+              pressed && sheetStyles.groupRowPressed,
+            ]}
+            onPress={() => { void hapticSelection(); onAssignStores(); }}
+          >
+            <View style={[sheetStyles.actionIcon, { backgroundColor: colors.primarySoft }]}>
+              <Ionicons name="storefront-outline" size={16} color={colors.primary} />
+            </View>
+            <Text style={sheetStyles.actionLabel}>Assign stores</Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.faint} />
+          </Pressable>
 
           <Pressable
-            style={({ pressed }) => [styles.actionRow, pressed && styles.actionRowPressed]}
-            onPress={handleDelete}
+            style={({ pressed }) => [
+              sheetStyles.actionRow,
+              sheetStyles.groupRowDivider,
+              pressed && sheetStyles.groupRowPressed,
+            ]}
+            onPress={() => { void hapticSelection(); onEdit(); }}
           >
-            <View style={[styles.actionIcon, { backgroundColor: colors.dangerSoft }]}>
-              <Ionicons name="trash-outline" size={17} color={colors.danger} />
+            <View style={[sheetStyles.actionIcon, { backgroundColor: colors.faint }]}>
+              <Ionicons name="pencil-outline" size={16} color={colors.ink} />
             </View>
-            <Text style={[styles.actionLabel, styles.actionLabelDanger]}>Delete item</Text>
-            <Ionicons name="chevron-forward" size={16} color={colors.danger + '88'} />
+            <Text style={sheetStyles.actionLabel}>Edit item</Text>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              sheetStyles.actionRow,
+              pressed && sheetStyles.groupRowPressed,
+            ]}
+            onPress={() => { void hapticSelection(); onDelete(); }}
+          >
+            <View style={[sheetStyles.actionIcon, { backgroundColor: colors.dangerSoft }]}>
+              <Ionicons name="trash-outline" size={16} color={colors.danger} />
+            </View>
+            <Text style={[sheetStyles.actionLabel, sheetStyles.actionLabelDanger]}>
+              Delete item
+            </Text>
           </Pressable>
         </View>
-
-        {/* Safe-area spacer */}
-        <View style={styles.safeBottom} />
       </Animated.View>
     </Modal>
   );
-}
-
-function makeStyles(colors: AppColors) {
-  return StyleSheet.create({
-    backdrop: {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(0,0,0,0.42)',
-    },
-    sheet: {
-      position: 'absolute',
-      bottom: 0,
-      left: 0,
-      right: 0,
-      backgroundColor: colors.background,
-      borderTopLeftRadius: 28,
-      borderTopRightRadius: 28,
-      paddingTop: 10,
-      // Subtle shadow
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: -4 },
-      shadowOpacity: 0.12,
-      shadowRadius: 16,
-      elevation: 20,
-    },
-    handle: {
-      width: 36,
-      height: 4,
-      borderRadius: 2,
-      backgroundColor: colors.border,
-      alignSelf: 'center',
-      marginBottom: 18,
-    },
-
-    itemHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: 20,
-      marginBottom: 20,
-      gap: 12,
-    },
-    itemEmojiWrap: {
-      width: 48,
-      height: 48,
-      borderRadius: 24,
-      backgroundColor: colors.surface,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    itemEmoji: { fontSize: 26 },
-    itemInfo: { flex: 1 },
-    itemName: {
-      fontSize: 18,
-      fontFamily: fonts.displayExtraBoldItalic,
-      color: colors.ink,
-      letterSpacing: 0,
-    },
-    itemSub: {
-      fontSize: 13,
-      fontFamily: fonts.bodyMedium,
-      color: colors.muted,
-      marginTop: 2,
-    },
-    closeBtn: {
-      width: 30,
-      height: 30,
-      borderRadius: 15,
-      backgroundColor: colors.faint,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-
-    storeSection: {
-      marginBottom: 16,
-    },
-    storeSectionLabel: {
-      fontSize: 12,
-      fontFamily: fonts.bodySemiBold,
-      color: colors.muted,
-      letterSpacing: 0.6,
-      textTransform: 'uppercase',
-      paddingHorizontal: 20,
-      marginBottom: 10,
-    },
-    storeRow: {
-      flexDirection: 'row',
-      gap: 8,
-      paddingHorizontal: 20,
-      paddingRight: 20,
-    },
-    storeCard: {
-      alignItems: 'center',
-      gap: 4,
-      paddingHorizontal: 10,
-      paddingVertical: 12,
-      borderRadius: 16,
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
-      minWidth: 76,
-      position: 'relative',
-    },
-    storeCardActive: {
-      borderColor: colors.primary,
-      backgroundColor: colors.primarySoft,
-    },
-    storeCardName: {
-      fontSize: 10,
-      fontFamily: fonts.body,
-      color: colors.muted,
-      textAlign: 'center',
-      maxWidth: 72,
-    },
-    storeCardNameActive: { color: colors.primary },
-    storeCheck: {
-      position: 'absolute',
-      top: 5,
-      right: 5,
-      width: 16,
-      height: 16,
-      borderRadius: 8,
-      backgroundColor: colors.primarySoft,
-      borderWidth: 1,
-      borderColor: colors.primary,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-
-    divider: {
-      height: 1,
-      backgroundColor: colors.border,
-      marginHorizontal: 20,
-      marginBottom: 8,
-    },
-
-    actions: {
-      paddingHorizontal: 12,
-      gap: 2,
-    },
-    actionRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12,
-      paddingHorizontal: 8,
-      paddingVertical: 12,
-      borderRadius: 14,
-    },
-    actionRowPressed: {
-      backgroundColor: colors.faint,
-    },
-    actionIcon: {
-      width: 34,
-      height: 34,
-      borderRadius: 10,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    actionLabel: {
-      flex: 1,
-      fontSize: 15,
-      fontFamily: fonts.bodyMedium,
-      color: colors.ink,
-    },
-    actionLabelDanger: { color: colors.danger },
-
-    safeBottom: { height: 28 },
-  });
 }

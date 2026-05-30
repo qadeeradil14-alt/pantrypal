@@ -4,9 +4,11 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuthStore } from '../store/auth';
 import { useHouseholdStore } from '../store/household';
 import { joinHousehold } from '../lib/households';
+import { useTheme } from '../hooks/useTheme';
 
 // Handles deep links: pantrypal://join?code=ABC123
 export default function JoinDeepLink() {
+  const { colors } = useTheme();
   const router = useRouter();
   const { code } = useLocalSearchParams<{ code: string }>();
   const { session } = useAuthStore();
@@ -30,8 +32,8 @@ export default function JoinDeepLink() {
   }, [code, session]);
 
   return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
-      <ActivityIndicator size="large" color="#16A34A" />
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+      <ActivityIndicator size="large" color={colors.primary} />
     </View>
   );
 }

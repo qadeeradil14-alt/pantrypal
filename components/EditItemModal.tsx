@@ -17,6 +17,7 @@ import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../l
 import type { Item } from '../lib/items';
 import { useTheme } from '../hooks/useTheme';
 import { fonts, type AppColors } from '../constants/theme';
+import { makeSheetStyles } from '../constants/sheetStyles';
 import ScalePressable from './ScalePressable';
 import StoreLogo from './StoreLogo';
 
@@ -52,7 +53,8 @@ export default function EditItemModal({ item, onClose }: Props) {
   const [error, setError] = useState('');
   const nameInputRef = useRef<TextInput>(null);
 
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const sheetStyles = useMemo(() => makeSheetStyles(colors), [colors]);
+  const styles = useMemo(() => makeStyles(colors, sheetStyles), [colors, sheetStyles]);
 
   const isDirty = name.trim() !== item.name || storeId !== item.preferred_store_id || expiresAt !== formatDateForInput(item.expires_at);
 
@@ -149,19 +151,19 @@ export default function EditItemModal({ item, onClose }: Props) {
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onClose}>
       <KeyboardAvoidingView
-        style={styles.overlay}
+        style={sheetStyles.formOverlay}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
+        <View style={sheetStyles.formSheet}>
+          <View style={sheetStyles.handle} />
 
           <View style={styles.sheetHeader}>
-            <View>
-              <Text style={styles.title}>Edit item</Text>
-              <Text style={styles.subtitle}>Rename or assign a store.</Text>
-            </View>
-            <View style={styles.sheetIcon}>
+            <View style={sheetStyles.headerEmoji}>
               <Ionicons name="create-outline" size={18} color={colors.primary} />
+            </View>
+            <View style={sheetStyles.headerText}>
+              <Text style={sheetStyles.headerTitle}>Edit item</Text>
+              <Text style={sheetStyles.headerSubtitle}>Rename or assign a store.</Text>
             </View>
           </View>
 
@@ -225,7 +227,7 @@ export default function EditItemModal({ item, onClose }: Props) {
             disabled={!isDirty || saving}
           >
             {saving
-              ? <ActivityIndicator color={colors.surface} />
+              ? <ActivityIndicator color={colors.onPrimary} />
               : <Text style={styles.saveBtnText}>Save changes</Text>}
           </ScalePressable>
 
@@ -254,60 +256,27 @@ export default function EditItemModal({ item, onClose }: Props) {
   );
 }
 
-function makeStyles(colors: AppColors) {
+function makeStyles(colors: AppColors, sheetStyles: ReturnType<typeof makeSheetStyles>) {
   return StyleSheet.create({
-    overlay: {
-      flex: 1,
-      justifyContent: 'flex-end',
-      backgroundColor: 'rgba(15, 10, 8, 0.5)',
-    },
-    sheet: {
-      backgroundColor: colors.surface,
-      borderTopLeftRadius: 28,
-      borderTopRightRadius: 28,
-      padding: 24,
-      paddingBottom: 40,
-    },
-    handle: {
-      width: 36, height: 4,
-      backgroundColor: colors.faint,
-      borderRadius: 2,
-      alignSelf: 'center',
-      marginBottom: 18,
-    },
     sheetHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
+      ...sheetStyles.header,
       marginBottom: 18,
     },
-    sheetIcon: {
-      width: 44, height: 44, borderRadius: 22,
-      alignItems: 'center', justifyContent: 'center',
-      backgroundColor: colors.primarySoft,
-    },
-    title: { fontSize: 22, fontFamily: fonts.displayItalic, color: colors.ink, marginBottom: 2, letterSpacing: 0 },
-    subtitle: { fontSize: 14, color: colors.muted, fontFamily: fonts.body },
     errorBox: { backgroundColor: colors.dangerSoft, borderRadius: 12, padding: 12, marginBottom: 12 },
     errorText: { color: colors.danger, fontSize: 14, lineHeight: 20 },
     input: {
-      borderWidth: 1,
-      borderColor: colors.border,
       borderRadius: 14,
       paddingHorizontal: 16,
       paddingVertical: 14,
       fontSize: 17,
       marginBottom: 20,
       color: colors.ink,
-      backgroundColor: colors.background,
+      backgroundColor: colors.faint,
       fontFamily: fonts.bodySemiBold,
     },
     label: {
-      fontSize: 12, fontFamily: fonts.bodySemiBold,
-      color: colors.muted,
-      textTransform: 'uppercase',
+      ...sheetStyles.sectionLabel,
       marginBottom: 10,
-      letterSpacing: 0.5,
     },
     expiryInput: { marginBottom: 20, fontFamily: fonts.mono, fontSize: 15 },
     storeGrid: {
@@ -321,23 +290,18 @@ function makeStyles(colors: AppColors) {
       alignItems: 'center',
       justifyContent: 'center',
       flexDirection: 'column',
-      paddingVertical: 12,
+      paddingVertical: 10,
       paddingHorizontal: 6,
-      borderRadius: 14,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.background,
-      gap: 6,
+      borderRadius: 12,
+      backgroundColor: colors.faint,
+      gap: 5,
     },
-    storeBtnActive: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+    storeBtnActive: { backgroundColor: colors.primarySoft },
     storeLabel: { fontSize: 12, color: colors.muted, fontFamily: fonts.bodySemiBold, textAlign: 'center' },
     storeLabelActive: { color: colors.primary },
     noStoresBox: {
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderStyle: 'dashed',
       borderRadius: 14,
-      backgroundColor: colors.background,
+      backgroundColor: colors.faint,
       padding: 14,
       marginBottom: 24,
     },
@@ -348,13 +312,12 @@ function makeStyles(colors: AppColors) {
       alignItems: 'center', marginBottom: 10,
     },
     saveBtnDisabled: { backgroundColor: colors.disabled },
-    saveBtnText: { color: colors.surface, fontSize: 17, fontFamily: fonts.bodySemiBold },
+    saveBtnText: { color: colors.onPrimary, fontSize: 17, fontFamily: fonts.bodySemiBold },
     deleteBtn: {
       flexDirection: 'row', gap: 8,
       alignItems: 'center', justifyContent: 'center',
       paddingVertical: 14, borderRadius: 14,
       backgroundColor: colors.dangerSoft,
-      borderWidth: 1, borderColor: colors.danger + '33',
       marginBottom: 8,
     },
     deleteBtnText: { color: colors.danger, fontSize: 15, fontFamily: fonts.bodySemiBold },

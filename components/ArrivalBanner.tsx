@@ -86,8 +86,6 @@ function makeStyles(_colors: AppColors) {
       zIndex: 999,
       borderRadius: 18,
       backgroundColor: BANNER_BG,
-      borderWidth: 1,
-      borderColor: BANNER_COPPER + '40',
       boxShadow: '0 6px 18px rgba(0, 0, 0, 0.28)',
     },
     inner: {

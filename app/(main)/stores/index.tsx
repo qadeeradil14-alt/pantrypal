@@ -18,6 +18,7 @@ import {
 import { startGeofencing, stopGeofencing } from '../../../lib/geofencing';
 import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../../../lib/haptics';
 import { fonts, radii, shadow } from '../../../constants/theme';
+import { makeSheetStyles } from '../../../constants/sheetStyles';
 import type { AppColors } from '../../../constants/theme';
 import { useTheme } from '../../../hooks/useTheme';
 import ScalePressable from '../../../components/ScalePressable';
@@ -155,7 +156,7 @@ export default function StoresScreen() {
           }}
           disabled={!canManageStores}
         >
-          <Ionicons name="add" size={20} color={colors.surface} />
+          <Ionicons name="add" size={20} color={colors.onPrimary} />
           <Text style={styles.addBtnText}>Add</Text>
         </ScalePressable>
       </View>
@@ -280,6 +281,7 @@ function AddStoreModal({
 
   const placeCardWidth = Math.min(320, Math.max(236, width - 112));
   const styles = useMemo(() => makeStyles(colors, placeCardWidth), [colors, placeCardWidth]);
+  const sheetStyles = useMemo(() => makeSheetStyles(colors), [colors]);
 
   const existingNames = useMemo(() => existingStores.map((s) => s.name.toLowerCase()), [existingStores]);
   const presets = PRESET_STORES.filter((p) => !existingNames.includes(p.toLowerCase()));
@@ -452,14 +454,14 @@ function AddStoreModal({
 
     return (
       <Modal visible animationType="slide" transparent onRequestClose={onClose}>
-        <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <KeyboardAvoidingView style={sheetStyles.formOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.mapSheet}>
-            <View style={styles.handle} />
+            <View style={sheetStyles.handle} />
             <View style={styles.mapHeader}>
               <StoreLogo name={mapQuery} size={36} domain={selectedBrand?.domain} logoUrl={selectedBrand?.logo_url} />
               <View style={{ flex: 1 }}>
-                <Text style={styles.sheetTitle} numberOfLines={1}>{mapQuery}</Text>
-                <Text style={styles.sheetSubtitle}>
+                <Text style={sheetStyles.headerTitle} numberOfLines={1}>{mapQuery}</Text>
+                <Text style={sheetStyles.headerSubtitle}>
                   {noResults ? 'Not found automatically — enter the address below.' : 'Tap a pin to select the right location.'}
                 </Text>
               </View>
@@ -501,7 +503,7 @@ function AddStoreModal({
                   disabled={!manualAddress.trim() || geocoding}
                 >
                   {geocoding
-                    ? <ActivityIndicator color={colors.surface} />
+                    ? <ActivityIndicator color={colors.onPrimary} />
                     : <Text style={styles.saveBtnText}>Look up address</Text>
                   }
                 </ScalePressable>
@@ -559,7 +561,7 @@ function AddStoreModal({
                   disabled={!selectedPlace || saving}
                 >
                   {saving
-                    ? <ActivityIndicator color={colors.surface} />
+                    ? <ActivityIndicator color={colors.onPrimary} />
                     : <Text style={styles.saveBtnText}>
                         {geocodedPlace ? 'Add store at this address' : 'Add selected location'}
                       </Text>
@@ -586,13 +588,13 @@ function AddStoreModal({
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onClose}>
       <KeyboardAvoidingView
-        style={styles.overlay}
+        style={sheetStyles.formOverlay}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
-          <Text style={styles.sheetTitle}>Add store</Text>
-          <Text style={styles.sheetSubtitle}>Save places your household shops often.</Text>
+        <View style={sheetStyles.formSheet}>
+          <View style={sheetStyles.handle} />
+          <Text style={sheetStyles.headerTitle}>Add store</Text>
+          <Text style={[sheetStyles.headerSubtitle, { marginBottom: 16 }]}>Save places your household shops often.</Text>
 
           {error ? <View style={styles.errorBox}><Text style={styles.error}>{error}</Text></View> : null}
 
@@ -705,7 +707,7 @@ function AddStoreModal({
             disabled={!name.trim() || saving}
           >
             {saving
-              ? <ActivityIndicator color={colors.surface} />
+              ? <ActivityIndicator color={colors.onPrimary} />
               : <Text style={styles.saveBtnText}>
                   {name.trim() && !address.trim() ? 'Add store & search nearby' : 'Add store'}
                 </Text>
@@ -745,12 +747,11 @@ function makeStyles(colors: AppColors, placeCardWidth = 210) {
       paddingHorizontal: 14, paddingVertical: 10,
     },
     addBtnDisabled: { backgroundColor: colors.disabled },
-    addBtnText: { color: colors.surface, fontSize: 15, fontFamily: fonts.bodySemiBold },
+    addBtnText: { color: colors.onPrimary, fontSize: 15, fontFamily: fonts.bodySemiBold },
     heroCard: {
       marginHorizontal: 16, marginBottom: 12, borderRadius: radii.lg,
       backgroundColor: colors.surface, padding: 16,
       flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-      borderWidth: 1, borderColor: colors.border, ...shadow,
     },
     heroNumber: { fontSize: 38, lineHeight: 42, fontFamily: fonts.monoMedium, color: colors.ink, fontVariant: ['tabular-nums'] },
     heroLabel: { fontSize: 14, color: colors.muted, fontFamily: fonts.bodySemiBold },
@@ -764,7 +765,6 @@ function makeStyles(colors: AppColors, placeCardWidth = 210) {
     separator: { height: 10 },
     row: {
       backgroundColor: colors.surface, borderRadius: radii.md, padding: 12,
-      borderWidth: 1, borderColor: colors.border,
       flexDirection: 'row', alignItems: 'center', gap: 12,
     },
     rowLeft: { flex: 1, gap: 3 },
@@ -780,18 +780,15 @@ function makeStyles(colors: AppColors, placeCardWidth = 210) {
     geoPillText: { fontSize: 12, color: colors.primary, fontFamily: fonts.bodySemiBold },
     deleteBtn: { padding: 4 },
     deleteBtnText: { color: colors.danger, fontSize: 13, fontFamily: fonts.bodySemiBold },
-    overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(2, 6, 23, 0.36)' },
-    sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 40, ...shadow },
     mapSheet: {
       backgroundColor: colors.surface,
-      borderTopLeftRadius: 28,
-      borderTopRightRadius: 28,
-      padding: 20,
-      paddingBottom: 34,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      paddingHorizontal: 20,
+      paddingTop: 10,
+      paddingBottom: 36,
       maxHeight: '86%',
-      ...shadow,
     },
-    handle: { width: 36, height: 4, backgroundColor: colors.faint, borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
     mapHeader: {
       flexDirection: 'row',
       alignItems: 'flex-start',
@@ -814,9 +811,7 @@ function makeStyles(colors: AppColors, placeCardWidth = 210) {
     mapLoading: {
       height: 280,
       borderRadius: 18,
-      backgroundColor: colors.background,
-      borderWidth: 1,
-      borderColor: colors.border,
+      backgroundColor: colors.faint,
       alignItems: 'center',
       justifyContent: 'center',
       gap: 10,
@@ -829,22 +824,17 @@ function makeStyles(colors: AppColors, placeCardWidth = 210) {
     },
     placeCard: {
       width: placeCardWidth,
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.background,
+      borderRadius: radii.md,
+      backgroundColor: colors.faint,
       padding: 12,
       gap: 4,
     },
     placeCardActive: {
-      borderColor: colors.primary,
       backgroundColor: colors.primarySoft,
     },
     placeName: { color: colors.ink, fontSize: 14, fontFamily: fonts.bodySemiBold },
     placeNameActive: { color: colors.primary },
     placeAddress: { color: colors.muted, fontSize: 12, fontFamily: fonts.bodyMedium, lineHeight: 17 },
-    sheetTitle: { fontSize: 22, fontFamily: fonts.displayItalic, color: colors.ink, marginBottom: 4, letterSpacing: 0 },
-    sheetSubtitle: { fontSize: 14, color: colors.muted, marginBottom: 18, fontFamily: fonts.body },
     errorBox: { backgroundColor: colors.dangerSoft, borderRadius: radii.sm, padding: 12, marginBottom: 12 },
     error: { color: colors.dangerText, fontSize: 14 },
     label: { fontSize: 12, fontFamily: fonts.bodySemiBold, color: colors.muted, textTransform: 'uppercase', marginBottom: 8 },
@@ -860,32 +850,35 @@ function makeStyles(colors: AppColors, placeCardWidth = 210) {
       paddingHorizontal: 12,
       paddingVertical: 8,
       marginRight: 8,
-      borderWidth: 1,
-      borderColor: colors.primarySoft,
     },
     presetChipText: { color: colors.primary, fontSize: 14, fontFamily: fonts.bodySemiBold },
-    input: { borderWidth: 1, borderColor: colors.border, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 15, fontSize: 16, marginBottom: 12, color: colors.ink, backgroundColor: colors.background, fontFamily: fonts.body },
+    input: {
+      borderRadius: radii.md,
+      paddingHorizontal: 16,
+      paddingVertical: 15,
+      fontSize: 16,
+      marginBottom: 12,
+      color: colors.ink,
+      backgroundColor: colors.faint,
+      fontFamily: fonts.body,
+    },
     brandResults: { maxHeight: 180, marginBottom: 12, gap: 8 },
     brandRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 10,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.background,
+      backgroundColor: colors.faint,
       borderRadius: 16,
       paddingHorizontal: 12,
       paddingVertical: 10,
     },
-    brandRowActive: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+    brandRowActive: { backgroundColor: colors.primarySoft },
     brandName: { flex: 1, color: colors.ink, fontSize: 15, fontFamily: fonts.bodySemiBold },
     brandNameActive: { color: colors.primary },
     selectedBrand: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 10,
-      borderWidth: 1,
-      borderColor: colors.primary,
       backgroundColor: colors.primarySoft,
       borderRadius: 16,
       paddingHorizontal: 12,
@@ -906,7 +899,7 @@ function makeStyles(colors: AppColors, placeCardWidth = 210) {
     addressHintText: { fontSize: 12, color: colors.primary, fontFamily: fonts.bodyMedium, flex: 1 },
     saveBtn: { backgroundColor: colors.primary, borderRadius: radii.md, paddingVertical: 16, alignItems: 'center', marginBottom: 10 },
     saveBtnDisabled: { backgroundColor: colors.disabled },
-    saveBtnText: { color: colors.surface, fontSize: 17, fontFamily: fonts.bodySemiBold },
+    saveBtnText: { color: colors.onPrimary, fontSize: 17, fontFamily: fonts.bodySemiBold },
     cancelBtn: { paddingVertical: 12, alignItems: 'center' },
     cancelText: { color: colors.muted, fontSize: 16, fontFamily: fonts.bodySemiBold },
 
@@ -941,14 +934,12 @@ function makeStyles(colors: AppColors, placeCardWidth = 210) {
       marginBottom: 4,
     },
     manualInput: {
-      borderWidth: 1,
-      borderColor: colors.border,
       borderRadius: 16,
       paddingHorizontal: 16,
       paddingVertical: 15,
       fontSize: 15,
       color: colors.ink,
-      backgroundColor: colors.background,
+      backgroundColor: colors.faint,
       fontFamily: fonts.body,
     },
     skipBtn: {

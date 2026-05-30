@@ -11,6 +11,7 @@ import { addStoreWithQueue, setItemStoreWithQueue, PRESET_STORES } from '../lib/
 import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../lib/haptics';
 import { useTheme } from '../hooks/useTheme';
 import { fonts, type AppColors } from '../constants/theme';
+import { makeSheetStyles } from '../constants/sheetStyles';
 import ScalePressable from './ScalePressable';
 import StoreLogo from './StoreLogo';
 import type { Item } from '../lib/items';
@@ -41,7 +42,8 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
   const ready = UUID_RE.test(householdId);
   const nameInputRef = useRef<TextInput>(null);
 
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const sheetStyles = useMemo(() => makeSheetStyles(colors), [colors]);
+  const styles = useMemo(() => makeStyles(colors, sheetStyles), [colors, sheetStyles]);
   const existingNames = useMemo(() => new Set(stores.map((s) => s.name.toLowerCase())), [stores]);
   const presetSuggestions = useMemo(
     () => PRESET_STORES.filter((p) => !existingNames.has(p.toLowerCase())).slice(0, 8),
@@ -137,19 +139,19 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onClose}>
       <KeyboardAvoidingView
-        style={styles.overlay}
+        style={sheetStyles.formOverlay}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
+        <View style={sheetStyles.formSheet}>
+          <View style={sheetStyles.handle} />
 
           <View style={styles.sheetHeader}>
-            <View>
-              <Text style={styles.title}>New grocery</Text>
-              <Text style={styles.subtitle}>Add it to My Groceries.</Text>
-            </View>
-            <View style={styles.sheetIcon}>
+            <View style={sheetStyles.headerEmoji}>
               <Ionicons name="add" size={20} color={colors.primary} />
+            </View>
+            <View style={sheetStyles.headerText}>
+              <Text style={sheetStyles.headerTitle}>New grocery</Text>
+              <Text style={sheetStyles.headerSubtitle}>Add it to My Groceries.</Text>
             </View>
           </View>
 
@@ -224,7 +226,7 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
                 disabled={!newStoreName.trim() || storeAdding}
               >
                 {storeAdding
-                  ? <ActivityIndicator size="small" color={colors.surface} />
+                  ? <ActivityIndicator size="small" color={colors.onPrimary} />
                   : <Text style={styles.newStoreAddText}>Add</Text>}
               </Pressable>
               <Pressable onPress={() => { setAddingStore(false); setNewStoreName(''); }} hitSlop={8}>
@@ -258,7 +260,7 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
             disabled={!ready || loading}
           >
             {loading
-              ? <ActivityIndicator color={colors.surface} />
+              ? <ActivityIndicator color={colors.onPrimary} />
               : <Text style={styles.addBtnText}>{storeId ? 'Add to store' : 'Add unassigned'}</Text>}
           </ScalePressable>
 
@@ -271,40 +273,12 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
   );
 }
 
-function makeStyles(colors: AppColors) {
+function makeStyles(colors: AppColors, sheetStyles: ReturnType<typeof makeSheetStyles>) {
   return StyleSheet.create({
-    overlay: {
-      flex: 1,
-      justifyContent: 'flex-end',
-      backgroundColor: 'rgba(15, 10, 8, 0.5)',
-    },
-    sheet: {
-      backgroundColor: colors.surface,
-      borderTopLeftRadius: 20,
-      borderTopRightRadius: 20,
-      padding: 24,
-      paddingBottom: 40,
-    },
-    handle: {
-      width: 36, height: 4,
-      backgroundColor: colors.faint,
-      borderRadius: 2,
-      alignSelf: 'center',
-      marginBottom: 18,
-    },
     sheetHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
+      ...sheetStyles.header,
       marginBottom: 18,
     },
-    sheetIcon: {
-      width: 46, height: 46, borderRadius: 23,
-      alignItems: 'center', justifyContent: 'center',
-      backgroundColor: colors.primarySoft,
-    },
-    title: { fontSize: 22, fontFamily: fonts.displayItalic, color: colors.ink, marginBottom: 4, letterSpacing: 0 },
-    subtitle: { fontSize: 14, color: colors.muted, fontFamily: fonts.body },
     errorBox: {
       backgroundColor: colors.dangerSoft,
       borderRadius: 12,
@@ -313,41 +287,44 @@ function makeStyles(colors: AppColors) {
     },
     errorText: { color: colors.danger, fontSize: 14, lineHeight: 20 },
     input: {
-      borderWidth: 1,
-      borderColor: colors.border,
       borderRadius: 14,
       paddingHorizontal: 16,
       paddingVertical: 14,
       fontSize: 17,
       marginBottom: 20,
       color: colors.ink,
-      backgroundColor: colors.background,
+      backgroundColor: colors.faint,
+      fontFamily: fonts.body,
     },
     label: {
-      fontSize: 12, fontFamily: fonts.bodySemiBold,
-      color: colors.muted,
-      textTransform: 'uppercase',
+      ...sheetStyles.sectionLabel,
       marginBottom: 10,
-      letterSpacing: 0.5,
     },
     chipScroll: { flexGrow: 0, marginBottom: 16 },
     chipRow: { flexDirection: 'row', gap: 8 },
     chip: {
-      borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8,
-      borderWidth: 1, borderColor: colors.border, backgroundColor: colors.background,
+      borderRadius: 999,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      backgroundColor: colors.faint,
     },
-    chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+    chipActive: { backgroundColor: colors.primary },
     chipText: { fontSize: 13, fontFamily: fonts.bodySemiBold, color: colors.muted },
-    chipTextActive: { color: colors.surface },
+    chipTextActive: { color: colors.onPrimary },
     chipAdd: { flexDirection: 'row', alignItems: 'center', gap: 4 },
     chipAddText: { fontSize: 13, fontFamily: fonts.bodySemiBold, color: colors.muted },
     newStoreRow: {
       flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8,
     },
     newStoreInput: {
-      flex: 1, borderWidth: 1, borderColor: colors.primary, borderRadius: 10,
-      paddingHorizontal: 12, paddingVertical: 9, fontSize: 14,
-      color: colors.ink, backgroundColor: colors.background, fontFamily: fonts.body,
+      flex: 1,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 9,
+      fontSize: 14,
+      color: colors.ink,
+      backgroundColor: colors.primarySoft,
+      fontFamily: fonts.body,
     },
     newStoreAdd: {
       backgroundColor: colors.primary, borderRadius: 10,
@@ -355,13 +332,13 @@ function makeStyles(colors: AppColors) {
       alignItems: 'center', justifyContent: 'center', minWidth: 48,
     },
     newStoreAddDisabled: { backgroundColor: colors.disabled },
-    newStoreAddText: { color: colors.surface, fontSize: 13, fontFamily: fonts.bodySemiBold },
+    newStoreAddText: { color: colors.onPrimary, fontSize: 13, fontFamily: fonts.bodySemiBold },
     newStoreCancelText: { fontSize: 13, fontFamily: fonts.bodySemiBold, color: colors.muted },
     presetScroll: { flexGrow: 0, marginBottom: 16 },
     presetRow: { gap: 8, flexDirection: 'row' },
     presetChip: {
       borderRadius: 999, paddingHorizontal: 11, paddingVertical: 6,
-      backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+      backgroundColor: colors.faint,
     },
     presetChipText: { fontSize: 12, fontFamily: fonts.bodySemiBold, color: colors.ink },
     addBtn: {
@@ -372,7 +349,7 @@ function makeStyles(colors: AppColors) {
       marginBottom: 10,
     },
     addBtnDisabled: { backgroundColor: colors.disabled },
-    addBtnText: { color: colors.surface, fontSize: 17, fontFamily: fonts.bodySemiBold },
+    addBtnText: { color: colors.onPrimary, fontSize: 17, fontFamily: fonts.bodySemiBold },
     cancelBtn: { paddingVertical: 14, alignItems: 'center' },
     cancelText: { color: colors.muted, fontSize: 16, fontFamily: fonts.bodySemiBold },
   });

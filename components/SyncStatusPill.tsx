@@ -47,15 +47,12 @@ function makeStyles(colors: AppColors) {
       paddingHorizontal: 10,
       paddingVertical: 5,
       borderRadius: 999,
-      borderWidth: 1,
     },
     pillSynced: {
       backgroundColor: colors.successSoft,
-      borderColor: colors.success + '33',
     },
     pillOffline: {
       backgroundColor: colors.warningSoft,
-      borderColor: colors.warning + '44',
     },
     dot: {
       width: 6,

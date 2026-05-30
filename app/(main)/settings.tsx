@@ -423,11 +423,10 @@ function makeStyles(colors: AppColors) {
       marginHorizontal: 16, marginBottom: 16, borderRadius: 20,
       backgroundColor: colors.surface, padding: 16,
       flexDirection: 'row', alignItems: 'center', gap: 14,
-      borderWidth: 1, borderColor: colors.border,
     },
     heroAvatar: {
       width: 52, height: 52, borderRadius: 26,
-      backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.primary + '30',
+      backgroundColor: colors.primarySoft,
       alignItems: 'center', justifyContent: 'center', flexShrink: 0,
     },
     heroInitials: { fontSize: 20, fontFamily: fonts.bodySemiBold, color: colors.primary },
@@ -442,13 +441,18 @@ function makeStyles(colors: AppColors) {
     },
     card: {
       backgroundColor: colors.surface, borderRadius: 16,
-      borderWidth: 1, borderColor: colors.border, overflow: 'hidden',
+      overflow: 'hidden',
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
     },
     row: {
       flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
       paddingHorizontal: 16, paddingVertical: 15, gap: 12,
     },
-    rowBorderTop: { borderTopWidth: 1, borderTopColor: colors.border },
+    rowBorderTop: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
     rowLabelWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     rowLabel: { fontSize: 15, color: colors.ink, fontFamily: fonts.bodyMedium },
     rowSubLabel: { fontSize: 12, color: colors.muted, fontFamily: fonts.body, marginTop: 1 },
@@ -457,7 +461,7 @@ function makeStyles(colors: AppColors) {
     rowCode: { fontSize: 16, color: colors.ink, fontFamily: fonts.mono, flexShrink: 1, textAlign: 'right', letterSpacing: 0.5 },
     shareBtn: {
       marginTop: 10, paddingVertical: 14, alignItems: 'center', justifyContent: 'center',
-      flexDirection: 'row', gap: 8, borderRadius: 16, borderWidth: 1, borderColor: colors.primary,
+      flexDirection: 'row', gap: 8, borderRadius: 16,
       backgroundColor: colors.primarySoft,
     },
     shareBtnText: { color: colors.primary, fontSize: 15, fontFamily: fonts.bodySemiBold },
@@ -465,7 +469,7 @@ function makeStyles(colors: AppColors) {
       marginHorizontal: 20, marginTop: 20,
       flexDirection: 'row', gap: 8, justifyContent: 'center',
       backgroundColor: colors.dangerSoft, borderRadius: 16,
-      paddingVertical: 16, alignItems: 'center', borderWidth: 1, borderColor: colors.danger + '33',
+      paddingVertical: 16, alignItems: 'center',
     },
     signOutText: { color: colors.danger, fontSize: 17, fontFamily: fonts.bodySemiBold },
     versionText: {

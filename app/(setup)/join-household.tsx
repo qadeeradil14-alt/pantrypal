@@ -9,7 +9,7 @@ import { joinHousehold } from '../../lib/households';
 import { useAuthStore } from '../../store/auth';
 import { useHouseholdStore } from '../../store/household';
 import { useTheme } from '../../hooks/useTheme';
-import type { AppColors } from '../../constants/theme';
+import { fonts, type AppColors } from '../../constants/theme';
 
 export default function JoinHouseholdScreen() {
   const { colors } = useTheme();
@@ -73,7 +73,7 @@ export default function JoinHouseholdScreen() {
       />
 
       <TouchableOpacity style={[styles.btn, loading && styles.btnDisabled]} onPress={handleJoin} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Join household</Text>}
+        {loading ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={styles.btnText}>Join household</Text>}
       </TouchableOpacity>
     </KeyboardAvoidingView>
   );
@@ -83,31 +83,40 @@ function makeStyles(colors: AppColors) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background, paddingHorizontal: 28, paddingTop: 60 },
     back: { marginBottom: 30, flexDirection: 'row', alignItems: 'center', gap: 4 },
-    backText: { color: colors.primary, fontSize: 16, fontWeight: '800' },
+    backText: { color: colors.primary, fontSize: 16, fontFamily: fonts.bodySemiBold },
     iconWrap: {
       width: 50, height: 50, borderRadius: 16,
       backgroundColor: colors.primarySoft,
       alignItems: 'center', justifyContent: 'center', marginBottom: 18,
     },
-    title: { fontSize: 32, fontWeight: '800', color: colors.ink, marginBottom: 8 },
-    subtitle: { fontSize: 16, color: colors.muted, fontWeight: '600', marginBottom: 28, lineHeight: 22 },
+    title: { fontSize: 32, fontFamily: fonts.displayExtraBold, color: colors.ink, marginBottom: 8 },
+    subtitle: { fontSize: 16, color: colors.muted, fontFamily: fonts.bodyMedium, marginBottom: 28, lineHeight: 22 },
     errorBox: { backgroundColor: colors.dangerSoft, borderRadius: 12, padding: 12, marginBottom: 16 },
     errorText: { color: colors.danger, fontSize: 14, lineHeight: 20 },
     input: {
-      borderWidth: 1, borderColor: colors.border, borderRadius: 14,
-      paddingHorizontal: 16, paddingVertical: 14, fontSize: 16,
-      marginBottom: 20, color: colors.ink, backgroundColor: colors.surface,
+      borderRadius: 14,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      fontSize: 16,
+      marginBottom: 20,
+      color: colors.ink,
+      backgroundColor: colors.faint,
     },
     codeInput: {
-      fontSize: 30, fontWeight: '800', letterSpacing: 10,
-      textAlign: 'center', paddingVertical: 22,
-      borderWidth: 2, borderColor: colors.primary,
+      fontSize: 30,
+      fontFamily: fonts.monoMedium,
+      letterSpacing: 10,
+      textAlign: 'center',
+      paddingVertical: 22,
+      borderRadius: 14,
+      backgroundColor: colors.primarySoft,
+      color: colors.ink,
     },
     btn: {
       backgroundColor: colors.primary, borderRadius: 14,
       paddingVertical: 16, alignItems: 'center',
     },
     btnDisabled: { backgroundColor: colors.disabled },
-    btnText: { color: '#FFFFFF', fontSize: 17, fontWeight: '800' },
+    btnText: { color: colors.onPrimary, fontSize: 17, fontFamily: fonts.bodySemiBold },
   });
 }

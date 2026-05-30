@@ -4,8 +4,10 @@ import { useRouter } from 'expo-router';
 import { getMyHousehold } from '../../lib/households';
 import { useAuthStore } from '../../store/auth';
 import { useHouseholdStore } from '../../store/household';
+import { useTheme } from '../../hooks/useTheme';
 
 export default function CheckScreen() {
+  const { colors } = useTheme();
   const router = useRouter();
   const { session } = useAuthStore();
   const { setHousehold } = useHouseholdStore();
@@ -38,8 +40,8 @@ export default function CheckScreen() {
   }, [session, router, setHousehold]);
 
   return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
-      <ActivityIndicator size="large" color="#16A34A" />
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+      <ActivityIndicator size="large" color={colors.primary} />
     </View>
   );
 }

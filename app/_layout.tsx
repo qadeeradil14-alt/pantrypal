@@ -10,6 +10,7 @@ import { wasIntentionalSignOut } from '../lib/auth';
 import { useAuthStore } from '../store/auth';
 import { defineGeofenceTask } from '../lib/geofencing';
 import { startMutationQueueWorker, flushMutationQueue } from '../lib/offlineQueue';
+import { lightColors } from '../constants/theme';
 
 // Register geofence background task at module load time (before any async code)
 defineGeofenceTask(() => {});
@@ -105,7 +106,7 @@ export default function RootLayout() {
   if (!fontsLoaded) {
     return (
       <View style={[styles.root, styles.splash]}>
-        <ActivityIndicator color="#D4874E" />
+        <ActivityIndicator color={lightColors.primary} />
       </View>
     );
   }
@@ -125,5 +126,5 @@ export default function RootLayout() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  splash: { justifyContent: 'center', alignItems: 'center', backgroundColor: '#131211' },
+  splash: { justifyContent: 'center', alignItems: 'center', backgroundColor: lightColors.background },
 });

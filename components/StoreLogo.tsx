@@ -294,8 +294,6 @@ function makeStyles(colors: AppColors, size: number, hasLogo: boolean) {
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: '#FFFFFF',
-      borderWidth: 1,
-      borderColor: colors.border,
       paddingHorizontal: Math.max(4, Math.round(size * 0.14)),
       paddingVertical: Math.max(3, Math.round(size * 0.12)),
       overflow: 'hidden',
@@ -311,8 +309,6 @@ function makeStyles(colors: AppColors, size: number, hasLogo: boolean) {
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: colors.primarySoft,
-      borderWidth: 1,
-      borderColor: colors.border,
     },
     initials: {
       color: colors.primary,

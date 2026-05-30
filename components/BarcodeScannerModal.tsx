@@ -263,7 +263,7 @@ export default function BarcodeScannerModal({ visible, onClose, onAddProduct, on
                   </ScalePressable>
                   <ScalePressable style={styles.primaryBtnSmall} onPress={handleAdd} disabled={saving || !!savedLabel}>
                     {saving
-                      ? <ActivityIndicator color="#FFFFFF" />
+                      ? <ActivityIndicator color={colors.onPrimary} />
                       : <Text style={styles.primaryBtnText}>{savedLabel ? 'Saved' : 'Add'}</Text>}
                   </ScalePressable>
                 </View>
@@ -320,7 +320,7 @@ function makeStyles(colors: AppColors) {
       paddingHorizontal: 16,
       paddingTop: 54,
       paddingBottom: 10,
-      backgroundColor: 'rgba(7, 14, 10, 0.72)',
+      backgroundColor: 'rgba(28, 24, 18, 0.78)',
     },
     topBarPressed: { opacity: 0.92 },
     closeBtn: {
@@ -329,9 +329,7 @@ function makeStyles(colors: AppColors) {
       borderRadius: 25,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: 'rgba(255, 255, 255, 0.16)',
-      borderWidth: 1,
-      borderColor: 'rgba(255, 255, 255, 0.22)',
+      backgroundColor: 'rgba(255, 255, 255, 0.14)',
     },
     closeSpacer: {
       width: 50,
@@ -346,8 +344,6 @@ function makeStyles(colors: AppColors) {
       padding: 22,
       borderRadius: 22,
       backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
       gap: 12,
       alignItems: 'center',
     },
@@ -437,8 +433,6 @@ function makeStyles(colors: AppColors) {
       backgroundColor: colors.surface,
       borderTopLeftRadius: 28,
       borderTopRightRadius: 28,
-      borderWidth: 1,
-      borderColor: colors.border,
       gap: 14,
     },
     lookupRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
@@ -487,9 +481,7 @@ function makeStyles(colors: AppColors) {
       justifyContent: 'center',
       borderRadius: 14,
       paddingVertical: 14,
-      backgroundColor: colors.background,
-      borderWidth: 1,
-      borderColor: colors.border,
+      backgroundColor: colors.faint,
     },
     secondaryBtnText: { color: colors.ink, fontSize: 15, fontFamily: fonts.bodySemiBold },
     primaryBtn: {
@@ -509,6 +501,6 @@ function makeStyles(colors: AppColors) {
       paddingVertical: 14,
       backgroundColor: colors.primary,
     },
-    primaryBtnText: { color: colors.surface, fontSize: 15, fontFamily: fonts.bodySemiBold },
+    primaryBtnText: { color: colors.onPrimary, fontSize: 15, fontFamily: fonts.bodySemiBold },
   });
 }

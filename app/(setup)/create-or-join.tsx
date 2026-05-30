@@ -31,7 +31,7 @@ export default function CreateOrJoinScreen() {
           style={styles.primaryBtn}
           onPress={() => router.push('/(setup)/create-household')}
         >
-          <Ionicons name="add-circle-outline" size={20} color="#FFFFFF" />
+          <Ionicons name="add-circle-outline" size={20} color={colors.onPrimary} />
           <Text style={styles.primaryBtnText}>Create a household</Text>
         </ScalePressable>
         <ScalePressable
@@ -53,7 +53,6 @@ function makeStyles(colors: AppColors) {
     iconWrap: {
       width: 80, height: 80, borderRadius: 28,
       backgroundColor: colors.primarySoft,
-      borderWidth: 1, borderColor: colors.border,
       alignItems: 'center', justifyContent: 'center', marginBottom: 8,
     },
     kicker: { fontSize: 12, color: colors.primary, fontFamily: fonts.bodySemiBold, textTransform: 'uppercase', letterSpacing: 0.5 },
@@ -65,7 +64,7 @@ function makeStyles(colors: AppColors) {
       paddingVertical: 16, alignItems: 'center',
       flexDirection: 'row', justifyContent: 'center', gap: 8,
     },
-    primaryBtnText: { color: '#FFFFFF', fontSize: 17, fontFamily: fonts.bodySemiBold },
+    primaryBtnText: { color: colors.onPrimary, fontSize: 17, fontFamily: fonts.bodySemiBold },
     secondaryBtn: { paddingVertical: 14, alignItems: 'center' },
     secondaryBtnText: { color: colors.muted, fontSize: 16, fontFamily: fonts.bodyMedium },
   });

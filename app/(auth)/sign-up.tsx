@@ -91,7 +91,7 @@ export default function SignUpScreen() {
           {resendSuccess ? <View style={styles.successBox}><Text style={styles.successText}>Sent! Check your inbox (and spam folder).</Text></View> : null}
 
           <TouchableOpacity style={[styles.btn, resending && styles.btnDisabled]} onPress={handleResend} disabled={resending}>
-            {resending ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Resend confirmation email</Text>}
+            {resending ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={styles.btnText}>Resend confirmation email</Text>}
           </TouchableOpacity>
 
           <TouchableOpacity onPress={() => router.replace('/(auth)/sign-in')}>
@@ -142,7 +142,7 @@ export default function SignUpScreen() {
       />
 
       <TouchableOpacity style={styles.btn} onPress={handleSignUp} disabled={loading}>
-        {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.btnText}>Create account</Text>}
+        {loading ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={styles.btnText}>Create account</Text>}
       </TouchableOpacity>
 
       <TouchableOpacity onPress={() => router.push('/(auth)/sign-in')}>
@@ -169,16 +169,21 @@ function makeStyles(colors: AppColors) {
     successBox: { backgroundColor: colors.primarySoft, borderRadius: 12, padding: 12, marginBottom: 16, width: '100%' },
     successText: { color: colors.primaryDeep, fontSize: 14, textAlign: 'center' },
     input: {
-      borderWidth: 1, borderColor: colors.border, borderRadius: 14,
-      paddingHorizontal: 16, paddingVertical: 14, fontSize: 16,
-      marginBottom: 12, color: colors.ink, backgroundColor: colors.surface,
+      borderRadius: 14,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      fontSize: 16,
+      marginBottom: 12,
+      color: colors.ink,
+      backgroundColor: colors.faint,
+      fontFamily: fonts.body,
     },
     btn: {
       backgroundColor: colors.primary, borderRadius: 14,
       paddingVertical: 16, alignItems: 'center', marginTop: 8, marginBottom: 16,
     },
     btnDisabled: { backgroundColor: colors.disabled },
-    btnText: { color: '#FFFFFF', fontSize: 17, fontFamily: fonts.bodySemiBold },
+    btnText: { color: colors.onPrimary, fontSize: 17, fontFamily: fonts.bodySemiBold },
     link: { color: colors.primary, fontSize: 15, textAlign: 'center', fontFamily: fonts.bodySemiBold },
     verifyCard: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12, paddingHorizontal: 8 },
     emailHighlight: { fontFamily: fonts.bodySemiBold, color: colors.ink },

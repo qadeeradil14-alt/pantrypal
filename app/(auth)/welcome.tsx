@@ -119,13 +119,10 @@ function makeStyles(colors: AppColors) {
       width: 110,
       height: 110,
       borderRadius: 36,
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
+      backgroundColor: colors.faint,
       alignItems: 'center',
       justifyContent: 'center',
       marginBottom: 8,
-      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.06)',
     },
     emoji: { fontSize: 52 },
     slideTitle: {
@@ -166,7 +163,7 @@ function makeStyles(colors: AppColors) {
       paddingVertical: 17,
       alignItems: 'center',
     },
-    primaryBtnText: { color: '#FFFFFF', fontSize: 17, fontFamily: fonts.bodySemiBold },
+    primaryBtnText: { color: colors.onPrimary, fontSize: 17, fontFamily: fonts.bodySemiBold },
     secondaryBtn: { paddingVertical: 13, alignItems: 'center' },
     secondaryBtnText: { color: colors.muted, fontSize: 15, fontFamily: fonts.bodyMedium },
   });

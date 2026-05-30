@@ -99,7 +99,7 @@ export default function SignInScreen() {
         onPress={handleSignIn}
         disabled={loading}
       >
-        {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.btnText}>Sign in</Text>}
+        {loading ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={styles.btnText}>Sign in</Text>}
       </TouchableOpacity>
 
       <TouchableOpacity onPress={handleForgotPassword}>
@@ -131,15 +131,20 @@ function makeStyles(colors: AppColors) {
     },
     errorText: { color: colors.danger, fontSize: 14, lineHeight: 20 },
     input: {
-      borderWidth: 1, borderColor: colors.border, borderRadius: 14,
-      paddingHorizontal: 16, paddingVertical: 14, fontSize: 16,
-      marginBottom: 12, color: colors.ink, backgroundColor: colors.surface,
+      borderRadius: 14,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      fontSize: 16,
+      marginBottom: 12,
+      color: colors.ink,
+      backgroundColor: colors.faint,
+      fontFamily: fonts.body,
     },
     btn: {
       backgroundColor: colors.primary, borderRadius: 14,
       paddingVertical: 16, alignItems: 'center', marginTop: 8, marginBottom: 16,
     },
-    btnText: { color: '#FFFFFF', fontSize: 17, fontFamily: fonts.bodySemiBold },
+    btnText: { color: colors.onPrimary, fontSize: 17, fontFamily: fonts.bodySemiBold },
     forgotLink: { color: colors.muted, fontSize: 14, textAlign: 'center', marginBottom: 12, fontFamily: fonts.bodyMedium },
     link: { color: colors.primary, fontSize: 15, textAlign: 'center', fontFamily: fonts.bodySemiBold },
   });
