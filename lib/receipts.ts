@@ -1,3 +1,4 @@
+import * as FileSystem from 'expo-file-system';
 import { supabase } from './supabase';
 
 export interface Receipt {
@@ -61,17 +62,17 @@ export async function uploadReceipt(
   const ext = mimeType === 'application/pdf' ? 'pdf' : 'jpg';
   const path = `${householdId}/${Date.now()}.${ext}`;
 
-  // On React Native, `new File(uri)` from expo-file-system is NOT a web Blob
-  // and Supabase storage rejects it. The correct approach is to fetch() the
-  // local file:// URI — React Native's fetch handles file:// URIs natively
-  // and returns a real Blob that Supabase can upload.
-  const response = await fetch(uri);
-  if (!response.ok) throw new Error(`Could not read image file (status ${response.status})`);
-  const blob = await response.blob();
-
-  // Some pickers return 'image/heic' but the data is JPEG after expo compression.
-  // Always upload as the detected mime type; fall back to image/jpeg for unknowns.
+  // Hermes (React Native JS engine) does NOT support creating Blobs from
+  // ArrayBuffer/ArrayBufferView — so fetch(uri).blob() throws at runtime.
+  // Correct approach: read file as base64 via expo-file-system, then build
+  // a data URI and fetch() it — this produces a proper Blob on Hermes.
   const contentType = (mimeType && mimeType !== 'image/heic') ? mimeType : 'image/jpeg';
+  const base64 = await FileSystem.readAsStringAsync(uri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+  const dataUri = `data:${contentType};base64,${base64}`;
+  const dataResponse = await fetch(dataUri);
+  const blob = await dataResponse.blob();
 
   const { error: uploadError } = await supabase.storage
     .from('receipts')

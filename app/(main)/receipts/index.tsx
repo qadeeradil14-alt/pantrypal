@@ -18,6 +18,7 @@ import { uploadReceipt, fetchReceipts, deleteReceipt, addManualReceipt, deleteRe
 import { fetchRecentActivity, formatActivityTime, type ActivityEvent } from '../../../lib/activity';
 import { radii, shadow, fonts } from '../../../constants/theme';
 import ScalePressable from '../../../components/ScalePressable';
+import StoreLogo from '../../../components/StoreLogo';
 import type { AppColors } from '../../../constants/theme';
 import { useTheme } from '../../../hooks/useTheme';
 import EmptyState from '../../../components/EmptyState';
@@ -260,7 +261,7 @@ export default function ReceiptsScreen() {
               <View style={styles.budgetCardTop}>
                 <View>
                   <Text style={styles.budgetLabel}>This week</Text>
-                  <Text style={styles.budgetAmount}>${Math.round(spend.weeklyTotal)}</Text>
+                  <Text style={styles.budgetAmount}>${spend.weeklyTotal.toFixed(2)}</Text>
                   <Text style={styles.budgetSub}>of ${weeklyBudget} budget</Text>
                 </View>
                 <View style={[styles.budgetIconWrap, { backgroundColor: budgetColor + '18' }]}>
@@ -276,7 +277,7 @@ export default function ReceiptsScreen() {
               <Text style={[styles.budgetBarLabel, { color: budgetColor }]}>
                 {budgetProgress >= 1
                   ? 'Over budget'
-                  : `$${Math.round(weeklyBudget - spend.weeklyTotal)} remaining`}
+                  : `$${(weeklyBudget - spend.weeklyTotal).toFixed(2)} remaining`}
               </Text>
             </View>
 
@@ -293,7 +294,7 @@ export default function ReceiptsScreen() {
                           width: `${Math.round((s.total / maxStoreTotal) * 100)}%` as any,
                         }]} />
                       </View>
-                      <Text style={styles.storeAmount}>${Math.round(s.total)}</Text>
+                      <Text style={styles.storeAmount}>${s.total.toFixed(2)}</Text>
                     </View>
                   </View>
                 ))}
@@ -356,9 +357,7 @@ export default function ReceiptsScreen() {
             style={styles.card}
             onPress={() => setSelectedReceipt(item)}
           >
-            <View style={styles.cardIcon}>
-              <Ionicons name="receipt-outline" size={18} color={colors.primary} />
-            </View>
+            <StoreLogo name={item.store_name ?? 'Receipt'} size={40} />
             <View style={styles.cardBody}>
               <View style={styles.cardTop}>
                 <View style={styles.cardMeta}>
@@ -411,7 +410,8 @@ export default function ReceiptsScreen() {
         <View style={styles.modalSheet}>
           <View style={styles.modalHandle} />
           <View style={styles.modalHeader}>
-            <View>
+            <StoreLogo name={selectedReceipt?.store_name ?? 'Receipt'} size={48} />
+            <View style={{ flex: 1 }}>
               <Text style={styles.modalStore}>{selectedReceipt?.store_name ?? 'Unknown store'}</Text>
               <Text style={styles.modalDate}>
                 {selectedReceipt?.transaction_date
@@ -592,8 +592,13 @@ export default function ReceiptsScreen() {
         <KeyboardAvoidingView style={styles.qaOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.qaSheet}>
             <View style={styles.qaHandle} />
-            <Text style={styles.qaTitle}>Add Spend</Text>
-            <Text style={styles.qaSub}>No receipt? Log it manually in seconds.</Text>
+            <View style={styles.qaHeaderRow}>
+              <StoreLogo name={quickStore || 'Receipt'} size={44} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.qaTitle}>Add Spend</Text>
+                <Text style={styles.qaSub}>No receipt? Log it manually.</Text>
+              </View>
+            </View>
 
             <Text style={styles.qaLabel}>Store</Text>
             <View style={styles.qaStoreRow}>
@@ -860,8 +865,9 @@ function makeStyles(colors: AppColors) {
       gap: 10,
     },
     qaHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: 8 },
+    qaHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 4 },
     qaTitle: { fontSize: 22, fontFamily: fonts.displayItalic, color: colors.ink },
-    qaSub: { fontSize: 14, fontFamily: fonts.body, color: colors.muted, marginBottom: 4 },
+    qaSub: { fontSize: 13, fontFamily: fonts.body, color: colors.muted },
     qaLabel: { fontSize: 13, fontFamily: fonts.bodySemiBold, color: colors.muted, marginTop: 4 },
     qaStoreRow: {
       flexDirection: 'row', alignItems: 'center', gap: 10,

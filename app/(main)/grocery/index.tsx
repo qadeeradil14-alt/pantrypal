@@ -308,7 +308,7 @@ export default function GroceryScreen() {
                 backgroundColor: spendProgress > 0.9 ? colors.danger : spendProgress > 0.65 ? colors.warning : colors.success,
               }]} />
             </View>
-            <Text style={styles.budgetLabel}>${Math.round(weeklySpend)} / ${weeklyBudget}</Text>
+            <Text style={styles.budgetLabel}>${weeklySpend.toFixed(2)} / ${weeklyBudget}</Text>
           </View>
         </View>
       </View>
