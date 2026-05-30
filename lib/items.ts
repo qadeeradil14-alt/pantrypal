@@ -139,9 +139,10 @@ export async function addItemWithQueue(
   category: ItemCategory,
   userId: string,
   preferredStoreId: string | null = null,
+  expiresAt: string | null = null,
 ): Promise<{ queued: boolean; item: Item }> {
   try {
-    const item = await addItem(householdId, name, category, userId, preferredStoreId);
+    const item = await addItem(householdId, name, category, userId, preferredStoreId, expiresAt);
     return { queued: false, item };
   } catch (error) {
     if (!isTransientNetworkErrorForQueue(error)) throw error;
@@ -157,6 +158,7 @@ export async function addItem(
   category: ItemCategory,
   userId: string,
   preferredStoreId: string | null = null,
+  expiresAt: string | null = null,
 ): Promise<Item> {
   if (!isUuid(householdId)) {
     throw new Error('Household not loaded yet. Please close and reopen Add item.');
@@ -166,7 +168,14 @@ export async function addItem(
 
   const { data, error } = await supabase
     .from('items')
-    .insert({ household_id: householdId, name, category, added_by: addedBy, preferred_store_id: preferredStoreId })
+    .insert({
+      household_id: householdId,
+      name,
+      category,
+      added_by: addedBy,
+      preferred_store_id: preferredStoreId,
+      ...(expiresAt ? { expires_at: expiresAt } : {}),
+    })
     .select()
     .single();
 

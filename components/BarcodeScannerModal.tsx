@@ -5,6 +5,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult, type BarcodeType } from 'expo-camera';
@@ -21,8 +22,29 @@ const BARCODE_TYPES: BarcodeType[] = ['ean13', 'ean8', 'upc_a', 'upc_e', 'code12
 interface Props {
   visible: boolean;
   onClose: () => void;
-  onAddProduct: (product: BarcodeProduct) => Promise<'added' | 'updated'>;
+  onAddProduct: (product: BarcodeProduct, expiresAt: string | null) => Promise<'added' | 'updated'>;
   onManualAdd: () => void;
+}
+
+/** Estimate expiry date from the product's storage label. Returns YYYY-MM-DD. */
+function defaultExpiryDate(estimatedLifeLabel: string): string {
+  const now = new Date();
+  let days = 30;
+  if (estimatedLifeLabel.includes('7')) days = 7;
+  else if (estimatedLifeLabel.includes('3 month')) days = 90;
+  now.setDate(now.getDate() + days);
+  return now.toISOString().slice(0, 10);
+}
+
+/** Parse YYYY-MM-DD to ISO string, or null if empty/invalid. */
+function parseExpiry(s: string): string | null {
+  const trimmed = s.trim();
+  if (!trimmed) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    const d = new Date(trimmed + 'T12:00:00Z');
+    if (!isNaN(d.getTime())) return d.toISOString();
+  }
+  return null;
 }
 
 export default function BarcodeScannerModal({ visible, onClose, onAddProduct, onManualAdd }: Props) {
@@ -34,6 +56,7 @@ export default function BarcodeScannerModal({ visible, onClose, onAddProduct, on
   const [lastCode, setLastCode] = useState('');
   const [message, setMessage] = useState('');
   const [savedLabel, setSavedLabel] = useState('');
+  const [expiryInput, setExpiryInput] = useState('');
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -45,6 +68,7 @@ export default function BarcodeScannerModal({ visible, onClose, onAddProduct, on
     setLastCode('');
     setMessage('');
     setSavedLabel('');
+    setExpiryInput('');
   }, [visible]);
 
   const handleBarcodeScanned = useCallback(async (result: BarcodeScanningResult) => {
@@ -65,6 +89,8 @@ export default function BarcodeScannerModal({ visible, onClose, onAddProduct, on
         return;
       }
       setProduct(found);
+      setMessage(''); // clear any stale error from a previous scan
+      setExpiryInput(defaultExpiryDate(found.estimatedLifeLabel));
       void hapticSuccess();
     } catch (error: any) {
       setMessage(error?.message ?? 'Barcode lookup failed.');
@@ -81,7 +107,7 @@ export default function BarcodeScannerModal({ visible, onClose, onAddProduct, on
     setMessage('');
 
     try {
-      const result = await onAddProduct(product);
+      const result = await onAddProduct(product, parseExpiry(expiryInput));
       setSavedLabel(result === 'updated' ? 'Updated pantry' : 'Added to pantry');
       void hapticSuccess();
     } catch (error: any) {
@@ -97,6 +123,7 @@ export default function BarcodeScannerModal({ visible, onClose, onAddProduct, on
     setLastCode('');
     setMessage('');
     setSavedLabel('');
+    setExpiryInput('');
     void hapticSelection();
   }
 
@@ -112,6 +139,7 @@ export default function BarcodeScannerModal({ visible, onClose, onAddProduct, on
     setLastCode('');
     setMessage('');
     setSavedLabel('');
+    setExpiryInput('');
     void hapticSelection();
     onClose();
   }
@@ -183,10 +211,19 @@ export default function BarcodeScannerModal({ visible, onClose, onAddProduct, on
                     <Ionicons name="file-tray-outline" size={14} color={colors.primary} />
                     <Text style={styles.detailText}>{product.storageLabel}</Text>
                   </View>
-                  <View style={styles.detailPill}>
-                    <Ionicons name="time-outline" size={14} color={colors.primary} />
-                    <Text style={styles.detailText}>{product.estimatedLifeLabel}</Text>
-                  </View>
+                </View>
+                <View style={styles.expiryRow}>
+                  <Ionicons name="time-outline" size={14} color={colors.muted} />
+                  <Text style={styles.expiryLabel}>Expiry date</Text>
+                  <TextInput
+                    style={styles.expiryInput}
+                    value={expiryInput}
+                    onChangeText={setExpiryInput}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor={colors.placeholder}
+                    keyboardType="numbers-and-punctuation"
+                    maxLength={10}
+                  />
                 </View>
                 {savedLabel ? <Text style={styles.savedText}>{savedLabel}</Text> : null}
                 {message ? <Text style={styles.errorText}>{message}</Text> : null}
@@ -389,6 +426,16 @@ function makeStyles(colors: AppColors) {
     productName: { fontSize: 20, color: colors.ink, fontFamily: fonts.bodySemiBold, letterSpacing: 0 },
     productMeta: { fontSize: 13, color: colors.muted, fontFamily: fonts.bodyMedium },
     detailRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+    expiryRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      backgroundColor: colors.faint, borderRadius: 10,
+      paddingHorizontal: 12, paddingVertical: 8,
+    },
+    expiryLabel: { fontSize: 13, color: colors.muted, fontFamily: fonts.bodyMedium, flex: 1 },
+    expiryInput: {
+      fontSize: 14, color: colors.ink, fontFamily: fonts.bodySemiBold,
+      textAlign: 'right', minWidth: 100,
+    },
     detailPill: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -430,6 +477,6 @@ function makeStyles(colors: AppColors) {
       paddingVertical: 14,
       backgroundColor: colors.primary,
     },
-    primaryBtnText: { color: '#FFFFFF', fontSize: 15, fontFamily: fonts.bodySemiBold },
+    primaryBtnText: { color: colors.surface, fontSize: 15, fontFamily: fonts.bodySemiBold },
   });
 }

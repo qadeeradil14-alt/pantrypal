@@ -12,7 +12,7 @@ import { useHouseholdStore } from '../../../store/household';
 import { useAuthStore } from '../../../store/auth';
 import { useItemsStore } from '../../../store/items';
 import { useStoresStore } from '../../../store/stores';
-import { addItemWithQueue, ensureDefaultItems, fetchItems, markItemOkWithQueue } from '../../../lib/items';
+import { addItemWithQueue, ensureDefaultItems, fetchItems, markItemOkWithQueue, updateItemDetailsWithQueue } from '../../../lib/items';
 import { setItemStoreWithQueue, type Store } from '../../../lib/stores';
 import { recordLocalOverride } from '../../../lib/realtime';
 import { registerPushToken } from '../../../lib/notifications';
@@ -168,7 +168,7 @@ export default function PantryScreen() {
     setShowScanner(true);
   }, [canAdd]);
 
-  const handleAddScannedProduct = useCallback(async (product: BarcodeProduct): Promise<'added' | 'updated'> => {
+  const handleAddScannedProduct = useCallback(async (product: BarcodeProduct, expiresAt: string | null): Promise<'added' | 'updated'> => {
     if (!householdId) throw new Error('Household not ready.');
 
     const existing = items.find((item) => item.name.trim().toLowerCase() === product.name.trim().toLowerCase());
@@ -181,6 +181,11 @@ export default function PantryScreen() {
       updateItem(existing.id, { is_low: false, marked_low_by: null, got_it_by: session?.user.id ?? null });
       try {
         await markItemOkWithQueue(existing.id);
+        // Update expiry if provided
+        if (expiresAt) {
+          updateItem(existing.id, { expires_at: expiresAt });
+          await updateItemDetailsWithQueue(existing.id, { expires_at: expiresAt }, existing.updated_at ?? new Date().toISOString()).catch(() => {});
+        }
         return 'updated';
       } catch {
         updateItem(existing.id, previous);
@@ -188,7 +193,7 @@ export default function PantryScreen() {
       }
     }
 
-    const { item } = await addItemWithQueue(householdId, product.name, product.category, session?.user.id ?? '');
+    const { item } = await addItemWithQueue(householdId, product.name, product.category, session?.user.id ?? '', null, expiresAt);
     upsertItem(item);
     return 'added';
   }, [householdId, items, session?.user.id, updateItem, upsertItem]);
