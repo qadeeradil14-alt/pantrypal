@@ -1,4 +1,3 @@
-import { File } from 'expo-file-system';
 import { supabase } from './supabase';
 
 export interface Receipt {
@@ -62,11 +61,21 @@ export async function uploadReceipt(
   const ext = mimeType === 'application/pdf' ? 'pdf' : 'jpg';
   const path = `${householdId}/${Date.now()}.${ext}`;
 
-  const file = new File(uri);
+  // On React Native, `new File(uri)` from expo-file-system is NOT a web Blob
+  // and Supabase storage rejects it. The correct approach is to fetch() the
+  // local file:// URI — React Native's fetch handles file:// URIs natively
+  // and returns a real Blob that Supabase can upload.
+  const response = await fetch(uri);
+  if (!response.ok) throw new Error(`Could not read image file (status ${response.status})`);
+  const blob = await response.blob();
+
+  // Some pickers return 'image/heic' but the data is JPEG after expo compression.
+  // Always upload as the detected mime type; fall back to image/jpeg for unknowns.
+  const contentType = (mimeType && mimeType !== 'image/heic') ? mimeType : 'image/jpeg';
 
   const { error: uploadError } = await supabase.storage
     .from('receipts')
-    .upload(path, file as unknown as Blob, { contentType: mimeType, upsert: false });
+    .upload(path, blob, { contentType, upsert: false });
 
   if (uploadError) throw uploadError;
 
