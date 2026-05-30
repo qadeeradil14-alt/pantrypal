@@ -3,89 +3,169 @@ import { Image, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../hooks/useTheme';
 import { fonts, type AppColors } from '../constants/theme';
 
-// Clearbit logo CDN — returns clean 512×512 PNGs with transparent background
-// Used as the primary logo source for all known store domains.
-const LOGO_CLEARBIT: Record<string, string> = {
+// Master domain map — every entry gets Clearbit (512px PNG) + Google favicon fallback.
+// Keys are normalized (lowercase, punctuation stripped). Partial-match lookup handles
+// variants like "Walmart Supercenter" matching "walmart".
+const STORE_DOMAIN_MAP: Record<string, string> = {
+  // ── Supercenters & Mass Retail ──
   walmart: 'walmart.com',
   supercenter: 'walmart.com',
+  'walmart supercenter': 'walmart.com',
+  'walmart neighborhood': 'walmart.com',
+  target: 'target.com',
   costco: 'costco.com',
   'costco tire': 'costco.com',
   'costco wholesale': 'costco.com',
+  'costco gas': 'costco.com',
   'sams club': 'samsclub.com',
   'sam s club': 'samsclub.com',
   samclub: 'samsclub.com',
+  bjs: 'bjs.com',
+  'bj s': 'bjs.com',
+  'bj s wholesale': 'bjs.com',
+  // ── National Grocery Chains ──
   kroger: 'kroger.com',
   publix: 'publix.com',
-  target: 'target.com',
+  safeway: 'safeway.com',
+  albertsons: 'albertsons.com',
+  meijer: 'meijer.com',
+  heb: 'heb.com',
+  'h e b': 'heb.com',
+  wegmans: 'wegmans.com',
+  'food lion': 'foodlion.com',
+  'harris teeter': 'harristeeter.com',
+  'stop and shop': 'stopandshop.com',
+  'stop shop': 'stopandshop.com',
+  'giant food': 'giantfood.com',
+  giant: 'giantfood.com',
+  'giant eagle': 'gianteagle.com',
+  winco: 'wincofoods.com',
+  'lucky supermarket': 'luckysupermarkets.com',
+  'lucky stores': 'luckysupermarkets.com',
+  vons: 'vons.com',
+  ralphs: 'ralphs.com',
+  fry: 'fredmeyer.com',
+  'fred meyer': 'fredmeyer.com',
+  'king soopers': 'kingsoopers.com',
+  'smith s': 'smithsfoodanddrug.com',
+  smiths: 'smithsfoodanddrug.com',
+  'dillons': 'dillons.com',
+  'baker s': 'bakersplus.com',
+  'pay less': 'paylesssupermarkets.com',
+  'quality food': 'qfc.com',
+  qfc: 'qfc.com',
+  'pick n save': 'picknsave.com',
+  mariano: 'marianos.com',
+  'marianos': 'marianos.com',
+  // ── Discount Grocery ──
   aldi: 'aldi.us',
+  lidl: 'lidl.com',
+  'save a lot': 'savealot.com',
+  'grocery outlet': 'groceryoutlet.com',
+  'price chopper': 'pricechopper.com',
+  'market basket': 'marketbasket.com',
+  'winn dixie': 'winndixie.com',
+  'bi lo': 'bilo.com',
+  'food 4 less': 'food4less.com',
+  // ── Natural & Specialty ──
   'whole foods': 'wholefoodsmarket.com',
   'whole foods market': 'wholefoodsmarket.com',
   'trader joes': 'traderjoes.com',
   'trader joe s': 'traderjoes.com',
-  giant: 'giantfood.com',
-  'giant food': 'giantfood.com',
-  heb: 'heb.com',
-  'h e b': 'heb.com',
-  safeway: 'safeway.com',
-  meijer: 'meijer.com',
-  'stop shop': 'stopandshop.com',
-  'stop and shop': 'stopandshop.com',
-  wegmans: 'wegmans.com',
-  lidl: 'lidl.com',
+  sprouts: 'sprouts.com',
+  'natural grocers': 'naturalgrocers.com',
+  'fresh thyme': 'freshthyme.com',
+  'earth fare': 'earthfare.com',
+  'fresh market': 'thefreshmarket.com',
+  'lucky s': 'luckysupermarkets.com',
+  'bristol farms': 'bristolfarms.com',
+  'gelson': 'gelsons.com',
+  'metropolitan market': 'metropolitan-market.com',
+  // ── Asian & Ethnic ──
+  'h mart': 'hmart.com',
+  hmart: 'hmart.com',
+  mitsuwa: 'mitsuwa.com',
+  'seafood city': 'seafoodcity.com',
+  'ranch 99': '99ranch.com',
+  '99 ranch': '99ranch.com',
+  'hong kong': 'hkmarket.com',
+  'international food': 'internationalfoodmarket.com',
+  // ── Dollar & Discount ──
   'dollar general': 'dollargeneral.com',
   'family dollar': 'familydollar.com',
   'dollar tree': 'dollartree.com',
-  'food lion': 'foodlion.com',
-  sprouts: 'sprouts.com',
-  albertsons: 'albertsons.com',
-  winco: 'wincofoods.com',
-  'harris teeter': 'harristeeter.com',
-  'fresh market': 'thefreshmarket.com',
-  // Convenience & pharmacy
-  '7 eleven': '7-eleven.com',
-  '7eleven': '7-eleven.com',
+  'five below': 'fivebelow.com',
+  'big lots': 'biglots.com',
+  // ── Pharmacy & Convenience ──
   cvs: 'cvs.com',
   'cvs pharmacy': 'cvs.com',
   walgreens: 'walgreens.com',
   'rite aid': 'riteaid.com',
-  // Home improvement & hardware
-  'home depot': 'homedepot.com',
-  lowes: 'lowes.com',
-  'ace hardware': 'acehardware.com',
-  // Warehouse & wholesale
-  bjs: 'bjs.com',
-  "bj s wholesale": 'bjs.com',
-  // Specialty grocery
-  'fresh thyme': 'freshthyme.com',
-  'natural grocers': 'naturalgrocers.com',
-  'earth fare': 'earthfare.com',
-  'lucky supermarket': 'luckysupermarkets.com',
-  // Discount / dollar stores
-  'five below': 'fivebelow.com',
-  // Big box
-  'best buy': 'bestbuy.com',
-  // Gas station convenience
+  '7 eleven': '7-eleven.com',
+  '7eleven': '7-eleven.com',
   wawa: 'wawa.com',
   sheetz: 'sheetz.com',
-  'casey s': 'caseys.com',
   caseys: 'caseys.com',
+  'casey s': 'caseys.com',
   quicktrip: 'quiktrip.com',
   'quick trip': 'quiktrip.com',
-  // Ethnic & specialty
-  'h mart': 'hmart.com',
-  hmart: 'hmart.com',
-  'mitsuwa': 'mitsuwa.com',
-  'la curacao': 'lacuracao.com',
+  quiktrip: 'quiktrip.com',
+  circle: 'circlek.com',
+  'circle k': 'circlek.com',
+  'circle k store': 'circlek.com',
+  'ampm': 'ampm.com',
+  'am pm': 'ampm.com',
+  speedway: 'speedway.com',
+  sunoco: 'sunoco.com',
+  bp: 'bp.com',
+  shell: 'shell.com',
+  exxon: 'exxon.com',
+  chevron: 'chevron.com',
+  // ── Home Improvement ──
+  'home depot': 'homedepot.com',
+  lowes: 'lowes.com',
+  lowe: 'lowes.com',
+  'ace hardware': 'acehardware.com',
+  'true value': 'truevalue.com',
+  'harbor freight': 'harborfreight.com',
+  // ── Big Box Non-grocery ──
+  'best buy': 'bestbuy.com',
+  ikea: 'ikea.com',
+  'bed bath': 'bedbathandbeyond.com',
+  // ── Online / Delivery ──
+  amazon: 'amazon.com',
+  instacart: 'instacart.com',
+  doordash: 'doordash.com',
+  // ── Restaurant / Fast Food (for receipt scanning) ──
+  mcdonalds: 'mcdonalds.com',
+  'mc donalds': 'mcdonalds.com',
+  starbucks: 'starbucks.com',
+  subway: 'subway.com',
+  chipotle: 'chipotle.com',
+  'chick fil a': 'chick-fil-a.com',
+  'chickfila': 'chick-fil-a.com',
+  'taco bell': 'tacobell.com',
+  'burger king': 'bk.com',
+  wendys: 'wendys.com',
+  panera: 'panerabread.com',
+  'panera bread': 'panerabread.com',
+  dominos: 'dominos.com',
+  "domino s": 'dominos.com',
+  "papa john s": 'papajohns.com',
+  'papa johns': 'papajohns.com',
+  'pizza hut': 'pizzahut.com',
+  dunkin: 'dunkindonuts.com',
+  "dunkin donuts": 'dunkindonuts.com',
+  'krispy kreme': 'krispykreme.com',
 };
 
-// Wikipedia SVG-PNG fallbacks (960 px wide, very high quality)
+// Wikipedia SVG-PNG fallbacks — high quality for stores where Clearbit may fail
 const LOGO_IMAGES: Record<string, string> = {
   walmart: 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5b/Walmart_logo_%282025%29.svg/960px-Walmart_logo_%282025%29.svg.png',
   supercenter: 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5b/Walmart_logo_%282025%29.svg/960px-Walmart_logo_%282025%29.svg.png',
   costco: 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/59/Costco_Wholesale_logo_2010-10-26.svg/960px-Costco_Wholesale_logo_2010-10-26.svg.png',
   'sams club': 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/Sam%27s_Club_Logo_2020.svg/960px-Sam%27s_Club_Logo_2020.svg.png',
   'sam s club': 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/Sam%27s_Club_Logo_2020.svg/960px-Sam%27s_Club_Logo_2020.svg.png',
-  samclub: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/Sam%27s_Club_Logo_2020.svg/960px-Sam%27s_Club_Logo_2020.svg.png',
   kroger: 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/69/Kroger_logo_%281961-2019%29.svg/960px-Kroger_logo_%281961-2019%29.svg.png',
   'food lion': 'https://upload.wikimedia.org/wikipedia/commons/f/f8/Food_lion.png',
   publix: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/95/Publix_Logo.svg/960px-Publix_Logo.svg.png',
@@ -97,20 +177,11 @@ const LOGO_IMAGES: Record<string, string> = {
   'trader joe s': 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/Trader_Joes_Logo.svg/960px-Trader_Joes_Logo.svg.png',
   giant: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ac/Giant_Food_2008_logo.svg/960px-Giant_Food_2008_logo.svg.png',
   'giant food': 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ac/Giant_Food_2008_logo.svg/960px-Giant_Food_2008_logo.svg.png',
-};
-
-const LOGO_DOMAINS: Record<string, string> = {
-  heb: 'heb.com',
-  'h e b': 'heb.com',
-  safeway: 'safeway.com',
-  meijer: 'meijer.com',
-  'stop shop': 'stopandshop.com',
-  'stop and shop': 'stopandshop.com',
-  wegmans: 'wegmans.com',
-  lidl: 'lidl.com',
-  'dollar general': 'dollargeneral.com',
-  'family dollar': 'familydollar.com',
-  'dollar tree': 'dollartree.com',
+  starbucks: 'https://upload.wikimedia.org/wikipedia/en/thumb/d/d3/Starbucks_Corporation_Logo_2011.svg/960px-Starbucks_Corporation_Logo_2011.svg.png',
+  mcdonalds: 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/36/McDonald%27s_Golden_Arches.svg/960px-McDonald%27s_Golden_Arches.svg.png',
+  'mc donalds': 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/36/McDonald%27s_Golden_Arches.svg/960px-McDonald%27s_Golden_Arches.svg.png',
+  amazon: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Amazon_logo.svg/960px-Amazon_logo.svg.png',
+  ikea: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Ikea_logo.svg/960px-Ikea_logo.svg.png',
 };
 
 function normalizeStoreName(name: string): string {
@@ -129,42 +200,46 @@ function initials(name: string): string {
   return parts.slice(0, 2).map((part) => part[0]?.toUpperCase()).join('');
 }
 
-/** Derive a guessed domain from any store name, e.g. "Kabul Halal Market" → "kabulhalalmarket.com" */
-function guessDomain(name: string): string {
-  return normalizeStoreName(name).replace(/\s+/g, '') + '.com';
+/** Derive candidate domains from any store name for Clearbit guessing.
+ * Returns multiple variants: "Kabul Halal Market" → ["kabulhalalmarket.com", "kabul.com"] */
+function guessDomains(name: string): string[] {
+  const norm = normalizeStoreName(name);
+  const words = norm.split(' ').filter(Boolean);
+  return [
+    words.join('') + '.com',          // kabulhalalmarket.com
+    words[0] + '.com',                 // kabul.com
+    words.slice(0, 2).join('') + '.com', // kabulhalal.com
+  ].filter((d, i, arr) => arr.indexOf(d) === i); // dedupe
 }
 
 function logoSources(name: string): string[] {
   const normalized = normalizeStoreName(name);
 
-  // 1. Clearbit — clean 512×512 PNGs, best quality
-  const clearbitDomain =
-    LOGO_CLEARBIT[normalized] ??
-    Object.entries(LOGO_CLEARBIT).find(([key]) => normalized.includes(key))?.[1];
+  // 1. Exact match in master domain map
+  const knownDomain =
+    STORE_DOMAIN_MAP[normalized] ??
+    Object.entries(STORE_DOMAIN_MAP).find(([key]) => normalized.includes(key))?.[1];
 
-  // 2. Wikipedia SVG-PNG — large, reliable fallback
+  // 2. Wikipedia SVG-PNG — high quality for major chains
   const wikiImg =
     LOGO_IMAGES[normalized] ??
     Object.entries(LOGO_IMAGES).find(([key]) => normalized.includes(key))?.[1];
 
-  // 3. Known domain fallback
-  const fallbackDomain =
-    LOGO_DOMAINS[normalized] ??
-    Object.entries(LOGO_DOMAINS).find(([key]) => normalized.includes(key))?.[1];
+  // 3. Smart guesses via Clearbit — try multiple domain variants
+  const guessed = guessDomains(name);
 
-  // 4. Smart guess — try derived domain via Clearbit (works surprisingly often)
-  const guessedDomain = guessDomain(name);
-
-  // 5. Google favicon — last resort for any store
-  const googleFavicon = `https://www.google.com/s2/favicons?sz=256&domain=${fallbackDomain ?? guessedDomain}`;
-
-  return [
-    clearbitDomain ? `https://logo.clearbit.com/${clearbitDomain}?size=512` : null,
+  const sources: (string | null)[] = [
+    knownDomain ? `https://logo.clearbit.com/${knownDomain}?size=512` : null,
     wikiImg ?? null,
-    fallbackDomain ? `https://www.google.com/s2/favicons?sz=256&domain=${fallbackDomain}` : null,
-    !clearbitDomain ? `https://logo.clearbit.com/${guessedDomain}?size=512` : null,
-    googleFavicon,
-  ].filter(Boolean) as string[];
+    knownDomain ? `https://www.google.com/s2/favicons?sz=256&domain=${knownDomain}` : null,
+    // If no known domain, try guessed domains through Clearbit
+    !knownDomain ? `https://logo.clearbit.com/${guessed[0]}?size=512` : null,
+    !knownDomain ? `https://logo.clearbit.com/${guessed[1]}?size=512` : null,
+    // Google favicon always last — works for virtually any domain
+    `https://www.google.com/s2/favicons?sz=256&domain=${knownDomain ?? guessed[0]}`,
+  ];
+
+  return sources.filter(Boolean) as string[];
 }
 
 interface Props {
