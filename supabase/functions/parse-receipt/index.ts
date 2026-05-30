@@ -6,6 +6,11 @@ interface ParseRequest {
   householdId: string;
 }
 
+type ItemCategory = 'food' | 'household' | 'personal_care' | 'non_grocery';
+
+// Categories that should auto-populate the pantry
+const PANTRY_CATEGORIES: ItemCategory[] = ['food', 'household', 'personal_care'];
+
 interface ParsedReceipt {
   store_name: string | null;
   transaction_date: string | null;
@@ -15,6 +20,7 @@ interface ParsedReceipt {
     quantity: number;
     unit_price: number | null;
     total_price: number | null;
+    item_category: ItemCategory;
   }>;
 }
 
@@ -59,12 +65,15 @@ Deno.serve(async (req) => {
   }
 
   try {
+    console.log('[parse-receipt] START receiptId=' + receiptId + ' imageUrl=' + imageUrl);
+
     // Download the image from Supabase Storage
     const { data: imageData, error: downloadError } = await supabase.storage
       .from('receipts')
       .download(imageUrl);
 
-    if (downloadError || !imageData) throw new Error('Failed to download image');
+    if (downloadError || !imageData) throw new Error('Failed to download image: ' + (downloadError?.message ?? 'no data'));
+    console.log('[parse-receipt] image downloaded, size=' + imageData.size);
 
     const arrayBuffer = await imageData.arrayBuffer();
     // btoa(String.fromCharCode(...largeUint8Array)) throws "Maximum call stack size exceeded"
@@ -80,6 +89,7 @@ Deno.serve(async (req) => {
 
     // Call OpenAI GPT-4o vision
     const openaiKey = Deno.env.get('OPENAI_API_KEY');
+    console.log('[parse-receipt] openai key present=' + !!openaiKey + ' length=' + (openaiKey?.length ?? 0));
     if (!openaiKey) throw new Error('OPENAI_API_KEY not set');
 
     const prompt = `Analyze this receipt image and extract the data as JSON. Return ONLY valid JSON with this exact structure:
@@ -88,34 +98,55 @@ Deno.serve(async (req) => {
   "transaction_date": "YYYY-MM-DD or null",
   "total_amount": 0.00,
   "items": [
-    { "name": "item name", "quantity": 1, "unit_price": 0.00, "total_price": 0.00 }
+    { "name": "item name", "quantity": 1, "unit_price": 0.00, "total_price": 0.00, "item_category": "food" }
   ]
 }
+
+For each item, set "item_category" to one of these values:
+- "food" — groceries, produce, meat, dairy, snacks, beverages, frozen food, canned goods, bread, condiments
+- "household" — cleaning supplies, paper towels, toilet paper, laundry detergent, dish soap, trash bags
+- "personal_care" — shampoo, soap, toothpaste, deodorant, vitamins, medicine
+- "non_grocery" — toys, clothing, electronics, tools, sporting goods, furniture, pet supplies (non-food), anything that is NOT food or a household/personal consumable
+
 Be precise with prices. Include every line item on the receipt.`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openaiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        max_tokens: 2000,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'text', text: prompt },
-            { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}`, detail: 'high' } },
-          ],
-        }],
-        response_format: { type: 'json_object' },
-      }),
+    const openaiBody = JSON.stringify({
+      model: 'gpt-4o',
+      max_tokens: 2000,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: prompt },
+          { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}`, detail: 'high' } },
+        ],
+      }],
+      response_format: { type: 'json_object' },
     });
 
-    if (!response.ok) throw new Error(`OpenAI error: ${response.status}`);
+    // Retry up to 3 times with exponential backoff for 429 rate limit errors
+    let response: Response | null = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${openaiKey}`, 'Content-Type': 'application/json' },
+        body: openaiBody,
+      });
+      console.log(`[parse-receipt] openai attempt=${attempt} status=${response.status}`);
+      if (response.status !== 429) break;
+      if (attempt < 3) {
+        const retryAfter = parseInt(response.headers.get('retry-after') ?? '5', 10);
+        const delay = Math.min((retryAfter || attempt * 3) * 1000, 15000);
+        console.log(`[parse-receipt] rate limited, retrying in ${delay}ms`);
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    }
 
-    const aiResult = await response.json();
+    if (!response!.ok) {
+      const errBody = await response!.text();
+      throw new Error(`OpenAI error ${response!.status}: ${errBody.slice(0, 200)}`);
+    }
+
+    const aiResult = await response!.json();
     const parsed: ParsedReceipt = JSON.parse(aiResult.choices[0].message.content);
 
     const { data: receiptRow } = await supabase
@@ -143,11 +174,20 @@ Be precise with prices. Include every line item on the receipt.`;
       existingByName.set(normalizeName(item.name), item);
     }
 
-    // Upsert pantry assets from parsed receipt lines.
+    // Upsert pantry assets from parsed receipt lines — skip non_grocery items.
     const itemIdByReceiptLine = new Map<string, string>();
     for (const line of parsed.items) {
       const normalized = normalizeName(line.name);
       if (!normalized) continue;
+
+      const itemCat: ItemCategory = PANTRY_CATEGORIES.includes(line.item_category) ? line.item_category : 'non_grocery';
+
+      // Non-grocery items (toys, clothing, electronics, etc.) go on the receipt
+      // for spend tracking but do NOT get added to the pantry.
+      if (itemCat === 'non_grocery') {
+        console.log('[parse-receipt] skipping non_grocery item: ' + line.name);
+        continue;
+      }
 
       const existing = existingByName.get(normalized);
       if (existing) {
@@ -218,8 +258,10 @@ Be precise with prices. Include every line item on the receipt.`;
     });
 
   } catch (err: any) {
+    const errMsg = err?.message ?? String(err);
+    console.error('[parse-receipt] FAILED receiptId=' + receiptId + ' error=' + errMsg);
     await supabase.from('receipts').update({ status: 'failed' }).eq('id', receiptId);
-    return new Response(JSON.stringify({ error: err.message }), {
+    return new Response(JSON.stringify({ error: errMsg, receiptId }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     });

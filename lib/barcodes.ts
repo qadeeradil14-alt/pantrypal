@@ -9,42 +9,58 @@ export interface BarcodeProduct {
   estimatedLifeLabel: string;
 }
 
+// PLU codes for common fresh produce (4-5 digit in-store codes, not in any barcode DB)
+const PLU_MAP: Record<string, { name: string; category: ItemCategory }> = {
+  '3000': { name: 'Banana', category: 'fridge' },
+  '3001': { name: 'Banana Organic', category: 'fridge' },
+  '3283': { name: 'Mango', category: 'fridge' },
+  '4011': { name: 'Banana', category: 'fridge' },
+  '4016': { name: 'Apple (Granny Smith)', category: 'fridge' },
+  '4021': { name: 'Apple (Red Delicious)', category: 'fridge' },
+  '4046': { name: 'Avocado (Hass)', category: 'fridge' },
+  '4053': { name: 'Broccoli', category: 'fridge' },
+  '4054': { name: 'Lime', category: 'fridge' },
+  '4065': { name: 'Green Bell Pepper', category: 'fridge' },
+  '4066': { name: 'Red Bell Pepper', category: 'fridge' },
+  '4069': { name: 'Yellow Bell Pepper', category: 'fridge' },
+  '4072': { name: 'Cauliflower', category: 'fridge' },
+  '4078': { name: 'Cucumber', category: 'fridge' },
+  '4082': { name: 'Garlic', category: 'pantry' },
+  '4096': { name: 'Kiwi', category: 'fridge' },
+  '4129': { name: 'Lemon', category: 'fridge' },
+  '4131': { name: 'Apple (Fuji)', category: 'fridge' },
+  '4151': { name: 'Onion (Yellow)', category: 'pantry' },
+  '4152': { name: 'Onion (Red)', category: 'pantry' },
+  '4164': { name: 'Orange', category: 'fridge' },
+  '4196': { name: 'Potato (Russet)', category: 'pantry' },
+  '4225': { name: 'Avocado', category: 'fridge' },
+  '4252': { name: 'Strawberry', category: 'fridge' },
+  '4584': { name: 'Apple (Gala)', category: 'fridge' },
+};
+
 function inferCategory(name: string, categories: string): ItemCategory {
   const text = `${name} ${categories}`.toLowerCase();
-
   if (/\b(frozen|ice cream|freezer)\b/.test(text)) return 'freezer';
-  if (/\b(milk|cheese|yogurt|butter|cream|eggs|meat|beef|chicken|turkey|pork|fish|salmon|shrimp|lettuce|spinach|broccoli|carrot|celery|pepper|tomato|cucumber|juice)\b/.test(text)) return 'fridge';
-
+  if (/\b(milk|cheese|yogurt|butter|cream|eggs|meat|beef|chicken|turkey|pork|fish|salmon|shrimp|lettuce|spinach|broccoli|carrot|celery|pepper|tomato|cucumber|juice|produce|fresh|fruit|vegetable)\b/.test(text)) return 'fridge';
   return 'pantry';
 }
 
 function storageForCategory(category: ItemCategory): Pick<BarcodeProduct, 'storageLabel' | 'estimatedLifeLabel'> {
-  if (category === 'freezer') {
-    return { storageLabel: 'Freezer', estimatedLifeLabel: 'about 3 months' };
-  }
-  if (category === 'fridge') {
-    return { storageLabel: 'Fridge', estimatedLifeLabel: 'about 7 days' };
-  }
+  if (category === 'freezer') return { storageLabel: 'Freezer', estimatedLifeLabel: 'about 3 months' };
+  if (category === 'fridge') return { storageLabel: 'Fridge', estimatedLifeLabel: 'about 7 days' };
   return { storageLabel: 'Pantry', estimatedLifeLabel: 'about 30 days' };
 }
 
-export async function fetchBarcodeProduct(barcode: string): Promise<BarcodeProduct | null> {
-  const code = barcode.trim();
-  if (!code) return null;
-
+// Open Food Facts lookup
+async function lookupOpenFoodFacts(code: string): Promise<BarcodeProduct | null> {
   const response = await fetch(
     `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json?fields=product_name,brands,categories,categories_tags`,
-    {
-      headers: {
-        Accept: 'application/json',
-        'User-Agent': 'PantryPal/1.0',
-      },
-    },
+    { headers: { Accept: 'application/json', 'User-Agent': 'Stokit/1.0' } },
   );
 
-  if (!response.ok) {
-    throw new Error('Product lookup failed.');
-  }
+  // 404 = not in database, not an error
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`OpenFoodFacts ${response.status}`);
 
   const payload = await response.json();
   if (payload?.status !== 1 || !payload?.product) return null;
@@ -65,4 +81,61 @@ export async function fetchBarcodeProduct(barcode: string): Promise<BarcodeProdu
     category,
     ...storageForCategory(category),
   };
+}
+
+// UPC Item DB fallback (free tier, no key needed for trial)
+async function lookupUpcItemDb(code: string): Promise<BarcodeProduct | null> {
+  try {
+    const response = await fetch(
+      `https://api.upcitemdb.com/prod/trial/lookup?upc=${encodeURIComponent(code)}`,
+      { headers: { Accept: 'application/json' } },
+    );
+    if (!response.ok) return null;
+    const payload = await response.json();
+    const item = payload?.items?.[0];
+    if (!item?.title) return null;
+
+    const name = String(item.title).trim();
+    const category = inferCategory(name, item.category ?? '');
+    return {
+      barcode: code,
+      name,
+      brand: item.brand || null,
+      category,
+      ...storageForCategory(category),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchBarcodeProduct(barcode: string): Promise<BarcodeProduct | null> {
+  const code = barcode.trim();
+  if (!code) return null;
+
+  // PLU codes (4-5 digits) are fresh produce in-store price codes — not in any barcode DB
+  if (/^\d{4,5}$/.test(code)) {
+    const plu = PLU_MAP[code];
+    if (plu) {
+      return {
+        barcode: code,
+        name: plu.name,
+        brand: null,
+        category: plu.category,
+        ...storageForCategory(plu.category),
+      };
+    }
+    // Unknown PLU — return null so user can add manually, don't show "failed"
+    return null;
+  }
+
+  // Try Open Food Facts first, fall back to UPC Item DB
+  try {
+    const offResult = await lookupOpenFoodFacts(code);
+    if (offResult) return offResult;
+  } catch {
+    // OFF failed — try fallback
+  }
+
+  return lookupUpcItemDb(code);
 }
