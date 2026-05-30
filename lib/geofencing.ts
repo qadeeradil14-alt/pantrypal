@@ -116,6 +116,15 @@ async function hasRelevantShoppingAtStore(store: Store): Promise<boolean> {
 }
 
 export async function scheduleLocalArrivalNotification(storeName: string, storeId?: string) {
+  // Respect the user's notification preference stored in AsyncStorage
+  try {
+    const raw = await AsyncStorage.getItem('pantrypal:settings:v1');
+    if (raw) {
+      const prefs = JSON.parse(raw)?.state;
+      if (prefs?.notifArrivalSelf === false) return; // user turned it off
+    }
+  } catch { /* if we can't read prefs, fire anyway */ }
+
   await Notifications.scheduleNotificationAsync({
     content: {
       title: `You're at ${storeName}`,

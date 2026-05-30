@@ -83,6 +83,32 @@ async function lookupOpenFoodFacts(code: string): Promise<BarcodeProduct | null>
   };
 }
 
+// Go-UPC — free public API, good US grocery coverage
+async function lookupGoUpc(code: string): Promise<BarcodeProduct | null> {
+  try {
+    const response = await fetch(
+      `https://go-upc.com/api/v1/barcode/${encodeURIComponent(code)}`,
+      { headers: { Accept: 'application/json' } },
+    );
+    if (!response.ok) return null;
+    const payload = await response.json();
+    const product = payload?.product;
+    if (!product?.name) return null;
+
+    const name = String(product.name).trim();
+    const category = inferCategory(name, product.category ?? '');
+    return {
+      barcode: code,
+      name,
+      brand: product.brand || null,
+      category,
+      ...storageForCategory(category),
+    };
+  } catch {
+    return null;
+  }
+}
+
 // UPC Item DB fallback (free tier, no key needed for trial)
 async function lookupUpcItemDb(code: string): Promise<BarcodeProduct | null> {
   try {
@@ -129,13 +155,16 @@ export async function fetchBarcodeProduct(barcode: string): Promise<BarcodeProdu
     return null;
   }
 
-  // Try Open Food Facts first, fall back to UPC Item DB
+  // Three-stage lookup: Open Food Facts → Go-UPC → UPC Item DB
   try {
     const offResult = await lookupOpenFoodFacts(code);
     if (offResult) return offResult;
-  } catch {
-    // OFF failed — try fallback
-  }
+  } catch { /* try next */ }
+
+  try {
+    const goUpcResult = await lookupGoUpc(code);
+    if (goUpcResult) return goUpcResult;
+  } catch { /* try next */ }
 
   return lookupUpcItemDb(code);
 }

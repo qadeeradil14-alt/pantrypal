@@ -9,6 +9,8 @@ const LOGO_CLEARBIT: Record<string, string> = {
   walmart: 'walmart.com',
   supercenter: 'walmart.com',
   costco: 'costco.com',
+  'costco tire': 'costco.com',
+  'costco wholesale': 'costco.com',
   'sams club': 'samsclub.com',
   'sam s club': 'samsclub.com',
   samclub: 'samsclub.com',
@@ -39,6 +41,41 @@ const LOGO_CLEARBIT: Record<string, string> = {
   winco: 'wincofoods.com',
   'harris teeter': 'harristeeter.com',
   'fresh market': 'thefreshmarket.com',
+  // Convenience & pharmacy
+  '7 eleven': '7-eleven.com',
+  '7eleven': '7-eleven.com',
+  cvs: 'cvs.com',
+  'cvs pharmacy': 'cvs.com',
+  walgreens: 'walgreens.com',
+  'rite aid': 'riteaid.com',
+  // Home improvement & hardware
+  'home depot': 'homedepot.com',
+  lowes: 'lowes.com',
+  'ace hardware': 'acehardware.com',
+  // Warehouse & wholesale
+  bjs: 'bjs.com',
+  "bj s wholesale": 'bjs.com',
+  // Specialty grocery
+  'fresh thyme': 'freshthyme.com',
+  'natural grocers': 'naturalgrocers.com',
+  'earth fare': 'earthfare.com',
+  'lucky supermarket': 'luckysupermarkets.com',
+  // Discount / dollar stores
+  'five below': 'fivebelow.com',
+  // Big box
+  'best buy': 'bestbuy.com',
+  // Gas station convenience
+  wawa: 'wawa.com',
+  sheetz: 'sheetz.com',
+  'casey s': 'caseys.com',
+  caseys: 'caseys.com',
+  quicktrip: 'quiktrip.com',
+  'quick trip': 'quiktrip.com',
+  // Ethnic & specialty
+  'h mart': 'hmart.com',
+  hmart: 'hmart.com',
+  'mitsuwa': 'mitsuwa.com',
+  'la curacao': 'lacuracao.com',
 };
 
 // Wikipedia SVG-PNG fallbacks (960 px wide, very high quality)
@@ -92,6 +129,11 @@ function initials(name: string): string {
   return parts.slice(0, 2).map((part) => part[0]?.toUpperCase()).join('');
 }
 
+/** Derive a guessed domain from any store name, e.g. "Kabul Halal Market" → "kabulhalalmarket.com" */
+function guessDomain(name: string): string {
+  return normalizeStoreName(name).replace(/\s+/g, '') + '.com';
+}
+
 function logoSources(name: string): string[] {
   const normalized = normalizeStoreName(name);
 
@@ -105,15 +147,23 @@ function logoSources(name: string): string[] {
     LOGO_IMAGES[normalized] ??
     Object.entries(LOGO_IMAGES).find(([key]) => normalized.includes(key))?.[1];
 
-  // 3. Google favicon — last resort
+  // 3. Known domain fallback
   const fallbackDomain =
     LOGO_DOMAINS[normalized] ??
     Object.entries(LOGO_DOMAINS).find(([key]) => normalized.includes(key))?.[1];
+
+  // 4. Smart guess — try derived domain via Clearbit (works surprisingly often)
+  const guessedDomain = guessDomain(name);
+
+  // 5. Google favicon — last resort for any store
+  const googleFavicon = `https://www.google.com/s2/favicons?sz=256&domain=${fallbackDomain ?? guessedDomain}`;
 
   return [
     clearbitDomain ? `https://logo.clearbit.com/${clearbitDomain}?size=512` : null,
     wikiImg ?? null,
     fallbackDomain ? `https://www.google.com/s2/favicons?sz=256&domain=${fallbackDomain}` : null,
+    !clearbitDomain ? `https://logo.clearbit.com/${guessedDomain}?size=512` : null,
+    googleFavicon,
   ].filter(Boolean) as string[];
 }
 

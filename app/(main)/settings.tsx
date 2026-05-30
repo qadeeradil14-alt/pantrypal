@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet,
-  Alert, Share, ActivityIndicator, ScrollView,
+  Alert, Share, ActivityIndicator, ScrollView, Switch,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import Constants from 'expo-constants';
@@ -38,7 +38,13 @@ export default function SettingsScreen() {
   const { session, setSession } = useAuthStore();
   const { household, setHousehold, clearHousehold } = useHouseholdStore();
   const { setItems } = useItemsStore();
-  const { weeklyBudget, setWeeklyBudget } = useSettingsStore();
+  const {
+    weeklyBudget, setWeeklyBudget,
+    notifArrivalSelf, setNotifArrivalSelf,
+    notifArrivalPartner, setNotifArrivalPartner,
+    notifExpiry, setNotifExpiry,
+    notifLowStock, setNotifLowStock,
+  } = useSettingsStore();
   const [signingOut, setSigningOut] = useState(false);
   const [savingName, setSavingName] = useState(false);
   const [savingHouseholdName, setSavingHouseholdName] = useState(false);
@@ -329,6 +335,35 @@ export default function SettingsScreen() {
                 <Ionicons name="pencil-outline" size={15} color={colors.primary} />
               </View>
             </ScalePressable>
+          </View>
+        </View>
+
+        {/* Notifications */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Notifications</Text>
+          <View style={styles.card}>
+            {([
+              { key: 'arrivalSelf', label: 'My store arrivals', sub: 'Notify me when I arrive at a saved store', icon: 'location-outline', value: notifArrivalSelf, set: setNotifArrivalSelf },
+              { key: 'arrivalPartner', label: 'Partner arrivals', sub: "Alert me when my partner arrives at a store", icon: 'people-outline', value: notifArrivalPartner, set: setNotifArrivalPartner },
+              { key: 'expiry', label: 'Expiry reminders', sub: 'Remind me 3 days before items expire', icon: 'time-outline', value: notifExpiry, set: setNotifExpiry },
+              { key: 'lowStock', label: 'Low stock alerts', sub: 'Alert when pantry items run low', icon: 'alert-circle-outline', value: notifLowStock, set: setNotifLowStock },
+            ] as const).map((row, i) => (
+              <View key={row.key} style={[styles.row, i > 0 && styles.rowBorderTop]}>
+                <View style={styles.rowLabelWrap}>
+                  <Ionicons name={row.icon as any} size={17} color={colors.muted} />
+                  <View>
+                    <Text style={styles.rowLabel}>{row.label}</Text>
+                    <Text style={styles.rowSubLabel}>{row.sub}</Text>
+                  </View>
+                </View>
+                <Switch
+                  value={row.value}
+                  onValueChange={(v) => { void hapticSelection(); row.set(v); }}
+                  trackColor={{ false: colors.border, true: colors.primary + '66' }}
+                  thumbColor={row.value ? colors.primary : colors.muted}
+                />
+              </View>
+            ))}
           </View>
         </View>
 
