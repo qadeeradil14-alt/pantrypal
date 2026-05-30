@@ -9,6 +9,14 @@ export interface BarcodeProduct {
   estimatedLifeLabel: string;
 }
 
+const LOOKUP_TIMEOUT_MS = 5_000;
+
+function timeoutSignal(): AbortSignal {
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), LOOKUP_TIMEOUT_MS);
+  return controller.signal;
+}
+
 // PLU codes for common fresh produce (4-5 digit in-store codes, not in any barcode DB)
 const PLU_MAP: Record<string, { name: string; category: ItemCategory }> = {
   '3000': { name: 'Banana', category: 'fridge' },
@@ -51,14 +59,13 @@ function storageForCategory(category: ItemCategory): Pick<BarcodeProduct, 'stora
   return { storageLabel: 'Pantry', estimatedLifeLabel: 'about 30 days' };
 }
 
-// Open Food Facts lookup
+// Open Food Facts — no key needed, best global coverage
 async function lookupOpenFoodFacts(code: string): Promise<BarcodeProduct | null> {
   const response = await fetch(
     `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json?fields=product_name,brands,categories,categories_tags`,
-    { headers: { Accept: 'application/json', 'User-Agent': 'Stokit/1.0' } },
+    { headers: { Accept: 'application/json', 'User-Agent': 'Stokit/1.0' }, signal: timeoutSignal() },
   );
 
-  // 404 = not in database, not an error
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`OpenFoodFacts ${response.status}`);
 
@@ -83,24 +90,23 @@ async function lookupOpenFoodFacts(code: string): Promise<BarcodeProduct | null>
   };
 }
 
-// Go-UPC — free public API, good US grocery coverage
-async function lookupGoUpc(code: string): Promise<BarcodeProduct | null> {
+// barcode.monster — free, no key needed, strong US grocery coverage
+async function lookupBarcodeMonster(code: string): Promise<BarcodeProduct | null> {
   try {
     const response = await fetch(
-      `https://go-upc.com/api/v1/barcode/${encodeURIComponent(code)}`,
-      { headers: { Accept: 'application/json' } },
+      `https://barcode.monster/api/${encodeURIComponent(code)}`,
+      { headers: { Accept: 'application/json' }, signal: timeoutSignal() },
     );
     if (!response.ok) return null;
     const payload = await response.json();
-    const product = payload?.product;
-    if (!product?.name) return null;
+    const name = String(payload?.description ?? '').trim();
+    if (!name) return null;
 
-    const name = String(product.name).trim();
-    const category = inferCategory(name, product.category ?? '');
+    const category = inferCategory(name, payload?.category ?? '');
     return {
       barcode: code,
       name,
-      brand: product.brand || null,
+      brand: String(payload?.brand ?? '').trim() || null,
       category,
       ...storageForCategory(category),
     };
@@ -109,12 +115,12 @@ async function lookupGoUpc(code: string): Promise<BarcodeProduct | null> {
   }
 }
 
-// UPC Item DB fallback (free tier, no key needed for trial)
+// UPC Item DB — free trial, last resort
 async function lookupUpcItemDb(code: string): Promise<BarcodeProduct | null> {
   try {
     const response = await fetch(
       `https://api.upcitemdb.com/prod/trial/lookup?upc=${encodeURIComponent(code)}`,
-      { headers: { Accept: 'application/json' } },
+      { headers: { Accept: 'application/json' }, signal: timeoutSignal() },
     );
     if (!response.ok) return null;
     const payload = await response.json();
@@ -155,15 +161,15 @@ export async function fetchBarcodeProduct(barcode: string): Promise<BarcodeProdu
     return null;
   }
 
-  // Three-stage lookup: Open Food Facts → Go-UPC → UPC Item DB
+  // Three-stage lookup: Open Food Facts → barcode.monster → UPC Item DB
   try {
     const offResult = await lookupOpenFoodFacts(code);
     if (offResult) return offResult;
   } catch { /* try next */ }
 
   try {
-    const goUpcResult = await lookupGoUpc(code);
-    if (goUpcResult) return goUpcResult;
+    const monsterResult = await lookupBarcodeMonster(code);
+    if (monsterResult) return monsterResult;
   } catch { /* try next */ }
 
   return lookupUpcItemDb(code);

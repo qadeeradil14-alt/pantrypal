@@ -109,7 +109,7 @@ export default function BarcodeScannerModal({ visible, onClose, onAddProduct, on
     try {
       const found = await fetchBarcodeProduct(code);
       if (!found) {
-        setMessage("Couldn't find this barcode.");
+        setMessage('Product not in database — add it manually.');
         void hapticWarning();
         return;
       }
@@ -150,6 +150,30 @@ export default function BarcodeScannerModal({ visible, onClose, onAddProduct, on
     setSavedLabel('');
     setExpiryInput('');
     void hapticSelection();
+  }
+
+  async function handleRetry() {
+    if (!lastCode || busy) return;
+    setBusy(true);
+    setMessage('');
+    void hapticSelection();
+    try {
+      const found = await fetchBarcodeProduct(lastCode);
+      if (!found) {
+        setMessage('Product not in database — add it manually.');
+        void hapticWarning();
+        return;
+      }
+      setProduct(found);
+      setMessage('');
+      setExpiryInput(defaultExpiryDate(found.estimatedLifeLabel));
+      void hapticSuccess();
+    } catch (error: any) {
+      setMessage(error?.message ?? 'Barcode lookup failed.');
+      void hapticError();
+    } finally {
+      setBusy(false);
+    }
   }
 
   function openManualAdd() {
@@ -251,7 +275,7 @@ export default function BarcodeScannerModal({ visible, onClose, onAddProduct, on
                   />
                 </View>
                 {expiryInput.trim() && parseExpiry(expiryInput) ? (
-                  <Text style={styles.expiryParsed}>📅 {formatExpiryDisplay(expiryInput.trim())}</Text>
+                  <Text style={styles.expiryParsed}>📅 {formatExpiryDisplay(parseExpiry(expiryInput)!)}</Text>
                 ) : expiryInput.trim() ? (
                   <Text style={styles.expiryError}>Enter MM/DD/YYYY, YYYY-MM-DD, or number of days</Text>
                 ) : null}
@@ -271,11 +295,16 @@ export default function BarcodeScannerModal({ visible, onClose, onAddProduct, on
             ) : (
               <>
                 <Text style={styles.productName}>{message}</Text>
-                <Text style={styles.productMeta}>{lastCode}</Text>
+                {lastCode ? <Text style={styles.productMeta}>{lastCode}</Text> : null}
                 <View style={styles.actionRow}>
                   <ScalePressable style={styles.secondaryBtn} profile="chip" onPress={scanAgain}>
                     <Text style={styles.secondaryBtnText}>Scan again</Text>
                   </ScalePressable>
+                  {lastCode ? (
+                    <ScalePressable style={styles.secondaryBtn} profile="chip" onPress={handleRetry} disabled={busy}>
+                      <Text style={styles.secondaryBtnText}>Retry</Text>
+                    </ScalePressable>
+                  ) : null}
                   <ScalePressable style={styles.primaryBtnSmall} onPress={openManualAdd}>
                     <Text style={styles.primaryBtnText}>Add manually</Text>
                   </ScalePressable>
