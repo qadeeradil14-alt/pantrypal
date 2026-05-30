@@ -12,9 +12,23 @@ export async function signIn(email: string, password: string) {
   return data;
 }
 
+// Flag so the auth listener can distinguish a user-initiated sign-out
+// from a network-forced one (failed token refresh fires SIGNED_OUT with
+// session = null, which would incorrectly kick the user to the login screen).
+let _intentionalSignOut = false;
+export function wasIntentionalSignOut(): boolean {
+  const was = _intentionalSignOut;
+  _intentionalSignOut = false;
+  return was;
+}
+
 export async function signOut() {
+  _intentionalSignOut = true;
   const { error } = await supabase.auth.signOut();
-  if (error) throw error;
+  if (error) {
+    _intentionalSignOut = false;
+    throw error;
+  }
 }
 
 export async function getSession() {

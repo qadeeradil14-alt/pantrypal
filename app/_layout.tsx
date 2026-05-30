@@ -6,6 +6,7 @@ import { useFonts as usePlayfairFonts } from '@expo-google-fonts/playfair-displa
 import { useFonts as useDMSansFonts } from '@expo-google-fonts/dm-sans';
 import { useFonts as useDMMonoFonts } from '@expo-google-fonts/dm-mono';
 import { supabase } from '../lib/supabase';
+import { wasIntentionalSignOut } from '../lib/auth';
 import { useAuthStore } from '../store/auth';
 import { defineGeofenceTask } from '../lib/geofencing';
 import { startMutationQueueWorker } from '../lib/offlineQueue';
@@ -56,14 +57,22 @@ export default function RootLayout() {
         setSession(session);
       })
       .catch(() => {
-        setSession(null);
+        // Network error — don't clear session. User stays logged in offline.
+        // setSession(null) would kick them to the sign-in screen incorrectly.
       })
       .finally(() => {
         setLoading(false);
       });
 
     // Listen for auth state changes — handles token refresh + sign out
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT' && !wasIntentionalSignOut()) {
+        // Network-forced sign-out (failed token refresh while offline).
+        // Do NOT clear the session — user stays logged in until they
+        // explicitly tap Sign Out or connectivity is restored.
+        setLoading(false);
+        return;
+      }
       setSession(session);
       setLoading(false);
     });
