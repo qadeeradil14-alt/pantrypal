@@ -9,7 +9,7 @@ import { supabase } from '../lib/supabase';
 import { wasIntentionalSignOut } from '../lib/auth';
 import { useAuthStore } from '../store/auth';
 import { defineGeofenceTask } from '../lib/geofencing';
-import { startMutationQueueWorker } from '../lib/offlineQueue';
+import { startMutationQueueWorker, flushMutationQueue } from '../lib/offlineQueue';
 
 // Register geofence background task at module load time (before any async code)
 defineGeofenceTask(() => {});
@@ -75,6 +75,11 @@ export default function RootLayout() {
       }
       setSession(session);
       setLoading(false);
+
+      // TOKEN_REFRESHED means we just came back online — flush queued mutations immediately
+      if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
+        void flushMutationQueue();
+      }
     });
 
     return () => {

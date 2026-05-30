@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
 
 const QUEUE_KEY = 'pantrypal:offline-mutation-queue:v1';
-const FLUSH_INTERVAL_MS = 8000;
+const FLUSH_INTERVAL_MS = 3000; // reduced from 8s for snappier sync recovery
 
 type MutationType =
   | 'mark_low'
