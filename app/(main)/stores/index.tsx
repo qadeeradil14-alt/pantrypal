@@ -5,6 +5,7 @@ import {
   KeyboardAvoidingView, Platform, RefreshControl,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
+import { Linking } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -207,10 +208,25 @@ export default function StoresScreen() {
                 </View>
                 <View style={styles.rowRight}>
                   {item.latitude != null && (
-                    <View style={styles.geoPill}>
-                      <Ionicons name="location" size={13} color={colors.primary} />
-                      <Text style={styles.geoPillText}>Located</Text>
-                    </View>
+                    <ScalePressable
+                      profile="chip"
+                      style={styles.directionsBtn}
+                      onPress={() => {
+                        void hapticSelection();
+                        const label = encodeURIComponent(item.name);
+                        const url = Platform.OS === 'ios'
+                          ? `maps://?daddr=${item.latitude},${item.longitude}&dirflg=d`
+                          : `google.navigation:q=${item.latitude},${item.longitude}`;
+                        Linking.canOpenURL(url).then((can) => {
+                          if (can) return Linking.openURL(url);
+                          // Fallback to Apple Maps web
+                          return Linking.openURL(`https://maps.apple.com/?daddr=${item.latitude},${item.longitude}&dirflg=d&t=m`);
+                        }).catch(() => {});
+                      }}
+                    >
+                      <Ionicons name="navigate" size={14} color={colors.primary} />
+                      <Text style={styles.directionsBtnText}>Directions</Text>
+                    </ScalePressable>
                   )}
                   <ScalePressable
                     profile="danger"
@@ -778,6 +794,13 @@ function makeStyles(colors: AppColors, placeCardWidth = 210) {
       backgroundColor: colors.primarySoft, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5,
     },
     geoPillText: { fontSize: 12, color: colors.primary, fontFamily: fonts.bodySemiBold },
+    directionsBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 5,
+      paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999,
+      backgroundColor: colors.primarySoft,
+      borderWidth: 1, borderColor: colors.primary + '33',
+    },
+    directionsBtnText: { color: colors.primary, fontSize: 12, fontFamily: fonts.bodySemiBold },
     deleteBtn: { padding: 4 },
     deleteBtnText: { color: colors.danger, fontSize: 13, fontFamily: fonts.bodySemiBold },
     mapSheet: {
