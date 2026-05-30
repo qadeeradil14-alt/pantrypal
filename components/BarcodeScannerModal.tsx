@@ -36,15 +36,40 @@ function defaultExpiryDate(estimatedLifeLabel: string): string {
   return now.toISOString().slice(0, 10);
 }
 
-/** Parse YYYY-MM-DD to ISO string, or null if empty/invalid. */
+/** Parse flexible expiry input to ISO string, or null if empty/invalid.
+ * Accepts: YYYY-MM-DD, MM/DD/YYYY, MM-DD-YYYY, or a plain number (days from today). */
 function parseExpiry(s: string): string | null {
   const trimmed = s.trim();
   if (!trimmed) return null;
+
+  // Plain number = days from today (e.g. "30" = 30 days from now)
+  if (/^\d{1,3}$/.test(trimmed)) {
+    const d = new Date();
+    d.setDate(d.getDate() + parseInt(trimmed, 10));
+    return d.toISOString();
+  }
+
+  // MM/DD/YYYY or MM-DD-YYYY
+  const mdy = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (mdy) {
+    const d = new Date(`${mdy[3]}-${mdy[1].padStart(2,'0')}-${mdy[2].padStart(2,'0')}T12:00:00Z`);
+    if (!isNaN(d.getTime())) return d.toISOString();
+  }
+
+  // YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
     const d = new Date(trimmed + 'T12:00:00Z');
     if (!isNaN(d.getTime())) return d.toISOString();
   }
+
   return null;
+}
+
+/** Format ISO date string to friendly display e.g. "Jun 28, 2026" */
+function formatExpiryDisplay(iso: string): string {
+  const d = new Date(iso + (iso.length === 10 ? 'T12:00:00Z' : ''));
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 }
 
 export default function BarcodeScannerModal({ visible, onClose, onAddProduct, onManualAdd }: Props) {
@@ -214,17 +239,22 @@ export default function BarcodeScannerModal({ visible, onClose, onAddProduct, on
                 </View>
                 <View style={styles.expiryRow}>
                   <Ionicons name="time-outline" size={14} color={colors.muted} />
-                  <Text style={styles.expiryLabel}>Expiry date</Text>
+                  <Text style={styles.expiryLabel}>Expiry</Text>
                   <TextInput
                     style={styles.expiryInput}
                     value={expiryInput}
                     onChangeText={setExpiryInput}
-                    placeholder="YYYY-MM-DD"
+                    placeholder="MM/DD/YYYY or days (e.g. 30)"
                     placeholderTextColor={colors.placeholder}
                     keyboardType="numbers-and-punctuation"
-                    maxLength={10}
+                    maxLength={12}
                   />
                 </View>
+                {expiryInput.trim() && parseExpiry(expiryInput) ? (
+                  <Text style={styles.expiryParsed}>📅 {formatExpiryDisplay(expiryInput.trim())}</Text>
+                ) : expiryInput.trim() ? (
+                  <Text style={styles.expiryError}>Enter MM/DD/YYYY, YYYY-MM-DD, or number of days</Text>
+                ) : null}
                 {savedLabel ? <Text style={styles.savedText}>{savedLabel}</Text> : null}
                 {message ? <Text style={styles.errorText}>{message}</Text> : null}
                 <View style={styles.actionRow}>
@@ -431,11 +461,13 @@ function makeStyles(colors: AppColors) {
       backgroundColor: colors.faint, borderRadius: 10,
       paddingHorizontal: 12, paddingVertical: 8,
     },
-    expiryLabel: { fontSize: 13, color: colors.muted, fontFamily: fonts.bodyMedium, flex: 1 },
+    expiryLabel: { fontSize: 13, color: colors.muted, fontFamily: fonts.bodyMedium },
     expiryInput: {
-      fontSize: 14, color: colors.ink, fontFamily: fonts.bodySemiBold,
-      textAlign: 'right', minWidth: 100,
+      flex: 1, fontSize: 13, color: colors.ink, fontFamily: fonts.bodySemiBold,
+      textAlign: 'right',
     },
+    expiryParsed: { fontSize: 12, color: colors.success, fontFamily: fonts.bodyMedium, textAlign: 'right' },
+    expiryError: { fontSize: 11, color: colors.danger, fontFamily: fonts.body },
     detailPill: {
       flexDirection: 'row',
       alignItems: 'center',

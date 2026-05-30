@@ -14,6 +14,7 @@ import { useHouseholdStore } from '../../../store/household';
 import { useStoresStore } from '../../../store/stores';
 import { useShoppingStore, type ShoppingEntry } from '../../../store/shopping';
 import { markItemGotItWithQueue } from '../../../lib/items';
+import { setItemStoreWithQueue } from '../../../lib/stores';
 import { completeShoppingEntryWithQueue, setShoppingEntryAisleWithQueue } from '../../../lib/shoppingList';
 import { hapticError, hapticSelection, hapticSuccess } from '../../../lib/haptics';
 import type { Item } from '../../../lib/items';
@@ -434,6 +435,36 @@ export default function GroceryScreen() {
             const categoryLabel = CATEGORY_LABELS[normalizeShoppingCategory(entry.category)];
             const emoji = getItemEmoji(entry.name, entry.category ?? '');
 
+            function handleQuickStoreAssign() {
+              if (!sourceItem) return;
+              void hapticSelection();
+              const options = stores.map((s) => ({
+                text: s.name,
+                onPress: async () => {
+                  updateItem(sourceItem.id, { preferred_store_id: s.id });
+                  await setItemStoreWithQueue(sourceItem.id, s.id).catch(() => {
+                    updateItem(sourceItem.id, { preferred_store_id: sourceItem.preferred_store_id });
+                  });
+                },
+              }));
+              if (sourceItem.preferred_store_id) {
+                options.push({
+                  text: 'Remove store',
+                  onPress: async () => {
+                    updateItem(sourceItem.id, { preferred_store_id: null });
+                    await setItemStoreWithQueue(sourceItem.id, null).catch(() => {
+                      updateItem(sourceItem.id, { preferred_store_id: sourceItem.preferred_store_id });
+                    });
+                  },
+                });
+              }
+              Alert.alert(
+                `Assign store for "${entry.name}"`,
+                'Where do you usually buy this?',
+                [...options, { text: 'Cancel', style: 'cancel' as const }],
+              );
+            }
+
             function handleSetAisle() {
               void hapticSelection();
               Alert.prompt(
@@ -460,9 +491,9 @@ export default function GroceryScreen() {
                 profile="card"
                 style={[styles.row, shoppingMode && styles.rowShop, purchased && styles.rowPurchased]}
                 onPress={shoppingMode ? () => handleGotIt(entry) : undefined}
-                onLongPress={shoppingMode ? handleSetAisle : undefined}
+                onLongPress={shoppingMode ? handleSetAisle : (sourceItem ? handleQuickStoreAssign : undefined)}
                 delayLongPress={400}
-                disabled={!shoppingMode || isTapping}
+                disabled={shoppingMode ? (isTapping) : false}
               >
                 <View style={[styles.lead, shoppingMode && styles.leadShop, isTapping && styles.leadTapping, purchased && styles.leadPurchased]}>
                   {isTapping ? (
@@ -477,7 +508,13 @@ export default function GroceryScreen() {
                     {entry.name}
                   </Text>
                   <Text style={[styles.itemMeta, purchased && styles.itemMetaPurchased]}>
-                    {purchased ? 'Purchased ✓' : categoryLabel}{storeName && !purchased ? ` · ${storeName}` : ''}
+                    {purchased
+                      ? 'Purchased ✓'
+                      : storeName
+                        ? `${categoryLabel} · ${storeName}`
+                        : !shoppingMode && sourceItem
+                          ? `${categoryLabel} · Hold to assign store`
+                          : categoryLabel}
                   </Text>
                 </View>
                 {(shoppingMode || purchased) && (

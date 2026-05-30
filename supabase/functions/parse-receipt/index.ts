@@ -111,7 +111,7 @@ For each item, set "item_category" to one of these values:
 Be precise with prices. Include every line item on the receipt.`;
 
     const openaiBody = JSON.stringify({
-      model: 'gpt-4o',
+      model: 'gpt-4o-mini',
       max_tokens: 2000,
       messages: [{
         role: 'user',
