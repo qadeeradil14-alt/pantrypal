@@ -50,9 +50,10 @@ All fonts are loaded via Google Fonts (free). No custom font files to bundle.
 | `surface` | `#271F19` | Cards, sheets, tab bar |
 | `faint` | `#2A2018` | Subtle elevated backgrounds |
 | `primary` | `#D4874E` | CTA buttons, FAB, active tab, links, receipt totals — copper |
+| `onPrimary` | `#1C1812` | Text/icons on copper buttons — espresso (6.2:1, replaces white) |
 | `primarySoft` | `#2A1A0A` | Low badge background, warning soft |
 | `ink` | `#F0E8DC` | All primary text — cream |
-| `muted` | `#8C7A68` | Secondary text, placeholders, inactive tabs |
+| `muted` | `#9E8770` | Secondary text, placeholders, inactive tabs (lightened for 4.5:1) |
 | `border` | `#3A2E24` | All borders and dividers |
 | `success` | `#5A9E70` | In-stock status dot |
 | `warning` | `#D4874E` | Running-low status (same as primary — copper means "pay attention") |
@@ -64,6 +65,7 @@ All fonts are loaded via Google Fonts (free). No custom font files to bundle.
 | `background` | `#F5EFE6` | Warm off-white |
 | `surface` | `#FFFBF5` | Cards, sheets |
 | `primary` | `#C07038` | CTA buttons, FAB, active tab — darker copper for contrast |
+| `onPrimary` | `#221A12` | Text/icons on copper buttons — espresso (4.6:1, replaces white) |
 | `ink` | `#221A12` | Primary text |
 | `muted` | `#907660` | Secondary text |
 | `border` | `#D8CABC` | Borders and dividers |
@@ -84,7 +86,7 @@ All fonts are loaded via Google Fonts (free). No custom font files to bundle.
 
 ## Motion
 - **Approach:** Intentional — spring-based enters, ease-in exits, haptic feedback on every meaningful interaction
-- **FAB:** Spring rotation (tension: 120, friction: 8) on open/close. Pulse ring when pantry is empty.
+- **FAB:** Scale-down on press. Pulse ring radiates from the FAB while the pantry is empty (draws the eye to "add your first item").
 - **Swipe actions:** Friction: 2, no overshoot
 - **Sheet / modal:** Default React Native spring
 

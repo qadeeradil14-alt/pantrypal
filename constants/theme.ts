@@ -6,6 +6,7 @@ export const lightColors = {
   background: '#F5EFE6',
   surface: '#FFFBF5',
   primary: '#C07038',
+  onPrimary: '#221A12', // dark espresso text/icons on copper buttons (4.6:1)
   primarySoft: '#F5E8D5',
   primaryDeep: '#9A5020',
   ink: '#221A12',
@@ -41,11 +42,12 @@ export const darkColors: typeof lightColors = {
   background: '#1C1812',
   surface: '#271F19',
   primary: '#D4874E',
+  onPrimary: '#1C1812', // dark espresso text/icons on copper buttons (6.2:1)
   primarySoft: '#2A1A0A',
   primaryDeep: '#B5683A',
   ink: '#F0E8DC',
   inkSoft: '#D8C4A8',
-  muted: '#8C7A68',
+  muted: '#9E8770', // lightened from #8C7A68 to clear 4.5:1 on surface
   placeholder: '#6E5A48',
   faint: '#221A12',
   border: '#3A2E24',

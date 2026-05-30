@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "PantryPal",
+    "name": "Stokit",
     "slug": "PantryPal",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -34,9 +34,9 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "PantryPal needs your location to alert you when you arrive at a store.",
-          "locationAlwaysPermission": "PantryPal needs background location access so it can detect when you arrive at a store, even when the app is closed.",
-          "locationWhenInUsePermission": "PantryPal needs your location to detect when you arrive at a store.",
+          "locationAlwaysAndWhenInUsePermission": "Stokit needs your location to alert you when you arrive at a store.",
+          "locationAlwaysPermission": "Stokit needs background location access so it can detect when you arrive at a store, even when the app is closed.",
+          "locationWhenInUsePermission": "Stokit needs your location to detect when you arrive at a store.",
           "isIosBackgroundLocationEnabled": true,
           "isAndroidBackgroundLocationEnabled": true
         }
@@ -44,14 +44,14 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "PantryPal needs photo access so you can attach receipt images.",
-          "cameraPermission": "PantryPal needs camera access so you can scan grocery receipts."
+          "photosPermission": "Stokit needs photo access so you can attach receipt images.",
+          "cameraPermission": "Stokit needs camera access so you can scan grocery receipts."
         }
       ],
       [
         "expo-camera",
         {
-          "cameraPermission": "PantryPal needs camera access so you can scan grocery barcodes.",
+          "cameraPermission": "Stokit needs camera access so you can scan grocery barcodes.",
           "barcodeScannerEnabled": true,
           "recordAudioAndroid": false
         }
@@ -62,13 +62,13 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.pantrypal.app",
+      "bundleIdentifier": "com.hewadadil.pantrypal",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
-      "package": "com.pantrypal.app",
+      "package": "com.hewadadil.pantrypal",
       "intentFilters": [
         {
           "action": "VIEW",

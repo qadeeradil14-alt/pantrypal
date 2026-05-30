@@ -598,6 +598,68 @@ export default function PantryScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   ), [firstName, household?.name, styles, colors, filtered.length, query, streak, notifPromptState, handleEnableNotifs, handleDismissNotifPrompt, selectedStore, canAdd, openScanner, storePicker, sortMode, expiringItems]);
 
+  const renderPantryItem = useCallback(({ item }: { item: Item }) => (
+    <SwipeableItemRow
+      item={item}
+      userId={session?.user.id ?? ''}
+      onEditPress={setEditingItem}
+      onLiftPress={setLiftedItem}
+    />
+  ), [session?.user.id]);
+
+  const renderPantrySectionHeader = useCallback(({ section }: { section: unknown }) => {
+    const pantrySection = section as PantrySection;
+    if (pantrySection.isLow) {
+      return (
+        <View style={styles.needsAttentionHeader}>
+          <Ionicons name="cart-outline" size={16} color={colors.warning} />
+          <Text style={styles.needsAttentionTitle}>Grab These</Text>
+          <View style={styles.needsAttentionBadge}>
+            <Text style={styles.needsAttentionBadgeText}>{pantrySection.count}</Text>
+          </View>
+          <Pressable
+            hitSlop={10}
+            style={({ pressed }) => [styles.resetAllBtn, pressed && { opacity: 0.65 }]}
+            onPress={handleResetAll}
+          >
+            <Ionicons name="refresh-outline" size={11} color={colors.warning} />
+            <Text style={styles.resetAllText}>Reset all</Text>
+          </Pressable>
+          <Pressable
+            hitSlop={10}
+            style={({ pressed }) => [styles.shopBtn, pressed && { opacity: 0.65 }]}
+            onPress={() => { void hapticSelection(); router.push('/(main)/grocery'); }}
+          >
+            <Ionicons name="cart-outline" size={11} color={colors.primary} />
+            <Text style={styles.shopBtnText}>Shop</Text>
+          </Pressable>
+        </View>
+      );
+    }
+    if (sortMode === 'alpha') return null;
+    return (
+      <View style={styles.categorySectionHeader}>
+        {pantrySection.emoji ? <Text style={styles.sectionEmoji}>{pantrySection.emoji}</Text> : null}
+        <Text style={styles.categorySectionTitle}>{pantrySection.title}</Text>
+        <Text style={styles.categorySectionCount}>{pantrySection.count}</Text>
+      </View>
+    );
+  }, [colors, handleResetAll, router, sortMode, styles]);
+
+  const emptyState = useMemo(() => (
+    <EmptyState
+      emoji={q ? '🔍' : '🌿'}
+      title={q ? `No results for "${query}"` : selectedStore ? `Nothing for ${selectedStore.name}` : 'Nothing here yet'}
+      subtitle={q ? 'Try a different search term.' : selectedStore ? 'Add a grocery to this store or return to the full list.' : 'Add the first item your household uses regularly.'}
+      action={q
+        ? undefined
+        : {
+          label: selectedStore ? `Add to ${selectedStore.name}` : 'Add first item',
+          onPress: () => { void hapticSelection(); setShowAdd(true); },
+        }}
+    />
+  ), [q, query, selectedStore]);
+
   if (loading) {
     return (
       <View style={[styles.centered, { backgroundColor: colors.background }]}>
@@ -612,67 +674,10 @@ export default function PantryScreen() {
         ref={listRef}
         sections={sections}
         keyExtractor={(item) => item.id}
-        extraData={items}
         ListHeaderComponent={listHeader}
-        renderItem={({ item }) => (
-          <SwipeableItemRow
-            item={item}
-            userId={session?.user.id ?? ''}
-            onEditPress={setEditingItem}
-            onLiftPress={setLiftedItem}
-          />
-        )}
-        renderSectionHeader={({ section }) => {
-          const s = section as unknown as PantrySection;
-          if (s.isLow) {
-            return (
-              <View style={styles.needsAttentionHeader}>
-                <Ionicons name="cart-outline" size={16} color={colors.warning} />
-                <Text style={styles.needsAttentionTitle}>Grab These</Text>
-                <View style={styles.needsAttentionBadge}>
-                  <Text style={styles.needsAttentionBadgeText}>{s.count}</Text>
-                </View>
-                <Pressable
-                  hitSlop={10}
-                  style={({ pressed }) => [styles.resetAllBtn, pressed && { opacity: 0.65 }]}
-                  onPress={handleResetAll}
-                >
-                  <Ionicons name="refresh-outline" size={11} color={colors.warning} />
-                  <Text style={styles.resetAllText}>Reset all</Text>
-                </Pressable>
-                <Pressable
-                  hitSlop={10}
-                  style={({ pressed }) => [styles.shopBtn, pressed && { opacity: 0.65 }]}
-                  onPress={() => { void hapticSelection(); router.push('/(main)/grocery'); }}
-                >
-                  <Ionicons name="cart-outline" size={11} color={colors.primary} />
-                  <Text style={styles.shopBtnText}>Shop</Text>
-                </Pressable>
-              </View>
-            );
-          }
-          if (sortMode === 'alpha') return null;
-          return (
-            <View style={styles.categorySectionHeader}>
-              {s.emoji ? <Text style={styles.sectionEmoji}>{s.emoji}</Text> : null}
-              <Text style={styles.categorySectionTitle}>{s.title}</Text>
-              <Text style={styles.categorySectionCount}>{s.count}</Text>
-            </View>
-          );
-        }}
-        ListEmptyComponent={
-          <EmptyState
-            emoji={q ? '🔍' : '🌿'}
-            title={q ? `No results for "${query}"` : selectedStore ? `Nothing for ${selectedStore.name}` : 'Nothing here yet'}
-            subtitle={q ? 'Try a different search term.' : selectedStore ? 'Add a grocery to this store or return to the full list.' : 'Add the first item your household uses regularly.'}
-            action={q
-              ? undefined
-              : {
-                label: selectedStore ? `Add to ${selectedStore.name}` : 'Add first item',
-                onPress: () => { void hapticSelection(); setShowAdd(true); },
-              }}
-          />
-        }
+        renderItem={renderPantryItem}
+        renderSectionHeader={renderPantrySectionHeader}
+        ListEmptyComponent={emptyState}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
         }
@@ -683,6 +688,10 @@ export default function PantryScreen() {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         scrollEventThrottle={16}
+        initialNumToRender={12}
+        maxToRenderPerBatch={8}
+        updateCellsBatchingPeriod={50}
+        windowSize={7}
       />
 
 

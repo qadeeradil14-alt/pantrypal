@@ -68,6 +68,6 @@ function makeStyles(colors: AppColors) {
       paddingHorizontal: 24,
       paddingVertical: 13,
     },
-    btnText: { color: '#FFFFFF', fontSize: 15, fontFamily: fonts.bodySemiBold },
+    btnText: { color: colors.surface, fontSize: 15, fontFamily: fonts.bodySemiBold },
   });
 }

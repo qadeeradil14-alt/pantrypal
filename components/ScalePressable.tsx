@@ -1,4 +1,4 @@
-import { useRef, type ReactNode } from 'react';
+import { useCallback, useMemo, useRef, type ReactNode } from 'react';
 import {
   Animated,
   Pressable,
@@ -68,15 +68,15 @@ export default function ScalePressable({
   const inDuration = pressInDurationMs ?? profileConfig.inMs;
   const outDuration = pressOutDurationMs ?? profileConfig.outMs;
 
-  function animateTo(value: number, duration: number) {
+  const animateTo = useCallback((value: number, duration: number) => {
     Animated.timing(scale, {
       toValue: value,
       duration,
       useNativeDriver: true,
     }).start();
-  }
+  }, [scale]);
 
-  const { outer, inner } = partitionStyle(style);
+  const { outer, inner } = useMemo(() => partitionStyle(style), [style]);
 
   return (
     <Animated.View style={[outer, { transform: [{ scale }] }]}>

@@ -1,0 +1,20 @@
+appId: com.pantrypal.app
+---
+- tapOn:
+    id: tab-pantry
+- extendedWaitUntil:
+    visible:
+      id: pantry-barcode-scan-button
+    timeout: 15000
+- tapOn:
+    id: pantry-barcode-scan-button
+- extendedWaitUntil:
+    visible:
+      id: barcode-scanner-close
+    timeout: 15000
+- tapOn:
+    id: barcode-scanner-close
+- extendedWaitUntil:
+    visible:
+      id: pantry-search-input
+    timeout: 15000

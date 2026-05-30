@@ -530,6 +530,10 @@ export default function GroceryScreen() {
           contentContainerStyle={styles.list}
           contentInsetAdjustmentBehavior="automatic"
           stickySectionHeadersEnabled={false}
+          initialNumToRender={12}
+          maxToRenderPerBatch={8}
+          updateCellsBatchingPeriod={50}
+          windowSize={7}
         />
       )}
     </SafeAreaView>

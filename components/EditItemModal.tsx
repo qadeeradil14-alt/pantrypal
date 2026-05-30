@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import {
   Modal, View, Text, TextInput,
   StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
@@ -50,10 +50,16 @@ export default function EditItemModal({ item, onClose }: Props) {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
+  const nameInputRef = useRef<TextInput>(null);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const isDirty = name.trim() !== item.name || storeId !== item.preferred_store_id || expiresAt !== formatDateForInput(item.expires_at);
+
+  useEffect(() => {
+    const focusTimer = setTimeout(() => nameInputRef.current?.focus(), 260);
+    return () => clearTimeout(focusTimer);
+  }, []);
 
   async function handleSave() {
     const trimmed = name.trim();
@@ -166,13 +172,13 @@ export default function EditItemModal({ item, onClose }: Props) {
           ) : null}
 
           <TextInput
+            ref={nameInputRef}
             style={styles.input}
             value={name}
             onChangeText={(t) => { setName(t); if (error) setError(''); }}
             onSubmitEditing={handleSave}
             returnKeyType="done"
             placeholderTextColor={colors.placeholder}
-            autoFocus
           />
 
           <Text style={styles.label}>Store</Text>
@@ -219,7 +225,7 @@ export default function EditItemModal({ item, onClose }: Props) {
             disabled={!isDirty || saving}
           >
             {saving
-              ? <ActivityIndicator color="#fff" />
+              ? <ActivityIndicator color={colors.surface} />
               : <Text style={styles.saveBtnText}>Save changes</Text>}
           </ScalePressable>
 
@@ -342,7 +348,7 @@ function makeStyles(colors: AppColors) {
       alignItems: 'center', marginBottom: 10,
     },
     saveBtnDisabled: { backgroundColor: colors.disabled },
-    saveBtnText: { color: '#FFFFFF', fontSize: 17, fontFamily: fonts.bodySemiBold },
+    saveBtnText: { color: colors.surface, fontSize: 17, fontFamily: fonts.bodySemiBold },
     deleteBtn: {
       flexDirection: 'row', gap: 8,
       alignItems: 'center', justifyContent: 'center',

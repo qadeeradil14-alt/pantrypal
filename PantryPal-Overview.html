@@ -1,0 +1,720 @@
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PantryPal — Feature Overview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,700;1,800&amp;family=DM+Sans:wght@300;400;500;600&amp;family=DM+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:          #1C1812;
+    --surface:     #271F19;
+    --faint:       #2A2018;
+    --primary:     #D4874E;
+    --primarySoft: #2A1A0A;
+    --ink:         #F0E8DC;
+    --muted:       #8C7A68;
+    --border:      #3A2E24;
+    --success:     #5A9E70;
+    --danger:      #C05050;
+    --font-display: 'Playfair Display', Georgia, serif;
+    --font-body:    'DM Sans', system-ui, sans-serif;
+    --font-mono:    'DM Mono', monospace;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+    padding-bottom: 80px;
+  }
+
+  /* ── HEADER ── */
+  .hero {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 72px 32px 56px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .hero-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--primary);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 20px;
+  }
+
+  .hero-title {
+    font-family: var(--font-display);
+    font-size: clamp(42px, 7vw, 72px);
+    font-weight: 800;
+    font-style: italic;
+    color: var(--ink);
+    line-height: 1.05;
+    margin-bottom: 20px;
+  }
+
+  .hero-title span {
+    color: var(--primary);
+  }
+
+  .hero-tagline {
+    font-family: var(--font-body);
+    font-size: 18px;
+    font-weight: 400;
+    color: var(--muted);
+    max-width: 520px;
+    line-height: 1.6;
+    margin-bottom: 32px;
+  }
+
+  .hero-stack {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .pill {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--muted);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 10px;
+  }
+
+  /* ── JOURNEY SECTION ── */
+  .section {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 56px 32px 0;
+  }
+
+  .section-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--primary);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  .section-title {
+    font-family: var(--font-display);
+    font-size: 28px;
+    font-weight: 700;
+    font-style: italic;
+    color: var(--ink);
+    margin-bottom: 36px;
+  }
+
+  /* ── FLOW DIAGRAM ── */
+  .flow {
+    display: flex;
+    align-items: flex-start;
+    gap: 0;
+    overflow-x: auto;
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+    scrollbar-width: none;
+  }
+  .flow::-webkit-scrollbar { display: none; }
+
+  .flow-step {
+    flex: 1;
+    min-width: 108px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    position: relative;
+  }
+
+  .flow-step:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    top: 24px;
+    right: -1px;
+    width: calc(100% - 48px);
+    left: calc(50% + 24px);
+    height: 1px;
+    background: linear-gradient(90deg, var(--primary) 0%, var(--border) 100%);
+    z-index: 0;
+  }
+
+  .flow-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    margin-bottom: 12px;
+    position: relative;
+    z-index: 1;
+    flex-shrink: 0;
+  }
+
+  .flow-step.highlight .flow-icon {
+    background: var(--primarySoft);
+    border-color: var(--primary);
+  }
+
+  .flow-step-label {
+    font-family: var(--font-body);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink);
+    margin-bottom: 4px;
+    line-height: 1.3;
+  }
+
+  .flow-step-sub {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.4;
+  }
+
+  .flow-step.highlight .flow-step-label {
+    color: var(--primary);
+  }
+
+  /* ── FEATURE GRID ── */
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-top: 36px;
+  }
+
+  .feature-card {
+    background: var(--surface);
+    padding: 28px 24px;
+    transition: background 0.15s ease;
+  }
+
+  .feature-card:hover {
+    background: var(--faint);
+  }
+
+  .feature-icon {
+    font-size: 26px;
+    margin-bottom: 14px;
+    display: block;
+    line-height: 1;
+  }
+
+  .feature-name {
+    font-family: var(--font-display);
+    font-size: 17px;
+    font-weight: 700;
+    font-style: italic;
+    color: var(--ink);
+    margin-bottom: 12px;
+    line-height: 1.2;
+  }
+
+  .feature-bullets {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .feature-bullets li {
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--muted);
+    padding-left: 14px;
+    position: relative;
+    line-height: 1.45;
+  }
+
+  .feature-bullets li::before {
+    content: '–';
+    position: absolute;
+    left: 0;
+    color: var(--primary);
+    font-weight: 600;
+  }
+
+  /* ── STATUS BADGES ── */
+  .badge {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 3px;
+    margin-bottom: 14px;
+  }
+
+  .badge-live {
+    background: rgba(90,158,112,0.15);
+    color: var(--success);
+    border: 1px solid rgba(90,158,112,0.3);
+  }
+
+  /* ── DATA MODEL ── */
+  .schema-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    margin-top: 36px;
+  }
+
+  .schema-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .schema-row:last-child { border-bottom: none; }
+
+  .schema-entity {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--primary);
+    min-width: 120px;
+    padding-top: 1px;
+  }
+
+  .schema-desc {
+    font-family: var(--font-body);
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  .schema-desc strong {
+    color: var(--ink);
+    font-weight: 500;
+  }
+
+  /* ── EDGE CASES ── */
+  .edge-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 12px;
+    margin-top: 36px;
+  }
+
+  .edge-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px 20px;
+  }
+
+  .edge-title {
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    margin-bottom: 6px;
+  }
+
+  .edge-desc {
+    font-family: var(--font-body);
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  .edge-icon {
+    font-size: 16px;
+    margin-bottom: 8px;
+    display: block;
+  }
+
+  /* ── DIVIDER ── */
+  .divider {
+    max-width: 900px;
+    margin: 56px auto 0;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ── FOOTER ── */
+  .footer {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 32px 32px 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .footer-name {
+    font-family: var(--font-display);
+    font-size: 16px;
+    font-weight: 700;
+    font-style: italic;
+    color: var(--primary);
+  }
+
+  .footer-meta {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .btn-download {
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--bg);
+    background: var(--primary);
+    border: none;
+    border-radius: 6px;
+    padding: 9px 18px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+    transition: opacity 0.15s;
+  }
+  .btn-download:hover { opacity: 0.85; }
+
+  /* ── PRETEXT CONTAINERS ── */
+  [data-pretext] { overflow: hidden; }
+
+  @media (max-width: 600px) {
+    .hero { padding: 48px 20px 40px; }
+    .section { padding: 48px 20px 0; }
+    .feature-grid { grid-template-columns: 1fr; border-radius: 8px; }
+    .flow { gap: 0; }
+    .flow-step { min-width: 80px; }
+    .flow-step-sub { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- HERO -->
+<header class="hero">
+  <p class="hero-label">Product Overview · v1</p>
+  <h1 class="hero-title">Pantry<span>Pal</span></h1>
+  <p class="hero-tagline" data-pretext="" style="height: 86.4px;">Replace the grocery phone call. Two people, one shared pantry. Wife marks items low in 2 taps. Husband sees the live list at the store.</p>
+  <div class="hero-stack">
+    <span class="pill">Expo SDK 56</span>
+    <span class="pill">React Native</span>
+    <span class="pill">TypeScript</span>
+    <span class="pill">Supabase</span>
+    <span class="pill">Zustand</span>
+    <span class="pill">Expo Router</span>
+    <span class="pill">expo-notifications</span>
+    <span class="pill">expo-location</span>
+    <span class="pill">expo-camera</span>
+  </div>
+</header>
+
+<!-- USER JOURNEY -->
+<section class="section">
+  <p class="section-label">How it works</p>
+  <h2 class="section-title">The practical flow</h2>
+
+  <div class="flow">
+    <div class="flow-step highlight">
+      <div class="flow-icon">🥛</div>
+      <p class="flow-step-label">Wife notices milk is low</p>
+      <p class="flow-step-sub">Opens app</p>
+    </div>
+    <div class="flow-step">
+      <div class="flow-icon">👆</div>
+      <p class="flow-step-label">Taps Milk → Mark Low</p>
+      <p class="flow-step-sub">2 taps total</p>
+    </div>
+    <div class="flow-step highlight">
+      <div class="flow-icon">🔔</div>
+      <p class="flow-step-label">Husband gets push alert</p>
+      <p class="flow-step-sub">Instant, background</p>
+    </div>
+    <div class="flow-step">
+      <div class="flow-icon">🚗</div>
+      <p class="flow-step-label">Husband drives to store</p>
+      <p class="flow-step-sub">GPS detects arrival</p>
+    </div>
+    <div class="flow-step highlight">
+      <div class="flow-icon">📋</div>
+      <p class="flow-step-label">Grocery list auto-opens</p>
+      <p class="flow-step-sub">Geofence trigger</p>
+    </div>
+    <div class="flow-step">
+      <div class="flow-icon">✅</div>
+      <p class="flow-step-label">Taps "Got it"</p>
+      <p class="flow-step-sub">Disappears on both phones</p>
+    </div>
+    <div class="flow-step highlight">
+      <div class="flow-icon">📵</div>
+      <p class="flow-step-label">No phone call needed</p>
+      <p class="flow-step-sub">The whole point</p>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="section">
+  <p class="section-label">Features</p>
+  <h2 class="section-title">What's built</h2>
+
+  <div class="feature-grid">
+
+    <div class="feature-card">
+      <span class="badge badge-live">Live</span>
+      <span class="feature-icon">🥛</span>
+      <h3 class="feature-name">Pantry Screen</h3>
+      <ul class="feature-bullets">
+        <li>50 pre-seeded items — Fridge, Pantry, Freezer sections</li>
+        <li>Tap any item → marks LOW with amber highlight + badge</li>
+        <li>Add custom items, search and filter</li>
+        <li>Emoji per item, category grouping</li>
+      </ul>
+    </div>
+
+    <div class="feature-card">
+      <span class="badge badge-live">Live</span>
+      <span class="feature-icon">🛒</span>
+      <h3 class="feature-name">Grocery List</h3>
+      <ul class="feature-bullets">
+        <li>Live list of every item marked LOW</li>
+        <li>Real-time sync — appears on spouse's phone in &lt;2 seconds</li>
+        <li>Shopping mode keeps screen on with larger text</li>
+        <li>Tap row → "Got it" removes from both phones instantly</li>
+      </ul>
+    </div>
+
+    <div class="feature-card">
+      <span class="badge badge-live">Live</span>
+      <span class="feature-icon">📍</span>
+      <h3 class="feature-name">Stores</h3>
+      <ul class="feature-bullets">
+        <li>Add grocery stores with GPS coordinates</li>
+        <li>Assign preferred store per pantry item</li>
+        <li>Geofence triggers when you physically arrive</li>
+        <li>3-min debounce prevents GPS bounce re-triggers</li>
+      </ul>
+    </div>
+
+    <div class="feature-card">
+      <span class="badge badge-live">Live</span>
+      <span class="feature-icon">🧾</span>
+      <h3 class="feature-name">Receipt Scanning</h3>
+      <ul class="feature-bullets">
+        <li>Scan or upload grocery receipts</li>
+        <li>Supabase Edge Function parses with AI</li>
+        <li>Scanned items auto-populate pantry</li>
+        <li>History of past receipts preserved</li>
+      </ul>
+    </div>
+
+    <div class="feature-card">
+      <span class="badge badge-live">Live</span>
+      <span class="feature-icon">📷</span>
+      <h3 class="feature-name">Barcode Scanner</h3>
+      <ul class="feature-bullets">
+        <li>Scans EAN-13, EAN-8, UPC-A, UPC-E, Code128</li>
+        <li>Looks up product name via Open Food Facts API</li>
+        <li>Pre-fills the add-item form automatically</li>
+        <li>Haptic feedback on successful scan</li>
+      </ul>
+    </div>
+
+    <div class="feature-card">
+      <span class="badge badge-live">Live</span>
+      <span class="feature-icon">👥</span>
+      <h3 class="feature-name">Household</h3>
+      <ul class="feature-bullets">
+        <li>Two people share one household account</li>
+        <li>Invite spouse via deep-link code (pantrypal://join)</li>
+        <li>All data is household-scoped with Supabase RLS</li>
+        <li>No user can see another household's data</li>
+      </ul>
+    </div>
+
+    <div class="feature-card">
+      <span class="badge badge-live">Live</span>
+      <span class="feature-icon">🔔</span>
+      <h3 class="feature-name">Push Notifications</h3>
+      <ul class="feature-bullets">
+        <li>Sent when any item is marked LOW</li>
+        <li>Supabase Edge Function + Expo Push Tokens</li>
+        <li>Works in background and when app is closed</li>
+        <li>Low-stock alerts for expiring items</li>
+      </ul>
+    </div>
+
+    <div class="feature-card">
+      <span class="badge badge-live">Live</span>
+      <span class="feature-icon">📡</span>
+      <h3 class="feature-name">Offline Mode</h3>
+      <ul class="feature-bullets">
+        <li>All writes queue locally when no connection</li>
+        <li>Sync status pill: Synced / Queued / Reconnecting</li>
+        <li>Grocery list stays readable at the store offline</li>
+        <li>Auto-flushes queue every 8s when back online</li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+
+<!-- DATA MODEL -->
+<section class="section">
+  <p class="section-label">Architecture</p>
+  <h2 class="section-title">How data flows</h2>
+
+  <div class="schema-block">
+    <div class="schema-row">
+      <span class="schema-entity">households</span>
+      <span class="schema-desc">One per family unit. Holds the <strong>invite_code</strong> for deep-link joining. All other data hangs off this.</span>
+    </div>
+    <div class="schema-row">
+      <span class="schema-entity">household_members</span>
+      <span class="schema-desc">Maps users to households. Stores each member's <strong>push_token</strong> — updated on every app launch in case it changes on reinstall.</span>
+    </div>
+    <div class="schema-row">
+      <span class="schema-entity">items</span>
+      <span class="schema-desc">The master item list. Key flag: <strong>is_low boolean</strong>. Tracks who marked it low and who got it. Indexed for fast household queries.</span>
+    </div>
+    <div class="schema-row">
+      <span class="schema-entity">stores</span>
+      <span class="schema-desc">Grocery stores with <strong>lat/lng</strong> for geofencing. Items can have a <strong>preferred_store_id</strong> to route shopping by aisle.</span>
+    </div>
+    <div class="schema-row">
+      <span class="schema-entity">Realtime</span>
+      <span class="schema-desc">Supabase Realtime subscription on the <strong>items</strong> table. Changes appear on both phones in under 2 seconds. Re-subscribes on app foreground.</span>
+    </div>
+    <div class="schema-row">
+      <span class="schema-entity">Edge Functions</span>
+      <span class="schema-desc"><strong>parse-receipt</strong> (AI receipt parsing), <strong>notify-low-item</strong> (push on mark low), <strong>notify-store-arrival</strong> (geofence push). All webhook-secured.</span>
+    </div>
+    <div class="schema-row">
+      <span class="schema-entity">RLS</span>
+      <span class="schema-desc">Row Level Security enforced on every table. <strong>Users can only see data from their own household.</strong> No app-level guard needed — the database enforces it.</span>
+    </div>
+  </div>
+</section>
+
+<!-- EDGE CASES -->
+<section class="section">
+  <p class="section-label">Resilience</p>
+  <h2 class="section-title">Edge cases handled</h2>
+
+  <div class="edge-grid">
+    <div class="edge-card">
+      <span class="edge-icon">⚡</span>
+      <p class="edge-title">Both mark same item simultaneously</p>
+      <p class="edge-desc">is_low=true is idempotent. Last write wins, no data loss, no conflict.</p>
+    </div>
+    <div class="edge-card">
+      <span class="edge-icon">📶</span>
+      <p class="edge-title">No internet at the store</p>
+      <p class="edge-desc">Grocery list cached in Zustand. Reads work offline. Writes queue and show "Queued" badge.</p>
+    </div>
+    <div class="edge-card">
+      <span class="edge-icon">🔄</span>
+      <p class="edge-title">Realtime subscription drops</p>
+      <p class="edge-desc">AppState listener re-subscribes on foreground. "Reconnecting…" banner after 5s without connection.</p>
+    </div>
+    <div class="edge-card">
+      <span class="edge-icon">📱</span>
+      <p class="edge-title">New phone / reinstall</p>
+      <p class="edge-desc">Push token upserted on every app launch. Household membership persists in Supabase.</p>
+    </div>
+    <div class="edge-card">
+      <span class="edge-icon">🅿️</span>
+      <p class="edge-title">GPS bounce in parking lot</p>
+      <p class="edge-desc">3-minute debounce on geofence re-entries. Same store won't re-trigger within the window.</p>
+    </div>
+    <div class="edge-card">
+      <span class="edge-icon">🔑</span>
+      <p class="edge-title">Two people join with same invite code</p>
+      <p class="edge-desc">DB unique constraint on household_members prevents duplicates. Atomic race-safe check.</p>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<footer class="footer">
+  <span class="footer-name">PantryPal</span>
+  <span class="footer-meta">Expo · Supabase · v1 MVP · May 2026</span>
+  <a class="btn-download" id="dl-btn" href="#">Download</a>
+</footer>
+
+<script type="module">
+import { prepare, layout } from 'https://esm.sh/@chenglou/pretext';
+
+async function init() {
+  await document.fonts.ready;
+
+  const elements = document.querySelectorAll('[data-pretext]');
+  const prepared = new Map();
+
+  for (const el of elements) {
+    const text = el.textContent;
+    const style = getComputedStyle(el);
+    const font = `${style.fontWeight} ${style.fontSize}/${style.lineHeight} ${style.fontFamily}`;
+    prepared.set(el, prepare(text, font));
+  }
+
+  function relayout() {
+    for (const [el, handle] of prepared) {
+      const style = getComputedStyle(el);
+      const lh = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.6;
+      const { height } = layout(handle, el.clientWidth, lh);
+      el.style.height = height + 'px';
+    }
+  }
+
+  new ResizeObserver(() => relayout()).observe(document.body);
+  relayout();
+}
+
+init().catch(() => {});
+
+document.getElementById('dl-btn').addEventListener('click', (e) => {
+  e.preventDefault();
+  const html = document.documentElement.outerHTML;
+  const blob = new Blob([html], { type: 'text/html' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'PantryPal-Overview.html';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+</script>
+
+
+</body></html>

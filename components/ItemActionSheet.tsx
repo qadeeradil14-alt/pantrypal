@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Modal,
@@ -73,29 +73,43 @@ export default function ItemActionSheet({
     }
   }, [visible, slideAnim, fadeAnim]);
 
-  const handleClose = () => {
-    onClose();
-  };
+  const closeWithAnimation = useCallback((afterClose?: () => void) => {
+    Animated.parallel([
+      Animated.timing(slideAnim, {
+        toValue: 500,
+        duration: 220,
+        useNativeDriver: true,
+      }),
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 180,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      onClose();
+      afterClose?.();
+    });
+  }, [fadeAnim, onClose, slideAnim]);
+
+  const handleClose = useCallback(() => {
+    closeWithAnimation();
+  }, [closeWithAnimation]);
 
   const handleDelete = () => {
-    onClose();
-    // Small delay so the sheet closes before the delete fires
-    setTimeout(onDelete, 100);
+    closeWithAnimation(onDelete);
   };
 
   const handleAssign = (storeId: string | null) => {
-    onClose();
-    setTimeout(() => onAssignStore(storeId), 80);
+    closeWithAnimation(() => onAssignStore(storeId));
   };
 
   const handleEdit = () => {
-    onClose();
-    setTimeout(() => onEdit?.(), 80);
+    closeWithAnimation(() => onEdit?.());
   };
 
   const assignedStore = stores.find((s) => s.id === item.preferred_store_id);
   const emoji = getItemEmoji(item.name, item.category ?? '');
-  const styles = makeStyles(colors);
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   if (!mounted) return null;
 

@@ -6,6 +6,7 @@ import { deleteItemWithQueue, markItemLowWithQueue, markItemOkWithQueue } from '
 import { setItemStoreWithQueue } from '../lib/stores';
 import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../lib/haptics';
 import type { Item } from '../lib/items';
+import type { Store } from '../lib/stores';
 import { pantryItemStoreMetaTestId, pantryItemTestId } from '../lib/testIds';
 import { getItemEmoji } from '../constants/itemEmojis';
 import { useTheme } from '../hooks/useTheme';
@@ -26,7 +27,6 @@ function ItemRowComponent({ item, userId, onEditPress, onLiftPress }: Props) {
   const assignedStoreName = useStoresStore((state) =>
     state.stores.find((s) => s.id === item.preferred_store_id)?.name,
   );
-  const stores = useStoresStore((state) => state.stores);
   const [showSheet, setShowSheet] = useState(false);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -137,21 +137,52 @@ function ItemRowComponent({ item, userId, onEditPress, onLiftPress }: Props) {
         )}
       </ScalePressable>
 
-      <ItemActionSheet
-        item={item}
-        stores={stores}
-        visible={showSheet}
-        onClose={() => setShowSheet(false)}
-        onEdit={onEditPress ? () => onEditPress(item) : undefined}
-        onAssignStore={assignStore}
-        onDelete={handleDelete}
-      />
+      {showSheet && !onLiftPress && (
+        <ItemRowActionSheetHost
+          item={item}
+          visible={showSheet}
+          onClose={() => setShowSheet(false)}
+          onEdit={onEditPress ? () => onEditPress(item) : undefined}
+          onAssignStore={assignStore}
+          onDelete={handleDelete}
+        />
+      )}
     </>
   );
 }
 
 const ItemRow = memo(ItemRowComponent);
 export default ItemRow;
+
+function ItemRowActionSheetHost({
+  item,
+  visible,
+  onClose,
+  onEdit,
+  onAssignStore,
+  onDelete,
+}: {
+  item: Item;
+  visible: boolean;
+  onClose: () => void;
+  onEdit?: () => void;
+  onAssignStore: (storeId: string | null) => void;
+  onDelete: () => void;
+}) {
+  const stores = useStoresStore((state): Store[] => state.stores);
+
+  return (
+    <ItemActionSheet
+      item={item}
+      stores={stores}
+      visible={visible}
+      onClose={onClose}
+      onEdit={onEdit}
+      onAssignStore={onAssignStore}
+      onDelete={onDelete}
+    />
+  );
+}
 
 function makeStyles(colors: AppColors) {
   return StyleSheet.create({

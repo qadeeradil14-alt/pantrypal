@@ -1,0 +1,29 @@
+appId: com.pantrypal.app
+---
+- tapOn:
+    id: tab-pantry
+- extendedWaitUntil:
+    visible:
+      id: pantry-search-input
+    timeout: 15000
+- scrollUntilVisible:
+    element:
+      id: pantry-item-drag-bread
+    direction: DOWN
+    timeout: 20000
+    centerElement: true
+- swipe:
+    from:
+      id: pantry-item-drag-bread
+    direction: UP
+    duration: 1800
+- tapOn:
+    id: pantry-store-target-giant
+- scrollUntilVisible:
+    element:
+      id: pantry-item-bread
+    direction: DOWN
+    timeout: 15000
+    centerElement: true
+- tapOn:
+    id: pantry-store-target-all-groceries

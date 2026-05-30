@@ -1,0 +1,20 @@
+appId: com.pantrypal.app
+---
+- tapOn:
+    id: tab-receipts
+- extendedWaitUntil:
+    visible:
+      id: receipts-header
+    timeout: 15000
+- tapOn:
+    id: tab-stores
+- extendedWaitUntil:
+    visible:
+      id: stores-header
+    timeout: 15000
+- tapOn:
+    id: tab-settings
+- extendedWaitUntil:
+    visible:
+      id: settings-header
+    timeout: 15000

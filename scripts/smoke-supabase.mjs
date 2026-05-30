@@ -188,7 +188,50 @@ async function run() {
   if (readStoreByB.error) throw new Error(`User B read store failed: ${readStoreByB.error.message}`);
   console.log('Cross-member store read works');
 
+  const brands = await clientA
+    .from('store_brands')
+    .select('id, name, domain, logo_url')
+    .ilike('search_text', '%whole%')
+    .limit(3);
+  if (brands.error) throw new Error(`Store brand search failed: ${brands.error.message}`);
+  const wholeFoods = brands.data.find((b) => b.name === 'Whole Foods Market');
+  if (!wholeFoods) throw new Error('Store brand search did not return Whole Foods Market');
+  console.log('Store brand search works');
+
+  const brandedStore = await clientA
+    .from('stores')
+    .insert({
+      household_id: created.id,
+      name: `Whole Foods Smoke ${stamp}`,
+      address: '690 Stanyan Street, San Francisco, CA 94117',
+      latitude: 37.7697,
+      longitude: -122.4538,
+      store_brand_id: wholeFoods.id,
+      brand_domain: wholeFoods.domain,
+      logo_url: wholeFoods.logo_url,
+    })
+    .select('id, name, store_brand_id, brand_domain, logo_url')
+    .single();
+  if (brandedStore.error) throw new Error(`Branded store insert failed: ${brandedStore.error.message}`);
+  if (brandedStore.data.store_brand_id !== wholeFoods.id || brandedStore.data.brand_domain !== wholeFoods.domain) {
+    throw new Error('Branded store fields did not persist');
+  }
+  console.log('Branded store insert works');
+
+  const duplicateStore = await clientA
+    .from('stores')
+    .insert({
+      household_id: created.id,
+      name: `whole foods smoke ${stamp}`,
+      address: '690 Stanyan Street, San Francisco, CA 94117',
+    });
+  if (!duplicateStore.error) throw new Error('Duplicate store insert unexpectedly succeeded');
+  console.log('Duplicate store guard works');
+
   // Validate store delete path used by UI remove action.
+  const deleteBrandedStoreRes = await clientA.from('stores').delete().eq('id', brandedStore.data.id);
+  if (deleteBrandedStoreRes.error) throw new Error(`Branded store delete failed: ${deleteBrandedStoreRes.error.message}`);
+
   const deleteStoreRes = await clientA.from('stores').delete().eq('id', insertStore.data.id);
   if (deleteStoreRes.error) throw new Error(`Store delete failed: ${deleteStoreRes.error.message}`);
   console.log('Store delete works');

@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import {
   Modal, View, Text, TextInput, ScrollView, Pressable,
   StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator,
@@ -39,6 +39,7 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
   const [newStoreName, setNewStoreName] = useState('');
   const [storeAdding, setStoreAdding] = useState(false);
   const ready = UUID_RE.test(householdId);
+  const nameInputRef = useRef<TextInput>(null);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const existingNames = useMemo(() => new Set(stores.map((s) => s.name.toLowerCase())), [stores]);
@@ -54,6 +55,11 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
     }
     if (!storeTouched && !storeId && stores.length > 0) setStoreId(stores[0].id);
   }, [initialStoreId, storeId, storeTouched, stores]);
+
+  useEffect(() => {
+    const focusTimer = setTimeout(() => nameInputRef.current?.focus(), 260);
+    return () => clearTimeout(focusTimer);
+  }, []);
 
   async function handleAddStore() {
     const trimmed = newStoreName.trim();
@@ -154,9 +160,9 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
           ) : null}
 
           <TextInput
+            ref={nameInputRef}
             style={styles.input}
             placeholder="Milk, eggs, rice..."
-            autoFocus
             value={name}
             onChangeText={(t) => { setName(t); if (error) setError(''); }}
             onSubmitEditing={handleAdd}
@@ -218,7 +224,7 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
                 disabled={!newStoreName.trim() || storeAdding}
               >
                 {storeAdding
-                  ? <ActivityIndicator size="small" color="#fff" />
+                  ? <ActivityIndicator size="small" color={colors.surface} />
                   : <Text style={styles.newStoreAddText}>Add</Text>}
               </Pressable>
               <Pressable onPress={() => { setAddingStore(false); setNewStoreName(''); }} hitSlop={8}>
@@ -252,7 +258,7 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
             disabled={!ready || loading}
           >
             {loading
-              ? <ActivityIndicator color="#fff" />
+              ? <ActivityIndicator color={colors.surface} />
               : <Text style={styles.addBtnText}>{storeId ? 'Add to store' : 'Add unassigned'}</Text>}
           </ScalePressable>
 
@@ -332,7 +338,7 @@ function makeStyles(colors: AppColors) {
     },
     chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
     chipText: { fontSize: 13, fontFamily: fonts.bodySemiBold, color: colors.muted },
-    chipTextActive: { color: '#fff' },
+    chipTextActive: { color: colors.surface },
     chipAdd: { flexDirection: 'row', alignItems: 'center', gap: 4 },
     chipAddText: { fontSize: 13, fontFamily: fonts.bodySemiBold, color: colors.muted },
     newStoreRow: {
@@ -349,7 +355,7 @@ function makeStyles(colors: AppColors) {
       alignItems: 'center', justifyContent: 'center', minWidth: 48,
     },
     newStoreAddDisabled: { backgroundColor: colors.disabled },
-    newStoreAddText: { color: '#fff', fontSize: 13, fontFamily: fonts.bodySemiBold },
+    newStoreAddText: { color: colors.surface, fontSize: 13, fontFamily: fonts.bodySemiBold },
     newStoreCancelText: { fontSize: 13, fontFamily: fonts.bodySemiBold, color: colors.muted },
     presetScroll: { flexGrow: 0, marginBottom: 16 },
     presetRow: { gap: 8, flexDirection: 'row' },
@@ -366,7 +372,7 @@ function makeStyles(colors: AppColors) {
       marginBottom: 10,
     },
     addBtnDisabled: { backgroundColor: colors.disabled },
-    addBtnText: { color: '#FFFFFF', fontSize: 17, fontFamily: fonts.bodySemiBold },
+    addBtnText: { color: colors.surface, fontSize: 17, fontFamily: fonts.bodySemiBold },
     cancelBtn: { paddingVertical: 14, alignItems: 'center' },
     cancelText: { color: colors.muted, fontSize: 16, fontFamily: fonts.bodySemiBold },
   });
