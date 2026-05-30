@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet,
   Alert, Share, ActivityIndicator, ScrollView,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -75,24 +76,29 @@ export default function SettingsScreen() {
     ]);
   }
 
+  const inviteDeepLink = household?.inviteCode
+    ? `pantrypal://join?code=${household.inviteCode}`
+    : null;
+
   async function handleCopyCode() {
-    if (!household?.inviteCode) return;
+    if (!household?.inviteCode || !inviteDeepLink) return;
     void hapticSuccess();
     try {
-      await Share.share({ message: household.inviteCode });
+      await Clipboard.setStringAsync(inviteDeepLink);
       setCodeCopied(true);
-      setTimeout(() => setCodeCopied(false), 2000);
+      setTimeout(() => setCodeCopied(false), 2500);
     } catch {
-      Alert.alert('Invite code', household.inviteCode);
+      Alert.alert('Invite link', inviteDeepLink);
     }
   }
 
   async function handleShare() {
-    if (!household?.inviteCode) return;
+    if (!household?.inviteCode || !inviteDeepLink) return;
     try {
       void hapticSelection();
       await Share.share({
-        message: `Hey! I'm using PantryPal to manage our household pantry together 🏠\n\nJoin with invite code: ${household.inviteCode}`,
+        message: `Join my household on Stokit! 🏠\n\nWe use it to manage our pantry, grocery list, and spending together.\n\n📲 Download Stokit on TestFlight, then tap this link to join:\n${inviteDeepLink}\n\nOr open the app and enter code: ${household.inviteCode}`,
+        url: inviteDeepLink,
       });
     } catch (e: any) {
       Alert.alert('Could not share', e?.message ?? 'Please try again.');
