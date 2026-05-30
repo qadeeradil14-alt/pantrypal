@@ -3,7 +3,7 @@ import { useFocusEffect } from 'expo-router';
 import {
   View, Text, SectionList, StyleSheet,
   ActivityIndicator, Alert, RefreshControl,
-  Modal, ScrollView, Pressable,
+  Modal, ScrollView, Pressable, TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,7 +14,7 @@ import { useSettingsStore } from '../../../store/settings';
 import { useItemsStore } from '../../../store/items';
 import { addItemWithQueue } from '../../../lib/items';
 import { useStoresStore } from '../../../store/stores';
-import { uploadReceipt, fetchReceipts, deleteReceipt, getSpendSummary, type Receipt, type SpendSummary } from '../../../lib/receipts';
+import { uploadReceipt, fetchReceipts, deleteReceipt, addManualReceipt, getSpendSummary, type Receipt, type SpendSummary } from '../../../lib/receipts';
 import { fetchRecentActivity, formatActivityTime, type ActivityEvent } from '../../../lib/activity';
 import { radii, shadow, fonts } from '../../../constants/theme';
 import ScalePressable from '../../../components/ScalePressable';
@@ -66,6 +66,13 @@ export default function ReceiptsScreen() {
   const [pantryPickMode, setPantryPickMode] = useState(false);
   const [selectedPantryIds, setSelectedPantryIds] = useState<Set<string>>(new Set());
   const [addingToPantry, setAddingToPantry] = useState(false);
+
+  // Quick Add Spend modal
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [quickStore, setQuickStore] = useState('');
+  const [quickAmount, setQuickAmount] = useState('');
+  const [quickDate, setQuickDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [quickSaving, setQuickSaving] = useState(false);
 
   const canUpload = !!householdId && !!userId && !uploading;
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -142,8 +149,37 @@ export default function ReceiptsScreen() {
     Alert.alert('Add Receipt', 'How would you like to add your receipt?', [
       { text: 'Take Photo', onPress: () => { void handleCapture('camera'); } },
       { text: 'Choose from Library', onPress: () => { void handleCapture('library'); } },
+      { text: 'Enter Manually', onPress: () => {
+        setQuickStore('');
+        setQuickAmount('');
+        setQuickDate(new Date().toISOString().slice(0, 10));
+        setShowQuickAdd(true);
+      }},
       { text: 'Cancel', style: 'cancel' },
     ]);
+  }
+
+  async function handleSaveQuickAdd() {
+    if (!householdId || !userId) return;
+    const amount = parseFloat(quickAmount.replace(/[^0-9.]/g, ''));
+    if (isNaN(amount) || amount <= 0) {
+      Alert.alert('Invalid amount', 'Enter a valid dollar amount.');
+      return;
+    }
+    const store = quickStore.trim() || 'Unknown store';
+    const date = quickDate.trim() || new Date().toISOString().slice(0, 10);
+    setQuickSaving(true);
+    try {
+      const receipt = await addManualReceipt(householdId, userId, store, amount, date);
+      setReceipts((prev) => [receipt, ...prev]);
+      setShowQuickAdd(false);
+      // Refresh spend summary
+      getSpendSummary(householdId).then((s) => setSpend(s)).catch(() => {});
+    } catch (e: any) {
+      Alert.alert('Could not save', e?.message ?? 'Please try again.');
+    } finally {
+      setQuickSaving(false);
+    }
   }
 
   const sections = useMemo(() => groupReceiptsByTime(receipts), [receipts]);
@@ -519,6 +555,75 @@ export default function ReceiptsScreen() {
           )}
         </View>
       </Modal>
+
+      {/* Quick Add Spend Modal */}
+      <Modal visible={showQuickAdd} transparent animationType="slide" onRequestClose={() => setShowQuickAdd(false)}>
+        <KeyboardAvoidingView style={styles.qaOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={styles.qaSheet}>
+            <View style={styles.qaHandle} />
+            <Text style={styles.qaTitle}>Add Spend</Text>
+            <Text style={styles.qaSub}>No receipt? Log it manually in seconds.</Text>
+
+            <Text style={styles.qaLabel}>Store</Text>
+            <View style={styles.qaStoreRow}>
+              <Ionicons name="storefront-outline" size={16} color={colors.muted} />
+              <TextInput
+                style={styles.qaInput}
+                placeholder="e.g. Walmart, Giant, Costco"
+                placeholderTextColor={colors.placeholder}
+                value={quickStore}
+                onChangeText={setQuickStore}
+                returnKeyType="next"
+                autoCapitalize="words"
+              />
+            </View>
+
+            <Text style={styles.qaLabel}>Amount spent</Text>
+            <View style={styles.qaStoreRow}>
+              <Text style={styles.qaDollar}>$</Text>
+              <TextInput
+                style={[styles.qaInput, styles.qaAmountInput]}
+                placeholder="0.00"
+                placeholderTextColor={colors.placeholder}
+                value={quickAmount}
+                onChangeText={setQuickAmount}
+                keyboardType="decimal-pad"
+                returnKeyType="done"
+                autoFocus
+              />
+            </View>
+
+            <Text style={styles.qaLabel}>Date</Text>
+            <View style={styles.qaStoreRow}>
+              <Ionicons name="calendar-outline" size={16} color={colors.muted} />
+              <TextInput
+                style={styles.qaInput}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={colors.placeholder}
+                value={quickDate}
+                onChangeText={setQuickDate}
+                keyboardType="numbers-and-punctuation"
+                maxLength={10}
+              />
+            </View>
+
+            <View style={styles.qaActions}>
+              <Pressable style={styles.qaCancelBtn} onPress={() => setShowQuickAdd(false)}>
+                <Text style={styles.qaCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.qaSaveBtn, (quickSaving || !quickAmount.trim()) && styles.qaSaveBtnDisabled]}
+                onPress={() => { void handleSaveQuickAdd(); }}
+                disabled={quickSaving || !quickAmount.trim()}
+              >
+                {quickSaving
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Text style={styles.qaSaveText}>Save</Text>}
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -706,5 +811,40 @@ function makeStyles(colors: AppColors) {
     },
     modalConfirmBtnDisabled: { backgroundColor: colors.disabled },
     modalConfirmBtnText: { fontSize: 15, fontFamily: fonts.bodySemiBold, color: colors.surface },
+
+    // Quick Add Spend modal
+    qaOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
+    qaSheet: {
+      backgroundColor: colors.surface,
+      borderTopLeftRadius: 24, borderTopRightRadius: 24,
+      paddingHorizontal: 20, paddingBottom: 40, paddingTop: 12,
+      gap: 10,
+    },
+    qaHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: 8 },
+    qaTitle: { fontSize: 22, fontFamily: fonts.displayItalic, color: colors.ink },
+    qaSub: { fontSize: 14, fontFamily: fonts.body, color: colors.muted, marginBottom: 4 },
+    qaLabel: { fontSize: 13, fontFamily: fonts.bodySemiBold, color: colors.muted, marginTop: 4 },
+    qaStoreRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 10,
+      backgroundColor: colors.faint, borderRadius: 12,
+      paddingHorizontal: 14, paddingVertical: 12,
+      borderWidth: 1, borderColor: colors.border,
+    },
+    qaInput: { flex: 1, fontSize: 16, fontFamily: fonts.bodyMedium, color: colors.ink },
+    qaAmountInput: { fontSize: 22, fontFamily: fonts.bodySemiBold },
+    qaDollar: { fontSize: 22, fontFamily: fonts.bodySemiBold, color: colors.primary },
+    qaActions: { flexDirection: 'row', gap: 12, marginTop: 8 },
+    qaCancelBtn: {
+      flex: 1, paddingVertical: 15, borderRadius: radii.lg,
+      backgroundColor: colors.faint, alignItems: 'center',
+      borderWidth: 1, borderColor: colors.border,
+    },
+    qaCancelText: { fontSize: 16, fontFamily: fonts.bodySemiBold, color: colors.muted },
+    qaSaveBtn: {
+      flex: 2, paddingVertical: 15, borderRadius: radii.lg,
+      backgroundColor: colors.primary, alignItems: 'center',
+    },
+    qaSaveBtnDisabled: { backgroundColor: colors.disabled },
+    qaSaveText: { fontSize: 16, fontFamily: fonts.bodySemiBold, color: '#fff' },
   });
 }

@@ -24,6 +24,29 @@ export interface ReceiptItem {
   matched_item_id: string | null;
 }
 
+export async function addManualReceipt(
+  householdId: string,
+  userId: string,
+  storeName: string,
+  totalAmount: number,
+  transactionDate: string,
+): Promise<Receipt> {
+  const { data, error } = await supabase
+    .from('receipts')
+    .insert({
+      household_id: householdId,
+      uploaded_by: userId,
+      store_name: storeName,
+      total_amount: totalAmount,
+      transaction_date: transactionDate,
+      status: 'done',
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as Receipt;
+}
+
 export async function uploadReceipt(
   householdId: string,
   userId: string,
