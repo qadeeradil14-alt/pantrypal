@@ -229,26 +229,88 @@ async function insertStoreWithBrandFallback(payload: Record<string, any>): Promi
   };
 }
 
-export async function searchNearbyStores(storeName: string): Promise<StorePlace[]> {
+export async function searchNearbyStores(storeName: string, zipCode?: string): Promise<StorePlace[]> {
   const normalized = storeName.trim();
   if (!normalized) return [];
+
+  // If zip code provided, geocode it and search near that location
+  if (zipCode?.trim()) {
+    const zip = zipCode.trim();
+    try {
+      const geoRes = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(zip)}&format=json&limit=1&addressdetails=1&countrycodes=us`,
+        { headers: { 'User-Agent': 'Stokit/1.0', Accept: 'application/json' } },
+      );
+      if (geoRes.ok) {
+        const geoData = await geoRes.json();
+        if (geoData[0]) {
+          const lat = parseFloat(geoData[0].lat);
+          const lon = parseFloat(geoData[0].lon);
+          // Use city/state from geocoded zip to add context to query
+          const addr = geoData[0].address ?? {};
+          const city = addr.city ?? addr.town ?? addr.village ?? addr.county ?? '';
+          const state = addr.state ?? '';
+          const contextQuery = city ? `${normalized} ${city} ${state}` : normalized;
+          const delta = 0.35;
+          const viewbox = `${lon - delta},${lat + delta},${lon + delta},${lat - delta}`;
+          const results = await searchNominatimStores(contextQuery, `&bounded=1&viewbox=${viewbox}`);
+          if (results.length > 0) return clusterNearestResults(results, lat, lon);
+          // Widen to 1° (~70 miles) before giving up on zip
+          const wide = await searchNominatimStores(contextQuery, `&bounded=1&viewbox=${lon - 1},${lat + 1},${lon + 1},${lat - 1}`);
+          if (wide.length > 0) return clusterNearestResults(wide, lat, lon);
+        }
+      }
+    } catch { /* fall through to GPS */ }
+  }
 
   try {
     const permission = await Location.requestForegroundPermissionsAsync();
     if (permission.status === 'granted') {
       const here = await Location.getCurrentPositionAsync({});
-      const delta = 0.35;
-      const left = here.coords.longitude - delta;
-      const right = here.coords.longitude + delta;
-      const top = here.coords.latitude + delta;
-      const bottom = here.coords.latitude - delta;
-      const bounded = await searchNominatimStores(normalized, `&bounded=1&viewbox=${left},${top},${right},${bottom}`);
-      if (bounded.length > 0) return bounded;
-    }
-  } catch {
-  }
+      const { latitude: lat, longitude: lon } = here.coords;
 
-  return searchNominatimStores(normalized);
+      // Reverse geocode to get city/state for smarter query context
+      let contextQuery = normalized;
+      try {
+        const rev = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&addressdetails=1`,
+          { headers: { 'User-Agent': 'Stokit/1.0', Accept: 'application/json' } },
+        );
+        if (rev.ok) {
+          const revData = await rev.json();
+          const addr = revData.address ?? {};
+          const city = addr.city ?? addr.town ?? addr.village ?? addr.county ?? '';
+          const state = addr.state ?? '';
+          if (city) contextQuery = `${normalized} ${city} ${state}`;
+        }
+      } catch { /* use plain name */ }
+
+      // Try tight 0.35° box (~24 miles) first
+      const delta = 0.35;
+      const viewbox = `${lon - delta},${lat + delta},${lon + delta},${lat - delta}`;
+      const tight = await searchNominatimStores(contextQuery, `&bounded=1&viewbox=${viewbox}`);
+      if (tight.length > 0) return clusterNearestResults(tight, lat, lon);
+
+      // Widen to 1° (~70 miles) before giving up on GPS
+      const wide = await searchNominatimStores(contextQuery, `&bounded=1&viewbox=${lon - 1},${lat + 1},${lon + 1},${lat - 1}`);
+      if (wide.length > 0) return clusterNearestResults(wide, lat, lon);
+    }
+  } catch { /* fall through */ }
+
+  // Last resort: unbounded but with US country filter so we don't get foreign results
+  return searchNominatimStores(normalized, '&countrycodes=us');
+}
+
+/** Sort by distance from a point and keep only results within the nearest cluster. */
+function clusterNearestResults(places: StorePlace[], lat: number, lon: number): StorePlace[] {
+  const withDist = places.map((p) => ({
+    ...p,
+    dist: Math.abs(p.latitude - lat) + Math.abs(p.longitude - lon),
+  }));
+  withDist.sort((a, b) => a.dist - b.dist);
+  // Keep all results within 2× the distance of the closest one
+  const minDist = withDist[0]?.dist ?? 0;
+  return withDist.filter((p) => p.dist <= minDist * 2 + 0.1).map(({ dist: _, ...p }) => p);
 }
 
 export async function deleteStore(storeId: string) {

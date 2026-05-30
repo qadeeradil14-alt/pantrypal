@@ -270,6 +270,7 @@ function AddStoreModal({
   const [geocoding, setGeocoding] = useState(false);
   const [error, setError] = useState('');
   const [mapQuery, setMapQuery] = useState('');
+  const [zipCode, setZipCode] = useState('');
   const [places, setPlaces] = useState<StorePlace[]>([]);
   const [selectedPlace, setSelectedPlace] = useState<StorePlace | null>(null);
   const [manualAddress, setManualAddress] = useState('');
@@ -306,7 +307,7 @@ function AddStoreModal({
     setGeocodedPlace(null);
     setManualAddress('');
     try {
-      const found = await searchNearbyStores(trimmed);
+      const found = await searchNearbyStores(trimmed, zipCode.trim() || undefined);
       setPlaces(found);
       setSelectedPlace(found[0] ?? null);
       // If nothing found, stay in map view but show the manual address entry
@@ -625,6 +626,15 @@ function AddStoreModal({
               if (selectedBrand && selectedBrand.name !== text) setSelectedBrand(null);
             }}
             placeholderTextColor={colors.placeholder}
+          />
+          <TextInput
+            style={[styles.input, { marginTop: 8 }]}
+            placeholder="Zip code (optional — for accurate local results)"
+            value={zipCode}
+            onChangeText={setZipCode}
+            placeholderTextColor={colors.placeholder}
+            keyboardType="number-pad"
+            maxLength={5}
           />
           {name.trim().length >= 2 && brands.length === 0 && !selectedBrand && (
             <Text style={styles.noBrandsText}>No known brands matched — you can still add it as a custom store.</Text>
