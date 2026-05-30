@@ -76,6 +76,7 @@ export default function SettingsScreen() {
     ]);
   }
 
+  const TESTFLIGHT_URL = 'https://testflight.apple.com/join/eJTwChas';
   const inviteDeepLink = household?.inviteCode
     ? `pantrypal://join?code=${household.inviteCode}`
     : null;
@@ -83,12 +84,13 @@ export default function SettingsScreen() {
   async function handleCopyCode() {
     if (!household?.inviteCode || !inviteDeepLink) return;
     void hapticSuccess();
+    const textToCopy = `Join me on Stokit! 🏠\n\n1️⃣ Download the app: ${TESTFLIGHT_URL}\n2️⃣ Tap to join my household: ${inviteDeepLink}`;
     try {
-      await Clipboard.setStringAsync(inviteDeepLink);
+      await Clipboard.setStringAsync(textToCopy);
       setCodeCopied(true);
       setTimeout(() => setCodeCopied(false), 2500);
     } catch {
-      Alert.alert('Invite link', inviteDeepLink);
+      Alert.alert('Invite link', textToCopy);
     }
   }
 
@@ -97,8 +99,8 @@ export default function SettingsScreen() {
     try {
       void hapticSelection();
       await Share.share({
-        message: `Join my household on Stokit! 🏠\n\nWe use it to manage our pantry, grocery list, and spending together.\n\n📲 Download Stokit on TestFlight, then tap this link to join:\n${inviteDeepLink}\n\nOr open the app and enter code: ${household.inviteCode}`,
-        url: inviteDeepLink,
+        message: `Join my household on Stokit! 🏠\n\nWe track our pantry, grocery list, and spending together.\n\n1️⃣ Download the app:\n${TESTFLIGHT_URL}\n\n2️⃣ Then tap this to join my household:\n${inviteDeepLink}\n\nOr enter code manually: ${household.inviteCode}`,
+        url: TESTFLIGHT_URL,
       });
     } catch (e: any) {
       Alert.alert('Could not share', e?.message ?? 'Please try again.');
