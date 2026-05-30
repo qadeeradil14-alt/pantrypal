@@ -409,7 +409,7 @@ export default function ReceiptsScreen() {
         onRequestClose={() => setSelectedReceipt(null)}
       >
         <View style={sheetStyles.formOverlay}>
-          <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setSelectedReceipt(null)} />
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setSelectedReceipt(null)} />
           <View style={styles.detailSheet}>
             <View style={sheetStyles.handle} />
 

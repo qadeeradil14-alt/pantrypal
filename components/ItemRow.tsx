@@ -174,11 +174,10 @@ function ItemRowActionSheetHost({
   return (
     <ItemActionSheet
       item={item}
-      stores={stores}
       visible={visible}
       onClose={onClose}
-      onEdit={onEdit}
-      onAssignStore={onAssignStore}
+      onEdit={onEdit ?? (() => {})}
+      onAssignStores={() => {}}
       onDelete={onDelete}
     />
   );
