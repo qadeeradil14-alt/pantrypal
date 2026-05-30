@@ -22,6 +22,12 @@ export interface ReceiptItem {
   unit_price: number | null;
   total_price: number | null;
   matched_item_id: string | null;
+  item_category?: string | null;
+}
+
+export async function deleteReceiptItem(itemId: string): Promise<void> {
+  const { error } = await supabase.from('receipt_items').delete().eq('id', itemId);
+  if (error) throw error;
 }
 
 export async function addManualReceipt(

@@ -102,11 +102,18 @@ Deno.serve(async (req) => {
   ]
 }
 
+DATE EXTRACTION — critical:
+- Read the EXACT date printed on the receipt. Do NOT guess or infer.
+- Common formats on receipts: MM/DD/YY, MM/DD/YYYY, MM-DD-YY, Month DD YYYY, DD/MM/YYYY.
+- Convert whatever format you see to YYYY-MM-DD. Example: "05/27/26" → "2026-05-27", "May 27 2026" → "2026-05-27".
+- If you see "5/27/26" that is May 27 2026 → "2026-05-27". Do NOT subtract one day.
+- If no date is visible, return null.
+
 For each item, set "item_category" to one of these values:
 - "food" — groceries, produce, meat, dairy, snacks, beverages, frozen food, canned goods, bread, condiments
 - "household" — cleaning supplies, paper towels, toilet paper, laundry detergent, dish soap, trash bags
 - "personal_care" — shampoo, soap, toothpaste, deodorant, vitamins, medicine
-- "non_grocery" — toys, clothing, electronics, tools, sporting goods, furniture, pet supplies (non-food), anything that is NOT food or a household/personal consumable
+- "non_grocery" — toys, clothing, electronics, tools, sporting goods, furniture, caps, balls, utensils, anything NOT food or household/personal consumable
 
 Be precise with prices. Include every line item on the receipt.`;
 
