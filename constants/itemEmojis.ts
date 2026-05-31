@@ -1,19 +1,18 @@
 // Ordered most-specific first so "bell pepper" matches before "pepper"
 const ITEM_EMOJI_PAIRS: [string[], string][] = [
-  // Icon quality overrides: pick the least misleading available emoji.
-  [['sugar scrub'], '🧴'],
+  // Specific-first guards (must stay above generic entries)
+  [['sugar scrub', 'body scrub', 'exfoliating scrub'], '🧴'],
   [['ice cream', 'gelato', 'sorbet', 'frozen yogurt', 'popsicle'], '🍦'],
-  [['sour cream', 'crème fraîche', 'creme fraiche'], '🥣'],
-  [['greek yogurt', 'yogurt', 'yoghurt', 'skyr'], '🥣'],
-  [['cottage cheese'], '🥣'],
-  [['heavy cream', 'whipping cream', 'half and half', 'table cream', 'cream'], '🥣'],
-  [['granulated sugar', 'sugar', 'white sugar', 'brown sugar', 'powdered sugar', 'icing sugar', 'raw sugar', 'caster sugar', 'demerara', 'turbinado'], '🧂'],
-  [['cracker', 'crackers', 'rice cake'], '🍘'],
-  [['jam', 'jelly', 'marmalade', 'preserve', 'compote'], '🍯'],
-  [['lentil', 'lentils', 'red lentil', 'green lentil', 'french lentil', 'beluga lentil', 'black lentil'], '🥣'],
+  [['lentil', 'lentils', 'red lentil', 'green lentil', 'french lentil', 'beluga lentil', 'black lentil', 'split pea lentil'], '🫘'],
+  [['raisin', 'raisins', 'golden raisin', 'black raisin', 'sultana'], '🍇'],
+  [['sour cream', 'crème fraîche', 'creme fraiche'], '🥛'],
+  [['greek yogurt', 'yogurt', 'yoghurt', 'skyr'], '🥛'],
+  [['cottage cheese'], '🧀'],
+  [['heavy cream', 'whipping cream', 'half and half', 'table cream', 'cooking cream'], '🥛'],
+  [['sugar', 'brown sugar', 'powdered sugar', 'icing sugar', 'raw sugar', 'caster sugar', 'demerara', 'turbinado', 'granulated sugar', 'white sugar'], '🍬'],
+  [['chickpea', 'garbanzo', 'chickpeas'], '🫘'],
   [['peanut butter', 'almond butter', 'cashew butter', 'nut butter'], '🥜'],
-  [['raisin', 'raisins'], '🥣'],
-  [['soy sauce', 'tamari', 'teriyaki sauce', 'fish sauce', 'worcestershire'], '🥢'],
+  [['soy sauce', 'tamari', 'teriyaki sauce', 'fish sauce', 'worcestershire'], '🫙'],
 
   // Vegetables (specific first)
   [['bell pepper', 'capsicum'], '🫑'],
