@@ -61,9 +61,10 @@ export default function JoinHouseholdScreen() {
       <TextInput
         style={[styles.input, styles.codeInput]}
         placeholder="ABC123"
-        autoCapitalize="characters"
+        autoCapitalize="none"
         autoCorrect={false}
         autoFocus
+        keyboardType="default"
         maxLength={6}
         value={code}
         onChangeText={(t) => setCode(t.toUpperCase())}

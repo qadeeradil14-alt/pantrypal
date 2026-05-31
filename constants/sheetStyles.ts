@@ -123,7 +123,7 @@ export function makeSheetStyles(colors: AppColors) {
     },
     groupRowPressed: { opacity: 0.65 },
     rowLogo: {
-      width: 36,
+      width: 54,
       height: 36,
       borderRadius: 10,
       overflow: 'hidden',
