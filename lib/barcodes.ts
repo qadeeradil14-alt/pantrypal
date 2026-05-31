@@ -55,17 +55,18 @@ function inferCategory(name: string, categories: string): ItemCategory {
 
 function storageForCategory(category: ItemCategory): Pick<BarcodeProduct, 'storageLabel' | 'estimatedLifeLabel'> {
   if (category === 'freezer') return { storageLabel: 'Freezer', estimatedLifeLabel: 'about 3 months' };
-  if (category === 'fridge') return { storageLabel: 'Fridge', estimatedLifeLabel: 'about 7 days' };
+  if (category === 'fridge')  return { storageLabel: 'Fridge',  estimatedLifeLabel: 'about 7 days' };
   return { storageLabel: 'Pantry', estimatedLifeLabel: 'about 30 days' };
 }
 
-// Open Food Facts — no key needed, best global coverage
+// ── Lookup sources ─────────────────────────────────────────────────────────
+
+// 1. Open Food Facts — no key, best global branded coverage
 async function lookupOpenFoodFacts(code: string): Promise<BarcodeProduct | null> {
   const response = await fetch(
     `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json?fields=product_name,brands,categories,categories_tags`,
     { headers: { Accept: 'application/json', 'User-Agent': 'Stokit/1.0' }, signal: timeoutSignal() },
   );
-
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`OpenFoodFacts ${response.status}`);
 
@@ -90,56 +91,88 @@ async function lookupOpenFoodFacts(code: string): Promise<BarcodeProduct | null>
   };
 }
 
-// barcode.monster — free, no key needed, strong US grocery coverage
+// 2. barcode.monster — no key, strong US grocery coverage
 async function lookupBarcodeMonster(code: string): Promise<BarcodeProduct | null> {
-  try {
-    const response = await fetch(
-      `https://barcode.monster/api/${encodeURIComponent(code)}`,
-      { headers: { Accept: 'application/json' }, signal: timeoutSignal() },
-    );
-    if (!response.ok) return null;
-    const payload = await response.json();
-    const name = String(payload?.description ?? '').trim();
-    if (!name) return null;
-
-    const category = inferCategory(name, payload?.category ?? '');
-    return {
-      barcode: code,
-      name,
-      brand: String(payload?.brand ?? '').trim() || null,
-      category,
-      ...storageForCategory(category),
-    };
-  } catch {
-    return null;
-  }
+  const response = await fetch(
+    `https://barcode.monster/api/${encodeURIComponent(code)}`,
+    { headers: { Accept: 'application/json' }, signal: timeoutSignal() },
+  );
+  if (!response.ok) return null;
+  const payload = await response.json();
+  const name = String(payload?.description ?? '').trim();
+  if (!name) return null;
+  const category = inferCategory(name, payload?.category ?? '');
+  return {
+    barcode: code,
+    name,
+    brand: String(payload?.brand ?? '').trim() || null,
+    category,
+    ...storageForCategory(category),
+  };
 }
 
-// UPC Item DB — free trial, last resort
+// 3. UPC Item DB — free trial, limited but useful
 async function lookupUpcItemDb(code: string): Promise<BarcodeProduct | null> {
-  try {
-    const response = await fetch(
-      `https://api.upcitemdb.com/prod/trial/lookup?upc=${encodeURIComponent(code)}`,
-      { headers: { Accept: 'application/json' }, signal: timeoutSignal() },
-    );
-    if (!response.ok) return null;
-    const payload = await response.json();
-    const item = payload?.items?.[0];
-    if (!item?.title) return null;
-
-    const name = String(item.title).trim();
-    const category = inferCategory(name, item.category ?? '');
-    return {
-      barcode: code,
-      name,
-      brand: item.brand || null,
-      category,
-      ...storageForCategory(category),
-    };
-  } catch {
-    return null;
-  }
+  const response = await fetch(
+    `https://api.upcitemdb.com/prod/trial/lookup?upc=${encodeURIComponent(code)}`,
+    { headers: { Accept: 'application/json' }, signal: timeoutSignal() },
+  );
+  if (!response.ok) return null;
+  const payload = await response.json();
+  const item = payload?.items?.[0];
+  if (!item?.title) return null;
+  const name = String(item.title).trim();
+  const category = inferCategory(name, item.category ?? '');
+  return {
+    barcode: code,
+    name,
+    brand: item.brand || null,
+    category,
+    ...storageForCategory(category),
+  };
 }
+
+// 4. Open EAN DB — free, no key, good EU / international coverage
+async function lookupOpenEan(code: string): Promise<BarcodeProduct | null> {
+  const response = await fetch(
+    `https://opengtindb.org/?ean=${encodeURIComponent(code)}&cmd=getProduct&lang=en`,
+    { headers: { Accept: 'application/json' }, signal: timeoutSignal() },
+  );
+  if (!response.ok) return null;
+  const payload = await response.json();
+  // opengtindb returns {error:0, products:[{name,maincat,...}]}
+  if (payload?.error !== 0) return null;
+  const product = payload?.products?.[0];
+  if (!product?.name) return null;
+  const name = String(product.name).trim();
+  const category = inferCategory(name, product.maincat ?? '');
+  return {
+    barcode: code,
+    name,
+    brand: null,
+    category,
+    ...storageForCategory(category),
+  };
+}
+
+// ── Parallel race: resolves as soon as the first source finds a result ─────
+function firstNonNull<T>(promises: Promise<T | null>[]): Promise<T | null> {
+  return new Promise((resolve) => {
+    let pending = promises.length;
+    if (pending === 0) { resolve(null); return; }
+    let won = false;
+    for (const p of promises) {
+      p.then((val) => {
+        if (!won && val !== null) { won = true; resolve(val); }
+      }).catch(() => {}).finally(() => {
+        pending--;
+        if (pending === 0 && !won) resolve(null);
+      });
+    }
+  });
+}
+
+// ── Public API ─────────────────────────────────────────────────────────────
 
 export async function fetchBarcodeProduct(barcode: string): Promise<BarcodeProduct | null> {
   const code = barcode.trim();
@@ -157,20 +190,14 @@ export async function fetchBarcodeProduct(barcode: string): Promise<BarcodeProdu
         ...storageForCategory(plu.category),
       };
     }
-    // Unknown PLU — return null so user can add manually, don't show "failed"
     return null;
   }
 
-  // Three-stage lookup: Open Food Facts → barcode.monster → UPC Item DB
-  try {
-    const offResult = await lookupOpenFoodFacts(code);
-    if (offResult) return offResult;
-  } catch { /* try next */ }
-
-  try {
-    const monsterResult = await lookupBarcodeMonster(code);
-    if (monsterResult) return monsterResult;
-  } catch { /* try next */ }
-
-  return lookupUpcItemDb(code);
+  // Fire all four sources in parallel — return the first hit
+  return firstNonNull([
+    lookupOpenFoodFacts(code).catch(() => null),
+    lookupBarcodeMonster(code).catch(() => null),
+    lookupUpcItemDb(code).catch(() => null),
+    lookupOpenEan(code).catch(() => null),
+  ]);
 }

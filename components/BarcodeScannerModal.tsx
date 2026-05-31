@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -16,8 +16,10 @@ import { CATEGORY_LABELS } from '../constants/defaultItems';
 import { fonts, type AppColors } from '../constants/theme';
 import { useTheme } from '../hooks/useTheme';
 import ScalePressable from './ScalePressable';
+import { supabase } from '../lib/supabase';
+import type { ItemCategory } from '../constants/defaultItems';
 
-const BARCODE_TYPES: BarcodeType[] = ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128'];
+const BARCODE_TYPES: BarcodeType[] = ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39', 'itf14', 'datamatrix'];
 
 interface Props {
   visible: boolean;
@@ -82,6 +84,8 @@ export default function BarcodeScannerModal({ visible, onClose, onAddProduct, on
   const [message, setMessage] = useState('');
   const [savedLabel, setSavedLabel] = useState('');
   const [expiryInput, setExpiryInput] = useState('');
+  const [identifying, setIdentifying] = useState(false);
+  const cameraRef = useRef<InstanceType<typeof CameraView>>(null);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -94,6 +98,7 @@ export default function BarcodeScannerModal({ visible, onClose, onAddProduct, on
     setMessage('');
     setSavedLabel('');
     setExpiryInput('');
+    setIdentifying(false);
   }, [visible]);
 
   const handleBarcodeScanned = useCallback(async (result: BarcodeScanningResult) => {
@@ -176,6 +181,71 @@ export default function BarcodeScannerModal({ visible, onClose, onAddProduct, on
     }
   }
 
+  /** Take a photo of what the camera sees and ask GPT-4o to identify the product */
+  async function captureAndIdentify() {
+    if (!cameraRef.current || identifying) return;
+    setIdentifying(true);
+    setMessage('');
+    void hapticSelection();
+
+    try {
+      const photo = await cameraRef.current.takePictureAsync({
+        quality: 0.5,
+        base64: true,
+        skipProcessing: true,
+      });
+
+      if (!photo?.base64) {
+        setMessage('Could not capture photo. Point at the product label and try again.');
+        void hapticWarning();
+        return;
+      }
+
+      setMessage('Identifying product…');
+
+      const { data: { session } } = await supabase.auth.getSession();
+      const { data, error } = await supabase.functions.invoke('identify-product', {
+        body: { imageBase64: photo.base64, mimeType: 'image/jpeg', barcode: lastCode || undefined },
+        headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : undefined,
+      });
+
+      if (error) throw error;
+      if (!data?.name) {
+        setMessage('Could not identify this product. Try adding it manually.');
+        void hapticWarning();
+        return;
+      }
+
+      const cat: ItemCategory = (['fridge', 'freezer', 'pantry'] as ItemCategory[]).includes(data.category)
+        ? data.category as ItemCategory
+        : 'pantry';
+
+      const storageMap: Record<ItemCategory, { storageLabel: string; estimatedLifeLabel: string }> = {
+        freezer: { storageLabel: 'Freezer', estimatedLifeLabel: 'about 3 months' },
+        fridge:  { storageLabel: 'Fridge',  estimatedLifeLabel: 'about 7 days' },
+        pantry:  { storageLabel: 'Pantry',  estimatedLifeLabel: 'about 30 days' },
+      };
+
+      const identified: BarcodeProduct = {
+        barcode: lastCode || 'photo',
+        name: String(data.name).trim(),
+        brand: data.brand ? String(data.brand).trim() : null,
+        category: cat,
+        ...storageMap[cat],
+      };
+
+      setProduct(identified);
+      setMessage('');
+      setExpiryInput(defaultExpiryDate(identified.estimatedLifeLabel));
+      void hapticSuccess();
+    } catch (err: any) {
+      setMessage(err?.message ?? 'Identification failed.');
+      void hapticError();
+    } finally {
+      setIdentifying(false);
+    }
+  }
+
   function openManualAdd() {
     void hapticSelection();
     onManualAdd();
@@ -214,6 +284,7 @@ export default function BarcodeScannerModal({ visible, onClose, onAddProduct, on
         ) : (
           <View style={styles.scannerWrap}>
             <CameraView
+              ref={cameraRef}
               style={styles.camera}
               facing="back"
               active={visible && !product && !busy}
@@ -294,21 +365,38 @@ export default function BarcodeScannerModal({ visible, onClose, onAddProduct, on
               </>
             ) : (
               <>
-                <Text style={styles.productName}>{message}</Text>
+                <Text style={styles.productName}>
+                  {identifying ? 'Identifying product…' : message}
+                </Text>
                 {lastCode ? <Text style={styles.productMeta}>{lastCode}</Text> : null}
-                <View style={styles.actionRow}>
-                  <ScalePressable style={styles.secondaryBtn} profile="chip" onPress={scanAgain}>
-                    <Text style={styles.secondaryBtnText}>Scan again</Text>
-                  </ScalePressable>
-                  {lastCode ? (
-                    <ScalePressable style={styles.secondaryBtn} profile="chip" onPress={handleRetry} disabled={busy}>
-                      <Text style={styles.secondaryBtnText}>Retry</Text>
+                {identifying ? (
+                  <ActivityIndicator color={colors.primary} />
+                ) : (
+                  <>
+                    {/* GPT photo-identify — point camera at label and tap */}
+                    <ScalePressable
+                      style={[styles.identifyBtn]}
+                      onPress={captureAndIdentify}
+                      disabled={identifying}
+                    >
+                      <Ionicons name="camera-outline" size={16} color={colors.onPrimary} />
+                      <Text style={styles.primaryBtnText}>Identify by photo</Text>
                     </ScalePressable>
-                  ) : null}
-                  <ScalePressable style={styles.primaryBtnSmall} onPress={openManualAdd}>
-                    <Text style={styles.primaryBtnText}>Add manually</Text>
-                  </ScalePressable>
-                </View>
+                    <View style={styles.actionRow}>
+                      <ScalePressable style={styles.secondaryBtn} profile="chip" onPress={scanAgain}>
+                        <Text style={styles.secondaryBtnText}>Scan again</Text>
+                      </ScalePressable>
+                      {lastCode ? (
+                        <ScalePressable style={styles.secondaryBtn} profile="chip" onPress={handleRetry} disabled={busy}>
+                          <Text style={styles.secondaryBtnText}>Retry</Text>
+                        </ScalePressable>
+                      ) : null}
+                      <ScalePressable style={styles.primaryBtnSmall} onPress={openManualAdd}>
+                        <Text style={styles.primaryBtnText}>Add manually</Text>
+                      </ScalePressable>
+                    </View>
+                  </>
+                )}
               </>
             )}
           </View>
@@ -503,6 +591,15 @@ function makeStyles(colors: AppColors) {
     detailText: { fontSize: 13, color: colors.primary, fontFamily: fonts.bodySemiBold },
     savedText: { fontSize: 14, color: colors.success, fontFamily: fonts.bodySemiBold },
     errorText: { fontSize: 14, color: colors.danger, fontFamily: fonts.bodySemiBold },
+    identifyBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      borderRadius: 14,
+      paddingVertical: 14,
+      backgroundColor: colors.primary,
+    },
     actionRow: { flexDirection: 'row', gap: 10 },
     secondaryBtn: {
       flex: 1,
