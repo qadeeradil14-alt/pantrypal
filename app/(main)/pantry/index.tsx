@@ -399,24 +399,6 @@ export default function PantryScreen() {
           </View>
         ) : (
           <>
-            <Pressable
-              testID={pantryStoreTargetTestId('all-groceries')}
-              style={({ pressed }) => [
-                styles.storeTarget,
-                !selectedStoreId && styles.storeTargetActive,
-                pressed && styles.storeTargetPressed,
-              ]}
-              onPress={() => {
-                void hapticSelection();
-                setSelectedStoreId(null);
-              }}
-            >
-              <View style={styles.allStoreIcon}>
-                <Ionicons name="list-outline" size={18} color={!selectedStoreId ? colors.primary : colors.muted} />
-              </View>
-              <Text style={styles.storeTargetName} numberOfLines={1}>All groceries</Text>
-              <Text style={styles.storeTargetCount}>{items.length}</Text>
-            </Pressable>
             {stores.map((store: Store) => {
               const active = selectedStoreId === store.id;
               return (
@@ -433,7 +415,7 @@ export default function PantryScreen() {
                     setSelectedStoreId(active ? null : store.id);
                   }}
                 >
-                  <StoreLogo name={store.name} size={34} domain={store.brand_domain} logoUrl={store.logo_url} />
+                  <StoreLogo name={store.name} size={44} domain={store.brand_domain} logoUrl={store.logo_url} />
                   <Text style={styles.storeTargetName} numberOfLines={1}>{store.name}</Text>
                   <Text style={styles.storeTargetCount}>{storeCounts.get(store.id) ?? 0}</Text>
                 </Pressable>
@@ -829,12 +811,12 @@ function makeStyles(colors: AppColors) {
     storeScroll: { flexGrow: 0 },
     storeRow: { flexDirection: 'row', gap: 8, paddingLeft: 16, paddingRight: 16 },
     storeTarget: {
-      width: 112,
-      height: 96,
-      borderRadius: 16,
+      width: 120,
+      height: 108,
+      borderRadius: 18,
       backgroundColor: colors.surface,
-      padding: 10,
-      gap: 5,
+      padding: 12,
+      gap: 6,
     },
     storeTargetActive: {
       backgroundColor: colors.primarySoft,
@@ -848,7 +830,7 @@ function makeStyles(colors: AppColors) {
       justifyContent: 'center',
       backgroundColor: colors.faint,
     },
-    storeTargetName: { fontSize: 12, lineHeight: 15, fontFamily: fonts.bodySemiBold, color: colors.ink },
+    storeTargetName: { fontSize: 13, lineHeight: 16, fontFamily: fonts.bodySemiBold, color: colors.ink },
     storeTargetCount: {
       alignSelf: 'flex-start',
       minWidth: 22,

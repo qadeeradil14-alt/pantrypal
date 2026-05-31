@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import {
   View, Text, SectionList, StyleSheet,
-  ActivityIndicator, ScrollView, Alert, Animated, Linking, Platform,
+  ActivityIndicator, ScrollView, Alert, Animated, Linking, Platform, Modal,
+  TouchableOpacity, TouchableWithoutFeedback,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
@@ -34,9 +35,16 @@ function normalizeShoppingCategory(category: ShoppingEntry['category']): ItemCat
   return category === 'spice_rack' ? 'pantry' : category;
 }
 
+function ordinalStop(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return `${n}${s[(v - 20) % 10] || s[v] || s[0]} stop`;
+}
+
 type ShoppingSection = { title: string; storeId: string | null; data: ShoppingEntry[] };
 
 export default function GroceryScreen() {
+  const router = useRouter();
   const { colors } = useTheme();
   const { items, updateItem } = useItemsStore();
   const { session } = useAuthStore();
@@ -50,6 +58,7 @@ export default function GroceryScreen() {
   const [weeklySpend, setWeeklySpend] = useState(0);
   const [startCount, setStartCount] = useState(0);
   const [grabbedCount, setGrabbedCount] = useState(0);
+  const [tripSheet, setTripSheet] = useState<{ itemCount: number; spend: number } | null>(null);
 
   // Pulse animation for the Start button — draws attention before shopping begins
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -132,6 +141,11 @@ export default function GroceryScreen() {
     });
   }, [allActiveItems, sourceItemMap, activeStoreId]);
 
+  useEffect(() => {
+    setStartCount(0);
+    setGrabbedCount(0);
+  }, [activeStoreId]);
+
   // Keep startCount as a running high-water mark: max(startCount, pending + grabbed).
   // This handles three real cases a one-shot snapshot misses:
   //   1. Entries load after mode activates (geofence trigger on cold start)
@@ -185,13 +199,19 @@ export default function GroceryScreen() {
     [makeShoppingSections, allActiveItems],
   );
 
-  const nextStop = useMemo(() => {
+  const nextStopInfo = useMemo(() => {
     const assignedStops = allShoppingSections.filter((section) => section.storeId);
     if (activeStoreId) {
-      return assignedStops.find((section) => section.storeId !== activeStoreId) ?? null;
+      const currentIdx = assignedStops.findIndex((s) => s.storeId === activeStoreId);
+      const nextIdx = currentIdx === -1 ? 0 : currentIdx + 1;
+      const next = assignedStops[nextIdx] ?? null;
+      return next ? { stop: next, stopNumber: nextIdx + 1 } : null;
     }
-    return assignedStops[0] ?? null;
+    const first = assignedStops[0] ?? null;
+    return first ? { stop: first, stopNumber: 1 } : null;
   }, [allShoppingSections, activeStoreId]);
+
+  const nextStop = nextStopInfo?.stop ?? null;
 
   const hasUnassignedItems = allActiveItems.some((entry) => {
     const linked = entry.source_item_id ? sourceItemMap.get(entry.source_item_id) : null;
@@ -282,17 +302,25 @@ export default function GroceryScreen() {
     if (!nextStop) return;
     void hapticSelection();
     setActiveStore(nextStop.storeId);
-    setStartCount(0);
-    setGrabbedCount(0);
   }, [nextStop, setActiveStore]);
 
   const finishShopping = useCallback(() => {
     void hapticSuccess();
+    const count = startCount;
+    const spend = weeklySpend;
     setShoppingMode(false);
     setActiveStore(null);
     setStartCount(0);
     setGrabbedCount(0);
-  }, [setActiveStore]);
+    if (count > 0) setTripSheet({ itemCount: count, spend });
+  }, [setActiveStore, startCount, weeklySpend]);
+
+  const closeTripSheet = useCallback(() => setTripSheet(null), []);
+
+  const goToReceipts = useCallback(() => {
+    setTripSheet(null);
+    router.push('/(main)/receipts');
+  }, [router]);
 
   const assignEntryToStore = useCallback((entry: ShoppingEntry) => {
     const sourceItem = entry.source_item_id ? sourceItemMap.get(entry.source_item_id) : null;
@@ -485,7 +513,7 @@ export default function GroceryScreen() {
                 <>
                   <Text style={styles.nextStopKicker}>{activeStoreId ? 'Store complete' : 'Ready to start'}</Text>
                   <Text style={styles.nextStopTitle} numberOfLines={1}>
-                    {activeStoreId ? 'Next' : 'First stop'}: {nextStop.title}
+                    {ordinalStop(nextStopInfo!.stopNumber)}: {nextStop.title}
                   </Text>
                   <Text style={styles.nextStopSub}>
                     {nextStop.data.length} {nextStop.data.length === 1 ? 'item' : 'items'} left in this stop
@@ -670,6 +698,58 @@ export default function GroceryScreen() {
           windowSize={7}
         />
       )}
+
+      <Modal
+        visible={!!tripSheet}
+        transparent
+        animationType="slide"
+        onRequestClose={closeTripSheet}
+      >
+        <TouchableWithoutFeedback onPress={closeTripSheet}>
+          <View style={styles.sheetOverlay} />
+        </TouchableWithoutFeedback>
+        <View style={[styles.sheet, { backgroundColor: colors.surface }]}>
+          <View style={styles.sheetHandle} />
+          <Text style={[styles.sheetEmoji]}>🛒</Text>
+          <Text style={[styles.sheetTitle, { color: colors.ink }]}>Trip complete!</Text>
+          <Text style={[styles.sheetSub, { color: colors.muted }]}>
+            You grabbed {tripSheet?.itemCount ?? 0} {(tripSheet?.itemCount ?? 0) === 1 ? 'item' : 'items'} this run.
+          </Text>
+
+          <View style={[styles.spendRow, { backgroundColor: colors.primarySoft }]}>
+            <View style={styles.spendCol}>
+              <Text style={[styles.spendLabel, { color: colors.muted }]}>Weekly spend</Text>
+              <Text style={[styles.spendValue, { color: colors.primaryDeep }]}>
+                ${(tripSheet?.spend ?? 0).toFixed(2)}
+              </Text>
+            </View>
+            <View style={[styles.spendDivider, { backgroundColor: colors.border }]} />
+            <View style={styles.spendCol}>
+              <Text style={[styles.spendLabel, { color: colors.muted }]}>Budget left</Text>
+              <Text style={[styles.spendValue, { color: colors.primaryDeep }]}>
+                ${Math.max(0, weeklyBudget - (tripSheet?.spend ?? 0)).toFixed(2)}
+              </Text>
+            </View>
+          </View>
+
+          <Text style={[styles.sheetHint, { color: colors.muted }]}>
+            Upload your receipt to keep the spend tracker accurate.
+          </Text>
+
+          <TouchableOpacity
+            style={[styles.sheetPrimary, { backgroundColor: colors.primary }]}
+            onPress={goToReceipts}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="receipt-outline" size={18} color={colors.onPrimary} />
+            <Text style={[styles.sheetPrimaryText, { color: colors.onPrimary }]}>Upload receipt</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.sheetGhost} onPress={closeTripSheet} activeOpacity={0.7}>
+            <Text style={[styles.sheetGhostText, { color: colors.muted }]}>Maybe later</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -964,5 +1044,56 @@ function makeStyles(colors: AppColors) {
     emptyTitle: { fontSize: 23, fontFamily: fonts.display, color: colors.ink },
     emptySub: { fontSize: 16, color: colors.muted, textAlign: 'center', lineHeight: 23, fontFamily: fonts.body },
 
+    sheetOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.45)',
+    },
+    sheet: {
+      borderTopLeftRadius: 28,
+      borderTopRightRadius: 28,
+      paddingHorizontal: 24,
+      paddingTop: 16,
+      paddingBottom: 40,
+      alignItems: 'center',
+      gap: 12,
+      ...shadow,
+    },
+    sheetHandle: {
+      width: 40,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: colors.border,
+      marginBottom: 8,
+    },
+    sheetEmoji: { fontSize: 52, lineHeight: 64 },
+    sheetTitle: { fontSize: 26, fontFamily: fonts.displayExtraBoldItalic, letterSpacing: 0 },
+    sheetSub: { fontSize: 15, fontFamily: fonts.body, textAlign: 'center' },
+    spendRow: {
+      flexDirection: 'row',
+      borderRadius: radii.lg,
+      paddingVertical: 16,
+      paddingHorizontal: 20,
+      width: '100%',
+      marginVertical: 4,
+    },
+    spendCol: { flex: 1, alignItems: 'center', gap: 4 },
+    spendDivider: { width: StyleSheet.hairlineWidth, marginVertical: 4 },
+    spendLabel: { fontSize: 12, fontFamily: fonts.bodyMedium },
+    spendValue: { fontSize: 26, fontFamily: fonts.mono, letterSpacing: 0 },
+    sheetHint: { fontSize: 13, fontFamily: fonts.body, textAlign: 'center', paddingHorizontal: 8 },
+    sheetPrimary: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      borderRadius: 999,
+      paddingHorizontal: 28,
+      paddingVertical: 14,
+      width: '100%',
+      justifyContent: 'center',
+      marginTop: 4,
+    },
+    sheetPrimaryText: { fontSize: 16, fontFamily: fonts.bodySemiBold },
+    sheetGhost: { paddingVertical: 10, paddingHorizontal: 20 },
+    sheetGhostText: { fontSize: 14, fontFamily: fonts.bodySemiBold },
   });
 }
