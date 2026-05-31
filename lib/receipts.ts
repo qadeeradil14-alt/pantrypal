@@ -61,24 +61,31 @@ export async function uploadReceipt(
 ): Promise<Receipt> {
   const ext = mimeType === 'application/pdf' ? 'pdf' : 'jpg';
   const path = `${householdId}/${Date.now()}.${ext}`;
-
-  // Hermes (React Native JS engine) does NOT support creating Blobs from
-  // ArrayBuffer/ArrayBufferView — so fetch(uri).blob() throws at runtime.
-  // Correct approach: read file as base64 via expo-file-system, then build
-  // a data URI and fetch() it — this produces a proper Blob on Hermes.
   const contentType = (mimeType && mimeType !== 'image/heic') ? mimeType : 'image/jpeg';
-  const base64 = await FileSystem.readAsStringAsync(uri, {
-    encoding: FileSystem.EncodingType.Base64,
+
+  // Hermes does NOT support Blob(ArrayBuffer) — supabase.storage.upload() hits
+  // that wall internally even after the data-URI workaround.
+  // Fix: bypass the Supabase JS SDK entirely and use FileSystem.uploadAsync(),
+  // which delegates the HTTP transfer to the native layer (no JS Blob needed).
+  const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+  const uploadUrl = `${supabaseUrl}/storage/v1/object/receipts/${path}`;
+
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token ?? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
+
+  const uploadResult = await FileSystem.uploadAsync(uploadUrl, uri, {
+    httpMethod: 'POST',
+    uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': contentType,
+      'x-upsert': 'false',
+    },
   });
-  const dataUri = `data:${contentType};base64,${base64}`;
-  const dataResponse = await fetch(dataUri);
-  const blob = await dataResponse.blob();
 
-  const { error: uploadError } = await supabase.storage
-    .from('receipts')
-    .upload(path, blob, { contentType, upsert: false });
-
-  if (uploadError) throw uploadError;
+  if (uploadResult.status < 200 || uploadResult.status >= 300) {
+    throw new Error(`Upload failed (${uploadResult.status}): ${uploadResult.body?.slice(0, 300) ?? 'no response body'}`);
+  }
 
   const { data: receipt, error: insertError } = await supabase
     .from('receipts')
