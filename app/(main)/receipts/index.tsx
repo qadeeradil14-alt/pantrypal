@@ -798,11 +798,11 @@ function makeStyles(colors: AppColors) {
       textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 12,
     },
     storeRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 10 },
-    storeName: { fontSize: 13, color: colors.ink, fontFamily: fonts.bodyMedium, width: 100 },
-    storeBarWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
+    storeName: { fontSize: 13, color: colors.ink, fontFamily: fonts.bodyMedium, flex: 1, minWidth: 0 },
+    storeBarWrap: { flex: 2, flexDirection: 'row', alignItems: 'center', gap: 8 },
     storeBarTrack: { flex: 1, height: 6, borderRadius: 3, backgroundColor: colors.faint, overflow: 'hidden' },
     storeBarFill: { height: 6, borderRadius: 3, backgroundColor: colors.primary },
-    storeAmount: { fontSize: 13, fontFamily: fonts.mono, color: colors.ink, width: 44, textAlign: 'right' },
+    storeAmount: { fontSize: 13, fontFamily: fonts.mono, color: colors.ink, minWidth: 72, flexShrink: 0, textAlign: 'right' },
 
     // Recent purchases
     recentCard: {
