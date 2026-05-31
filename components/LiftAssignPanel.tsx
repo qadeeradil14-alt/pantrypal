@@ -1,7 +1,7 @@
 import { useEffect, useRef, useMemo, useState, useCallback } from 'react';
 import {
   Modal, View, Text, Animated, StyleSheet,
-  ScrollView, Pressable,
+  ScrollView, Pressable, Dimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -96,6 +96,7 @@ export default function LiftAssignPanel({ item, stores, visible, onAssign, onClo
           sheetStyles.sheet,
           {
             paddingBottom: insets.bottom + 8,
+            maxHeight: Dimensions.get('window').height - insets.top - 48,
             transform: [{ translateY: slideAnim }],
           },
         ]}
@@ -195,7 +196,7 @@ export default function LiftAssignPanel({ item, stores, visible, onAssign, onClo
 }
 
 const styles = StyleSheet.create({
-  scroll: { maxHeight: 320 },
+  scroll: { flexShrink: 1 },
   scrollContent: { paddingBottom: 4 },
   rowTextCol: { flex: 1, minWidth: 0 },
   removeRow: {
