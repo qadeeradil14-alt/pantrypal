@@ -107,7 +107,13 @@ if s == 201 and isinstance(resp, dict):
     state = resp.get("data", {}).get("attributes", {}).get("betaReviewState", "?")
     print(f"Beta App Review: ✓ submitted  state={state}")
 elif s == 409:
-    print("Beta App Review: already submitted (skip)")
+    print("Beta App Review: already submitted ✓")
+elif s == 422 and "ANOTHER_BUILD_IN_REVIEW" in str(resp):
+    print("Beta App Review: ⚠️  another build is already in Apple's review queue.")
+    print("  Option A: wait for that build to finish review (1-24h), then run:")
+    print(f"    python3 scripts/submit_review.py {bid}")
+    print("  Option B: go to App Store Connect, delete the build in review,")
+    print("    then re-run: python3 scripts/submit_review.py " + bid)
 else:
     print(f"Beta App Review: HTTP {s} — {str(resp)[:200]}")
 
