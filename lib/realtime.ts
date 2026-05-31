@@ -4,6 +4,7 @@ import { supabase } from './supabase';
 import { useItemsStore } from '../store/items';
 import { useStoresStore } from '../store/stores';
 import { useShoppingStore, type ShoppingEntry } from '../store/shopping';
+import { useAuthStore } from '../store/auth';
 import type { Item } from './items';
 
 // Fields that are managed optimistically locally — incoming realtime events
@@ -38,6 +39,7 @@ export function useRealtime(householdId: string | null) {
   const { upsertItem, removeItem } = useItemsStore();
   const { upsertEntry, removeEntry } = useShoppingStore();
   const setArrivalStore = useStoresStore((s) => s.setArrivalStore);
+  const currentUserId = useAuthStore((s) => s.session?.user.id ?? null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const instanceKeyRef = useRef(Math.random().toString(36).slice(2));
 
@@ -69,10 +71,21 @@ export function useRealtime(householdId: string | null) {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'store_arrivals', filter: `household_id=eq.${householdId}` },
         (payload) => {
-          const arrival = payload.new as { store_id?: string };
+          const arrival = payload.new as {
+            store_id?: string;
+            arrived_by?: string | null;
+            arrived_by_name?: string | null;
+            arrived_at?: string | null;
+          };
           // Use setArrivalStore (not setActiveStore) so the ArrivalBanner fires
           // only for partner arrivals — not for the person's own chip taps.
-          if (arrival.store_id) setArrivalStore(arrival.store_id);
+          if (arrival.store_id && arrival.arrived_by !== currentUserId) {
+            setArrivalStore({
+              storeId: arrival.store_id,
+              actorName: arrival.arrived_by_name ?? null,
+              arrivedAt: arrival.arrived_at ?? null,
+            });
+          }
         },
       )
       .on(
@@ -138,5 +151,5 @@ export function useRealtime(householdId: string | null) {
         // Ignore cleanup failures.
       });
     };
-  }, [householdId]);
+  }, [householdId, currentUserId]);
 }

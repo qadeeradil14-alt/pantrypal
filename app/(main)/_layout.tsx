@@ -66,7 +66,11 @@ export default function MainLayout() {
         router.push('/(main)/grocery');
       } else if (storeId) {
         // Partner tapped the push notification — show banner + go to Pantry to add items
-        setArrivalStore(storeId);
+        setArrivalStore({
+          storeId,
+          actorName: typeof data?.actorName === 'string' ? data.actorName : null,
+          arrivedAt: typeof data?.arrivedAt === 'string' ? data.arrivedAt : null,
+        });
         router.push('/(main)/pantry');
       }
     });

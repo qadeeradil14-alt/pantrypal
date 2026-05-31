@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useFocusEffect } from 'expo-router';
 import {
   View, Text, SectionList, StyleSheet,
-  ActivityIndicator, ScrollView, Alert, Animated,
+  ActivityIndicator, ScrollView, Alert, Animated, Linking, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
@@ -33,6 +33,8 @@ import { useSettingsStore } from '../../../store/settings';
 function normalizeShoppingCategory(category: ShoppingEntry['category']): ItemCategory {
   return category === 'spice_rack' ? 'pantry' : category;
 }
+
+type ShoppingSection = { title: string; storeId: string | null; data: ShoppingEntry[] };
 
 export default function GroceryScreen() {
   const { colors } = useTheme();
@@ -106,23 +108,9 @@ export default function GroceryScreen() {
     [items],
   );
 
-  // Total active entries regardless of store filter — used to keep the store
-  // chip bar visible even when the selected store has 0 items.
-  const totalActiveCount = useMemo(
-    () => entries.filter((e) => e.status === 'active').length,
-    [entries],
-  );
-
-  const lowItems = useMemo(() => {
-    const activeEntries = entries.filter((e) => {
-      if (e.status !== 'active') return false;
-      if (activeStoreId) {
-        const linked = e.source_item_id ? sourceItemMap.get(e.source_item_id) : null;
-        return linked?.preferred_store_id === activeStoreId;
-      }
-      return true;
-    });
-    return activeEntries
+  const allActiveItems = useMemo(() => {
+    return entries
+      .filter((e) => e.status === 'active')
       .sort((a, b) => {
         const linkedA = a.source_item_id ? sourceItemMap.get(a.source_item_id) : null;
         const linkedB = b.source_item_id ? sourceItemMap.get(b.source_item_id) : null;
@@ -132,7 +120,17 @@ export default function GroceryScreen() {
         const sectionB = resolveStoreSection(b.name, normalizeShoppingCategory(b.category), b.aisle);
         return storeA.localeCompare(storeB) || sectionA.order - sectionB.order || sectionA.label.localeCompare(sectionB.label) || a.name.localeCompare(b.name);
       });
-  }, [entries, sourceItemMap, stores, activeStoreId]);
+  }, [entries, sourceItemMap, stores]);
+
+  const totalActiveCount = allActiveItems.length;
+
+  const lowItems = useMemo(() => {
+    if (!activeStoreId) return allActiveItems;
+    return allActiveItems.filter((entry) => {
+      const linked = entry.source_item_id ? sourceItemMap.get(entry.source_item_id) : null;
+      return linked?.preferred_store_id === activeStoreId;
+    });
+  }, [allActiveItems, sourceItemMap, activeStoreId]);
 
   // Keep startCount as a running high-water mark: max(startCount, pending + grabbed).
   // This handles three real cases a one-shot snapshot misses:
@@ -149,10 +147,10 @@ export default function GroceryScreen() {
   }, [shoppingMode, lowItems.length, grabbedCount]);
 
 
-  const shoppingSections = useMemo(() => {
-    const groups = new Map<string, { title: string; storeId: string | null; data: ShoppingEntry[] }>();
+  const makeShoppingSections = useCallback((sectionEntries: ShoppingEntry[]) => {
+    const groups = new Map<string, ShoppingSection>();
 
-    lowItems.forEach((entry) => {
+    sectionEntries.forEach((entry) => {
       const linked = entry.source_item_id ? sourceItemMap.get(entry.source_item_id) : null;
       const store = linked?.preferred_store_id ? stores.find((s) => s.id === linked.preferred_store_id) : null;
       const key = store?.id ?? 'unassigned';
@@ -175,7 +173,24 @@ export default function GroceryScreen() {
         if (b.title === 'No store set') return -1;
         return a.title.localeCompare(b.title);
       });
-  }, [lowItems, sourceItemMap, stores]);
+  }, [sourceItemMap, stores]);
+
+  const shoppingSections = useMemo(
+    () => makeShoppingSections(lowItems),
+    [makeShoppingSections, lowItems],
+  );
+
+  const allShoppingSections = useMemo(
+    () => makeShoppingSections(allActiveItems),
+    [makeShoppingSections, allActiveItems],
+  );
+
+  const nextStop = useMemo(() => {
+    if (!activeStoreId) return null;
+    return allShoppingSections.find((section) => section.storeId !== activeStoreId) ?? null;
+  }, [allShoppingSections, activeStoreId]);
+
+  const activeStoreComplete = shoppingMode && !!activeStoreId && startCount > 0 && lowItems.length === 0;
 
   const spendProgress = useMemo(
     () => Math.min(weeklySpend / weeklyBudget, 1),
@@ -235,6 +250,37 @@ export default function GroceryScreen() {
       setTapping(null);
     }
   }, [session?.user.id, removeEntry, upsertEntry, updateItem]);
+
+  const openDirections = useCallback(async (storeId: string | null) => {
+    const store = storeId ? stores.find((s) => s.id === storeId) : null;
+    if (!store) return;
+    void hapticSelection();
+    const destination = store.latitude != null && store.longitude != null
+      ? `${store.latitude},${store.longitude}`
+      : encodeURIComponent(store.address || store.name);
+    const nativeUrl = Platform.OS === 'ios'
+      ? `maps://?daddr=${destination}&dirflg=d`
+      : `google.navigation:q=${destination}`;
+    const fallbackUrl = `https://maps.apple.com/?daddr=${destination}&dirflg=d&t=m`;
+    const canOpenNative = await Linking.canOpenURL(nativeUrl).catch(() => false);
+    await Linking.openURL(canOpenNative ? nativeUrl : fallbackUrl);
+  }, [stores]);
+
+  const goToNextStop = useCallback(() => {
+    if (!nextStop) return;
+    void hapticSelection();
+    setActiveStore(nextStop.storeId);
+    setStartCount(0);
+    setGrabbedCount(0);
+  }, [nextStop, setActiveStore]);
+
+  const finishShopping = useCallback(() => {
+    void hapticSuccess();
+    setShoppingMode(false);
+    setActiveStore(null);
+    setStartCount(0);
+    setGrabbedCount(0);
+  }, [setActiveStore]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -374,6 +420,49 @@ export default function GroceryScreen() {
               );
             })}
           </ScrollView>
+        </View>
+      )}
+
+      {activeStoreComplete && nextStop && (
+        <View style={styles.nextStopCard}>
+          <View style={styles.nextStopTop}>
+            <View style={styles.nextStopIcon}>
+              <Ionicons name="checkmark" size={17} color={colors.onPrimary} />
+            </View>
+            <View style={styles.nextStopBody}>
+              <Text style={styles.nextStopKicker}>Store complete</Text>
+              <Text style={styles.nextStopTitle} numberOfLines={1}>Next: {nextStop.title}</Text>
+              <Text style={styles.nextStopSub}>
+                {nextStop.data.length} {nextStop.data.length === 1 ? 'item' : 'items'} left in this stop
+              </Text>
+            </View>
+            <StoreLogo
+              name={nextStop.title}
+              size={34}
+              domain={nextStop.storeId ? stores.find((s) => s.id === nextStop.storeId)?.brand_domain : undefined}
+              logoUrl={nextStop.storeId ? stores.find((s) => s.id === nextStop.storeId)?.logo_url : undefined}
+            />
+          </View>
+          <View style={styles.nextStopActions}>
+            {nextStop.storeId && (
+              <ScalePressable
+                style={styles.nextStopPrimary}
+                onPress={() => {
+                  void openDirections(nextStop.storeId);
+                  goToNextStop();
+                }}
+              >
+                <Ionicons name="navigate-outline" size={15} color={colors.onPrimary} />
+                <Text style={styles.nextStopPrimaryText}>Directions</Text>
+              </ScalePressable>
+            )}
+            <ScalePressable style={styles.nextStopSecondary} onPress={goToNextStop}>
+              <Text style={styles.nextStopSecondaryText}>{nextStop.storeId ? 'Skip GPS' : 'View list'}</Text>
+            </ScalePressable>
+            <ScalePressable style={styles.nextStopGhost} onPress={finishShopping}>
+              <Text style={styles.nextStopGhostText}>Done shopping</Text>
+            </ScalePressable>
+          </View>
         </View>
       )}
 
@@ -666,6 +755,61 @@ function makeStyles(colors: AppColors) {
       fontVariant: ['tabular-nums'],
     },
     routeStepText: { fontSize: 12, color: colors.primary, fontFamily: fonts.bodySemiBold, maxWidth: 140 },
+    nextStopCard: {
+      marginHorizontal: 16,
+      marginBottom: 12,
+      borderRadius: radii.lg,
+      backgroundColor: colors.surfaceDeep,
+      padding: 14,
+      gap: 14,
+      ...shadow,
+    },
+    nextStopTop: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+    },
+    nextStopIcon: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      backgroundColor: colors.success,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    nextStopBody: { flex: 1, minWidth: 0 },
+    nextStopKicker: { fontSize: 12, color: colors.primarySoft, fontFamily: fonts.bodySemiBold },
+    nextStopTitle: { fontSize: 19, color: colors.surface, fontFamily: fonts.bodySemiBold, marginTop: 1 },
+    nextStopSub: { fontSize: 13, color: colors.border, fontFamily: fonts.body, marginTop: 2 },
+    nextStopActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      flexWrap: 'wrap',
+    },
+    nextStopPrimary: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: colors.primary,
+      borderRadius: 999,
+      paddingHorizontal: 13,
+      paddingVertical: 10,
+    },
+    nextStopPrimaryText: { color: colors.onPrimary, fontSize: 13, fontFamily: fonts.bodySemiBold },
+    nextStopSecondary: {
+      backgroundColor: colors.surface,
+      borderRadius: 999,
+      paddingHorizontal: 13,
+      paddingVertical: 10,
+    },
+    nextStopSecondaryText: { color: colors.primary, fontSize: 13, fontFamily: fonts.bodySemiBold },
+    nextStopGhost: {
+      borderRadius: 999,
+      paddingHorizontal: 10,
+      paddingVertical: 10,
+    },
+    nextStopGhostText: { color: colors.border, fontSize: 13, fontFamily: fonts.bodySemiBold },
     chip: {
       borderRadius: 999,
       paddingHorizontal: 14,

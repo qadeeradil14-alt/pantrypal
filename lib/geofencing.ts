@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import * as Notifications from 'expo-notifications';
+import { Platform } from 'react-native';
 import type { Store } from './stores';
 import { supabase } from './supabase';
 
@@ -12,8 +13,12 @@ export const GEOFENCE_DEBOUNCE_MS = 3 * 60 * 1000;
 
 /** How long grocery "shopping mode" stays pinned after an arrival. */
 export const ACTIVE_STORE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+export const GEOFENCE_ACCURACY_BUFFER_M = 75;
+export const ARRIVAL_RECORD_DEDUPE_MS = 10 * 60 * 1000;
 
 const GEOFENCE_DEBOUNCE_KEY = 'pantrypal:geofence:last-enter:v1';
+
+const MAX_ACTIVE_GEOFENCES = Platform.OS === 'ios' ? 20 : 100;
 
 export function defineGeofenceTask(onEnter: (storeId: string) => void) {
   if (TaskManager.isTaskDefined(GEOFENCE_TASK)) return;
@@ -29,7 +34,7 @@ export function defineGeofenceTask(onEnter: (storeId: string) => void) {
 }
 
 export async function startGeofencing(stores: Store[]): Promise<boolean> {
-  const geofenceable = stores.filter((s) => s.latitude != null && s.longitude != null);
+  const geofenceable = await getBestGeofenceStores(stores);
   if (geofenceable.length === 0) return false;
 
   let { status } = await Location.getBackgroundPermissionsAsync();
@@ -45,13 +50,37 @@ export async function startGeofencing(stores: Store[]): Promise<boolean> {
       identifier: s.id,
       latitude: s.latitude!,
       longitude: s.longitude!,
-      radius: s.radius_meters,
+      radius: Math.max(100, Math.min(s.radius_meters || 150, 500)),
       notifyOnEnter: true,
       notifyOnExit: false,
     })),
   );
 
   return true;
+}
+
+async function getBestGeofenceStores(stores: Store[]): Promise<Store[]> {
+  const geofenceable = stores.filter((s) => s.latitude != null && s.longitude != null);
+  if (geofenceable.length <= MAX_ACTIVE_GEOFENCES) return geofenceable;
+
+  const here = await Location.getLastKnownPositionAsync()
+    .then((position) => position ?? Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }))
+    .catch(() => null);
+
+  if (!here) {
+    return geofenceable
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .slice(0, MAX_ACTIVE_GEOFENCES);
+  }
+
+  return geofenceable
+    .slice()
+    .sort((a, b) =>
+      distanceMeters(here.coords.latitude, here.coords.longitude, a.latitude!, a.longitude!)
+      - distanceMeters(here.coords.latitude, here.coords.longitude, b.latitude!, b.longitude!),
+    )
+    .slice(0, MAX_ACTIVE_GEOFENCES);
 }
 
 export async function stopGeofencing() {
@@ -79,6 +108,13 @@ async function shouldHandleGeofenceEnter(storeId: string): Promise<boolean> {
 async function getArrivalUserId(): Promise<string | null> {
   const { data: { session } } = await supabase.auth.getSession();
   return session?.user?.id ?? null;
+}
+
+async function getArrivalActorName(): Promise<string | null> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const metadata = session?.user?.user_metadata ?? {};
+  const name = metadata.full_name || metadata.name || session?.user?.email?.split('@')[0];
+  return typeof name === 'string' && name.trim() ? name.trim() : null;
 }
 
 async function fetchStoreById(storeId: string): Promise<Store | null> {
@@ -115,6 +151,37 @@ async function hasRelevantShoppingAtStore(store: Store): Promise<boolean> {
   });
 }
 
+async function isLikelyInsideStoreRegion(store: Store): Promise<boolean> {
+  if (store.latitude == null || store.longitude == null) return true;
+
+  const position = await Location.getLastKnownPositionAsync({ maxAge: 60_000, requiredAccuracy: 500 })
+    .then((lastKnown) => lastKnown ?? Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }))
+    .catch(() => null);
+
+  if (!position) return true;
+
+  const distance = distanceMeters(
+    position.coords.latitude,
+    position.coords.longitude,
+    store.latitude,
+    store.longitude,
+  );
+  const allowedDistance = Math.max(100, Math.min(store.radius_meters || 150, 500))
+    + Math.max(position.coords.accuracy ?? 0, GEOFENCE_ACCURACY_BUFFER_M);
+  return distance <= allowedDistance;
+}
+
+function distanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const earthRadiusM = 6_371_000;
+  const toRad = (degrees: number) => degrees * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2
+    + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * earthRadiusM * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 export async function scheduleLocalArrivalNotification(storeName: string, storeId?: string) {
   // Respect the user's notification preference stored in AsyncStorage
   try {
@@ -140,11 +207,31 @@ export async function scheduleLocalArrivalNotification(storeName: string, storeI
 export const notifyPartnerArrival = scheduleLocalArrivalNotification;
 
 export async function recordStoreArrival(store: Store, arrivedBy: string | null) {
-  await supabase.from('store_arrivals').insert({
+  if (arrivedBy) {
+    const since = new Date(Date.now() - ARRIVAL_RECORD_DEDUPE_MS).toISOString();
+    const { data: recent } = await supabase
+      .from('store_arrivals')
+      .select('id')
+      .eq('household_id', store.household_id)
+      .eq('store_id', store.id)
+      .eq('arrived_by', arrivedBy)
+      .gte('arrived_at', since)
+      .limit(1);
+    if (recent?.length) return;
+  }
+
+  const arrival = {
     household_id: store.household_id,
     store_id: store.id,
     arrived_by: arrivedBy,
-  });
+    arrived_by_name: await getArrivalActorName(),
+  };
+  const { error } = await supabase.from('store_arrivals').insert(arrival);
+  if (!error) return;
+  if (!`${error.message ?? ''} ${error.details ?? ''}`.includes('arrived_by_name')) throw error;
+  const { arrived_by_name: _name, ...legacyArrival } = arrival;
+  const legacy = await supabase.from('store_arrivals').insert(legacyArrival);
+  if (legacy.error) throw legacy.error;
 }
 
 /**
@@ -155,6 +242,8 @@ export async function handleStoreGeofenceEnter(storeId: string): Promise<void> {
 
   const store = (await fetchStoreById(storeId)) ?? null;
   if (!store) return;
+
+  if (!(await isLikelyInsideStoreRegion(store))) return;
 
   const relevant = await hasRelevantShoppingAtStore(store);
   if (!relevant) return;

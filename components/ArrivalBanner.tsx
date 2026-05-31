@@ -1,5 +1,5 @@
 import { useEffect, useRef, useMemo } from 'react';
-import { Animated, Text, StyleSheet, Pressable } from 'react-native';
+import { Animated, Text, StyleSheet, Pressable, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useStoresStore } from '../store/stores';
@@ -17,7 +17,7 @@ export default function ArrivalBanner() {
   const router = useRouter();
   // Only watch arrivalStoreId — set exclusively by the realtime store_arrivals
   // subscription when a *partner* arrives. Never triggered by chip taps.
-  const { arrivalStoreId, stores, setArrivalStore } = useStoresStore();
+  const { arrivalStoreId, arrivalNotice, stores, setArrivalStore } = useStoresStore();
   const translateY = useRef(new Animated.Value(-180)).current;
   const prevStoreId = useRef<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -25,6 +25,8 @@ export default function ArrivalBanner() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const arrivalStore = stores.find((s) => s.id === arrivalStoreId);
+  const actorName = arrivalNotice?.actorName?.trim() || 'Someone';
+  const arrivedLabel = formatArrivalTime(arrivalNotice?.arrivedAt);
 
   function show() {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -61,19 +63,32 @@ export default function ArrivalBanner() {
         style={styles.inner}
         onPress={() => {
           hide();
-          // Navigate to Pantry so the partner can quickly mark items low
           router.push('/(main)/pantry');
         }}
       >
         <Text style={styles.icon}>🛒</Text>
-        <Text style={styles.text} numberOfLines={2}>
-          <Text style={styles.bold}>Someone arrived at {arrivalStore.name}!</Text>
-          {'\n'}Tap to update the shopping list.
-        </Text>
+        <View style={styles.textWrap}>
+          <Text style={styles.text} numberOfLines={2}>
+            <Text style={styles.bold}>{actorName} arrived at {arrivalStore.name}</Text>
+            {'\n'}Add anything they should grab.
+          </Text>
+          {arrivedLabel && <Text style={styles.timeText}>{arrivedLabel}</Text>}
+        </View>
         <Ionicons name="chevron-forward" size={16} color={BANNER_TEXT} style={{ opacity: 0.6 }} />
       </Pressable>
     </Animated.View>
   );
+}
+
+function formatArrivalTime(value?: string | null) {
+  if (!value) return null;
+  const ts = new Date(value).getTime();
+  if (!Number.isFinite(ts)) return null;
+  const diffMinutes = Math.max(0, Math.round((Date.now() - ts) / 60000));
+  if (diffMinutes < 1) return 'Just now';
+  if (diffMinutes === 1) return '1 min ago';
+  if (diffMinutes < 60) return `${diffMinutes} min ago`;
+  return null;
 }
 
 function makeStyles(_colors: AppColors) {
@@ -96,7 +111,9 @@ function makeStyles(_colors: AppColors) {
       gap: 12,
     },
     icon: { fontSize: 26 },
-    text: { flex: 1, fontSize: 13, color: BANNER_TEXT, lineHeight: 19, fontFamily: fonts.body },
+    textWrap: { flex: 1, gap: 3 },
+    text: { fontSize: 13, color: BANNER_TEXT, lineHeight: 19, fontFamily: fonts.body },
     bold: { fontFamily: fonts.bodySemiBold, fontSize: 14, color: BANNER_TEXT },
+    timeText: { fontSize: 11, color: BANNER_COPPER, fontFamily: fonts.bodySemiBold },
   });
 }

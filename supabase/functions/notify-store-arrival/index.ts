@@ -7,6 +7,8 @@ interface ArrivalRow {
   household_id: string;
   store_id: string;
   arrived_by: string | null;
+  arrived_by_name?: string | null;
+  arrived_at?: string | null;
 }
 
 Deno.serve(async (req) => {
@@ -34,6 +36,7 @@ Deno.serve(async (req) => {
     .maybeSingle();
 
   const storeName = store?.name ?? 'the store';
+  const actorName = record.arrived_by_name?.trim() || 'Someone';
 
   const { data: members } = await supabase
     .from('household_members')
@@ -51,12 +54,15 @@ Deno.serve(async (req) => {
     .map((m: { push_token: string }) => ({
       to: m.push_token,
       sound: 'default',
-      title: 'Shopping trip started',
-      body: `Someone arrived at ${storeName}. Open the list to add items.`,
+      title: `${actorName} is shopping`,
+      body: `${actorName} arrived at ${storeName}. Open the list to add items.`,
       data: {
+        type: 'partner_arrival',
         storeId: record.store_id,
         householdId: record.household_id,
         arrivalId: record.id,
+        actorName,
+        arrivedAt: record.arrived_at ?? null,
       },
     }));
 

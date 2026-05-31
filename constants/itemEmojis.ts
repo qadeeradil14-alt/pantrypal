@@ -1,5 +1,13 @@
 // Ordered most-specific first so "bell pepper" matches before "pepper"
 const ITEM_EMOJI_PAIRS: [string[], string][] = [
+  // Icon quality overrides: avoid misleading candy/glass icons for staple containers.
+  [['sugar scrub'], '🧴'],
+  [['sour cream', 'crème fraîche', 'creme fraiche'], '🫙'],
+  [['greek yogurt', 'yogurt', 'yoghurt', 'skyr'], '🥣'],
+  [['cottage cheese'], '🥣'],
+  [['heavy cream', 'whipping cream', 'half and half', 'table cream'], '🫙'],
+  [['granulated sugar', 'white sugar', 'brown sugar', 'powdered sugar', 'icing sugar', 'raw sugar', 'caster sugar', 'demerara', 'turbinado'], '🫙'],
+
   // Vegetables (specific first)
   [['bell pepper', 'capsicum'], '🫑'],
   [['hot pepper', 'chili pepper', 'chilli pepper', 'jalapeño', 'jalapeno', 'habanero', 'serrano'], '🌶️'],
@@ -103,14 +111,14 @@ const ITEM_EMOJI_PAIRS: [string[], string][] = [
 
   // Dairy (specific first)
   [['almond milk', 'oat milk', 'soy milk', 'coconut milk', 'plant milk'], '🥛'],
-  [['sour cream', 'crème fraîche', 'creme fraiche'], '🥛'],
+  [['sour cream', 'crème fraîche', 'creme fraiche'], '🫙'],
   [['cream cheese', 'ricotta', 'mascarpone', 'brie', 'camembert', 'feta', 'gouda', 'cheddar', 'mozzarella', 'parmesan', 'gruyere', 'swiss cheese'], '🧀'],
-  [['cottage cheese'], '🧀'],
+  [['cottage cheese'], '🥣'],
   [['butter', 'ghee', 'margarine'], '🧈'],
   [['cheese'], '🧀'],
   [['cream', 'whipping cream', 'heavy cream', 'half and half'], '🥛'],
   [['milk'], '🥛'],
-  [['yogurt', 'yoghurt', 'greek yogurt'], '🥛'],
+  [['yogurt', 'yoghurt', 'greek yogurt'], '🥣'],
   [['kefir'], '🥛'],
   [['condensed milk', 'evaporated milk'], '🥛'],
   [['coconut cream', 'coconut milk'], '🥥'],
@@ -165,7 +173,7 @@ const ITEM_EMOJI_PAIRS: [string[], string][] = [
   [['spice', 'cumin', 'turmeric', 'cinnamon', 'nutmeg', 'cardamom', 'clove', 'allspice', 'sumac', 'za\'atar'], '🌿'],
   [['herb', 'basil', 'oregano', 'thyme', 'rosemary', 'parsley', 'cilantro', 'dill', 'mint', 'sage', 'tarragon', 'chive'], '🌿'],
   [['vanilla', 'extract'], '🫙'],
-  [['sugar', 'brown sugar', 'powdered sugar', 'icing sugar', 'raw sugar', 'caster sugar', 'demerara', 'turbinado'], '🍬'],
+  [['sugar', 'brown sugar', 'powdered sugar', 'icing sugar', 'raw sugar', 'caster sugar', 'demerara', 'turbinado'], '🫙'],
   [['tahini', 'sesame paste'], '🫙'],
   [['miso', 'miso paste'], '🫙'],
   [['harissa', 'gochujang', 'doubanjiang', 'sambal'], '🌶️'],

@@ -348,20 +348,24 @@ export default function SettingsScreen() {
               { key: 'expiry', label: 'Expiry reminders', sub: 'Remind me 3 days before items expire', icon: 'time-outline', value: notifExpiry, set: setNotifExpiry },
               { key: 'lowStock', label: 'Low stock alerts', sub: 'Alert when pantry items run low', icon: 'alert-circle-outline', value: notifLowStock, set: setNotifLowStock },
             ] as const).map((row, i) => (
-              <View key={row.key} style={[styles.row, i > 0 && styles.rowBorderTop]}>
-                <View style={styles.rowLabelWrap}>
+              <View key={row.key} style={[styles.row, styles.notificationRow, i > 0 && styles.rowBorderTop]}>
+                <View style={[styles.rowLabelWrap, styles.notificationLabelWrap]}>
                   <Ionicons name={row.icon as any} size={17} color={colors.muted} />
-                  <View>
+                  <View style={styles.notificationTextWrap}>
                     <Text style={styles.rowLabel}>{row.label}</Text>
                     <Text style={styles.rowSubLabel}>{row.sub}</Text>
                   </View>
                 </View>
-                <Switch
-                  value={row.value}
-                  onValueChange={(v) => { void hapticSelection(); row.set(v); }}
-                  trackColor={{ false: colors.border, true: colors.primary + '66' }}
-                  thumbColor={row.value ? colors.primary : colors.muted}
-                />
+                <View style={styles.switchSlot}>
+                  <Switch
+                    value={row.value}
+                    onValueChange={(v) => { void hapticSelection(); row.set(v); }}
+                    trackColor={{ false: colors.border, true: colors.primary + '66' }}
+                    thumbColor={row.value ? colors.primary : colors.muted}
+                    ios_backgroundColor={colors.border}
+                    style={styles.notificationSwitch}
+                  />
+                </View>
               </View>
             ))}
           </View>
@@ -453,9 +457,14 @@ function makeStyles(colors: AppColors) {
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
     },
-    rowLabelWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    rowLabelWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 },
     rowLabel: { fontSize: 15, color: colors.ink, fontFamily: fonts.bodyMedium },
     rowSubLabel: { fontSize: 12, color: colors.muted, fontFamily: fonts.body, marginTop: 1 },
+    notificationRow: { minHeight: 72, alignItems: 'center' },
+    notificationLabelWrap: { flex: 1, minWidth: 0, paddingRight: 10 },
+    notificationTextWrap: { flex: 1, minWidth: 0 },
+    switchSlot: { width: 52, height: 34, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+    notificationSwitch: { transform: [{ scaleX: 0.82 }, { scaleY: 0.82 }] },
     rowEditWrap: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 },
     rowValue: { fontSize: 16, color: colors.ink, fontFamily: fonts.bodyMedium, flexShrink: 1, textAlign: 'right' },
     rowCode: { fontSize: 16, color: colors.ink, fontFamily: fonts.mono, flexShrink: 1, textAlign: 'right', letterSpacing: 0.5 },
