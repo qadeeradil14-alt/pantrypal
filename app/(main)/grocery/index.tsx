@@ -186,11 +186,23 @@ export default function GroceryScreen() {
   );
 
   const nextStop = useMemo(() => {
-    if (!activeStoreId) return null;
-    return allShoppingSections.find((section) => section.storeId !== activeStoreId) ?? null;
+    const assignedStops = allShoppingSections.filter((section) => section.storeId);
+    if (activeStoreId) {
+      return assignedStops.find((section) => section.storeId !== activeStoreId) ?? null;
+    }
+    return assignedStops[0] ?? null;
   }, [allShoppingSections, activeStoreId]);
 
-  const activeStoreComplete = shoppingMode && !!activeStoreId && startCount > 0 && lowItems.length === 0;
+  const hasUnassignedItems = allActiveItems.some((entry) => {
+    const linked = entry.source_item_id ? sourceItemMap.get(entry.source_item_id) : null;
+    return !linked?.preferred_store_id;
+  });
+
+  const activeStoreComplete = shoppingMode && (
+    (!!activeStoreId && startCount > 0 && lowItems.length === 0)
+    || (!activeStoreId && !!nextStop && allActiveItems.length > 0)
+    || (!activeStoreId && hasUnassignedItems && allActiveItems.length > 0)
+  );
 
   const spendProgress = useMemo(
     () => Math.min(weeklySpend / weeklyBudget, 1),
@@ -281,6 +293,45 @@ export default function GroceryScreen() {
     setStartCount(0);
     setGrabbedCount(0);
   }, [setActiveStore]);
+
+  const assignEntryToStore = useCallback((entry: ShoppingEntry) => {
+    const sourceItem = entry.source_item_id ? sourceItemMap.get(entry.source_item_id) : null;
+    if (!sourceItem || stores.length === 0) return;
+    void hapticSelection();
+    const options = stores.map((s) => ({
+      text: s.name,
+      onPress: async () => {
+        updateItem(sourceItem.id, { preferred_store_id: s.id });
+        try {
+          await setItemStoreWithQueue(sourceItem.id, s.id);
+          void hapticSuccess();
+        } catch {
+          updateItem(sourceItem.id, { preferred_store_id: sourceItem.preferred_store_id });
+          void hapticError();
+        }
+      },
+    }));
+    if (sourceItem.preferred_store_id) {
+      options.push({
+        text: 'Remove store',
+        onPress: async () => {
+          updateItem(sourceItem.id, { preferred_store_id: null });
+          try {
+            await setItemStoreWithQueue(sourceItem.id, null);
+            void hapticSuccess();
+          } catch {
+            updateItem(sourceItem.id, { preferred_store_id: sourceItem.preferred_store_id });
+            void hapticError();
+          }
+        },
+      });
+    }
+    Alert.alert(
+      `Assign store for "${entry.name}"`,
+      'Where should this be picked up?',
+      [...options, { text: 'Cancel', style: 'cancel' as const }],
+    );
+  }, [sourceItemMap, stores, updateItem]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -423,28 +474,42 @@ export default function GroceryScreen() {
         </View>
       )}
 
-      {activeStoreComplete && nextStop && (
+      {activeStoreComplete && (nextStop || hasUnassignedItems) && (
         <View style={styles.nextStopCard}>
           <View style={styles.nextStopTop}>
             <View style={styles.nextStopIcon}>
-              <Ionicons name="checkmark" size={17} color={colors.onPrimary} />
+              <Ionicons name={nextStop ? 'navigate-outline' : 'storefront-outline'} size={17} color={colors.primary} />
             </View>
             <View style={styles.nextStopBody}>
-              <Text style={styles.nextStopKicker}>Store complete</Text>
-              <Text style={styles.nextStopTitle} numberOfLines={1}>Next: {nextStop.title}</Text>
-              <Text style={styles.nextStopSub}>
-                {nextStop.data.length} {nextStop.data.length === 1 ? 'item' : 'items'} left in this stop
-              </Text>
+              {nextStop ? (
+                <>
+                  <Text style={styles.nextStopKicker}>{activeStoreId ? 'Store complete' : 'Ready to start'}</Text>
+                  <Text style={styles.nextStopTitle} numberOfLines={1}>
+                    {activeStoreId ? 'Next' : 'First stop'}: {nextStop.title}
+                  </Text>
+                  <Text style={styles.nextStopSub}>
+                    {nextStop.data.length} {nextStop.data.length === 1 ? 'item' : 'items'} left in this stop
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.nextStopKicker}>Stores needed</Text>
+                  <Text style={styles.nextStopTitle} numberOfLines={1}>Assign stores to route this trip</Text>
+                  <Text style={styles.nextStopSub}>Use each Store chip below to add GPS directions.</Text>
+                </>
+              )}
             </View>
-            <StoreLogo
-              name={nextStop.title}
-              size={34}
-              domain={nextStop.storeId ? stores.find((s) => s.id === nextStop.storeId)?.brand_domain : undefined}
-              logoUrl={nextStop.storeId ? stores.find((s) => s.id === nextStop.storeId)?.logo_url : undefined}
-            />
+            {nextStop && (
+              <StoreLogo
+                name={nextStop.title}
+                size={34}
+                domain={nextStop.storeId ? stores.find((s) => s.id === nextStop.storeId)?.brand_domain : undefined}
+                logoUrl={nextStop.storeId ? stores.find((s) => s.id === nextStop.storeId)?.logo_url : undefined}
+              />
+            )}
           </View>
           <View style={styles.nextStopActions}>
-            {nextStop.storeId && (
+            {nextStop?.storeId && (
               <ScalePressable
                 style={styles.nextStopPrimary}
                 onPress={() => {
@@ -456,9 +521,11 @@ export default function GroceryScreen() {
                 <Text style={styles.nextStopPrimaryText}>Directions</Text>
               </ScalePressable>
             )}
-            <ScalePressable style={styles.nextStopSecondary} onPress={goToNextStop}>
-              <Text style={styles.nextStopSecondaryText}>{nextStop.storeId ? 'Skip GPS' : 'View list'}</Text>
-            </ScalePressable>
+            {nextStop && (
+              <ScalePressable style={styles.nextStopSecondary} onPress={goToNextStop}>
+                <Text style={styles.nextStopSecondaryText}>{nextStop.storeId ? 'Skip GPS' : 'View list'}</Text>
+              </ScalePressable>
+            )}
             <ScalePressable style={styles.nextStopGhost} onPress={finishShopping}>
               <Text style={styles.nextStopGhostText}>Done shopping</Text>
             </ScalePressable>
@@ -524,36 +591,6 @@ export default function GroceryScreen() {
             const categoryLabel = CATEGORY_LABELS[normalizeShoppingCategory(entry.category)];
             const emoji = getItemEmoji(entry.name, entry.category ?? '');
 
-            function handleQuickStoreAssign() {
-              if (!sourceItem) return;
-              void hapticSelection();
-              const options = stores.map((s) => ({
-                text: s.name,
-                onPress: async () => {
-                  updateItem(sourceItem.id, { preferred_store_id: s.id });
-                  await setItemStoreWithQueue(sourceItem.id, s.id).catch(() => {
-                    updateItem(sourceItem.id, { preferred_store_id: sourceItem.preferred_store_id });
-                  });
-                },
-              }));
-              if (sourceItem.preferred_store_id) {
-                options.push({
-                  text: 'Remove store',
-                  onPress: async () => {
-                    updateItem(sourceItem.id, { preferred_store_id: null });
-                    await setItemStoreWithQueue(sourceItem.id, null).catch(() => {
-                      updateItem(sourceItem.id, { preferred_store_id: sourceItem.preferred_store_id });
-                    });
-                  },
-                });
-              }
-              Alert.alert(
-                `Assign store for "${entry.name}"`,
-                'Where do you usually buy this?',
-                [...options, { text: 'Cancel', style: 'cancel' as const }],
-              );
-            }
-
             function handleSetAisle() {
               void hapticSelection();
               Alert.prompt(
@@ -580,7 +617,7 @@ export default function GroceryScreen() {
                 profile="card"
                 style={[styles.row, shoppingMode && styles.rowShop, purchased && styles.rowPurchased]}
                 onPress={shoppingMode ? () => handleGotIt(entry) : undefined}
-                onLongPress={shoppingMode ? handleSetAisle : (sourceItem ? handleQuickStoreAssign : undefined)}
+                onLongPress={shoppingMode ? (storeName ? handleSetAisle : () => assignEntryToStore(entry)) : (sourceItem ? () => assignEntryToStore(entry) : undefined)}
                 delayLongPress={400}
                 disabled={shoppingMode ? (isTapping) : false}
               >
@@ -601,12 +638,20 @@ export default function GroceryScreen() {
                       ? 'Purchased ✓'
                       : storeName
                         ? `${categoryLabel} · ${storeName}`
-                        : !shoppingMode && sourceItem
+                        : sourceItem
                           ? `${categoryLabel} · Hold to assign store`
                           : categoryLabel}
                   </Text>
                 </View>
-                {(shoppingMode || purchased) && (
+                {shoppingMode && !storeName && sourceItem ? (
+                  <ScalePressable
+                    profile="chip"
+                    style={styles.assignStoreChip}
+                    onPress={() => assignEntryToStore(entry)}
+                  >
+                    <Text style={styles.assignStoreChipText}>Store</Text>
+                  </ScalePressable>
+                ) : (shoppingMode || purchased) && (
                   <Text style={[styles.tapHint, purchased && styles.tapHintPurchased]}>
                     {purchased ? 'Done' : 'Grab'}
                   </Text>
@@ -759,8 +804,10 @@ function makeStyles(colors: AppColors) {
       marginHorizontal: 16,
       marginBottom: 12,
       borderRadius: radii.lg,
-      backgroundColor: colors.surfaceDeep,
-      padding: 14,
+      backgroundColor: colors.surface,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      padding: 15,
       gap: 14,
       ...shadow,
     },
@@ -773,14 +820,14 @@ function makeStyles(colors: AppColors) {
       width: 34,
       height: 34,
       borderRadius: 17,
-      backgroundColor: colors.success,
+      backgroundColor: colors.primarySoft,
       alignItems: 'center',
       justifyContent: 'center',
     },
     nextStopBody: { flex: 1, minWidth: 0 },
-    nextStopKicker: { fontSize: 12, color: colors.primarySoft, fontFamily: fonts.bodySemiBold },
-    nextStopTitle: { fontSize: 19, color: colors.surface, fontFamily: fonts.bodySemiBold, marginTop: 1 },
-    nextStopSub: { fontSize: 13, color: colors.border, fontFamily: fonts.body, marginTop: 2 },
+    nextStopKicker: { fontSize: 12, color: colors.primary, fontFamily: fonts.bodySemiBold },
+    nextStopTitle: { fontSize: 19, color: colors.ink, fontFamily: fonts.bodySemiBold, marginTop: 1 },
+    nextStopSub: { fontSize: 13, color: colors.muted, fontFamily: fonts.body, marginTop: 2 },
     nextStopActions: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -809,7 +856,7 @@ function makeStyles(colors: AppColors) {
       paddingHorizontal: 10,
       paddingVertical: 10,
     },
-    nextStopGhostText: { color: colors.border, fontSize: 13, fontFamily: fonts.bodySemiBold },
+    nextStopGhostText: { color: colors.muted, fontSize: 13, fontFamily: fonts.bodySemiBold },
     chip: {
       borderRadius: 999,
       paddingHorizontal: 14,
@@ -892,6 +939,15 @@ function makeStyles(colors: AppColors) {
     itemMetaPurchased: { color: colors.success, fontFamily: fonts.bodySemiBold },
     tapHint: { fontSize: 12, color: colors.muted, fontFamily: fonts.bodySemiBold },
     tapHintPurchased: { color: colors.success },
+    assignStoreChip: {
+      borderRadius: 999,
+      backgroundColor: colors.surface,
+      paddingHorizontal: 10,
+      paddingVertical: 7,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.primary,
+    },
+    assignStoreChipText: { fontSize: 12, color: colors.primary, fontFamily: fonts.bodySemiBold },
     empty: {
       flex: 1,
       justifyContent: 'center',

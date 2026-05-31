@@ -13,7 +13,7 @@ import { useItemsStore } from '../../store/items';
 import { useSettingsStore } from '../../store/settings';
 import { signOut } from '../../lib/auth';
 import { supabase } from '../../lib/supabase';
-import { updateHouseholdName, leaveHousehold } from '../../lib/households';
+import { updateHouseholdName, leaveHousehold, fetchHouseholdById } from '../../lib/households';
 import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../../lib/haptics';
 import { useTheme } from '../../hooks/useTheme';
 import { fonts } from '../../constants/theme';
@@ -50,6 +50,7 @@ export default function SettingsScreen() {
   const [savingHouseholdName, setSavingHouseholdName] = useState(false);
   const [leavingHousehold, setLeavingHousehold] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
+  const [loadingInvite, setLoadingInvite] = useState(false);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -83,29 +84,67 @@ export default function SettingsScreen() {
   }
 
   const TESTFLIGHT_URL = 'https://testflight.apple.com/join/eJTwChas';
-  const inviteDeepLink = household?.inviteCode
-    ? `pantrypal://join?code=${household.inviteCode}`
+  const inviteCode = household?.inviteCode?.trim().toUpperCase() || null;
+  const inviteDeepLink = inviteCode
+    ? `pantrypal://join?code=${inviteCode}`
+    : null;
+  const inviteMessage = inviteCode && inviteDeepLink
+    ? `Hey! Join my household on Stokit.\n\n1. Install Stokit with TestFlight:\n${TESTFLIGHT_URL}\n\n2. Open this invite link after installing:\n${inviteDeepLink}\n\nInvite code: ${inviteCode}`
     : null;
 
-  async function handleCopyCode() {
-    if (!household?.inviteCode || !inviteDeepLink) return;
-    void hapticSuccess();
-    const textToCopy = `Hey! Join my household on Stokit 🏠\n\nSTEP 1 — Install the app via TestFlight (tap this link on your iPhone):\n${TESTFLIGHT_URL}\n\nSTEP 2 — Once Stokit is installed, tap this to join my household:\n${inviteDeepLink}\n\n⚠️ Do NOT enter anything into TestFlight itself — just install the app from there, then use the link above to join.`;
+  async function refreshInviteCode() {
+    if (!household?.id) return null;
+    setLoadingInvite(true);
     try {
-      await Clipboard.setStringAsync(textToCopy);
+      const fresh = await fetchHouseholdById(household.id);
+      const freshCode = fresh?.invite_code?.trim().toUpperCase();
+      if (fresh && freshCode) {
+        setHousehold({
+          ...household,
+          name: fresh.name,
+          inviteCode: freshCode,
+        });
+        return freshCode;
+      }
+      Alert.alert('Invite unavailable', 'No invite code was found for this household.');
+      return null;
+    } catch (e: any) {
+      Alert.alert('Invite unavailable', e?.message ?? 'Please try again.');
+      void hapticError();
+      return null;
+    } finally {
+      setLoadingInvite(false);
+    }
+  }
+
+  async function handleCopyCode() {
+    const code = inviteCode ?? await refreshInviteCode();
+    const link = code ? `pantrypal://join?code=${code}` : null;
+    const message = code && link
+      ? `Hey! Join my household on Stokit.\n\n1. Install Stokit with TestFlight:\n${TESTFLIGHT_URL}\n\n2. Open this invite link after installing:\n${link}\n\nInvite code: ${code}`
+      : null;
+    if (!message) return;
+    void hapticSuccess();
+    try {
+      await Clipboard.setStringAsync(message);
       setCodeCopied(true);
       setTimeout(() => setCodeCopied(false), 2500);
     } catch {
-      Alert.alert('Invite link', textToCopy);
+      Alert.alert('Invite link', message);
     }
   }
 
   async function handleShare() {
-    if (!household?.inviteCode || !inviteDeepLink) return;
+    const code = inviteCode ?? await refreshInviteCode();
+    const link = code ? `pantrypal://join?code=${code}` : null;
+    const message = code && link
+      ? `Hey! Join my household on Stokit.\n\n1. Install Stokit with TestFlight:\n${TESTFLIGHT_URL}\n\n2. Open this invite link after installing:\n${link}\n\nInvite code: ${code}`
+      : null;
+    if (!message) return;
     try {
       void hapticSelection();
       await Share.share({
-        message: `Hey! Join my household on Stokit 🏠\n\nSTEP 1 — Install the app (tap this link on your iPhone):\n${TESTFLIGHT_URL}\n\nSTEP 2 — Once Stokit is installed, tap this to join my household:\n${inviteDeepLink}\n\n⚠️ Do NOT enter anything into TestFlight — just install Stokit from there, then tap the Step 2 link above.`,
+        message,
         url: TESTFLIGHT_URL,
       });
     } catch (e: any) {
@@ -254,32 +293,43 @@ export default function SettingsScreen() {
                 <Ionicons name="pencil-outline" size={14} color={colors.muted} />
               </View>
             </ScalePressable>
-            {household?.inviteCode ? (
+            {household ? (
               <ScalePressable
                 style={[styles.row, styles.rowBorderTop]}
-                onPress={handleCopyCode}
+                onPress={loadingInvite ? undefined : handleCopyCode}
+                disabled={loadingInvite}
               >
                 <View style={styles.rowLabelWrap}>
                   <Ionicons name="key-outline" size={17} color={colors.muted} />
                   <Text style={styles.rowLabel}>Invite code</Text>
                 </View>
                 <View style={styles.rowEditWrap}>
-                  <Text style={styles.rowCode}>{household.inviteCode}</Text>
-                  <Ionicons
-                    name={codeCopied ? 'checkmark-circle' : 'copy-outline'}
-                    size={15}
-                    color={codeCopied ? colors.success : colors.muted}
-                  />
+                  {loadingInvite ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  ) : (
+                    <>
+                      <Text style={styles.rowCode}>{inviteCode ?? 'Refresh'}</Text>
+                      <Ionicons
+                        name={codeCopied ? 'checkmark-circle' : 'copy-outline'}
+                        size={15}
+                        color={codeCopied ? colors.success : colors.muted}
+                      />
+                    </>
+                  )}
                 </View>
               </ScalePressable>
             ) : null}
           </View>
-          {household?.inviteCode ? (
+          {household ? (
             <ScalePressable
-              style={styles.shareBtn}
+              style={[styles.shareBtn, loadingInvite && styles.shareBtnDisabled]}
               onPress={() => { void hapticSelection(); void handleShare(); }}
+              disabled={loadingInvite}
             >
-              <Ionicons name="share-outline" size={17} color={colors.primary} />
+              {loadingInvite
+                ? <ActivityIndicator size="small" color={colors.primary} />
+                : <Ionicons name="share-outline" size={17} color={colors.primary} />
+              }
               <Text style={styles.shareBtnText}>Share invite link</Text>
             </ScalePressable>
           ) : null}
@@ -473,6 +523,7 @@ function makeStyles(colors: AppColors) {
       flexDirection: 'row', gap: 8, borderRadius: 16,
       backgroundColor: colors.primarySoft,
     },
+    shareBtnDisabled: { opacity: 0.65 },
     shareBtnText: { color: colors.primary, fontSize: 15, fontFamily: fonts.bodySemiBold },
     signOutBtn: {
       marginHorizontal: 20, marginTop: 20,

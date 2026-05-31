@@ -144,6 +144,16 @@ export async function updateHouseholdName(householdId: string, name: string) {
   if (error) throw error;
 }
 
+export async function fetchHouseholdById(householdId: string): Promise<HouseholdCore | null> {
+  const { data, error } = await supabase
+    .from('households')
+    .select('id, name, invite_code')
+    .eq('id', householdId)
+    .maybeSingle();
+  if (error) throw error;
+  return data as HouseholdCore | null;
+}
+
 export async function leaveHousehold(householdId: string, userId: string) {
   const { error } = await supabase
     .from('household_members')
