@@ -48,8 +48,8 @@ const PLU_MAP: Record<string, { name: string; category: ItemCategory }> = {
 
 function inferCategory(name: string, categories: string): ItemCategory {
   const text = `${name} ${categories}`.toLowerCase();
-  if (/\b(frozen|ice cream|freezer)\b/.test(text)) return 'freezer';
-  if (/\b(milk|cheese|yogurt|butter|cream|eggs|meat|beef|chicken|turkey|pork|fish|salmon|shrimp|lettuce|spinach|broccoli|carrot|celery|pepper|tomato|cucumber|juice|produce|fresh|fruit|vegetable)\b/.test(text)) return 'fridge';
+  if (/\b(frozen|ice.?cream|freezer|popsicle|sorbet)\b/.test(text)) return 'freezer';
+  if (/\b(milk|cheese|yogurt|yoghurt|butter|cream|eggs?|meat|beef|chicken|turkey|pork|lamb|fish|salmon|tuna|shrimp|prawn|seafood|lobster|crab|deli|bacon|ham|sausage|salami|pepperoni|lettuce|spinach|kale|arugula|chard|broccoli|cauliflower|asparagus|artichoke|carrot|celery|pepper|tomato|cucumber|zucchini|squash|mushroom|scallion|leek|avocado|guacamole|mango|papaya|pineapple|kiwi|melon|cantaloupe|watermelon|berry|berries|strawberr|blueberr|raspberr|blackberr|cranberr|grape|cherry|peach|plum|apricot|nectarine|apple|pear|orange|lemon|lime|grapefruit|clementine|tangerine|mandarin|basil|cilantro|parsley|dill|mint|rosemary|thyme|tofu|tempeh|hummus|juice|produce|fresh|refrigerat|dairy|chilled)\b/.test(text)) return 'fridge';
   return 'pantry';
 }
 

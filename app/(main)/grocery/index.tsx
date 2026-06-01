@@ -41,7 +41,7 @@ function ordinalStop(n: number): string {
   return `${n}${s[(v - 20) % 10] || s[v] || s[0]} stop`;
 }
 
-type ShoppingSection = { title: string; storeId: string | null; data: ShoppingEntry[] };
+type ShoppingSection = { title: string; storeId: string | null; data: ShoppingEntry[]; stopNumber?: number };
 
 export default function GroceryScreen() {
   const router = useRouter();
@@ -199,6 +199,19 @@ export default function GroceryScreen() {
     [makeShoppingSections, allActiveItems],
   );
 
+  const stopNumberByStoreId = useMemo(() => {
+    const assignedStops = allShoppingSections.filter((section) => section.storeId);
+    return new Map(assignedStops.map((section, index) => [section.storeId, index + 1]));
+  }, [allShoppingSections]);
+
+  const routedShoppingSections = useMemo(
+    () => shoppingSections.map((section) => ({
+      ...section,
+      stopNumber: section.storeId ? stopNumberByStoreId.get(section.storeId) : undefined,
+    })),
+    [shoppingSections, stopNumberByStoreId],
+  );
+
   const nextStopInfo = useMemo(() => {
     const assignedStops = allShoppingSections.filter((section) => section.storeId);
     if (activeStoreId) {
@@ -217,6 +230,11 @@ export default function GroceryScreen() {
     const linked = entry.source_item_id ? sourceItemMap.get(entry.source_item_id) : null;
     return !linked?.preferred_store_id;
   });
+
+  const unassignedEntries = useMemo(() => allActiveItems.filter((entry) => {
+    const linked = entry.source_item_id ? sourceItemMap.get(entry.source_item_id) : null;
+    return !!linked && !linked.preferred_store_id;
+  }), [allActiveItems, sourceItemMap]);
 
   const activeStoreComplete = shoppingMode && (
     (!!activeStoreId && startCount > 0 && lowItems.length === 0)
@@ -305,15 +323,39 @@ export default function GroceryScreen() {
   }, [nextStop, setActiveStore]);
 
   const finishShopping = useCallback(() => {
-    void hapticSuccess();
-    const count = startCount;
-    const spend = weeklySpend;
-    setShoppingMode(false);
-    setActiveStore(null);
-    setStartCount(0);
-    setGrabbedCount(0);
-    if (count > 0) setTripSheet({ itemCount: count, spend });
-  }, [setActiveStore, startCount, weeklySpend]);
+    const remaining = entries.filter((e) => !purchasedIds.has(e.id)).length;
+    if (remaining > 0) {
+      Alert.alert(
+        'Done shopping?',
+        `You still have ${remaining} ${remaining === 1 ? 'item' : 'items'} left on your list.`,
+        [
+          { text: 'Keep shopping', style: 'cancel' },
+          {
+            text: 'Done',
+            onPress: () => {
+              void hapticSuccess();
+              const count = startCount;
+              const spend = weeklySpend;
+              setShoppingMode(false);
+              setActiveStore(null);
+              setStartCount(0);
+              setGrabbedCount(0);
+              if (count > 0) setTripSheet({ itemCount: count, spend });
+            },
+          },
+        ],
+      );
+    } else {
+      void hapticSuccess();
+      const count = startCount;
+      const spend = weeklySpend;
+      setShoppingMode(false);
+      setActiveStore(null);
+      setStartCount(0);
+      setGrabbedCount(0);
+      if (count > 0) setTripSheet({ itemCount: count, spend });
+    }
+  }, [setActiveStore, startCount, weeklySpend, entries, purchasedIds]);
 
   const closeTripSheet = useCallback(() => setTripSheet(null), []);
 
@@ -360,6 +402,12 @@ export default function GroceryScreen() {
       [...options, { text: 'Cancel', style: 'cancel' as const }],
     );
   }, [sourceItemMap, stores, updateItem]);
+
+  const assignFirstUnassigned = useCallback(() => {
+    const first = unassignedEntries[0];
+    if (!first) return;
+    assignEntryToStore(first);
+  }, [assignEntryToStore, unassignedEntries]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -474,20 +522,20 @@ export default function GroceryScreen() {
         </ScrollView>
       )}
 
-      {shoppingSections.length > 0 && (
+      {routedShoppingSections.length > 0 && (
         <View style={styles.routeCard}>
           <View style={styles.routeCardHeader}>
             <Ionicons name="navigate-outline" size={16} color={colors.primary} />
             <Text style={styles.routeCardTitle}>
-              {shoppingSections.length} {shoppingSections.length === 1 ? 'stop' : 'stops'}
+              {routedShoppingSections.length} {routedShoppingSections.length === 1 ? 'stop' : 'stops'}
             </Text>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.routeSteps}>
-            {shoppingSections.map((section, index) => {
+            {routedShoppingSections.map((section, index) => {
               const store = section.storeId ? stores.find((s) => s.id === section.storeId) : null;
               return (
                 <View key={section.title} style={styles.routeStep}>
-                  <Text style={styles.routeStepNumber}>{index + 1}</Text>
+                  <Text style={styles.routeStepNumber}>{section.stopNumber ?? index + 1}</Text>
                   <StoreLogo
                     name={section.title}
                     size={20}
@@ -499,6 +547,23 @@ export default function GroceryScreen() {
               );
             })}
           </ScrollView>
+        </View>
+      )}
+
+      {unassignedEntries.length > 0 && (
+        <View style={styles.unassignedBanner}>
+          <View style={styles.unassignedIcon}>
+            <Ionicons name="storefront-outline" size={16} color={colors.warning} />
+          </View>
+          <View style={styles.unassignedBody}>
+            <Text style={styles.unassignedTitle}>Store missing</Text>
+            <Text style={styles.unassignedSub}>
+              {unassignedEntries.length} {unassignedEntries.length === 1 ? 'item needs' : 'items need'} a store for accurate directions.
+            </Text>
+          </View>
+          <ScalePressable style={styles.unassignedBtn} onPress={assignFirstUnassigned}>
+            <Text style={styles.unassignedBtnText}>Fix</Text>
+          </ScalePressable>
         </View>
       )}
 
@@ -593,7 +658,7 @@ export default function GroceryScreen() {
         />
       ) : (
         <SectionList
-          sections={shoppingSections}
+          sections={routedShoppingSections}
           keyExtractor={(entry) => entry.id}
           renderSectionHeader={({ section }) => (
             <View style={styles.sectionHeader}>
@@ -603,7 +668,12 @@ export default function GroceryScreen() {
                 domain={section.storeId ? stores.find((s) => s.id === section.storeId)?.brand_domain : undefined}
                 logoUrl={section.storeId ? stores.find((s) => s.id === section.storeId)?.logo_url : undefined}
               />
-              <Text style={styles.sectionTitle}>{section.title}</Text>
+              <View style={styles.sectionTitleWrap}>
+                {section.stopNumber && (
+                  <Text style={styles.sectionStopLabel}>{ordinalStop(section.stopNumber)}</Text>
+                )}
+                <Text style={styles.sectionTitle}>{section.title}</Text>
+              </View>
               <View style={styles.sectionBadge}>
                 <Text style={styles.sectionBadgeText}>{section.data.length}</Text>
               </View>
@@ -880,6 +950,34 @@ function makeStyles(colors: AppColors) {
       fontVariant: ['tabular-nums'],
     },
     routeStepText: { fontSize: 12, color: colors.primary, fontFamily: fonts.bodySemiBold, maxWidth: 140 },
+    unassignedBanner: {
+      marginHorizontal: 16,
+      marginBottom: 10,
+      borderRadius: radii.md,
+      backgroundColor: colors.warningSoft,
+      padding: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    unassignedIcon: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.surface,
+    },
+    unassignedBody: { flex: 1, minWidth: 0 },
+    unassignedTitle: { fontSize: 14, color: colors.ink, fontFamily: fonts.bodySemiBold },
+    unassignedSub: { fontSize: 12, color: colors.muted, fontFamily: fonts.body, marginTop: 1 },
+    unassignedBtn: {
+      borderRadius: 999,
+      paddingHorizontal: 13,
+      paddingVertical: 8,
+      backgroundColor: colors.surface,
+    },
+    unassignedBtnText: { fontSize: 13, color: colors.warning, fontFamily: fonts.bodySemiBold },
     nextStopCard: {
       marginHorizontal: 16,
       marginBottom: 12,
@@ -966,7 +1064,9 @@ function makeStyles(colors: AppColors) {
       justifyContent: 'center',
       backgroundColor: colors.primarySoft,
     },
-    sectionTitle: { flex: 1, fontSize: 22, color: colors.ink, fontFamily: fonts.displayItalic, letterSpacing: 0 },
+    sectionTitleWrap: { flex: 1, minWidth: 0 },
+    sectionStopLabel: { fontSize: 12, color: colors.primary, fontFamily: fonts.bodySemiBold },
+    sectionTitle: { fontSize: 22, color: colors.ink, fontFamily: fonts.displayItalic, letterSpacing: 0 },
     sectionBadge: {
       backgroundColor: colors.primarySoft,
       borderRadius: 999,

@@ -37,6 +37,12 @@ export const useSettingsStore = create<SettingsState>()(
     {
       name: 'pantrypal:settings:v1',
       storage: createJSONStorage(() => AsyncStorage),
+      onRehydrateStorage: () => (state, error) => {
+        if (error) {
+          // Storage corrupted or unavailable — defaults already set by initializer, no action needed
+          console.warn('[settings] Failed to rehydrate settings, using defaults:', error);
+        }
+      },
     },
   ),
 );

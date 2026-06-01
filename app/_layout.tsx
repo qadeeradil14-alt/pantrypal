@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, Component, type ReactNode } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
-import { StyleSheet, View, ActivityIndicator, LogBox } from 'react-native';
+import { StyleSheet, View, Text, ActivityIndicator, LogBox, TouchableOpacity } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useFonts as usePlayfairFonts } from '@expo-google-fonts/playfair-display';
 import { useFonts as useDMSansFonts } from '@expo-google-fonts/dm-sans';
@@ -14,6 +14,33 @@ import { lightColors } from '../constants/theme';
 
 // Register geofence background task at module load time (before any async code)
 defineGeofenceTask(() => {});
+
+class AppErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32, backgroundColor: lightColors.background }}>
+          <Text style={{ fontSize: 32, marginBottom: 16 }}>⚠️</Text>
+          <Text style={{ fontSize: 18, fontWeight: '600', color: lightColors.ink, textAlign: 'center', marginBottom: 8 }}>
+            Something went wrong
+          </Text>
+          <Text style={{ fontSize: 14, color: lightColors.muted, textAlign: 'center', lineHeight: 20, marginBottom: 24 }}>
+            {(this.state.error as Error).message ?? 'An unexpected error occurred.'}
+          </Text>
+          <TouchableOpacity
+            onPress={() => this.setState({ error: null })}
+            style={{ backgroundColor: lightColors.primary, borderRadius: 14, paddingHorizontal: 24, paddingVertical: 14 }}
+          >
+            <Text style={{ color: lightColors.onPrimary, fontSize: 16, fontWeight: '600' }}>Try again</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 LogBox.ignoreLogs([
   'expo-notifications: Android Push notifications',
@@ -112,15 +139,17 @@ export default function RootLayout() {
   }
 
   return (
-    <GestureHandlerRootView style={styles.root}>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="index" />
-        <Stack.Screen name="(auth)" />
-        <Stack.Screen name="(setup)" />
-        <Stack.Screen name="(main)" />
-        <Stack.Screen name="join" />
-      </Stack>
-    </GestureHandlerRootView>
+    <AppErrorBoundary>
+      <GestureHandlerRootView style={styles.root}>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" />
+          <Stack.Screen name="(auth)" />
+          <Stack.Screen name="(setup)" />
+          <Stack.Screen name="(main)" />
+          <Stack.Screen name="join" />
+        </Stack>
+      </GestureHandlerRootView>
+    </AppErrorBoundary>
   );
 }
 

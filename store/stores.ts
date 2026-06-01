@@ -11,6 +11,7 @@ export interface ArrivalNotice {
 
 interface StoresState {
   stores: Store[];
+  pinnedStoreIds: string[];
   /** Currently active store for shopping mode (chip tap or own geofence). */
   activeStoreId: string | null;
   /**
@@ -25,18 +26,23 @@ interface StoresState {
   removeStore: (id: string) => void;
   setActiveStore: (id: string | null) => void;
   setArrivalStore: (notice: string | ArrivalNotice | null) => void;
+  togglePin: (storeId: string) => void;
 }
 
 export const useStoresStore = create<StoresState>()(
   persist(
     (set) => ({
       stores: [],
+      pinnedStoreIds: [],
       activeStoreId: null,
       arrivalStoreId: null,
       arrivalNotice: null,
       setStores: (stores) => set({ stores }),
       addStore: (store) => set((s) => ({ stores: [...s.stores, store] })),
-      removeStore: (id) => set((s) => ({ stores: s.stores.filter((st) => st.id !== id) })),
+      removeStore: (id) => set((s) => ({
+        stores: s.stores.filter((st) => st.id !== id),
+        pinnedStoreIds: s.pinnedStoreIds.filter((pid) => pid !== id),
+      })),
       setActiveStore: (activeStoreId) => set({ activeStoreId }),
       setArrivalStore: (notice) => set({
         arrivalStoreId: typeof notice === 'string' ? notice : notice?.storeId ?? null,
@@ -44,12 +50,17 @@ export const useStoresStore = create<StoresState>()(
           ? { storeId: notice, actorName: null, arrivedAt: null }
           : notice,
       }),
+      togglePin: (storeId) => set((s) => ({
+        pinnedStoreIds: s.pinnedStoreIds.includes(storeId)
+          ? s.pinnedStoreIds.filter((id) => id !== storeId)
+          : [...s.pinnedStoreIds, storeId],
+      })),
     }),
     {
       name: 'pantrypal:stores-store:v1',
       storage: createJSONStorage(() => AsyncStorage),
       // Don't persist arrivalStoreId — it should always be fresh on next launch
-      partialize: (state) => ({ stores: state.stores, activeStoreId: state.activeStoreId }),
+      partialize: (state) => ({ stores: state.stores, activeStoreId: state.activeStoreId, pinnedStoreIds: state.pinnedStoreIds }),
     },
   ),
 );

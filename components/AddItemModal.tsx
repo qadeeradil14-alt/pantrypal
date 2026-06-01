@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useMemo } from 'react';
 import {
   Modal, View, Text, TextInput, ScrollView, Pressable,
   StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator,
+  Alert, Keyboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useItemsStore } from '../store/items';
@@ -45,6 +46,11 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
   const sheetStyles = useMemo(() => makeSheetStyles(colors), [colors]);
   const styles = useMemo(() => makeStyles(colors, sheetStyles), [colors, sheetStyles]);
   const existingNames = useMemo(() => new Set(stores.map((s) => s.name.toLowerCase())), [stores]);
+  const duplicateItem = useMemo(() => {
+    const normalized = name.trim().toLowerCase();
+    if (!normalized) return null;
+    return items.find((i) => i.name.trim().toLowerCase() === normalized) ?? null;
+  }, [items, name]);
   const presetSuggestions = useMemo(
     () => PRESET_STORES.filter((p) => !existingNames.has(p.toLowerCase())).slice(0, 8),
     [existingNames],
@@ -66,6 +72,13 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
   async function handleAddStore() {
     const trimmed = newStoreName.trim();
     if (!trimmed) return;
+    if (existingNames.has(trimmed.toLowerCase())) {
+      setError(`"${trimmed}" is already in your stores.`);
+      void hapticWarning();
+      setAddingStore(false);
+      setNewStoreName('');
+      return;
+    }
     setStoreAdding(true);
     try {
       const { store } = await addStoreWithQueue(householdId, trimmed);
@@ -94,21 +107,33 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
     const existing = items.find((i) => i.name.trim().toLowerCase() === normalized.toLowerCase());
     if (existing) {
       if (storeId && existing.preferred_store_id !== storeId) {
-        const updated = { ...existing, preferred_store_id: storeId };
-        upsertItem(updated);
-        setLoading(true);
-        try {
-          await setItemStoreWithQueue(existing.id, storeId);
-          onAdded?.(updated);
-          void hapticSuccess();
-          onClose();
-        } catch (e: any) {
-          upsertItem(existing);
-          setError(e.message ?? 'Could not update item.');
-          void hapticError();
-        } finally {
-          setLoading(false);
-        }
+        Alert.alert(
+          'Already in pantry',
+          `"${existing.name}" already exists. Update its store instead?`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Update store',
+              onPress: async () => {
+                const updated = { ...existing, preferred_store_id: storeId };
+                upsertItem(updated);
+                setLoading(true);
+                try {
+                  await setItemStoreWithQueue(existing.id, storeId);
+                  onAdded?.(updated);
+                  void hapticSuccess();
+                  onClose();
+                } catch (e: any) {
+                  upsertItem(existing);
+                  setError(e.message ?? 'Could not update item.');
+                  void hapticError();
+                } finally {
+                  setLoading(false);
+                }
+              },
+            },
+          ],
+        );
         return;
       }
       setError(`"${existing.name}" is already in My Groceries.`);
@@ -122,8 +147,9 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
       upsertItem(item);
       onAdded?.(item);
       void hapticSuccess();
+      Keyboard.dismiss();
       if (queued) {
-        setError('Saved offline — will sync when you’re back online.');
+        setError("Saved offline — will sync when you’re back online.");
         setTimeout(onClose, 900);
         return;
       }
@@ -171,6 +197,15 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
             returnKeyType="done"
             placeholderTextColor={colors.placeholder}
           />
+
+          {duplicateItem ? (
+            <View style={styles.duplicateBox}>
+              <Ionicons name="alert-circle-outline" size={15} color={colors.warning} />
+              <Text style={styles.duplicateText}>
+                {duplicateItem.name} is already saved.
+              </Text>
+            </View>
+          ) : null}
 
           <Text style={styles.label}>Store</Text>
           <ScrollView
@@ -291,11 +326,22 @@ function makeStyles(colors: AppColors, sheetStyles: ReturnType<typeof makeSheetS
       paddingHorizontal: 16,
       paddingVertical: 14,
       fontSize: 17,
-      marginBottom: 20,
+      marginBottom: 10,
       color: colors.ink,
       backgroundColor: colors.faint,
       fontFamily: fonts.body,
     },
+    duplicateBox: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      marginBottom: 14,
+      backgroundColor: colors.warningSoft,
+    },
+    duplicateText: { flex: 1, fontSize: 13, color: colors.warning, fontFamily: fonts.bodySemiBold },
     label: {
       ...sheetStyles.sectionLabel,
       marginBottom: 10,

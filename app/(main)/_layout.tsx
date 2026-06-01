@@ -178,6 +178,16 @@ export default function MainLayout() {
           }}
         />
         <Tabs.Screen
+          name="activity"
+          options={{
+            title: 'Activity',
+            tabBarIcon: tabIcon('time-outline', 'time'),
+            tabBarButton: ({ ref: _ref, ...props }) => (
+              <Pressable {...props} testID="tab-activity" accessibilityRole="button" />
+            ),
+          }}
+        />
+        <Tabs.Screen
           name="receipts"
           options={{
             title: 'Receipts',

@@ -6,7 +6,7 @@ import {
   Pressable,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useHouseholdStore } from '../../../store/household';
 import { useAuthStore } from '../../../store/auth';
@@ -91,6 +91,7 @@ async function computeStreak(allStocked: boolean): Promise<number> {
 
 export default function PantryScreen() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { household } = useHouseholdStore();
   const { session } = useAuthStore();
@@ -105,6 +106,7 @@ export default function PantryScreen() {
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>('category');
   const [liftedItem, setLiftedItem] = useState<Item | null>(null);
+  const [showExpiryOnly, setShowExpiryOnly] = useState(false);
   const [streak, setStreak] = useState(0);
   // 'unknown' = not yet prompted, 'enabled' = user tapped Enable, 'declined' = user tapped Not now
   const [notifPromptState, setNotifPromptState] = useState<'unknown' | 'enabled' | 'declined' | 'loading'>('loading');
@@ -169,6 +171,15 @@ export default function PantryScreen() {
     setShowScanner(true);
   }, [canAdd]);
 
+  const openAddItem = useCallback(() => {
+    void hapticSelection();
+    if (!canAdd) {
+      Alert.alert('Still loading', 'Please try again in a moment.');
+      return;
+    }
+    setShowAdd(true);
+  }, [canAdd]);
+
   const handleAddScannedProduct = useCallback(async (product: BarcodeProduct, expiresAt: string | null): Promise<'added' | 'updated'> => {
     if (!householdId) throw new Error('Household not ready.');
 
@@ -211,12 +222,14 @@ export default function PantryScreen() {
     [stores, selectedStoreId],
   );
 
-  const filtered = useMemo(
-    () => queryFiltered
+  const filtered = useMemo(() => {
+    const sevenDays = 7 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    return queryFiltered
       .filter((item) => !selectedStoreId || item.preferred_store_id === selectedStoreId)
-      .sort((a, b) => a.name.localeCompare(b.name)),
-    [queryFiltered, selectedStoreId],
-  );
+      .filter((item) => !showExpiryOnly || (item.expires_at && new Date(item.expires_at).getTime() - now <= sevenDays))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [queryFiltered, selectedStoreId, showExpiryOnly]);
 
   const sections = useMemo((): PantrySection[] => {
     const lowItems = filtered.filter((i) => i.is_low).sort((a, b) => a.name.localeCompare(b.name));
@@ -485,13 +498,22 @@ export default function PantryScreen() {
       )}
 
       {expiringItems.length > 0 && (
-        <View style={styles.expiryCard}>
+        <ScalePressable
+          profile="chip"
+          style={[styles.expiryCard, showExpiryOnly && styles.expiryCardActive]}
+          onPress={() => { void hapticSelection(); setShowExpiryOnly((v) => !v); }}
+        >
           <View style={styles.expiryCardHeader}>
             <Ionicons name="time-outline" size={15} color={colors.danger} />
             <Text style={styles.expiryCardTitle}>Expiring soon</Text>
             <View style={styles.expiryBadge}>
               <Text style={styles.expiryBadgeText}>{expiringItems.length}</Text>
             </View>
+            {showExpiryOnly && (
+              <View style={styles.expiryFilterActive}>
+                <Text style={styles.expiryFilterActiveText}>Filtering</Text>
+              </View>
+            )}
           </View>
           {expiringItems.slice(0, 4).map((item) => {
             const daysLeft = Math.ceil((new Date(item.expires_at!).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
@@ -508,7 +530,7 @@ export default function PantryScreen() {
           {expiringItems.length > 4 && (
             <Text style={styles.expiryMore}>+{expiringItems.length - 4} more</Text>
           )}
-        </View>
+        </ScalePressable>
       )}
 
       {storePicker}
@@ -561,24 +583,11 @@ export default function PantryScreen() {
               </Pressable>
             );
           })}
-          <Pressable
-            hitSlop={6}
-            style={styles.addChip}
-            onPress={() => {
-              void hapticSelection();
-              if (!canAdd) { Alert.alert('Still loading', 'Please try again in a moment.'); return; }
-              setShowAdd(true);
-            }}
-            disabled={!canAdd}
-          >
-            <Ionicons name="add" size={12} color={colors.muted} />
-            <Text style={styles.addChipText}>Add</Text>
-          </Pressable>
         </View>
       </View>
     </>
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ), [firstName, household?.name, styles, colors, filtered.length, query, streak, notifPromptState, handleEnableNotifs, handleDismissNotifPrompt, selectedStore, canAdd, openScanner, storePicker, sortMode, expiringItems]);
+  ), [firstName, household?.name, styles, colors, filtered.length, query, streak, notifPromptState, handleEnableNotifs, handleDismissNotifPrompt, selectedStore, canAdd, openScanner, storePicker, sortMode, expiringItems, showExpiryOnly]);
 
   const renderPantryItem = useCallback(({ item }: { item: Item }) => (
     <SwipeableItemRow
@@ -637,10 +646,10 @@ export default function PantryScreen() {
         ? undefined
         : {
           label: selectedStore ? `Add to ${selectedStore.name}` : 'Add first item',
-          onPress: () => { void hapticSelection(); setShowAdd(true); },
+          onPress: openAddItem,
         }}
     />
-  ), [q, query, selectedStore]);
+  ), [q, query, selectedStore, openAddItem]);
 
   if (loading) {
     return (
@@ -675,6 +684,23 @@ export default function PantryScreen() {
         updateCellsBatchingPeriod={50}
         windowSize={7}
       />
+
+      <Pressable
+        testID="pantry-add-item-fab"
+        accessibilityRole="button"
+        accessibilityLabel="Add grocery item"
+        hitSlop={10}
+        disabled={!canAdd}
+        style={({ pressed }) => [
+          styles.addFab,
+          { bottom: Math.max(insets.bottom + 14, 24) },
+          !canAdd && styles.addFabDisabled,
+          pressed && canAdd && styles.addFabPressed,
+        ]}
+        onPress={openAddItem}
+      >
+        <Ionicons name="add" size={34} color={colors.onPrimary} />
+      </Pressable>
 
 
       {showAdd && household?.id && (
@@ -881,16 +907,25 @@ function makeStyles(colors: AppColors) {
     },
     sortPillText: { fontSize: 12, fontFamily: fonts.bodySemiBold, color: colors.muted },
     sortPillTextActive: { color: colors.primary },
-    addChip: {
-      flexDirection: 'row',
+    addFab: {
+      position: 'absolute',
+      right: 22,
+      width: 58,
+      height: 58,
+      borderRadius: 29,
       alignItems: 'center',
-      gap: 4,
-      paddingHorizontal: 12,
-      paddingVertical: 9,
-      borderRadius: 999,
-      backgroundColor: colors.faint,
+      justifyContent: 'center',
+      backgroundColor: colors.primary,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.onPrimary + '44',
+      shadowColor: colors.primary,
+      shadowOpacity: 0.28,
+      shadowRadius: 16,
+      shadowOffset: { width: 0, height: 8 },
+      elevation: 8,
     },
-    addChipText: { fontSize: 12, fontFamily: fonts.bodySemiBold, color: colors.muted },
+    addFabPressed: { opacity: 0.86, transform: [{ scale: 0.96 }] },
+    addFabDisabled: { opacity: 0.45 },
 
     // Section headers
     needsAttentionHeader: {
@@ -1005,6 +1040,21 @@ function makeStyles(colors: AppColors) {
       fontFamily: fonts.body,
       color: colors.muted,
       marginTop: 2,
+    },
+    expiryCardActive: {
+      borderWidth: 1.5,
+      borderColor: colors.danger,
+    },
+    expiryFilterActive: {
+      backgroundColor: colors.danger + '22',
+      borderRadius: 999,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+    },
+    expiryFilterActiveText: {
+      fontSize: 11,
+      fontFamily: fonts.bodySemiBold,
+      color: colors.danger,
     },
     categorySectionHeader: {
       flexDirection: 'row',

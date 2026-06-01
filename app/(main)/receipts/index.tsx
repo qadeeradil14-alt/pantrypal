@@ -63,6 +63,9 @@ export default function ReceiptsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadStage, setUploadStage] = useState<'idle' | 'picking' | 'uploading' | 'processing' | 'failed'>('idle');
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [lastUploadSource, setLastUploadSource] = useState<'camera' | 'library' | null>(null);
   const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
   const [showAllPurchases, setShowAllPurchases] = useState(false);
   const [pantryPickMode, setPantryPickMode] = useState(false);
@@ -120,24 +123,36 @@ export default function ReceiptsScreen() {
       return;
     }
     try {
+      setLastUploadSource(source);
+      setUploadError(null);
+      setUploadStage('picking');
       const permission = source === 'camera'
         ? await ImagePicker.requestCameraPermissionsAsync()
         : await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
+        setUploadStage('failed');
+        setUploadError(`${source === 'camera' ? 'Camera' : 'Photo library'} permission is needed.`);
         Alert.alert('Permission needed', `Please allow ${source} access in Settings.`);
         return;
       }
       const result = source === 'camera'
         ? await ImagePicker.launchCameraAsync({ quality: 0.8, base64: false })
         : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
-      if (result.canceled || !result.assets[0]) return;
+      if (result.canceled || !result.assets[0]) {
+        setUploadStage('idle');
+        return;
+      }
       const asset = result.assets[0];
       setUploading(true);
+      setUploadStage('uploading');
       const receipt = await uploadReceipt(householdId, userId, asset.uri, asset.mimeType ?? 'image/jpeg');
       setReceipts((prev) => [receipt, ...prev]);
+      setUploadStage('processing');
       Alert.alert('Receipt uploaded', 'Processing your receipt — this takes about 30 seconds.');
     } catch (e: any) {
       const message = e?.message ?? 'Try again.';
+      setUploadStage('failed');
+      setUploadError(message);
       if (source === 'camera' && message.toLowerCase().includes('camera not available')) {
         Alert.alert('Camera unavailable', 'Use "Choose from Library" instead.');
       } else {
@@ -145,7 +160,20 @@ export default function ReceiptsScreen() {
       }
     } finally {
       setUploading(false);
+      if (uploadStage !== 'failed') {
+        setTimeout(() => {
+          setUploadStage((current) => (current === 'processing' ? 'idle' : current));
+        }, 3500);
+      }
     }
+  }
+
+  function retryUpload() {
+    if (lastUploadSource) {
+      void handleCapture(lastUploadSource);
+      return;
+    }
+    handleAdd();
   }
 
   function handleAdd() {
@@ -259,6 +287,44 @@ export default function ReceiptsScreen() {
         ListHeaderComponent={
           <View>
             {/* Budget tracker */}
+            {uploadStage !== 'idle' && (
+              <View style={[
+                styles.uploadBanner,
+                uploadStage === 'failed' && styles.uploadBannerFailed,
+              ]}>
+                <View style={styles.uploadIcon}>
+                  {uploadStage === 'failed' ? (
+                    <Ionicons name="alert-circle-outline" size={17} color={colors.danger} />
+                  ) : (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  )}
+                </View>
+                <View style={styles.uploadBody}>
+                  <Text style={styles.uploadTitle}>
+                    {uploadStage === 'failed'
+                      ? 'Receipt upload failed'
+                      : uploadStage === 'processing'
+                      ? 'Receipt processing'
+                      : uploadStage === 'picking'
+                      ? 'Opening picker'
+                      : 'Uploading receipt'}
+                  </Text>
+                  <Text style={styles.uploadSub} numberOfLines={2}>
+                    {uploadStage === 'failed'
+                      ? uploadError ?? 'Try again.'
+                      : uploadStage === 'processing'
+                      ? 'Pull down to refresh if it does not update soon.'
+                      : 'Keep Stokit open until the upload finishes.'}
+                  </Text>
+                </View>
+                {uploadStage === 'failed' ? (
+                  <ScalePressable style={styles.uploadRetryBtn} onPress={retryUpload}>
+                    <Text style={styles.uploadRetryText}>Retry</Text>
+                  </ScalePressable>
+                ) : null}
+              </View>
+            )}
+
             <View style={styles.budgetCard}>
               <View style={styles.budgetCardTop}>
                 <View>
@@ -308,7 +374,7 @@ export default function ReceiptsScreen() {
               <View style={styles.recentCard}>
                 <Text style={styles.sectionLabel}>Recent purchases</Text>
                 {recentPurchases.map((event) => {
-                  const sourceItem = sourceItemMap.get(event.itemId);
+                  const sourceItem = event.itemId ? sourceItemMap.get(event.itemId) : undefined;
                   const storeName = sourceItem?.preferred_store_id
                     ? stores.find((s) => s.id === sourceItem.preferred_store_id)?.name
                     : null;
@@ -773,6 +839,36 @@ function makeStyles(colors: AppColors) {
     },
     addBtnDisabled: { backgroundColor: colors.disabled },
     addBtnText: { color: colors.onPrimary, fontSize: 15, fontFamily: fonts.bodySemiBold },
+
+    uploadBanner: {
+      marginHorizontal: 16,
+      marginBottom: 12,
+      borderRadius: radii.lg,
+      padding: 14,
+      backgroundColor: colors.primarySoft,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    uploadBannerFailed: { backgroundColor: colors.dangerSoft },
+    uploadIcon: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      backgroundColor: colors.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    uploadBody: { flex: 1, minWidth: 0 },
+    uploadTitle: { fontSize: 14, color: colors.ink, fontFamily: fonts.bodySemiBold },
+    uploadSub: { fontSize: 12, color: colors.muted, fontFamily: fonts.body, marginTop: 1 },
+    uploadRetryBtn: {
+      borderRadius: 999,
+      backgroundColor: colors.surface,
+      paddingHorizontal: 13,
+      paddingVertical: 8,
+    },
+    uploadRetryText: { fontSize: 13, color: colors.danger, fontFamily: fonts.bodySemiBold },
 
     // Budget card
     budgetCard: {

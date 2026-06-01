@@ -52,7 +52,7 @@ function compactAddress(address: string, storeName: string): string {
 export default function StoresScreen() {
   const { colors } = useTheme();
   const { household } = useHouseholdStore();
-  const { stores, setStores, addStore: addToStore, removeStore } = useStoresStore();
+  const { stores, pinnedStoreIds, setStores, addStore: addToStore, removeStore, togglePin } = useStoresStore();
   const { items } = useItemsStore();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -62,6 +62,12 @@ export default function StoresScreen() {
   const canManageStores = !!householdId;
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  const sortedStores = useMemo(() => {
+    const pinned = stores.filter((s) => pinnedStoreIds.includes(s.id));
+    const unpinned = stores.filter((s) => !pinnedStoreIds.includes(s.id));
+    return [...pinned, ...unpinned];
+  }, [stores, pinnedStoreIds]);
 
   // Count pantry items assigned to each store
   const itemCountByStore = useMemo(() => {
@@ -184,67 +190,92 @@ export default function StoresScreen() {
         />
       ) : (
         <FlatList
-          data={stores}
+          data={sortedStores}
           keyExtractor={(s) => s.id}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
-          renderItem={({ item }) => {
+          renderItem={({ item, index }) => {
             const itemCount = itemCountByStore[item.id] ?? 0;
+            const isPinned = pinnedStoreIds.includes(item.id);
+            const isFirstUnpinned = index === pinnedStoreIds.length && pinnedStoreIds.length > 0 && !isPinned;
             return (
-              <View style={styles.row}>
-                <StoreLogo name={item.name} size={40} domain={item.brand_domain} logoUrl={item.logo_url} />
-                <View style={styles.rowLeft}>
-                  <Text style={styles.storeName}>{item.name}</Text>
-                  {item.address
-                    ? (
-                      <Text style={styles.storeAddress} numberOfLines={2} ellipsizeMode="tail">
-                        {compactAddress(item.address, item.name)}
-                      </Text>
-                    )
-                    : <Text style={styles.noAddress}>No address · geofencing off</Text>
-                  }
-                  {itemCount > 0 && (
-                    <Text style={styles.itemCount}>{itemCount} {itemCount === 1 ? 'item' : 'items'} assigned</Text>
-                  )}
-                </View>
-                <View style={styles.rowRight}>
-                  {item.latitude != null && (
+              <>
+                {isFirstUnpinned && (
+                  <View style={styles.sectionDivider}>
+                    <Text style={styles.sectionDividerText}>All stores</Text>
+                  </View>
+                )}
+                <View style={styles.row}>
+                  <StoreLogo name={item.name} size={40} domain={item.brand_domain} logoUrl={item.logo_url} />
+                  <View style={styles.rowLeft}>
+                    <View style={styles.storeNameRow}>
+                      <Text style={styles.storeName}>{item.name}</Text>
+                      {isPinned && (
+                        <Ionicons name="bookmark" size={13} color={colors.primary} />
+                      )}
+                    </View>
+                    {item.address
+                      ? (
+                        <Text style={styles.storeAddress} numberOfLines={2} ellipsizeMode="tail">
+                          {compactAddress(item.address, item.name)}
+                        </Text>
+                      )
+                      : <Text style={styles.noAddress}>No address · geofencing off</Text>
+                    }
+                    {itemCount > 0 && (
+                      <Text style={styles.itemCount}>{itemCount} {itemCount === 1 ? 'item' : 'items'} assigned</Text>
+                    )}
+                  </View>
+                  <View style={styles.rowRight}>
                     <ScalePressable
                       profile="chip"
-                      style={styles.directionsBtn}
+                      style={[styles.pinBtn, isPinned && styles.pinBtnActive]}
+                      onPress={() => { void hapticSelection(); togglePin(item.id); }}
+                    >
+                      <Ionicons name={isPinned ? 'bookmark' : 'bookmark-outline'} size={15} color={isPinned ? colors.primary : colors.muted} />
+                    </ScalePressable>
+                    {item.latitude != null && (
+                      <ScalePressable
+                        profile="chip"
+                        style={styles.directionsBtn}
+                        onPress={() => {
+                          void hapticSelection();
+                          const url = Platform.OS === 'ios'
+                            ? `maps://?daddr=${item.latitude},${item.longitude}&dirflg=d`
+                            : `google.navigation:q=${item.latitude},${item.longitude}`;
+                          Linking.canOpenURL(url).then((can) => {
+                            if (can) return Linking.openURL(url);
+                            return Linking.openURL(`https://maps.apple.com/?daddr=${item.latitude},${item.longitude}&dirflg=d&t=m`);
+                          }).catch(() => {});
+                        }}
+                      >
+                        <Ionicons name="navigate" size={14} color={colors.primary} />
+                        <Text style={styles.directionsBtnText}>Directions</Text>
+                      </ScalePressable>
+                    )}
+                    <ScalePressable
+                      profile="danger"
                       onPress={() => {
                         void hapticSelection();
-                        const label = encodeURIComponent(item.name);
-                        const url = Platform.OS === 'ios'
-                          ? `maps://?daddr=${item.latitude},${item.longitude}&dirflg=d`
-                          : `google.navigation:q=${item.latitude},${item.longitude}`;
-                        Linking.canOpenURL(url).then((can) => {
-                          if (can) return Linking.openURL(url);
-                          // Fallback to Apple Maps web
-                          return Linking.openURL(`https://maps.apple.com/?daddr=${item.latitude},${item.longitude}&dirflg=d&t=m`);
-                        }).catch(() => {});
+                        handleDelete(item);
                       }}
+                      style={styles.deleteBtn}
+                      disabled={removingId === item.id}
                     >
-                      <Ionicons name="navigate" size={14} color={colors.primary} />
-                      <Text style={styles.directionsBtnText}>Directions</Text>
+                      <Text style={styles.deleteBtnText}>{removingId === item.id ? 'Removing…' : 'Remove'}</Text>
                     </ScalePressable>
-                  )}
-                  <ScalePressable
-                    profile="danger"
-                    onPress={() => {
-                      void hapticSelection();
-                      handleDelete(item);
-                    }}
-                    style={styles.deleteBtn}
-                    disabled={removingId === item.id}
-                  >
-                    <Text style={styles.deleteBtnText}>{removingId === item.id ? 'Removing…' : 'Remove'}</Text>
-                  </ScalePressable>
+                  </View>
                 </View>
-              </View>
+              </>
             );
           }}
           contentContainerStyle={styles.list}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
+          ListHeaderComponent={pinnedStoreIds.length > 0 ? (
+            <View style={styles.sectionHeader}>
+              <Ionicons name="bookmark" size={14} color={colors.primary} />
+              <Text style={styles.sectionHeaderText}>Pinned</Text>
+            </View>
+          ) : null}
         />
       )}
 
@@ -803,6 +834,22 @@ function makeStyles(colors: AppColors, placeCardWidth = 210) {
     directionsBtnText: { color: colors.primary, fontSize: 12, fontFamily: fonts.bodySemiBold },
     deleteBtn: { padding: 4 },
     deleteBtnText: { color: colors.danger, fontSize: 13, fontFamily: fonts.bodySemiBold },
+    storeNameRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+    pinBtn: {
+      width: 34, height: 34, borderRadius: 17,
+      alignItems: 'center', justifyContent: 'center',
+      backgroundColor: colors.faint,
+    },
+    pinBtnActive: { backgroundColor: colors.primarySoft },
+    sectionHeader: {
+      flexDirection: 'row', alignItems: 'center', gap: 6,
+      paddingHorizontal: 4, paddingTop: 4, paddingBottom: 8,
+    },
+    sectionHeaderText: { fontSize: 12, fontFamily: fonts.bodySemiBold, color: colors.primary, textTransform: 'uppercase' },
+    sectionDivider: {
+      paddingHorizontal: 4, paddingTop: 12, paddingBottom: 8,
+    },
+    sectionDividerText: { fontSize: 12, fontFamily: fonts.bodySemiBold, color: colors.muted, textTransform: 'uppercase' },
     mapSheet: {
       backgroundColor: colors.surface,
       borderTopLeftRadius: 24,

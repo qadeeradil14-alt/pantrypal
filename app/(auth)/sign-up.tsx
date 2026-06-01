@@ -11,6 +11,35 @@ import { useTheme } from '../../hooks/useTheme';
 import { fonts } from '../../constants/theme';
 import type { AppColors } from '../../constants/theme';
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+function validateEmail(email: string): string | null {
+  if (!email.trim()) return 'Enter your email address.';
+  if (!EMAIL_RE.test(email.trim())) return 'Enter a valid email address (e.g. name@example.com).';
+  return null;
+}
+
+function validatePassword(password: string): string | null {
+  if (!password) return 'Enter a password.';
+  if (password.trim().length === 0) return 'Password cannot be only spaces.';
+  if (password.length < 6) return 'Password must be at least 6 characters.';
+  return null;
+}
+
+function classifySignUpError(e: any): string {
+  const msg: string = (e?.message ?? '').toLowerCase();
+  if (msg.includes('network') || msg.includes('fetch') || msg.includes('failed to')) {
+    return 'No internet connection. Check your network and try again.';
+  }
+  if (msg.includes('already registered') || msg.includes('already been registered') || msg.includes('duplicate')) {
+    return 'An account with this email already exists. Sign in instead.';
+  }
+  if (msg.includes('rate') || msg.includes('too many')) {
+    return 'Too many attempts. Wait a moment and try again.';
+  }
+  return e?.message ?? 'Something went wrong. Try again.';
+}
+
 export default function SignUpScreen() {
   const { colors } = useTheme();
   const router = useRouter();
@@ -21,6 +50,7 @@ export default function SignUpScreen() {
     /^[A-Z0-9]{6}$/i.test(joinCode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [needsVerification, setNeedsVerification] = useState(false);
@@ -35,8 +65,11 @@ export default function SignUpScreen() {
   }
 
   async function handleSignUp() {
-    if (!email || !password) { setError('Enter your email and a password.'); return; }
-    if (password.length < 6) { setError('Password must be at least 6 characters.'); return; }
+    const emailErr = validateEmail(email);
+    if (emailErr) { setError(emailErr); return; }
+    const passErr = validatePassword(password);
+    if (passErr) { setError(passErr); return; }
+
     setError('');
     setLoading(true);
     try {
@@ -51,7 +84,7 @@ export default function SignUpScreen() {
         setNeedsVerification(true);
       }
     } catch (e: any) {
-      setError(e.message ?? 'Something went wrong. Try again.');
+      setError(classifySignUpError(e));
     } finally {
       setLoading(false);
     }
@@ -65,7 +98,12 @@ export default function SignUpScreen() {
       if (resendError) throw resendError;
       setResendSuccess(true);
     } catch (e: any) {
-      setError(e.message ?? 'Could not resend. Try again in a minute.');
+      const msg = (e?.message ?? '').toLowerCase();
+      if (msg.includes('network') || msg.includes('fetch')) {
+        setError('No internet connection. Try again when online.');
+      } else {
+        setError(e.message ?? 'Could not resend. Try again in a minute.');
+      }
     } finally {
       setResending(false);
     }
@@ -84,8 +122,12 @@ export default function SignUpScreen() {
             <Text style={styles.emailHighlight}>{email.trim()}</Text>
           </Text>
           <Text style={styles.verifyHint}>
-            Tap the link in that email to activate your account, then come back to sign in.
+            Tap the link to activate your account, then come back to sign in.
           </Text>
+          <View style={styles.expiryNotice}>
+            <Ionicons name="time-outline" size={14} color={colors.muted} />
+            <Text style={styles.expiryNoticeText}>Confirmation links expire after 24 hours.</Text>
+          </View>
 
           {error ? <View style={styles.errorBox}><Text style={styles.errorText}>{error}</Text></View> : null}
           {resendSuccess ? <View style={styles.successBox}><Text style={styles.successText}>Sent! Check your inbox (and spam folder).</Text></View> : null}
@@ -128,20 +170,34 @@ export default function SignUpScreen() {
         autoCapitalize="none"
         autoComplete="email"
         value={email}
-        onChangeText={setEmail}
+        onChangeText={(t) => { setEmail(t); if (error) setError(''); }}
         placeholderTextColor={colors.placeholder}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Password (min 6 characters)"
-        secureTextEntry
-        autoComplete="new-password"
-        value={password}
-        onChangeText={setPassword}
-        placeholderTextColor={colors.placeholder}
+        returnKeyType="next"
       />
 
-      <TouchableOpacity style={styles.btn} onPress={handleSignUp} disabled={loading}>
+      <View style={styles.passwordWrap}>
+        <TextInput
+          style={styles.passwordInput}
+          placeholder="Password (min 6 characters)"
+          secureTextEntry={!showPassword}
+          autoComplete="new-password"
+          value={password}
+          onChangeText={(t) => { setPassword(t); if (error) setError(''); }}
+          placeholderTextColor={colors.placeholder}
+          returnKeyType="done"
+          onSubmitEditing={handleSignUp}
+        />
+        <TouchableOpacity
+          hitSlop={10}
+          style={styles.eyeBtn}
+          onPress={() => setShowPassword((v) => !v)}
+          accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+        >
+          <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={colors.muted} />
+        </TouchableOpacity>
+      </View>
+
+      <TouchableOpacity style={[styles.btn, loading && styles.btnDisabled]} onPress={handleSignUp} disabled={loading}>
         {loading ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={styles.btnText}>Create account</Text>}
       </TouchableOpacity>
 
@@ -169,24 +225,33 @@ function makeStyles(colors: AppColors) {
     successBox: { backgroundColor: colors.primarySoft, borderRadius: 12, padding: 12, marginBottom: 16, width: '100%' },
     successText: { color: colors.primaryDeep, fontSize: 14, textAlign: 'center' },
     input: {
-      borderRadius: 14,
-      paddingHorizontal: 16,
-      paddingVertical: 14,
-      fontSize: 16,
-      marginBottom: 12,
-      color: colors.ink,
-      backgroundColor: colors.faint,
-      fontFamily: fonts.body,
+      borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14,
+      fontSize: 16, marginBottom: 12, color: colors.ink,
+      backgroundColor: colors.faint, fontFamily: fonts.body,
     },
+    passwordWrap: {
+      flexDirection: 'row', alignItems: 'center',
+      backgroundColor: colors.faint, borderRadius: 14, marginBottom: 12,
+    },
+    passwordInput: {
+      flex: 1, paddingHorizontal: 16, paddingVertical: 14,
+      fontSize: 16, color: colors.ink, fontFamily: fonts.body,
+    },
+    eyeBtn: { paddingHorizontal: 14, paddingVertical: 14 },
     btn: {
       backgroundColor: colors.primary, borderRadius: 14,
       paddingVertical: 16, alignItems: 'center', marginTop: 8, marginBottom: 16,
     },
-    btnDisabled: { backgroundColor: colors.disabled },
+    btnDisabled: { opacity: 0.65 },
     btnText: { color: colors.onPrimary, fontSize: 17, fontFamily: fonts.bodySemiBold },
     link: { color: colors.primary, fontSize: 15, textAlign: 'center', fontFamily: fonts.bodySemiBold },
     verifyCard: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12, paddingHorizontal: 8 },
     emailHighlight: { fontFamily: fonts.bodySemiBold, color: colors.ink },
-    verifyHint: { fontSize: 14, color: colors.muted, textAlign: 'center', lineHeight: 20, marginBottom: 8, fontFamily: fonts.body },
+    verifyHint: { fontSize: 14, color: colors.muted, textAlign: 'center', lineHeight: 20, marginBottom: 4, fontFamily: fonts.body },
+    expiryNotice: {
+      flexDirection: 'row', alignItems: 'center', gap: 5,
+      backgroundColor: colors.faint, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 8,
+    },
+    expiryNoticeText: { fontSize: 12, color: colors.muted, fontFamily: fonts.bodyMedium },
   });
 }

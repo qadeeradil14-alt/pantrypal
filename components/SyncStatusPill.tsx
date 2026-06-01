@@ -25,13 +25,14 @@ export default function SyncStatusPill() {
   }, []);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const offline = pending > 0;
+
+  if (pending === 0) return null;
 
   return (
-    <View style={[styles.pill, offline ? styles.pillOffline : styles.pillSynced]}>
-      <View style={[styles.dot, offline ? styles.dotOffline : styles.dotSynced]} />
-      <Text style={[styles.text, offline ? styles.textOffline : styles.textSynced]}>
-        {offline ? `Offline · ${pending} pending` : 'Synced'}
+    <View style={[styles.pill, styles.pillOffline]}>
+      <View style={[styles.dot, styles.dotOffline]} />
+      <Text style={[styles.text, styles.textOffline]}>
+        {`Offline · ${pending} pending`}
       </Text>
     </View>
   );
@@ -48,9 +49,6 @@ function makeStyles(colors: AppColors) {
       paddingVertical: 5,
       borderRadius: 999,
     },
-    pillSynced: {
-      backgroundColor: colors.successSoft,
-    },
     pillOffline: {
       backgroundColor: colors.warningSoft,
     },
@@ -59,14 +57,12 @@ function makeStyles(colors: AppColors) {
       height: 6,
       borderRadius: 3,
     },
-    dotSynced: { backgroundColor: colors.success },
     dotOffline: { backgroundColor: colors.warning },
     text: {
       fontSize: 11,
       fontFamily: fonts.bodySemiBold,
       letterSpacing: 0.2,
     },
-    textSynced: { color: colors.success },
     textOffline: { color: colors.warning },
   });
 }

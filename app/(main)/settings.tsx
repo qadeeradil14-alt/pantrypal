@@ -1,19 +1,25 @@
-import { useState, useMemo } from 'react';
+import { useCallback, useState, useMemo } from 'react';
+import { useFocusEffect } from 'expo-router';
 import {
   View, Text, StyleSheet,
-  Alert, Share, ActivityIndicator, ScrollView, Switch,
+  Alert, Share, ActivityIndicator, ScrollView, Switch, Modal, Pressable,
 } from 'react-native';
+import QRCode from 'react-native-qrcode-svg';
 import * as Clipboard from 'expo-clipboard';
 import Constants from 'expo-constants';
+import * as Location from 'expo-location';
+import * as Notifications from 'expo-notifications';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../store/auth';
 import { useHouseholdStore } from '../../store/household';
 import { useItemsStore } from '../../store/items';
 import { useSettingsStore } from '../../store/settings';
+import { useStoresStore } from '../../store/stores';
 import { signOut } from '../../lib/auth';
 import { supabase } from '../../lib/supabase';
 import { updateHouseholdName, leaveHousehold, fetchHouseholdById } from '../../lib/households';
+import { GEOFENCE_TASK } from '../../lib/geofencing';
 import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../../lib/haptics';
 import { useTheme } from '../../hooks/useTheme';
 import { fonts } from '../../constants/theme';
@@ -38,6 +44,7 @@ export default function SettingsScreen() {
   const { session, setSession } = useAuthStore();
   const { household, setHousehold, clearHousehold } = useHouseholdStore();
   const { setItems } = useItemsStore();
+  const stores = useStoresStore((s) => s.stores);
   const {
     weeklyBudget, setWeeklyBudget,
     notifArrivalSelf, setNotifArrivalSelf,
@@ -51,6 +58,13 @@ export default function SettingsScreen() {
   const [leavingHousehold, setLeavingHousehold] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
   const [loadingInvite, setLoadingInvite] = useState(false);
+  const [showQR, setShowQR] = useState(false);
+  const [health, setHealth] = useState({
+    location: 'Checking',
+    notifications: 'Checking',
+    geofence: 'Checking',
+    geofenceActive: false,
+  });
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -151,6 +165,41 @@ export default function SettingsScreen() {
       Alert.alert('Could not share', e?.message ?? 'Please try again.');
       void hapticError();
     }
+  }
+
+  async function handleTestInvite() {
+    const code = inviteCode ?? await refreshInviteCode();
+    if (!code) return;
+    void hapticSuccess();
+    Alert.alert(
+      'Invite ready',
+      `Code ${code} is active.\n\nShare link includes TestFlight, deep link, and raw code fallback.`,
+    );
+  }
+
+  const refreshHealth = useCallback(async () => {
+    const [fg, bg, notif, geo] = await Promise.all([
+      Location.getForegroundPermissionsAsync().catch(() => null),
+      Location.getBackgroundPermissionsAsync().catch(() => null),
+      Notifications.getPermissionsAsync().catch(() => null),
+      Location.hasStartedGeofencingAsync(GEOFENCE_TASK).catch(() => false),
+    ]);
+    setHealth({
+      location: bg?.status === 'granted' ? 'Always allowed' : fg?.status === 'granted' ? 'While using' : 'Needs permission',
+      notifications: notif?.status === 'granted' ? 'Allowed' : 'Needs permission',
+      geofence: geo ? 'Active' : 'Not active',
+      geofenceActive: geo,
+    });
+  }, []);
+
+  useFocusEffect(useCallback(() => { void refreshHealth(); }, [refreshHealth]));
+
+  function handleGeofenceDebug() {
+    const monitored = stores.filter((s) => s.latitude != null && s.longitude != null);
+    Alert.alert(
+      'Geofence status',
+      `${health.geofence}\n\n${monitored.length} of ${stores.length} saved stores have GPS coordinates.\n\nLocation: ${health.location}\nNotifications: ${health.notifications}`,
+    );
   }
 
   function handleEditBudget() {
@@ -321,18 +370,69 @@ export default function SettingsScreen() {
             ) : null}
           </View>
           {household ? (
-            <ScalePressable
-              style={[styles.shareBtn, loadingInvite && styles.shareBtnDisabled]}
-              onPress={() => { void hapticSelection(); void handleShare(); }}
-              disabled={loadingInvite}
-            >
-              {loadingInvite
-                ? <ActivityIndicator size="small" color={colors.primary} />
-                : <Ionicons name="share-outline" size={17} color={colors.primary} />
-              }
-              <Text style={styles.shareBtnText}>Share invite link</Text>
-            </ScalePressable>
+            <View style={styles.inviteActionRow}>
+              <ScalePressable
+                style={[styles.shareBtn, loadingInvite && styles.shareBtnDisabled]}
+                onPress={() => { void hapticSelection(); void handleShare(); }}
+                disabled={loadingInvite}
+              >
+                {loadingInvite
+                  ? <ActivityIndicator size="small" color={colors.primary} />
+                  : <Ionicons name="share-outline" size={17} color={colors.primary} />
+                }
+                <Text style={styles.shareBtnText}>Share invite link</Text>
+              </ScalePressable>
+              {inviteDeepLink && (
+                <ScalePressable
+                  profile="chip"
+                  style={styles.qrBtn}
+                  onPress={() => { void hapticSelection(); setShowQR(true); }}
+                >
+                  <Ionicons name="qr-code-outline" size={17} color={colors.primary} />
+                </ScalePressable>
+              )}
+              <ScalePressable
+                style={[styles.testInviteBtn, loadingInvite && styles.shareBtnDisabled]}
+                onPress={() => { void hapticSelection(); void handleTestInvite(); }}
+                disabled={loadingInvite}
+              >
+                <Ionicons name="checkmark-circle-outline" size={17} color={colors.primary} />
+                <Text style={styles.shareBtnText}>Test invite</Text>
+              </ScalePressable>
+            </View>
           ) : null}
+
+          {/* QR Code Modal */}
+          {inviteDeepLink && (
+            <Modal
+              visible={showQR}
+              animationType="slide"
+              transparent
+              onRequestClose={() => setShowQR(false)}
+            >
+              <Pressable style={styles.qrOverlay} onPress={() => setShowQR(false)}>
+                <Pressable style={styles.qrSheet} onPress={(e) => e.stopPropagation()}>
+                  <View style={styles.qrHandle} />
+                  <Text style={styles.qrTitle}>Scan to join</Text>
+                  <Text style={styles.qrSub}>Open camera and point at this code to join {household?.name ?? 'the household'}.</Text>
+                  <View style={styles.qrBox}>
+                    <QRCode
+                      value={inviteDeepLink}
+                      size={200}
+                      color={colors.ink}
+                      backgroundColor={colors.surface}
+                    />
+                  </View>
+                  <View style={styles.qrCodePill}>
+                    <Text style={styles.qrCodeText}>{inviteCode}</Text>
+                  </View>
+                  <ScalePressable profile="chip" style={styles.qrClose} onPress={() => setShowQR(false)}>
+                    <Text style={styles.qrCloseText}>Done</Text>
+                  </ScalePressable>
+                </Pressable>
+              </Pressable>
+            </Modal>
+          )}
         </View>
 
         {/* Account */}
@@ -384,6 +484,40 @@ export default function SettingsScreen() {
                 <Text style={[styles.rowValue, { color: colors.primary, fontFamily: fonts.bodySemiBold }]}>${weeklyBudget}</Text>
                 <Ionicons name="pencil-outline" size={15} color={colors.primary} />
               </View>
+            </ScalePressable>
+          </View>
+        </View>
+
+        {/* System status */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>System status</Text>
+          <View style={styles.card}>
+            {([
+              { label: 'Location', value: health.location, good: health.location !== 'Needs permission', icon: 'location-outline' },
+              { label: 'Notifications', value: health.notifications, good: health.notifications === 'Allowed', icon: 'notifications-outline' },
+              { label: 'Geofence', value: health.geofence, good: health.geofenceActive, icon: 'navigate-outline' },
+            ] as const).map((row, i) => (
+              <View key={row.label} style={[styles.row, i > 0 && styles.rowBorderTop]}>
+                <View style={styles.rowLabelWrap}>
+                  <Ionicons name={row.icon as any} size={17} color={colors.muted} />
+                  <Text style={styles.rowLabel}>{row.label}</Text>
+                </View>
+                <View style={[styles.healthPill, row.good ? styles.healthPillGood : styles.healthPillWarn]}>
+                  <Text style={[styles.healthText, row.good ? styles.healthTextGood : styles.healthTextWarn]}>
+                    {row.value}
+                  </Text>
+                </View>
+              </View>
+            ))}
+            <ScalePressable
+              style={[styles.row, styles.rowBorderTop]}
+              onPress={() => { void hapticSelection(); handleGeofenceDebug(); }}
+            >
+              <View style={styles.rowLabelWrap}>
+                <Ionicons name="bug-outline" size={17} color={colors.muted} />
+                <Text style={styles.rowLabel}>Geofence debug</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.muted} />
             </ScalePressable>
           </View>
         </View>
@@ -518,13 +652,71 @@ function makeStyles(colors: AppColors) {
     rowEditWrap: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 },
     rowValue: { fontSize: 16, color: colors.ink, fontFamily: fonts.bodyMedium, flexShrink: 1, textAlign: 'right' },
     rowCode: { fontSize: 16, color: colors.ink, fontFamily: fonts.mono, flexShrink: 1, textAlign: 'right', letterSpacing: 0.5 },
+    inviteActionRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
     shareBtn: {
-      marginTop: 10, paddingVertical: 14, alignItems: 'center', justifyContent: 'center',
+      flex: 1, paddingVertical: 14, alignItems: 'center', justifyContent: 'center',
+      flexDirection: 'row', gap: 8, borderRadius: 16,
+      backgroundColor: colors.primarySoft,
+    },
+    testInviteBtn: {
+      flex: 1, paddingVertical: 14, alignItems: 'center', justifyContent: 'center',
       flexDirection: 'row', gap: 8, borderRadius: 16,
       backgroundColor: colors.primarySoft,
     },
     shareBtnDisabled: { opacity: 0.65 },
     shareBtnText: { color: colors.primary, fontSize: 15, fontFamily: fonts.bodySemiBold },
+    qrBtn: {
+      width: 50, paddingVertical: 14, alignItems: 'center', justifyContent: 'center',
+      borderRadius: 16, backgroundColor: colors.primarySoft,
+    },
+    qrOverlay: {
+      flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end',
+    },
+    qrSheet: {
+      backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28,
+      paddingHorizontal: 24, paddingTop: 12, paddingBottom: 40, alignItems: 'center',
+    },
+    qrHandle: {
+      width: 36, height: 4, borderRadius: 2,
+      backgroundColor: colors.border, marginBottom: 20,
+    },
+    qrTitle: {
+      fontSize: 22, fontFamily: fonts.displayExtraBoldItalic, color: colors.ink,
+      marginBottom: 6, letterSpacing: 0,
+    },
+    qrSub: {
+      fontSize: 14, fontFamily: fonts.body, color: colors.muted,
+      textAlign: 'center', lineHeight: 20, marginBottom: 28,
+    },
+    qrBox: {
+      padding: 20, borderRadius: 20, backgroundColor: colors.surface,
+      shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12,
+      shadowOffset: { width: 0, height: 4 }, elevation: 4, marginBottom: 20,
+    },
+    qrCodePill: {
+      backgroundColor: colors.faint, borderRadius: 999,
+      paddingHorizontal: 20, paddingVertical: 10, marginBottom: 24,
+    },
+    qrCodeText: {
+      fontSize: 20, fontFamily: fonts.mono, color: colors.ink,
+      letterSpacing: 4, fontVariant: ['tabular-nums'],
+    },
+    qrClose: {
+      paddingVertical: 14, paddingHorizontal: 40,
+      borderRadius: 14, backgroundColor: colors.primarySoft,
+    },
+    qrCloseText: { fontSize: 16, fontFamily: fonts.bodySemiBold, color: colors.primary },
+    healthPill: {
+      borderRadius: 999,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      maxWidth: 160,
+    },
+    healthPillGood: { backgroundColor: colors.successSoft },
+    healthPillWarn: { backgroundColor: colors.warningSoft },
+    healthText: { fontSize: 12, fontFamily: fonts.bodySemiBold, textAlign: 'right' },
+    healthTextGood: { color: colors.success },
+    healthTextWarn: { color: colors.warning },
     signOutBtn: {
       marginHorizontal: 20, marginTop: 20,
       flexDirection: 'row', gap: 8, justifyContent: 'center',

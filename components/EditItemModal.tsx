@@ -15,11 +15,13 @@ import {
 import { setItemStoreWithQueue } from '../lib/stores';
 import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../lib/haptics';
 import type { Item } from '../lib/items';
+import type { BarcodeProduct } from '../lib/barcodes';
 import { useTheme } from '../hooks/useTheme';
 import { fonts, type AppColors } from '../constants/theme';
 import { makeSheetStyles } from '../constants/sheetStyles';
 import ScalePressable from './ScalePressable';
 import StoreLogo from './StoreLogo';
+import BarcodeScannerModal from './BarcodeScannerModal';
 
 interface Props {
   item: Item;
@@ -51,12 +53,21 @@ export default function EditItemModal({ item, onClose }: Props) {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
+  const [showScanner, setShowScanner] = useState(false);
   const nameInputRef = useRef<TextInput>(null);
 
   const sheetStyles = useMemo(() => makeSheetStyles(colors), [colors]);
   const styles = useMemo(() => makeStyles(colors, sheetStyles), [colors, sheetStyles]);
 
   const isDirty = name.trim() !== item.name || storeId !== item.preferred_store_id || expiresAt !== formatDateForInput(item.expires_at);
+
+  async function handleScannedProduct(product: BarcodeProduct, expiry: string | null): Promise<'added' | 'updated'> {
+    setName(product.name);
+    if (expiry) setExpiresAt(formatDateForInput(expiry));
+    setShowScanner(false);
+    void hapticSuccess();
+    return 'updated';
+  }
 
   useEffect(() => {
     const focusTimer = setTimeout(() => nameInputRef.current?.focus(), 260);
@@ -173,15 +184,24 @@ export default function EditItemModal({ item, onClose }: Props) {
             </View>
           ) : null}
 
-          <TextInput
-            ref={nameInputRef}
-            style={styles.input}
-            value={name}
-            onChangeText={(t) => { setName(t); if (error) setError(''); }}
-            onSubmitEditing={handleSave}
-            returnKeyType="done"
-            placeholderTextColor={colors.placeholder}
-          />
+          <View style={styles.nameRow}>
+            <TextInput
+              ref={nameInputRef}
+              style={[styles.input, styles.nameInput]}
+              value={name}
+              onChangeText={(t) => { setName(t); if (error) setError(''); }}
+              onSubmitEditing={handleSave}
+              returnKeyType="done"
+              placeholderTextColor={colors.placeholder}
+            />
+            <ScalePressable
+              profile="chip"
+              style={styles.scanBtn}
+              onPress={() => { void hapticSelection(); setShowScanner(true); }}
+            >
+              <Ionicons name="barcode-outline" size={20} color={colors.primary} />
+            </ScalePressable>
+          </View>
 
           <Text style={styles.label}>Store</Text>
           {stores.length === 0 ? (
@@ -252,6 +272,12 @@ export default function EditItemModal({ item, onClose }: Props) {
           </ScalePressable>
         </View>
       </KeyboardAvoidingView>
+      <BarcodeScannerModal
+        visible={showScanner}
+        onClose={() => setShowScanner(false)}
+        onAddProduct={handleScannedProduct}
+        onManualAdd={() => setShowScanner(false)}
+      />
     </Modal>
   );
 }
@@ -264,6 +290,24 @@ function makeStyles(colors: AppColors, sheetStyles: ReturnType<typeof makeSheetS
     },
     errorBox: { backgroundColor: colors.dangerSoft, borderRadius: 12, padding: 12, marginBottom: 12 },
     errorText: { color: colors.danger, fontSize: 14, lineHeight: 20 },
+    nameRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 20,
+    },
+    nameInput: {
+      flex: 1,
+      marginBottom: 0,
+    },
+    scanBtn: {
+      width: 48,
+      height: 48,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.primarySoft,
+    },
     input: {
       borderRadius: 14,
       paddingHorizontal: 16,

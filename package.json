@@ -31,8 +31,10 @@
     "react-native": "0.85.3",
     "react-native-gesture-handler": "^2.31.2",
     "react-native-maps": "1.27.2",
+    "react-native-qrcode-svg": "^6.3.21",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "^4.25.2",
+    "react-native-svg": "15.15.4",
     "zustand": "^5.0.13"
   },
   "devDependencies": {
