@@ -3,11 +3,12 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import {
   View, Text, SectionList, StyleSheet,
   ActivityIndicator, ScrollView, Alert, Animated, Linking, Platform, Modal,
-  TouchableOpacity, TouchableWithoutFeedback,
+  TouchableOpacity, TouchableWithoutFeedback, TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
-import { getSpendSummary } from '../../../lib/receipts';
+import { addManualReceipt, getSpendSummary, uploadReceipt } from '../../../lib/receipts';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useItemsStore } from '../../../store/items';
 import { useAuthStore } from '../../../store/auth';
@@ -29,6 +30,7 @@ import { useTheme } from '../../../hooks/useTheme';
 import ScalePressable from '../../../components/ScalePressable';
 import EmptyState from '../../../components/EmptyState';
 import StoreLogo from '../../../components/StoreLogo';
+import LiftAssignPanel from '../../../components/LiftAssignPanel';
 import { useSettingsStore } from '../../../store/settings';
 
 function normalizeShoppingCategory(category: ShoppingEntry['category']): ItemCategory {
@@ -42,6 +44,7 @@ function ordinalStop(n: number): string {
 }
 
 type ShoppingSection = { title: string; storeId: string | null; data: ShoppingEntry[]; stopNumber?: number };
+type StoreSpendSheet = { storeId: string; storeName: string; stopNumber: number; nextStoreName: string | null };
 
 export default function GroceryScreen() {
   const router = useRouter();
@@ -49,7 +52,13 @@ export default function GroceryScreen() {
   const { items, updateItem } = useItemsStore();
   const { session } = useAuthStore();
   const householdId = useHouseholdStore((s) => s.household?.id);
-  const { stores, activeStoreId, setActiveStore } = useStoresStore();
+  const {
+    stores,
+    activeStoreId,
+    pendingReceiptStoreId,
+    setActiveStore,
+    setPendingReceiptStoreId,
+  } = useStoresStore();
   const { entries, removeEntry, upsertEntry } = useShoppingStore();
   const [shoppingMode, setShoppingMode] = useState(false);
   const [tapping, setTapping] = useState<string | null>(null);
@@ -59,6 +68,12 @@ export default function GroceryScreen() {
   const [startCount, setStartCount] = useState(0);
   const [grabbedCount, setGrabbedCount] = useState(0);
   const [tripSheet, setTripSheet] = useState<{ itemCount: number; spend: number } | null>(null);
+  const [routeStoreIds, setRouteStoreIds] = useState<string[]>([]);
+  const [completedStoreIds, setCompletedStoreIds] = useState<Set<string>>(() => new Set());
+  const [storeSpendSheet, setStoreSpendSheet] = useState<StoreSpendSheet | null>(null);
+  const [storeSpendAmount, setStoreSpendAmount] = useState('');
+  const [savingStoreSpend, setSavingStoreSpend] = useState(false);
+  const [assignItem, setAssignItem] = useState<Item | null>(null);
 
   // Pulse animation for the Start button — draws attention before shopping begins
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -146,6 +161,15 @@ export default function GroceryScreen() {
     setGrabbedCount(0);
   }, [activeStoreId]);
 
+  useEffect(() => {
+    if (!shoppingMode) {
+      setCompletedStoreIds(new Set());
+      setStoreSpendSheet(null);
+      setStoreSpendAmount('');
+      setPendingReceiptStoreId(null);
+    }
+  }, [shoppingMode, setPendingReceiptStoreId]);
+
   // Keep startCount as a running high-water mark: max(startCount, pending + grabbed).
   // This handles three real cases a one-shot snapshot misses:
   //   1. Entries load after mode activates (geofence trigger on cold start)
@@ -199,10 +223,37 @@ export default function GroceryScreen() {
     [makeShoppingSections, allActiveItems],
   );
 
+  const assignedRouteSections = useMemo(
+    () => allShoppingSections.filter((section) => section.storeId),
+    [allShoppingSections],
+  );
+
+  useEffect(() => {
+    if (!shoppingMode) {
+      setRouteStoreIds([]);
+      return;
+    }
+    const currentIds = assignedRouteSections.map((section) => section.storeId!);
+    setRouteStoreIds((prev) => {
+      if (prev.length === 0) return currentIds.length === 0 ? prev : currentIds;
+      const seen = new Set(prev);
+      const next = [...prev];
+      currentIds.forEach((id) => {
+        if (!seen.has(id)) {
+          seen.add(id);
+          next.push(id);
+        }
+      });
+      return next.length === prev.length ? prev : next;
+    });
+  }, [assignedRouteSections, shoppingMode]);
+
   const stopNumberByStoreId = useMemo(() => {
-    const assignedStops = allShoppingSections.filter((section) => section.storeId);
-    return new Map(assignedStops.map((section, index) => [section.storeId, index + 1]));
-  }, [allShoppingSections]);
+    const ids = routeStoreIds.length > 0
+      ? routeStoreIds
+      : assignedRouteSections.map((section) => section.storeId!);
+    return new Map(ids.map((storeId, index) => [storeId, index + 1]));
+  }, [assignedRouteSections, routeStoreIds]);
 
   const routedShoppingSections = useMemo(
     () => shoppingSections.map((section) => ({
@@ -213,16 +264,20 @@ export default function GroceryScreen() {
   );
 
   const nextStopInfo = useMemo(() => {
-    const assignedStops = allShoppingSections.filter((section) => section.storeId);
+    const sectionByStoreId = new Map(assignedRouteSections.map((section) => [section.storeId!, section]));
+    const orderedIds = (routeStoreIds.length > 0 ? routeStoreIds : assignedRouteSections.map((section) => section.storeId!))
+      .filter((storeId) => sectionByStoreId.has(storeId));
+    const assignedStops = orderedIds.map((storeId) => sectionByStoreId.get(storeId)!);
     if (activeStoreId) {
-      const currentIdx = assignedStops.findIndex((s) => s.storeId === activeStoreId);
-      const nextIdx = currentIdx === -1 ? 0 : currentIdx + 1;
-      const next = assignedStops[nextIdx] ?? null;
-      return next ? { stop: next, stopNumber: nextIdx + 1 } : null;
+      const currentRouteIdx = routeStoreIds.indexOf(activeStoreId);
+      const next = currentRouteIdx === -1
+        ? assignedStops[0] ?? null
+        : assignedStops.find((section) => routeStoreIds.indexOf(section.storeId!) > currentRouteIdx) ?? null;
+      return next ? { stop: next, stopNumber: stopNumberByStoreId.get(next.storeId!) ?? 1 } : null;
     }
     const first = assignedStops[0] ?? null;
-    return first ? { stop: first, stopNumber: 1 } : null;
-  }, [allShoppingSections, activeStoreId]);
+    return first ? { stop: first, stopNumber: stopNumberByStoreId.get(first.storeId!) ?? 1 } : null;
+  }, [activeStoreId, assignedRouteSections, routeStoreIds, stopNumberByStoreId]);
 
   const nextStop = nextStopInfo?.stop ?? null;
 
@@ -237,10 +292,95 @@ export default function GroceryScreen() {
   }), [allActiveItems, sourceItemMap]);
 
   const activeStoreComplete = shoppingMode && (
-    (!!activeStoreId && startCount > 0 && lowItems.length === 0)
+    (!!activeStoreId && lowItems.length === 0 && (startCount > 0 || grabbedCount > 0))
     || (!activeStoreId && !!nextStop && allActiveItems.length > 0)
     || (!activeStoreId && hasUnassignedItems && allActiveItems.length > 0)
   );
+
+  const nextStoreNameAfter = useCallback((storeId: string): string | null => {
+    const sectionByStoreId = new Map(assignedRouteSections.map((section) => [section.storeId!, section]));
+    const orderedIds = (routeStoreIds.length > 0 ? routeStoreIds : assignedRouteSections.map((section) => section.storeId!))
+      .filter((id) => sectionByStoreId.has(id));
+    const assignedStops = orderedIds.map((id) => sectionByStoreId.get(id)!);
+    const currentRouteIdx = routeStoreIds.indexOf(storeId);
+    const next = currentRouteIdx === -1
+      ? assignedStops.find((section) => section.storeId !== storeId) ?? null
+      : assignedStops.find((section) => routeStoreIds.indexOf(section.storeId!) > currentRouteIdx) ?? null;
+    return next?.title ?? null;
+  }, [assignedRouteSections, routeStoreIds]);
+
+  const openStoreSpendPrompt = useCallback((storeId: string) => {
+    const store = stores.find((s) => s.id === storeId);
+    if (!store) return;
+    setPendingReceiptStoreId(storeId);
+    setStoreSpendAmount('');
+    setStoreSpendSheet({
+      storeId,
+      storeName: store.name,
+      stopNumber: stopNumberByStoreId.get(storeId) ?? 1,
+      nextStoreName: nextStoreNameAfter(storeId),
+    });
+  }, [nextStoreNameAfter, setPendingReceiptStoreId, stopNumberByStoreId, stores]);
+
+  const currentStoreNeedsReceiptStep = useMemo(() => {
+    if (!shoppingMode || !activeStoreId) return false;
+    if (pendingReceiptStoreId === activeStoreId) return true;
+    if (completedStoreIds.has(activeStoreId)) return false;
+    return lowItems.length === 0 && (startCount > 0 || grabbedCount > 0);
+  }, [
+    activeStoreId,
+    completedStoreIds,
+    grabbedCount,
+    lowItems.length,
+    pendingReceiptStoreId,
+    shoppingMode,
+    startCount,
+  ]);
+
+  useEffect(() => {
+    if (!activeStoreComplete || !activeStoreId || !activeStore) return;
+    if (completedStoreIds.has(activeStoreId)) return;
+    if (pendingReceiptStoreId === activeStoreId || storeSpendSheet) return;
+    openStoreSpendPrompt(activeStoreId);
+  }, [
+    activeStore,
+    activeStoreComplete,
+    activeStoreId,
+    completedStoreIds,
+    openStoreSpendPrompt,
+    pendingReceiptStoreId,
+    storeSpendSheet,
+  ]);
+
+  useEffect(() => {
+    if (!shoppingMode || !pendingReceiptStoreId) return;
+    if (activeStoreId !== pendingReceiptStoreId) {
+      setActiveStore(pendingReceiptStoreId);
+    }
+    if (storeSpendSheet) return;
+    const store = stores.find((s) => s.id === pendingReceiptStoreId);
+    if (!store) {
+      setPendingReceiptStoreId(null);
+      return;
+    }
+    setStoreSpendAmount('');
+    setStoreSpendSheet({
+      storeId: pendingReceiptStoreId,
+      storeName: store.name,
+      stopNumber: stopNumberByStoreId.get(pendingReceiptStoreId) ?? 1,
+      nextStoreName: nextStoreNameAfter(pendingReceiptStoreId),
+    });
+  }, [
+    activeStoreId,
+    nextStoreNameAfter,
+    pendingReceiptStoreId,
+    setActiveStore,
+    setPendingReceiptStoreId,
+    shoppingMode,
+    stopNumberByStoreId,
+    storeSpendSheet,
+    stores,
+  ]);
 
   const spendProgress = useMemo(
     () => Math.min(weeklySpend / weeklyBudget, 1),
@@ -316,13 +456,50 @@ export default function GroceryScreen() {
     await Linking.openURL(canOpenNative ? nativeUrl : fallbackUrl);
   }, [stores]);
 
-  const goToNextStop = useCallback(() => {
+  const trySetActiveStore = useCallback((storeId: string | null) => {
+    if (pendingReceiptStoreId && storeId !== pendingReceiptStoreId) {
+      const pendingStore = stores.find((s) => s.id === pendingReceiptStoreId);
+      Alert.alert(
+        'Receipt still needed',
+        `Log a receipt for ${pendingStore?.name ?? 'this store'} before switching.`,
+        [{ text: 'OK', onPress: () => openStoreSpendPrompt(pendingReceiptStoreId) }],
+      );
+      return;
+    }
+    setActiveStore(storeId);
+  }, [openStoreSpendPrompt, pendingReceiptStoreId, setActiveStore, stores]);
+
+  const tryAdvanceToNextStop = useCallback(() => {
     if (!nextStop) return;
     void hapticSelection();
+    if (activeStoreId && currentStoreNeedsReceiptStep) {
+      openStoreSpendPrompt(activeStoreId);
+      return;
+    }
+    if (pendingReceiptStoreId) {
+      openStoreSpendPrompt(pendingReceiptStoreId);
+      return;
+    }
     setActiveStore(nextStop.storeId);
-  }, [nextStop, setActiveStore]);
+  }, [
+    activeStoreId,
+    currentStoreNeedsReceiptStep,
+    nextStop,
+    openStoreSpendPrompt,
+    pendingReceiptStoreId,
+    setActiveStore,
+  ]);
 
   const finishShopping = useCallback(() => {
+    if (pendingReceiptStoreId) {
+      const pendingStore = stores.find((s) => s.id === pendingReceiptStoreId);
+      Alert.alert(
+        'Receipt still needed',
+        `Log a receipt for ${pendingStore?.name ?? 'this store'} before finishing your trip.`,
+        [{ text: 'OK', onPress: () => openStoreSpendPrompt(pendingReceiptStoreId) }],
+      );
+      return;
+    }
     const remaining = entries.filter((e) => !purchasedIds.has(e.id)).length;
     if (remaining > 0) {
       Alert.alert(
@@ -338,6 +515,8 @@ export default function GroceryScreen() {
               const spend = weeklySpend;
               setShoppingMode(false);
               setActiveStore(null);
+              setPendingReceiptStoreId(null);
+              setRouteStoreIds([]);
               setStartCount(0);
               setGrabbedCount(0);
               if (count > 0) setTripSheet({ itemCount: count, spend });
@@ -351,11 +530,109 @@ export default function GroceryScreen() {
       const spend = weeklySpend;
       setShoppingMode(false);
       setActiveStore(null);
+      setPendingReceiptStoreId(null);
+      setRouteStoreIds([]);
       setStartCount(0);
       setGrabbedCount(0);
       if (count > 0) setTripSheet({ itemCount: count, spend });
     }
-  }, [setActiveStore, startCount, weeklySpend, entries, purchasedIds]);
+  }, [
+    entries,
+    openStoreSpendPrompt,
+    pendingReceiptStoreId,
+    purchasedIds,
+    setActiveStore,
+    setPendingReceiptStoreId,
+    startCount,
+    stores,
+    weeklySpend,
+  ]);
+
+  const blockSpendSheetDismiss = useCallback(() => {
+    // Receipt step must finish via Save amount, upload, or Skip — not backdrop/back.
+  }, []);
+
+  const continueAfterStoreSpend = useCallback(() => {
+    const finishedStoreId = storeSpendSheet?.storeId;
+    setStoreSpendSheet(null);
+    setStoreSpendAmount('');
+    setPendingReceiptStoreId(null);
+    if (finishedStoreId) {
+      setCompletedStoreIds((prev) => new Set(prev).add(finishedStoreId));
+    }
+    if (nextStop) {
+      setActiveStore(nextStop.storeId);
+      return;
+    }
+    if (allActiveItems.length === 0) finishShopping();
+  }, [
+    allActiveItems.length,
+    finishShopping,
+    nextStop,
+    setActiveStore,
+    setPendingReceiptStoreId,
+    storeSpendSheet?.storeId,
+  ]);
+
+  const saveStoreSpend = useCallback(async () => {
+    if (!storeSpendSheet || !householdId || !session?.user.id) return;
+    const amount = parseFloat(storeSpendAmount.replace(/[^0-9.]/g, ''));
+    if (isNaN(amount) || amount <= 0) {
+      Alert.alert('Invalid amount', 'Enter a valid dollar amount.');
+      return;
+    }
+    setSavingStoreSpend(true);
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      await addManualReceipt(householdId, session.user.id, storeSpendSheet.storeName, amount, today);
+      refreshSpend();
+      void hapticSuccess();
+      continueAfterStoreSpend();
+    } catch (e: any) {
+      void hapticError();
+      Alert.alert('Could not save', e?.message ?? 'Please try again.');
+    } finally {
+      setSavingStoreSpend(false);
+    }
+  }, [continueAfterStoreSpend, householdId, refreshSpend, session?.user.id, storeSpendAmount, storeSpendSheet]);
+
+  const uploadStoreReceipt = useCallback((source: 'camera' | 'library') => {
+    if (!storeSpendSheet || !householdId || !session?.user.id) return;
+    Alert.alert('Upload receipt?', `Attach this receipt to ${storeSpendSheet.storeName}.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Continue',
+        onPress: async () => {
+          try {
+            setSavingStoreSpend(true);
+            const permission = source === 'camera'
+              ? await ImagePicker.requestCameraPermissionsAsync()
+              : await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (!permission.granted) {
+              Alert.alert('Permission needed', `Please allow ${source === 'camera' ? 'camera' : 'photo library'} access in Settings.`);
+              return;
+            }
+            const result = source === 'camera'
+              ? await ImagePicker.launchCameraAsync({ quality: 0.8, base64: false })
+              : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
+            if (result.canceled || !result.assets[0]) return;
+            const asset = result.assets[0];
+            const today = new Date().toISOString().slice(0, 10);
+            await uploadReceipt(householdId, session.user.id, asset.uri, asset.mimeType ?? 'image/jpeg', storeSpendSheet.storeName, today);
+            refreshSpend();
+            void hapticSuccess();
+            Alert.alert('Receipt uploaded', 'Processing this store receipt.');
+            continueAfterStoreSpend();
+          } catch (e: any) {
+            void hapticError();
+            Alert.alert('Upload failed', e?.message ?? 'Please try again.');
+          } finally {
+            setSavingStoreSpend(false);
+          }
+        },
+      },
+    ]);
+  }, [continueAfterStoreSpend, householdId, refreshSpend, session?.user.id, storeSpendSheet]);
 
   const closeTripSheet = useCallback(() => setTripSheet(null), []);
 
@@ -368,40 +645,21 @@ export default function GroceryScreen() {
     const sourceItem = entry.source_item_id ? sourceItemMap.get(entry.source_item_id) : null;
     if (!sourceItem || stores.length === 0) return;
     void hapticSelection();
-    const options = stores.map((s) => ({
-      text: s.name,
-      onPress: async () => {
-        updateItem(sourceItem.id, { preferred_store_id: s.id });
-        try {
-          await setItemStoreWithQueue(sourceItem.id, s.id);
-          void hapticSuccess();
-        } catch {
-          updateItem(sourceItem.id, { preferred_store_id: sourceItem.preferred_store_id });
-          void hapticError();
-        }
-      },
-    }));
-    if (sourceItem.preferred_store_id) {
-      options.push({
-        text: 'Remove store',
-        onPress: async () => {
-          updateItem(sourceItem.id, { preferred_store_id: null });
-          try {
-            await setItemStoreWithQueue(sourceItem.id, null);
-            void hapticSuccess();
-          } catch {
-            updateItem(sourceItem.id, { preferred_store_id: sourceItem.preferred_store_id });
-            void hapticError();
-          }
-        },
-      });
+    setAssignItem(sourceItem);
+  }, [sourceItemMap, stores]);
+
+  const assignStore = useCallback(async (storeId: string | null) => {
+    if (!assignItem) return;
+    const previousStoreId = assignItem.preferred_store_id;
+    setAssignItem(null);
+    updateItem(assignItem.id, { preferred_store_id: storeId });
+    try {
+      await setItemStoreWithQueue(assignItem.id, storeId);
+    } catch {
+      updateItem(assignItem.id, { preferred_store_id: previousStoreId });
+      void hapticError();
     }
-    Alert.alert(
-      `Assign store for "${entry.name}"`,
-      'Where should this be picked up?',
-      [...options, { text: 'Cancel', style: 'cancel' as const }],
-    );
-  }, [sourceItemMap, stores, updateItem]);
+  }, [assignItem, updateItem]);
 
   const assignFirstUnassigned = useCallback(() => {
     const first = unassignedEntries[0];
@@ -421,8 +679,20 @@ export default function GroceryScreen() {
             style={[styles.modeBtn, shoppingMode && styles.modeBtnActive]}
             onPress={() => {
               void hapticSelection();
+              if (shoppingMode && pendingReceiptStoreId) {
+                const pendingStore = stores.find((s) => s.id === pendingReceiptStoreId);
+                Alert.alert(
+                  'Receipt still needed',
+                  `Log a receipt for ${pendingStore?.name ?? 'this store'} before leaving shopping mode.`,
+                  [{ text: 'OK', onPress: () => openStoreSpendPrompt(pendingReceiptStoreId) }],
+                );
+                return;
+              }
               setShoppingMode((v) => !v);
-              if (shoppingMode) setActiveStore(null);
+              if (shoppingMode) {
+                setActiveStore(null);
+                setPendingReceiptStoreId(null);
+              }
             }}
           >
             <Ionicons
@@ -499,7 +769,7 @@ export default function GroceryScreen() {
             style={[styles.chip, !activeStoreId && styles.chipActive]}
             onPress={() => {
               void hapticSelection();
-              setActiveStore(null);
+              trySetActiveStore(null);
             }}
           >
             <Text style={[styles.chipText, !activeStoreId && styles.chipTextActive]}>All stores</Text>
@@ -511,7 +781,7 @@ export default function GroceryScreen() {
               style={[styles.chip, activeStoreId === s.id && styles.chipActive]}
               onPress={() => {
                 void hapticSelection();
-                setActiveStore(activeStoreId === s.id ? null : s.id);
+                trySetActiveStore(activeStoreId === s.id ? null : s.id);
               }}
             >
               <Text style={[styles.chipText, activeStoreId === s.id && styles.chipTextActive]}>
@@ -567,11 +837,11 @@ export default function GroceryScreen() {
         </View>
       )}
 
-      {activeStoreComplete && (nextStop || hasUnassignedItems) && (
+      {activeStoreComplete && (nextStop || hasUnassignedItems) && !pendingReceiptStoreId && !storeSpendSheet && (
         <View style={styles.nextStopCard}>
           <View style={styles.nextStopTop}>
             <View style={styles.nextStopIcon}>
-              <Ionicons name={nextStop ? 'navigate-outline' : 'storefront-outline'} size={17} color={colors.primary} />
+              <Ionicons name={nextStop ? 'navigate-outline' : 'storefront-outline'} size={14} color={colors.primary} />
             </View>
             <View style={styles.nextStopBody}>
               {nextStop ? (
@@ -595,7 +865,7 @@ export default function GroceryScreen() {
             {nextStop && (
               <StoreLogo
                 name={nextStop.title}
-                size={34}
+                size={28}
                 domain={nextStop.storeId ? stores.find((s) => s.id === nextStop.storeId)?.brand_domain : undefined}
                 logoUrl={nextStop.storeId ? stores.find((s) => s.id === nextStop.storeId)?.logo_url : undefined}
               />
@@ -607,15 +877,14 @@ export default function GroceryScreen() {
                 style={styles.nextStopPrimary}
                 onPress={() => {
                   void openDirections(nextStop.storeId);
-                  goToNextStop();
                 }}
               >
-                <Ionicons name="navigate-outline" size={15} color={colors.onPrimary} />
+                <Ionicons name="navigate-outline" size={13} color={colors.onPrimary} />
                 <Text style={styles.nextStopPrimaryText}>Directions</Text>
               </ScalePressable>
             )}
             {nextStop && (
-              <ScalePressable style={styles.nextStopSecondary} onPress={goToNextStop}>
+              <ScalePressable style={styles.nextStopSecondary} onPress={tryAdvanceToNextStop}>
                 <Text style={styles.nextStopSecondaryText}>{nextStop.storeId ? 'Skip GPS' : 'View list'}</Text>
               </ScalePressable>
             )}
@@ -768,6 +1037,107 @@ export default function GroceryScreen() {
           windowSize={7}
         />
       )}
+
+      <LiftAssignPanel
+        item={assignItem}
+        stores={stores}
+        visible={!!assignItem}
+        onAssign={(storeId) => { void assignStore(storeId); }}
+        onClose={() => setAssignItem(null)}
+      />
+
+      <Modal
+        visible={!!storeSpendSheet}
+        transparent
+        animationType="slide"
+        onRequestClose={blockSpendSheetDismiss}
+      >
+        <TouchableWithoutFeedback onPress={blockSpendSheetDismiss}>
+          <View style={styles.sheetOverlay} />
+        </TouchableWithoutFeedback>
+        <View style={[styles.spendSheet, { backgroundColor: colors.surface }]}>
+          <View style={styles.sheetHandle} />
+
+          {/* Store name + stop-complete badge */}
+          <View style={styles.spendHeader}>
+            <View style={styles.spendHeaderLeft}>
+              <Text style={[styles.spendStoreName, { color: colors.ink }]} numberOfLines={1}>
+                {storeSpendSheet?.storeName ?? 'Store'}
+              </Text>
+              <Text style={[styles.spendCompleteLabel, { color: colors.primary }]}>Stop complete</Text>
+            </View>
+            <View style={[styles.spendCheckBadge, { backgroundColor: colors.primarySoft }]}>
+              <Ionicons name="checkmark" size={17} color={colors.primary} />
+            </View>
+          </View>
+
+          {/* Large amount input */}
+          <View style={[styles.spendAmountRow, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.spendCurrencySymbol, { color: colors.primary }]}>$</Text>
+            <TextInput
+              value={storeSpendAmount}
+              onChangeText={setStoreSpendAmount}
+              placeholder="0.00"
+              placeholderTextColor={colors.muted}
+              keyboardType="decimal-pad"
+              style={[styles.spendAmountInput, { color: colors.ink }]}
+            />
+          </View>
+          <Text style={[styles.spendHintText, { color: colors.muted }]}>
+            How much did you spend here?
+          </Text>
+
+          {/* Primary: save amount */}
+          <TouchableOpacity
+            style={[styles.spendSaveBtn, { backgroundColor: colors.primary }]}
+            onPress={saveStoreSpend}
+            activeOpacity={0.85}
+            disabled={savingStoreSpend}
+          >
+            {savingStoreSpend ? (
+              <ActivityIndicator size="small" color={colors.onPrimary} />
+            ) : (
+              <Text style={[styles.spendSaveBtnText, { color: colors.onPrimary }]}>Save amount</Text>
+            )}
+          </TouchableOpacity>
+
+          {/* Secondary: receipt options side by side */}
+          <View style={styles.spendReceiptRow}>
+            <TouchableOpacity
+              style={[styles.spendReceiptChip, { backgroundColor: colors.faint }]}
+              onPress={() => uploadStoreReceipt('camera')}
+              activeOpacity={0.8}
+              disabled={savingStoreSpend}
+            >
+              <Ionicons name="camera-outline" size={15} color={colors.muted} />
+              <Text style={[styles.spendReceiptChipText, { color: colors.muted }]}>Camera</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.spendReceiptChip, { backgroundColor: colors.faint }]}
+              onPress={() => uploadStoreReceipt('library')}
+              activeOpacity={0.8}
+              disabled={savingStoreSpend}
+            >
+              <Ionicons name="image-outline" size={15} color={colors.muted} />
+              <Text style={[styles.spendReceiptChipText, { color: colors.muted }]}>Library</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Skip */}
+          <TouchableOpacity
+            style={styles.sheetGhost}
+            onPress={continueAfterStoreSpend}
+            activeOpacity={0.7}
+            disabled={savingStoreSpend}
+          >
+            <Text style={[styles.sheetGhostText, { color: colors.muted }]}>
+              {storeSpendSheet?.nextStoreName
+                ? `Skip · next: ${storeSpendSheet.nextStoreName}`
+                : 'Skip for now'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
 
       <Modal
         visible={!!tripSheet}
@@ -980,61 +1350,64 @@ function makeStyles(colors: AppColors) {
     unassignedBtnText: { fontSize: 13, color: colors.warning, fontFamily: fonts.bodySemiBold },
     nextStopCard: {
       marginHorizontal: 16,
-      marginBottom: 12,
-      borderRadius: radii.lg,
+      marginBottom: 10,
+      borderRadius: radii.md,
       backgroundColor: colors.surface,
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: colors.border,
-      padding: 15,
-      gap: 14,
-      ...shadow,
+      borderLeftWidth: 3,
+      borderLeftColor: colors.primary,
+      paddingVertical: 10,
+      paddingRight: 12,
+      paddingLeft: 11,
+      gap: 8,
     },
     nextStopTop: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 12,
+      gap: 9,
     },
     nextStopIcon: {
-      width: 34,
-      height: 34,
-      borderRadius: 17,
+      width: 28,
+      height: 28,
+      borderRadius: 14,
       backgroundColor: colors.primarySoft,
       alignItems: 'center',
       justifyContent: 'center',
     },
     nextStopBody: { flex: 1, minWidth: 0 },
-    nextStopKicker: { fontSize: 12, color: colors.primary, fontFamily: fonts.bodySemiBold },
-    nextStopTitle: { fontSize: 19, color: colors.ink, fontFamily: fonts.bodySemiBold, marginTop: 1 },
-    nextStopSub: { fontSize: 13, color: colors.muted, fontFamily: fonts.body, marginTop: 2 },
+    nextStopKicker: { fontSize: 11, color: colors.primary, fontFamily: fonts.bodySemiBold },
+    nextStopTitle: { fontSize: 15, color: colors.ink, fontFamily: fonts.bodySemiBold, marginTop: 1 },
+    nextStopSub: { fontSize: 12, color: colors.muted, fontFamily: fonts.body, marginTop: 1 },
     nextStopActions: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 8,
+      gap: 6,
       flexWrap: 'wrap',
     },
     nextStopPrimary: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 6,
+      gap: 5,
       backgroundColor: colors.primary,
       borderRadius: 999,
-      paddingHorizontal: 13,
-      paddingVertical: 10,
+      paddingHorizontal: 11,
+      paddingVertical: 7,
     },
-    nextStopPrimaryText: { color: colors.onPrimary, fontSize: 13, fontFamily: fonts.bodySemiBold },
+    nextStopPrimaryText: { color: colors.onPrimary, fontSize: 12, fontFamily: fonts.bodySemiBold },
     nextStopSecondary: {
-      backgroundColor: colors.surface,
+      backgroundColor: colors.primarySoft,
       borderRadius: 999,
-      paddingHorizontal: 13,
-      paddingVertical: 10,
+      paddingHorizontal: 11,
+      paddingVertical: 7,
     },
-    nextStopSecondaryText: { color: colors.primary, fontSize: 13, fontFamily: fonts.bodySemiBold },
+    nextStopSecondaryText: { color: colors.primary, fontSize: 12, fontFamily: fonts.bodySemiBold },
     nextStopGhost: {
       borderRadius: 999,
-      paddingHorizontal: 10,
-      paddingVertical: 10,
+      paddingHorizontal: 8,
+      paddingVertical: 7,
     },
-    nextStopGhostText: { color: colors.muted, fontSize: 13, fontFamily: fonts.bodySemiBold },
+    nextStopGhostText: { color: colors.muted, fontSize: 12, fontFamily: fonts.bodySemiBold },
     chip: {
       borderRadius: 999,
       paddingHorizontal: 14,
@@ -1148,6 +1521,7 @@ function makeStyles(colors: AppColors) {
       flex: 1,
       backgroundColor: 'rgba(0,0,0,0.45)',
     },
+    /* Legacy sheet used by tripSheet modal */
     sheet: {
       borderTopLeftRadius: 28,
       borderTopRightRadius: 28,
@@ -1158,13 +1532,111 @@ function makeStyles(colors: AppColors) {
       gap: 12,
       ...shadow,
     },
+    /* Redesigned spend sheet — sleek, half the height */
+    spendSheet: {
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      paddingHorizontal: 22,
+      paddingTop: 14,
+      paddingBottom: 36,
+      gap: 10,
+      ...shadow,
+    },
     sheetHandle: {
-      width: 40,
+      width: 36,
       height: 4,
       borderRadius: 2,
       backgroundColor: colors.border,
-      marginBottom: 8,
+      marginBottom: 4,
+      alignSelf: 'center',
     },
+    spendHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 10,
+    },
+    spendHeaderLeft: { flex: 1, minWidth: 0 },
+    spendStoreName: {
+      fontSize: 20,
+      fontFamily: fonts.displayItalic,
+      letterSpacing: 0,
+    },
+    spendCompleteLabel: {
+      fontSize: 12,
+      fontFamily: fonts.bodySemiBold,
+      marginTop: 1,
+    },
+    spendCheckBadge: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    spendAmountRow: {
+      flexDirection: 'row',
+      alignItems: 'baseline',
+      paddingBottom: 10,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      gap: 4,
+      marginTop: 2,
+    },
+    spendCurrencySymbol: {
+      fontSize: 24,
+      fontFamily: fonts.monoMedium,
+      lineHeight: 52,
+    },
+    spendAmountInput: {
+      flex: 1,
+      fontSize: 48,
+      fontFamily: fonts.mono,
+      padding: 0,
+      letterSpacing: -1,
+    },
+    spendHintText: {
+      fontSize: 12,
+      fontFamily: fonts.bodyMedium,
+      marginTop: -2,
+    },
+    spendSaveBtn: {
+      width: '100%',
+      borderRadius: radii.md,
+      paddingVertical: 15,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 2,
+    },
+    spendSaveBtnText: {
+      fontSize: 16,
+      fontFamily: fonts.bodySemiBold,
+      letterSpacing: 0.2,
+    },
+    spendReceiptRow: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    spendReceiptChip: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      borderRadius: radii.sm,
+      paddingVertical: 11,
+    },
+    spendReceiptChipText: {
+      fontSize: 13,
+      fontFamily: fonts.bodySemiBold,
+    },
+    /* kept for legacy storeSpendAction refs — unused but avoids TS errors */
+    storeCompleteIcon: { width: 0, height: 0 },
+    storeSpendInputRow: { width: 0, height: 0 },
+    storeSpendDollar: { fontSize: 0 },
+    storeSpendInput: { fontSize: 0 },
+    storeSpendActions: { flexDirection: 'row' },
+    storeSpendAction: { flex: 1 },
+    storeSpendActionText: { fontSize: 0 },
     sheetEmoji: { fontSize: 52, lineHeight: 64 },
     sheetTitle: { fontSize: 26, fontFamily: fonts.displayExtraBoldItalic, letterSpacing: 0 },
     sheetSub: { fontSize: 15, fontFamily: fonts.body, textAlign: 'center' },

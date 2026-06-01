@@ -12,6 +12,12 @@ export interface ActivityEvent {
   updatedAt: string;
 }
 
+function storeNameFrom(item: { stores?: unknown }): string | undefined {
+  const store = item.stores;
+  if (!store || Array.isArray(store)) return undefined;
+  return (store as { name?: string }).name;
+}
+
 export async function fetchRecentActivity(
   householdId: string,
   currentUserId: string,
@@ -21,7 +27,7 @@ export async function fetchRecentActivity(
 
   const { data, error } = await supabase
     .from('items')
-    .select('id, name, is_low, marked_low_by, got_it_by, updated_at')
+    .select('id, name, is_low, marked_low_by, got_it_by, updated_at, stores(name)')
     .eq('household_id', householdId)
     .gt('updated_at', since)
     .order('updated_at', { ascending: false })
@@ -37,6 +43,7 @@ export async function fetchRecentActivity(
         id: `item-gotit-${item.id}`,
         itemId: item.id,
         itemName: item.name,
+        storeName: storeNameFrom(item),
         type: 'picked_up',
         actorId: item.got_it_by,
         isSelf: item.got_it_by === currentUserId,
@@ -68,7 +75,7 @@ export async function fetchAllActivity(
   const [itemsResult, arrivalsResult] = await Promise.all([
     supabase
       .from('items')
-      .select('id, name, is_low, marked_low_by, got_it_by, updated_at')
+      .select('id, name, is_low, marked_low_by, got_it_by, updated_at, stores(name)')
       .eq('household_id', householdId)
       .gt('updated_at', since)
       .order('updated_at', { ascending: false })
@@ -90,6 +97,7 @@ export async function fetchAllActivity(
         id: `item-gotit-${item.id}`,
         itemId: item.id,
         itemName: item.name,
+        storeName: storeNameFrom(item),
         type: 'picked_up',
         actorId: item.got_it_by,
         isSelf: item.got_it_by === currentUserId,

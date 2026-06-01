@@ -34,6 +34,7 @@ export default function MainLayout() {
   const setItems = useItemsStore((s) => s.setItems);
   const setShoppingEntries = useShoppingStore((s) => s.setEntries);
   const activeStoreId = useStoresStore((s) => s.activeStoreId);
+  const pendingReceiptStoreId = useStoresStore((s) => s.pendingReceiptStoreId);
   const setActiveStore = useStoresStore((s) => s.setActiveStore);
   const setArrivalStore = useStoresStore((s) => s.setArrivalStore);
   const activeStoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -44,6 +45,7 @@ export default function MainLayout() {
     if (activeStoreTimerRef.current) clearTimeout(activeStoreTimerRef.current);
     if (!activeStoreId) return;
     activeStoreTimerRef.current = setTimeout(() => {
+      if (useStoresStore.getState().pendingReceiptStoreId) return;
       setActiveStore(null);
     }, ACTIVE_STORE_TTL_MS);
     return () => {
@@ -62,7 +64,9 @@ export default function MainLayout() {
 
       if (type === 'arrival_self' && storeId) {
         // The person who arrived tapped their own notification — open Shopping
-        setActiveStore(storeId);
+        if (!pendingReceiptStoreId || pendingReceiptStoreId === storeId) {
+          setActiveStore(storeId);
+        }
         router.push('/(main)/grocery');
       } else if (storeId) {
         // Partner tapped the push notification — show banner + go to Pantry to add items
@@ -75,7 +79,7 @@ export default function MainLayout() {
       }
     });
     return () => sub.remove();
-  }, [router, setActiveStore, setArrivalStore]);
+  }, [pendingReceiptStoreId, router, setActiveStore, setArrivalStore]);
 
   useEffect(() => {
     if (!householdId) return;

@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import {
-  View, Text, SectionList, StyleSheet,
+  View, Text, Image, SectionList, StyleSheet,
   RefreshControl, ActivityIndicator,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
@@ -11,11 +11,16 @@ import { fetchAllActivity, formatActivityTime, type ActivityEvent } from '../../
 import { useTheme } from '../../../hooks/useTheme';
 import { fonts, type AppColors } from '../../../constants/theme';
 import EmptyState from '../../../components/EmptyState';
+import ScalePressable from '../../../components/ScalePressable';
 
 interface ActivitySection {
   title: string;
   data: ActivityEvent[];
+  total: number;
 }
+
+const SECTION_PREVIEW_LIMIT = 6;
+const APP_ICON = require('../../../assets/icon.png');
 
 function dateLabel(isoString: string): string {
   const d = new Date(isoString);
@@ -32,13 +37,18 @@ function actorInitials(event: ActivityEvent): string {
     if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
     return parts[0].slice(0, 2).toUpperCase();
   }
-  return '?';
+  return '';
+}
+
+function useAppIconAvatar(event: ActivityEvent): boolean {
+  if (event.type === 'store_arrival') return false;
+  return !event.actorName?.trim();
 }
 
 function eventDescription(event: ActivityEvent, isSelf: boolean): string {
   const actor = isSelf ? 'You' : (event.actorName ?? 'Someone');
   switch (event.type) {
-    case 'picked_up': return `${actor} picked up ${event.itemName}`;
+    case 'picked_up': return `${actor} picked up ${event.itemName}${event.storeName ? ` at ${event.storeName}` : ''}`;
     case 'marked_low': return `${actor} marked ${event.itemName} as low`;
     case 'store_arrival': return `${actor} arrived at ${event.storeName}`;
     default: return '';
@@ -61,6 +71,7 @@ export default function ActivityScreen() {
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [expandedDays, setExpandedDays] = useState<Set<string>>(() => new Set());
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -81,8 +92,21 @@ export default function ActivityScreen() {
       if (!byDay.has(label)) byDay.set(label, []);
       byDay.get(label)!.push(ev);
     }
-    return [...byDay.entries()].map(([title, data]) => ({ title, data }));
-  }, [events]);
+    return [...byDay.entries()].map(([title, data]) => ({
+      title,
+      data: expandedDays.has(title) ? data : data.slice(0, SECTION_PREVIEW_LIMIT),
+      total: data.length,
+    }));
+  }, [events, expandedDays]);
+
+  const toggleDay = useCallback((title: string) => {
+    setExpandedDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(title)) next.delete(title);
+      else next.add(title);
+      return next;
+    });
+  }, []);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -113,12 +137,35 @@ export default function ActivityScreen() {
             <Text style={styles.sectionTitle}>{section.title}</Text>
           </View>
         )}
+        renderSectionFooter={({ section }) => {
+          if (section.total <= SECTION_PREVIEW_LIMIT) return null;
+          const expanded = expandedDays.has(section.title);
+          return (
+            <ScalePressable
+              profile="chip"
+              style={styles.seeMore}
+              onPress={() => toggleDay(section.title)}
+            >
+              <Text style={styles.seeMoreText}>
+                {expanded ? 'Show less' : `See ${section.total - SECTION_PREVIEW_LIMIT} more`}
+              </Text>
+            </ScalePressable>
+          );
+        }}
         renderItem={({ item: ev }) => (
           <View style={styles.row}>
             <View style={[styles.avatar, ev.isSelf && styles.avatarSelf]}>
-              <Text style={[styles.avatarText, ev.isSelf && styles.avatarTextSelf]}>
-                {ev.type === 'store_arrival' ? eventIcon(ev.type) : actorInitials(ev)}
-              </Text>
+              {ev.type === 'store_arrival' ? (
+                <Text style={[styles.avatarText, ev.isSelf && styles.avatarTextSelf]}>
+                  {eventIcon(ev.type)}
+                </Text>
+              ) : useAppIconAvatar(ev) ? (
+                <Image source={APP_ICON} style={styles.avatarLogo} resizeMode="cover" />
+              ) : (
+                <Text style={[styles.avatarText, ev.isSelf && styles.avatarTextSelf]}>
+                  {actorInitials(ev)}
+                </Text>
+              )}
             </View>
             <View style={styles.rowContent}>
               <Text style={styles.rowDesc}>{eventDescription(ev, ev.isSelf)}</Text>
@@ -170,6 +217,16 @@ function makeStyles(colors: AppColors) {
     },
     sectionTitle: { fontSize: 13, fontFamily: fonts.bodySemiBold, color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5 },
     separator: { height: 8 },
+    seeMore: {
+      alignSelf: 'center',
+      marginTop: 10,
+      marginBottom: 2,
+      borderRadius: 999,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      backgroundColor: colors.primarySoft,
+    },
+    seeMoreText: { fontSize: 13, fontFamily: fonts.bodySemiBold, color: colors.primary },
     row: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -189,6 +246,7 @@ function makeStyles(colors: AppColors) {
     avatarSelf: { backgroundColor: colors.primarySoft },
     avatarText: { fontSize: 14, fontFamily: fonts.bodySemiBold, color: colors.muted },
     avatarTextSelf: { color: colors.primary },
+    avatarLogo: { width: 38, height: 38, borderRadius: 19 },
     rowContent: { flex: 1, gap: 3 },
     rowDesc: { fontSize: 14, fontFamily: fonts.bodyMedium, color: colors.ink, lineHeight: 19 },
     rowTime: { fontSize: 12, fontFamily: fonts.mono, color: colors.muted, fontVariant: ['tabular-nums'] },

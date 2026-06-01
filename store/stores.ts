@@ -15,6 +15,11 @@ interface StoresState {
   /** Currently active store for shopping mode (chip tap or own geofence). */
   activeStoreId: string | null;
   /**
+   * Store finished shopping but receipt step not completed (save/upload/skip).
+   * Blocks switching to another store until cleared.
+   */
+  pendingReceiptStoreId: string | null;
+  /**
    * Set only by the realtime store_arrivals subscription — meaning a *partner*
    * just walked into a store. This drives the ArrivalBanner only, and is never
    * set by chip taps or the local geofence handler.
@@ -25,6 +30,7 @@ interface StoresState {
   addStore: (store: Store) => void;
   removeStore: (id: string) => void;
   setActiveStore: (id: string | null) => void;
+  setPendingReceiptStoreId: (id: string | null) => void;
   setArrivalStore: (notice: string | ArrivalNotice | null) => void;
   togglePin: (storeId: string) => void;
 }
@@ -35,6 +41,7 @@ export const useStoresStore = create<StoresState>()(
       stores: [],
       pinnedStoreIds: [],
       activeStoreId: null,
+      pendingReceiptStoreId: null,
       arrivalStoreId: null,
       arrivalNotice: null,
       setStores: (stores) => set({ stores }),
@@ -44,6 +51,7 @@ export const useStoresStore = create<StoresState>()(
         pinnedStoreIds: s.pinnedStoreIds.filter((pid) => pid !== id),
       })),
       setActiveStore: (activeStoreId) => set({ activeStoreId }),
+      setPendingReceiptStoreId: (pendingReceiptStoreId) => set({ pendingReceiptStoreId }),
       setArrivalStore: (notice) => set({
         arrivalStoreId: typeof notice === 'string' ? notice : notice?.storeId ?? null,
         arrivalNotice: typeof notice === 'string'
@@ -60,7 +68,12 @@ export const useStoresStore = create<StoresState>()(
       name: 'pantrypal:stores-store:v1',
       storage: createJSONStorage(() => AsyncStorage),
       // Don't persist arrivalStoreId — it should always be fresh on next launch
-      partialize: (state) => ({ stores: state.stores, activeStoreId: state.activeStoreId, pinnedStoreIds: state.pinnedStoreIds }),
+      partialize: (state) => ({
+        stores: state.stores,
+        activeStoreId: state.activeStoreId,
+        pendingReceiptStoreId: state.pendingReceiptStoreId,
+        pinnedStoreIds: state.pinnedStoreIds,
+      }),
     },
   ),
 );
