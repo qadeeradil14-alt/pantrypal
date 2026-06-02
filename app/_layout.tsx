@@ -5,6 +5,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useFonts as usePlayfairFonts } from '@expo-google-fonts/playfair-display';
 import { useFonts as useDMSansFonts } from '@expo-google-fonts/dm-sans';
 import { useFonts as useDMMonoFonts } from '@expo-google-fonts/dm-mono';
+import { useFonts as useFrauncesFonts } from '@expo-google-fonts/fraunces';
 import { supabase } from '../lib/supabase';
 import { wasIntentionalSignOut } from '../lib/auth';
 import { useAuthStore } from '../store/auth';
@@ -60,6 +61,10 @@ export default function RootLayout() {
     'PlayfairDisplay-ExtraBold':  require('@expo-google-fonts/playfair-display/800ExtraBold/PlayfairDisplay_800ExtraBold.ttf'),
     'PlayfairDisplay-ExtraBoldItalic': require('@expo-google-fonts/playfair-display/800ExtraBold_Italic/PlayfairDisplay_800ExtraBold_Italic.ttf'),
   });
+  const [frauncesLoaded] = useFrauncesFonts({
+    'Fraunces-Medium': require('@expo-google-fonts/fraunces/500Medium/Fraunces_500Medium.ttf'),
+    'Fraunces-SemiBold': require('@expo-google-fonts/fraunces/600SemiBold/Fraunces_600SemiBold.ttf'),
+  });
   const [dmSansLoaded] = useDMSansFonts({
     'DMSans-Light':     require('@expo-google-fonts/dm-sans/300Light/DMSans_300Light.ttf'),
     'DMSans-Regular':   require('@expo-google-fonts/dm-sans/400Regular/DMSans_400Regular.ttf'),
@@ -70,7 +75,7 @@ export default function RootLayout() {
     'DMMono-Regular': require('@expo-google-fonts/dm-mono/400Regular/DMMono_400Regular.ttf'),
     'DMMono-Medium':  require('@expo-google-fonts/dm-mono/500Medium/DMMono_500Medium.ttf'),
   });
-  const fontsLoaded = playfairLoaded && dmSansLoaded && dmMonoLoaded;
+  const fontsLoaded = playfairLoaded && frauncesLoaded && dmSansLoaded && dmMonoLoaded;
 
   const { session, loading, setSession, setLoading } = useAuthStore();
   const router = useRouter();
@@ -121,8 +126,9 @@ export default function RootLayout() {
 
     const inAuthGroup = segments[0] === '(auth)';
     const atRootIndex = segments[0] === 'index' || !segments[0];
+    const atJoinRoute = segments[0] === 'join';
 
-    if (!session && !inAuthGroup) {
+    if (!session && !inAuthGroup && !atJoinRoute) {
       router.replace('/(auth)/welcome');
     } else if (session && (inAuthGroup || atRootIndex)) {
       router.replace('/(setup)/check');

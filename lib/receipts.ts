@@ -117,6 +117,15 @@ export async function deleteReceipt(receiptId: string): Promise<void> {
   if (error) throw error;
 }
 
+export async function deleteReceiptsSince(householdId: string, sinceIso: string): Promise<void> {
+  const { error } = await supabase
+    .from('receipts')
+    .delete()
+    .eq('household_id', householdId)
+    .gte('created_at', sinceIso);
+  if (error) throw error;
+}
+
 export async function fetchReceipts(householdId: string): Promise<Receipt[]> {
   const { data, error } = await supabase
     .from('receipts')

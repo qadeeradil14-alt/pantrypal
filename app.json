@@ -75,6 +75,9 @@
           "autoVerify": true,
           "data": [
             {
+              "scheme": "pantrypal"
+            },
+            {
               "scheme": "pantrypal",
               "host": "join"
             }

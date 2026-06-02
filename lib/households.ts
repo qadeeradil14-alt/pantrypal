@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { ensureDefaultItems } from './items';
+import { normalizeInviteCode } from './invites';
 
 function generateInviteCode(): string {
   // Unambiguous character set (no 0/O, 1/I/L confusion)
@@ -103,8 +104,13 @@ export async function createHousehold(name: string, userId: string) {
 }
 
 export async function joinHousehold(inviteCode: string, userId: string) {
+  const code = normalizeInviteCode(inviteCode);
+  if (!code) {
+    throw new Error('Invalid invite code. Check the code and try again.');
+  }
+
   const { data, error } = await supabase.rpc('join_household_by_code', {
-    p_invite_code: inviteCode.toUpperCase(),
+    p_invite_code: code,
   });
 
   if (error && !isMissingRpc(error)) {
@@ -121,7 +127,7 @@ export async function joinHousehold(inviteCode: string, userId: string) {
   const { data: household, error: findError } = await supabase
     .from('households')
     .select('id, name')
-    .eq('invite_code', inviteCode.toUpperCase())
+    .eq('invite_code', code)
     .single();
 
   if (findError || !household) {

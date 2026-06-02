@@ -115,6 +115,8 @@ export default function MainLayout() {
     async function bootstrapStoresAndGeofencing() {
       if (!householdId) {
         setStores([]);
+        setItems([]);
+        setShoppingEntries([]);
         await stopGeofencing();
         return;
       }
@@ -133,7 +135,7 @@ export default function MainLayout() {
 
     bootstrapStoresAndGeofencing();
     return () => { cancelled = true; };
-  }, [householdId, setStores]);
+  }, [householdId, setItems, setShoppingEntries, setStores]);
 
   return (
     <View style={styles.root}>

@@ -1,5 +1,5 @@
 import { useCallback, useState, useMemo } from 'react';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import {
   View, Text, StyleSheet,
   Alert, Share, ActivityIndicator, ScrollView, Switch, Modal, Pressable,
@@ -16,10 +16,12 @@ import { useHouseholdStore } from '../../store/household';
 import { useItemsStore } from '../../store/items';
 import { useSettingsStore } from '../../store/settings';
 import { useStoresStore } from '../../store/stores';
+import { useShoppingStore } from '../../store/shopping';
 import { signOut } from '../../lib/auth';
 import { supabase } from '../../lib/supabase';
 import { updateHouseholdName, leaveHousehold, fetchHouseholdById } from '../../lib/households';
-import { GEOFENCE_TASK } from '../../lib/geofencing';
+import { TESTFLIGHT_URL, buildInviteDeepLink, buildInviteMessage, normalizeInviteCode } from '../../lib/invites';
+import { GEOFENCE_TASK, stopGeofencing } from '../../lib/geofencing';
 import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../../lib/haptics';
 import { useTheme } from '../../hooks/useTheme';
 import { fonts } from '../../constants/theme';
@@ -41,9 +43,18 @@ function userInitials(name?: string | null, email?: string | null): string {
 
 export default function SettingsScreen() {
   const { colors } = useTheme();
+  const router = useRouter();
   const { session, setSession } = useAuthStore();
   const { household, setHousehold, clearHousehold } = useHouseholdStore();
   const { setItems } = useItemsStore();
+  const setShoppingEntries = useShoppingStore((s) => s.setEntries);
+  const {
+    setStores,
+    setActiveStore,
+    setPendingReceiptStoreId,
+    clearReceiptTrip,
+    setArrivalStore,
+  } = useStoresStore();
   const stores = useStoresStore((s) => s.stores);
   const {
     weeklyBudget, setWeeklyBudget,
@@ -82,9 +93,18 @@ export default function SettingsScreen() {
           void hapticWarning();
           setSigningOut(true);
           try {
-            await signOut();
+            await stopGeofencing().catch(() => {});
             clearHousehold();
             setItems([]);
+            setStores([]);
+            setShoppingEntries([]);
+            setActiveStore(null);
+            setPendingReceiptStoreId(null);
+            clearReceiptTrip();
+            setArrivalStore(null);
+            router.replace('/(auth)/welcome');
+            setSession(null);
+            await signOut();
             void hapticSuccess();
           } catch (e: any) {
             Alert.alert('Sign out failed', e?.message ?? 'Please try again.');
@@ -97,21 +117,15 @@ export default function SettingsScreen() {
     ]);
   }
 
-  const TESTFLIGHT_URL = 'https://testflight.apple.com/join/eJTwChas';
-  const inviteCode = household?.inviteCode?.trim().toUpperCase() || null;
-  const inviteDeepLink = inviteCode
-    ? `pantrypal://join?code=${inviteCode}`
-    : null;
-  const inviteMessage = inviteCode && inviteDeepLink
-    ? `Hey! Join my household on Stokit.\n\n1. Install Stokit with TestFlight:\n${TESTFLIGHT_URL}\n\n2. Open this invite link after installing:\n${inviteDeepLink}\n\nInvite code: ${inviteCode}`
-    : null;
+  const inviteCode = normalizeInviteCode(household?.inviteCode) || null;
+  const inviteDeepLink = inviteCode ? buildInviteDeepLink(inviteCode) : null;
 
   async function refreshInviteCode() {
     if (!household?.id) return null;
     setLoadingInvite(true);
     try {
       const fresh = await fetchHouseholdById(household.id);
-      const freshCode = fresh?.invite_code?.trim().toUpperCase();
+      const freshCode = normalizeInviteCode(fresh?.invite_code);
       if (fresh && freshCode) {
         setHousehold({
           ...household,
@@ -133,10 +147,7 @@ export default function SettingsScreen() {
 
   async function handleCopyCode() {
     const code = inviteCode ?? await refreshInviteCode();
-    const link = code ? `pantrypal://join?code=${code}` : null;
-    const message = code && link
-      ? `Hey! Join my household on Stokit.\n\n1. Install Stokit with TestFlight:\n${TESTFLIGHT_URL}\n\n2. Open this invite link after installing:\n${link}\n\nInvite code: ${code}`
-      : null;
+    const message = code ? buildInviteMessage(code) : null;
     if (!message) return;
     void hapticSuccess();
     try {
@@ -150,10 +161,7 @@ export default function SettingsScreen() {
 
   async function handleShare() {
     const code = inviteCode ?? await refreshInviteCode();
-    const link = code ? `pantrypal://join?code=${code}` : null;
-    const message = code && link
-      ? `Hey! Join my household on Stokit.\n\n1. Install Stokit with TestFlight:\n${TESTFLIGHT_URL}\n\n2. Open this invite link after installing:\n${link}\n\nInvite code: ${code}`
-      : null;
+    const message = code ? buildInviteMessage(code) : null;
     if (!message) return;
     try {
       void hapticSelection();
@@ -544,9 +552,9 @@ export default function SettingsScreen() {
                   <Switch
                     value={row.value}
                     onValueChange={(v) => { void hapticSelection(); row.set(v); }}
-                    trackColor={{ false: colors.border, true: colors.primary + '66' }}
-                    thumbColor={row.value ? colors.primary : colors.muted}
-                    ios_backgroundColor={colors.border}
+                    trackColor={{ false: colors.faint, true: colors.primarySoft }}
+                    thumbColor={row.value ? colors.primary : colors.surface}
+                    ios_backgroundColor={colors.faint}
                     style={styles.notificationSwitch}
                   />
                 </View>

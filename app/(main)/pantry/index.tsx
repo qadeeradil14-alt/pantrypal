@@ -26,6 +26,7 @@ import SyncStatusPill from '../../../components/SyncStatusPill';
 import EditItemModal from '../../../components/EditItemModal';
 import BarcodeScannerModal from '../../../components/BarcodeScannerModal';
 import StoreLogo from '../../../components/StoreLogo';
+import ThemedPopup from '../../../components/ThemedPopup';
 import type { Item } from '../../../lib/items';
 import type { BarcodeProduct } from '../../../lib/barcodes';
 import { pantryStoreTargetTestId } from '../../../lib/testIds';
@@ -108,6 +109,7 @@ export default function PantryScreen() {
   const [liftedItem, setLiftedItem] = useState<Item | null>(null);
   const [showExpiryOnly, setShowExpiryOnly] = useState(false);
   const [streak, setStreak] = useState(0);
+  const [showStreakPopup, setShowStreakPopup] = useState(false);
   // 'unknown' = not yet prompted, 'enabled' = user tapped Enable, 'declined' = user tapped Not now
   const [notifPromptState, setNotifPromptState] = useState<'unknown' | 'enabled' | 'declined' | 'loading'>('loading');
   const householdId = household?.id ?? null;
@@ -131,10 +133,18 @@ export default function PantryScreen() {
   }, [householdId, session?.user.id, setItems]);
 
   useEffect(() => {
+    let active = true;
     load()
-      .catch(() => Alert.alert('Could not load items', 'Please try again.'))
-      .finally(() => setLoading(false));
-  }, [load]);
+      .catch(() => {
+        if (active && householdId && useAuthStore.getState().session) {
+          Alert.alert('Could not load items', 'Please try again.');
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, [householdId, load]);
 
 
   // Check AsyncStorage to see if we've already asked about notifications.
@@ -462,10 +472,7 @@ export default function PantryScreen() {
               <ScalePressable
                 profile="chip"
                 style={styles.streakPill}
-                onPress={() => Alert.alert(
-                  `🔥 ${streak}-day streak!`,
-                  'You\'ve kept your pantry fully stocked for ' + streak + (streak === 1 ? ' day' : ' days') + ' in a row. Keep it up!',
-                )}
+                onPress={() => setShowStreakPopup(true)}
               >
                 <Text style={styles.streakText}>🔥 {streak}</Text>
               </ScalePressable>
@@ -739,6 +746,14 @@ export default function PantryScreen() {
           setLiftedItem(null);
         }}
         onClose={() => setLiftedItem(null)}
+      />
+
+      <ThemedPopup
+        visible={showStreakPopup}
+        emoji="🔥"
+        title={`${streak}-day streak!`}
+        message={`You've kept your pantry fully stocked for ${streak}${streak === 1 ? ' day' : ' days'} in a row. Keep it up!`}
+        onPrimary={() => setShowStreakPopup(false)}
       />
     </SafeAreaView>
   );

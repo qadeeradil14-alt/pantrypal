@@ -7,6 +7,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { signUp } from '../../lib/auth';
 import { supabase } from '../../lib/supabase';
+import { normalizeInviteCode } from '../../lib/invites';
 import { useTheme } from '../../hooks/useTheme';
 import { fonts } from '../../constants/theme';
 import type { AppColors } from '../../constants/theme';
@@ -44,10 +45,8 @@ export default function SignUpScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const { joinCode, fromJoin } = useLocalSearchParams<{ joinCode?: string; fromJoin?: string }>();
-  const deepLinkJoin =
-    fromJoin === '1' &&
-    typeof joinCode === 'string' &&
-    /^[A-Z0-9]{6}$/i.test(joinCode);
+  const normalizedJoinCode = normalizeInviteCode(joinCode);
+  const deepLinkJoin = fromJoin === '1' && !!normalizedJoinCode;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -76,7 +75,7 @@ export default function SignUpScreen() {
       const data = await signUp(email.trim(), password);
       if (data.session || data.user) {
         if (deepLinkJoin) {
-          router.replace({ pathname: '/join', params: { code: joinCode!.toUpperCase() } });
+          router.replace({ pathname: '/join', params: { code: normalizedJoinCode } });
           return;
         }
         router.replace('/(setup)/check');
@@ -157,7 +156,7 @@ export default function SignUpScreen() {
       <Text style={styles.title}>Create account</Text>
       <Text style={styles.subtitle}>
         {deepLinkJoin
-          ? `Create account to continue joining with code ${joinCode!.toUpperCase()}.`
+          ? `Create account to continue joining with code ${normalizedJoinCode}.`
           : "You'll invite your household partner after."}
       </Text>
 

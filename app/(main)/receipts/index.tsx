@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useFocusEffect } from 'expo-router';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import {
   View, Text, SectionList, StyleSheet,
   ActivityIndicator, Alert, RefreshControl,
@@ -13,7 +13,7 @@ import { useAuthStore } from '../../../store/auth';
 import { useSettingsStore } from '../../../store/settings';
 import { useItemsStore } from '../../../store/items';
 import { addItemWithQueue } from '../../../lib/items';
-import { uploadReceipt, fetchReceipts, deleteReceipt, addManualReceipt, deleteReceiptItem, getSpendSummary, type Receipt, type SpendSummary } from '../../../lib/receipts';
+import { uploadReceipt, fetchReceipts, deleteReceipt, deleteReceiptsSince, addManualReceipt, deleteReceiptItem, getSpendSummary, type Receipt, type SpendSummary } from '../../../lib/receipts';
 import { radii, shadow, fonts } from '../../../constants/theme';
 import { makeSheetStyles } from '../../../constants/sheetStyles';
 import ScalePressable from '../../../components/ScalePressable';
@@ -47,6 +47,8 @@ function groupReceiptsByTime(receipts: Receipt[]): ReceiptSection[] {
 
 export default function ReceiptsScreen() {
   const { colors } = useTheme();
+  const router = useRouter();
+  const params = useLocalSearchParams<{ action?: string; fromTrip?: string }>();
   const { household } = useHouseholdStore();
   const { session } = useAuthStore();
   const weeklyBudget = useSettingsStore((s) => s.weeklyBudget);
@@ -77,6 +79,7 @@ export default function ReceiptsScreen() {
   const canUpload = !!householdId && !!userId && !uploading;
   const sheetStyles = useMemo(() => makeSheetStyles(colors), [colors]);
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const autoCameraHandledRef = useRef(false);
 
   const load = useCallback(async () => {
     if (!householdId || !userId) {
@@ -160,6 +163,17 @@ export default function ReceiptsScreen() {
     }
   }
 
+  useFocusEffect(useCallback(() => {
+    if (params.action !== 'camera') {
+      autoCameraHandledRef.current = false;
+      return;
+    }
+    if (autoCameraHandledRef.current || !canUpload) return;
+    autoCameraHandledRef.current = true;
+    router.setParams({ action: '', fromTrip: '' });
+    void handleCapture('camera');
+  }, [canUpload, params.action, router]));
+
   function retryUpload() {
     if (lastUploadSource) {
       void handleCapture(lastUploadSource);
@@ -203,6 +217,35 @@ export default function ReceiptsScreen() {
     } finally {
       setQuickSaving(false);
     }
+  }
+
+  function handleResetWeek() {
+    if (!householdId || receipts.length === 0) return;
+    const sevenDaysAgoIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const thisWeekCount = receipts.filter((r) => new Date(r.created_at).getTime() >= Date.now() - 7 * 24 * 60 * 60 * 1000).length;
+    if (thisWeekCount === 0) {
+      Alert.alert('Nothing to reset', 'There are no receipts from this week.');
+      return;
+    }
+    Alert.alert(
+      'Reset this week?',
+      `This will delete ${thisWeekCount} ${thisWeekCount === 1 ? 'receipt' : 'receipts'} from this week. This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteReceiptsSince(householdId, sevenDaysAgoIso);
+              await load();
+            } catch (e: any) {
+              Alert.alert('Reset failed', e?.message ?? 'Please try again.');
+            }
+          },
+        },
+      ],
+    );
   }
 
   const sections = useMemo(() => groupReceiptsByTime(receipts), [receipts]);
@@ -251,20 +294,28 @@ export default function ReceiptsScreen() {
           <Text style={styles.eyebrow}>Spending</Text>
           <Text style={styles.headerTitle} testID="receipts-header">Receipts</Text>
         </View>
-        <ScalePressable
-          style={[styles.addBtn, !canUpload && styles.addBtnDisabled]}
-          onPress={handleAdd}
-          disabled={!canUpload}
-        >
-          {uploading
-            ? <ActivityIndicator color={colors.onPrimary} size="small" />
-            : (
-              <>
-                <Ionicons name="scan-outline" size={18} color={colors.onPrimary} />
-                <Text style={styles.addBtnText}>Scan</Text>
-              </>
-            )}
-        </ScalePressable>
+        <View style={styles.headerActions}>
+          <ScalePressable
+            style={styles.resetBtn}
+            onPress={handleResetWeek}
+          >
+            <Text style={styles.resetBtnText}>Reset</Text>
+          </ScalePressable>
+          <ScalePressable
+            style={[styles.addBtn, !canUpload && styles.addBtnDisabled]}
+            onPress={handleAdd}
+            disabled={!canUpload}
+          >
+            {uploading
+              ? <ActivityIndicator color={colors.onPrimary} size="small" />
+              : (
+                <>
+                  <Ionicons name="scan-outline" size={18} color={colors.onPrimary} />
+                  <Text style={styles.addBtnText}>Scan</Text>
+                </>
+              )}
+          </ScalePressable>
+        </View>
       </View>
 
       <SectionList
@@ -778,8 +829,16 @@ function makeStyles(colors: AppColors) {
       paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14,
     },
     headerLeft: { flex: 1, gap: 2 },
+    headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     eyebrow: { fontSize: 13, color: colors.primary, fontFamily: fonts.bodySemiBold },
     headerTitle: { fontSize: 26, fontFamily: fonts.displayExtraBoldItalic, color: colors.ink, letterSpacing: 0 },
+    resetBtn: {
+      borderRadius: 999,
+      backgroundColor: colors.faint,
+      paddingHorizontal: 13,
+      paddingVertical: 10,
+    },
+    resetBtnText: { color: colors.muted, fontSize: 14, fontFamily: fonts.bodySemiBold },
     addBtn: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
       gap: 6, backgroundColor: colors.primary, borderRadius: 999,

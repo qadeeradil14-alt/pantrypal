@@ -3,9 +3,10 @@ import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { joinHousehold } from '../../lib/households';
+import { normalizeInviteCode } from '../../lib/invites';
 import { useAuthStore } from '../../store/auth';
 import { useHouseholdStore } from '../../store/household';
 import { useTheme } from '../../hooks/useTheme';
@@ -14,10 +15,12 @@ import { fonts, type AppColors } from '../../constants/theme';
 export default function JoinHouseholdScreen() {
   const { colors } = useTheme();
   const router = useRouter();
+  const params = useLocalSearchParams<{ code?: string; error?: string }>();
   const { session } = useAuthStore();
   const { setHousehold } = useHouseholdStore();
-  const [code, setCode] = useState('');
-  const [error, setError] = useState('');
+  const initialCode = normalizeInviteCode(params.code) ?? '';
+  const [code, setCode] = useState(initialCode);
+  const [error, setError] = useState(typeof params.error === 'string' ? params.error : '');
   const [loading, setLoading] = useState(false);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -28,13 +31,14 @@ export default function JoinHouseholdScreen() {
   }
 
   async function handleJoin() {
-    if (code.trim().length < 6) { setError('Enter the 6-character invite code.'); return; }
+    const inviteCode = normalizeInviteCode(code);
+    if (!inviteCode) { setError('Enter the 6-character invite code.'); return; }
     if (!session?.user) return;
     setError('');
     setLoading(true);
     try {
-      const household = await joinHousehold(code.trim(), session.user.id);
-      setHousehold({ id: household.id, name: household.name, inviteCode: code.trim().toUpperCase(), role: 'member' });
+      const household = await joinHousehold(inviteCode, session.user.id);
+      setHousehold({ id: household.id, name: household.name, inviteCode, role: 'member' });
       router.replace('/(main)/pantry');
     } catch (e: any) {
       setError(e.message ?? 'Invalid code. Check and try again.');
@@ -67,7 +71,7 @@ export default function JoinHouseholdScreen() {
         keyboardType="default"
         maxLength={6}
         value={code}
-        onChangeText={(t) => setCode(t.toUpperCase())}
+        onChangeText={(t) => setCode(t.toUpperCase().replace(/[\s-]/g, ''))}
         onSubmitEditing={handleJoin}
         returnKeyType="join"
         placeholderTextColor={colors.placeholder}

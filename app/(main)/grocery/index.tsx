@@ -45,6 +45,7 @@ function ordinalStop(n: number): string {
 
 type ShoppingSection = { title: string; storeId: string | null; data: ShoppingEntry[]; stopNumber?: number };
 type StoreSpendSheet = { storeId: string; storeName: string; stopNumber: number; nextStoreName: string | null };
+type TripSheet = { itemCount: number; tripSpend: number; weeklySpend: number };
 
 export default function GroceryScreen() {
   const router = useRouter();
@@ -68,9 +69,10 @@ export default function GroceryScreen() {
   const [purchasedIds, setPurchasedIds] = useState<Set<string>>(() => new Set());
   const weeklyBudget = useSettingsStore((s) => s.weeklyBudget);
   const [weeklySpend, setWeeklySpend] = useState(0);
+  const [tripSpend, setTripSpend] = useState(0);
   const [startCount, setStartCount] = useState(0);
   const [grabbedCount, setGrabbedCount] = useState(0);
-  const [tripSheet, setTripSheet] = useState<{ itemCount: number; spend: number } | null>(null);
+  const [tripSheet, setTripSheet] = useState<TripSheet | null>(null);
   const [routeStoreIds, setRouteStoreIds] = useState<string[]>([]);
   const [completedStoreIds, setCompletedStoreIds] = useState<Set<string>>(() => new Set());
   const [storeSpendSheet, setStoreSpendSheet] = useState<StoreSpendSheet | null>(null);
@@ -130,6 +132,8 @@ export default function GroceryScreen() {
     [stores, activeStoreId],
   );
 
+  const tripStartItemCountRef = useRef(0);
+
   const sourceItemMap = useMemo(
     () => new Map(items.map((item) => [item.id, item])),
     [items],
@@ -151,13 +155,22 @@ export default function GroceryScreen() {
 
   const totalActiveCount = allActiveItems.length;
 
+  const firstRouteStoreId = useMemo(() => {
+    for (const entry of allActiveItems) {
+      const linked = entry.source_item_id ? sourceItemMap.get(entry.source_item_id) : null;
+      if (linked?.preferred_store_id) return linked.preferred_store_id;
+    }
+    return null;
+  }, [allActiveItems, sourceItemMap]);
+
   const lowItems = useMemo(() => {
-    if (!activeStoreId) return allActiveItems;
+    const scopedStoreId = activeStoreId ?? (shoppingMode ? firstRouteStoreId : null);
+    if (!scopedStoreId) return allActiveItems;
     return allActiveItems.filter((entry) => {
       const linked = entry.source_item_id ? sourceItemMap.get(entry.source_item_id) : null;
-      return linked?.preferred_store_id === activeStoreId;
+      return linked?.preferred_store_id === scopedStoreId;
     });
-  }, [allActiveItems, sourceItemMap, activeStoreId]);
+  }, [activeStoreId, allActiveItems, firstRouteStoreId, shoppingMode, sourceItemMap]);
 
   useEffect(() => {
     setStartCount(0);
@@ -170,6 +183,7 @@ export default function GroceryScreen() {
       setStoreSpendSheet(null);
       setStoreSpendAmount('');
       setPendingReceiptStoreId(null);
+      tripStartItemCountRef.current = 0;
     }
   }, [shoppingMode, setPendingReceiptStoreId]);
 
@@ -184,8 +198,12 @@ export default function GroceryScreen() {
       setGrabbedCount(0);
       return;
     }
-    setStartCount((prev) => Math.max(prev, lowItems.length + grabbedCount));
-  }, [shoppingMode, lowItems.length, grabbedCount]);
+    const tripCount = Math.max(tripStartItemCountRef.current, allActiveItems.length + grabbedCount);
+    if (tripStartItemCountRef.current === 0 && tripCount > 0) {
+      tripStartItemCountRef.current = tripCount;
+    }
+    setStartCount((prev) => Math.max(prev, tripCount));
+  }, [allActiveItems.length, shoppingMode, grabbedCount]);
 
 
   const makeShoppingSections = useCallback((sectionEntries: ShoppingEntry[]) => {
@@ -489,9 +507,10 @@ export default function GroceryScreen() {
     stores,
   ]);
 
-  const spendProgress = useMemo(
-    () => Math.min(weeklySpend / weeklyBudget, 1),
-    [weeklySpend, weeklyBudget],
+  const tripBudgetLeft = Math.max(0, weeklyBudget - tripSpend);
+  const tripSpendProgress = useMemo(
+    () => Math.min(tripSpend / weeklyBudget, 1),
+    [tripSpend, weeklyBudget],
   );
 
   const handleGotIt = useCallback(async (entry: ShoppingEntry) => {
@@ -502,21 +521,15 @@ export default function GroceryScreen() {
     setGrabbedCount((prev) => prev + 1);
     const linked = entry.source_item_id ? sourceItemMap.get(entry.source_item_id) : null;
     const finishedStoreId = linked?.preferred_store_id ?? null;
-    if (
-      finishedStoreId
-      && shoppingMode
-      && !isStoreReceiptDone(finishedStoreId)
-      && !pendingReceiptStoreId
-    ) {
+    const shouldOpenSpendAfterVisual = (() => {
+      if (!finishedStoreId || !shoppingMode || isStoreReceiptDone(finishedStoreId) || pendingReceiptStoreId) return false;
       const othersAtStore = allActiveItems.filter((e) => {
         if (e.id === entry.id || purchasedIds.has(e.id)) return false;
         const l = e.source_item_id ? sourceItemMap.get(e.source_item_id) : null;
         return l?.preferred_store_id === finishedStoreId;
       }).length;
-      if (othersAtStore === 0) {
-        openStoreSpendPrompt(finishedStoreId);
-      }
-    }
+      return othersAtStore === 0;
+    })();
     if (entry.source_item_id) {
       updateItem(entry.source_item_id, { is_low: false, got_it_by: userId, macro_status: 'in_stock' as Item['macro_status'] });
     }
@@ -530,6 +543,9 @@ export default function GroceryScreen() {
             next.delete(entry.id);
             return next;
           });
+          if (shouldOpenSpendAfterVisual && finishedStoreId) {
+            openStoreSpendPrompt(finishedStoreId);
+          }
         }, 520);
       };
       if (entry.source_item_id) {
@@ -657,14 +673,15 @@ export default function GroceryScreen() {
             onPress: () => {
               void hapticSuccess();
               const count = startCount;
-              const spend = weeklySpend;
+              const finishedTripSpend = tripSpend;
+              const finishedWeeklySpend = weeklySpend;
               setShoppingMode(false);
               setActiveStore(null);
               clearReceiptTrip();
               setRouteStoreIds([]);
               setStartCount(0);
               setGrabbedCount(0);
-              if (count > 0) setTripSheet({ itemCount: count, spend });
+              if (count > 0) setTripSheet({ itemCount: count, tripSpend: finishedTripSpend, weeklySpend: finishedWeeklySpend });
             },
           },
         ],
@@ -672,14 +689,15 @@ export default function GroceryScreen() {
     } else {
       void hapticSuccess();
       const count = startCount;
-      const spend = weeklySpend;
+      const finishedTripSpend = tripSpend;
+      const finishedWeeklySpend = weeklySpend;
       setShoppingMode(false);
       setActiveStore(null);
       clearReceiptTrip();
       setRouteStoreIds([]);
       setStartCount(0);
       setGrabbedCount(0);
-      if (count > 0) setTripSheet({ itemCount: count, spend });
+      if (count > 0) setTripSheet({ itemCount: count, tripSpend: finishedTripSpend, weeklySpend: finishedWeeklySpend });
     }
   }, [
     clearReceiptTrip,
@@ -690,6 +708,7 @@ export default function GroceryScreen() {
     setActiveStore,
     startCount,
     stores,
+    tripSpend,
     weeklySpend,
   ]);
 
@@ -697,10 +716,12 @@ export default function GroceryScreen() {
     // Receipt step must finish via Save amount, upload, or Skip — not backdrop/back.
   }, []);
 
-  const continueAfterStoreSpend = useCallback(() => {
+  const continueAfterStoreSpend = useCallback((amount = 0) => {
     const finishedStoreId = storeSpendSheet?.storeId;
     const count = startCount;
-    const spend = weeklySpend;
+    const finishedTripSpend = tripSpend + amount;
+    const finishedWeeklySpend = weeklySpend + amount;
+    if (amount > 0) setTripSpend(finishedTripSpend);
     setStoreSpendSheet(null);
     setStoreSpendAmount('');
     setPendingReceiptStoreId(null);
@@ -709,7 +730,7 @@ export default function GroceryScreen() {
       setCompletedStoreIds((prev) => new Set(prev).add(finishedStoreId));
     }
     if (nextStop) {
-      setActiveStore(nextStop.storeId);
+      setActiveStore(null);
       return;
     }
     if (allActiveItems.length === 0) {
@@ -720,7 +741,7 @@ export default function GroceryScreen() {
       setRouteStoreIds([]);
       setStartCount(0);
       setGrabbedCount(0);
-      if (count > 0) setTripSheet({ itemCount: count, spend });
+      if (count > 0) setTripSheet({ itemCount: count, tripSpend: finishedTripSpend, weeklySpend: finishedWeeklySpend });
     }
   }, [
     allActiveItems.length,
@@ -731,6 +752,7 @@ export default function GroceryScreen() {
     setPendingReceiptStoreId,
     startCount,
     storeSpendSheet?.storeId,
+    tripSpend,
     weeklySpend,
   ]);
 
@@ -748,7 +770,7 @@ export default function GroceryScreen() {
       await addManualReceipt(householdId, session.user.id, storeSpendSheet.storeName, parsed, today);
       refreshSpend();
       void hapticSuccess();
-      continueAfterStoreSpend();
+      continueAfterStoreSpend(parsed);
     } catch (e: any) {
       void hapticError();
       Alert.alert('Could not save', e?.message ?? 'Please try again.');
@@ -799,7 +821,7 @@ export default function GroceryScreen() {
 
   const goToReceipts = useCallback(() => {
     setTripSheet(null);
-    router.push('/(main)/receipts');
+    router.push({ pathname: '/(main)/receipts', params: { action: 'camera', fromTrip: '1' } });
   }, [router]);
 
   const assignEntryToStore = useCallback((entry: ShoppingEntry) => {
@@ -854,6 +876,7 @@ export default function GroceryScreen() {
               }
               if (!shoppingMode) {
                 clearReceiptTrip();
+                setTripSpend(0);
               }
               setShoppingMode((v) => !v);
               if (shoppingMode) {
@@ -880,7 +903,7 @@ export default function GroceryScreen() {
             <>
               <Text style={[styles.statusKicker, styles.statusKickerActive]}>All done</Text>
               <Text style={[styles.statusNumber, styles.statusNumberActive]}>{startCount}</Text>
-              <Text style={[styles.statusLabel, styles.statusLabelActive]}>grabbed</Text>
+              <Text style={[styles.statusLabel, styles.statusLabelActive]}>items picked up</Text>
             </>
           ) : shoppingMode && startCount > 0 ? (
             <>
@@ -889,16 +912,14 @@ export default function GroceryScreen() {
                 {grabbedCount}
                 <Text style={[styles.statusNumberDim]}> / {startCount}</Text>
               </Text>
-              <Text style={[styles.statusLabel, styles.statusLabelActive]}>grabbed</Text>
+              <Text style={[styles.statusLabel, styles.statusLabelActive]}>items picked up</Text>
             </>
           ) : (
             <>
-              <Text style={[styles.statusKicker, shoppingMode && styles.statusKickerActive]}>
-                {shoppingMode ? 'List clear' : 'To buy'}
-              </Text>
+              <Text style={styles.statusKicker}>Shopping list</Text>
               <Text style={[styles.statusNumber, shoppingMode && styles.statusNumberActive]}>{lowItems.length}</Text>
               <Text style={[styles.statusLabel, shoppingMode && styles.statusLabelActive]}>
-                {lowItems.length === 1 ? 'thing to grab' : 'things to grab'}
+                {lowItems.length === 1 ? 'item' : 'items'}
               </Text>
             </>
           )}
@@ -911,14 +932,16 @@ export default function GroceryScreen() {
             </View>
           )}
           <View style={styles.budgetSection}>
-            <Text style={styles.budgetTitle}>Weekly spend</Text>
+            <Text style={styles.budgetTitle}>Trip total</Text>
+            <Text style={styles.tripAmount}>${tripSpend.toFixed(2)}</Text>
             <View style={styles.budgetBar}>
               <View style={[styles.budgetFill, {
-                width: `${Math.round(spendProgress * 100)}%` as any,
-                backgroundColor: spendProgress > 0.9 ? colors.danger : spendProgress > 0.65 ? colors.warning : colors.success,
+                width: `${Math.round(tripSpendProgress * 100)}%` as any,
+                backgroundColor: tripSpendProgress > 0.9 ? colors.danger : tripSpendProgress > 0.65 ? colors.warning : colors.success,
               }]} />
             </View>
-            <Text style={styles.budgetLabel}>${weeklySpend.toFixed(2)} / ${weeklyBudget}</Text>
+            <Text style={styles.budgetLabel}>${tripBudgetLeft.toFixed(2)} budget left</Text>
+            <Text style={styles.weeklyContext}>Weekly: ${weeklySpend.toFixed(2)}</Text>
           </View>
         </View>
       </View>
@@ -1188,7 +1211,7 @@ export default function GroceryScreen() {
                   </ScalePressable>
                 ) : (shoppingMode || purchased) && (
                   <Text style={[styles.tapHint, purchased && styles.tapHintPurchased]}>
-                    {purchased ? 'Done' : 'Grab'}
+                    {purchased ? 'Purchased' : 'Grab'}
                   </Text>
                 )}
               </ScalePressable>
@@ -1295,7 +1318,7 @@ export default function GroceryScreen() {
 
             <TouchableOpacity
               style={styles.sheetGhost}
-              onPress={continueAfterStoreSpend}
+              onPress={() => continueAfterStoreSpend()}
               activeOpacity={0.7}
               disabled={savingStoreSpend}
             >
@@ -1326,20 +1349,32 @@ export default function GroceryScreen() {
             You grabbed {tripSheet?.itemCount ?? 0} {(tripSheet?.itemCount ?? 0) === 1 ? 'item' : 'items'} this run.
           </Text>
 
+          <View style={styles.tripAnalyticsTab}>
+            <Ionicons name="analytics-outline" size={14} color={colors.primary} />
+            <Text style={styles.tripAnalyticsTabText}>That's how much you spend for these trips</Text>
+          </View>
+
           <View style={[styles.spendRow, { backgroundColor: colors.primarySoft }]}>
             <View style={styles.spendCol}>
-              <Text style={[styles.spendLabel, { color: colors.muted }]}>Weekly spend</Text>
+              <Text style={[styles.spendLabel, { color: colors.muted }]}>Trip total</Text>
               <Text style={[styles.spendValue, { color: colors.primaryDeep }]}>
-                ${(tripSheet?.spend ?? 0).toFixed(2)}
+                ${(tripSheet?.tripSpend ?? 0).toFixed(2)}
               </Text>
             </View>
             <View style={[styles.spendDivider, { backgroundColor: colors.border }]} />
             <View style={styles.spendCol}>
               <Text style={[styles.spendLabel, { color: colors.muted }]}>Budget left</Text>
               <Text style={[styles.spendValue, { color: colors.primaryDeep }]}>
-                ${Math.max(0, weeklyBudget - (tripSheet?.spend ?? 0)).toFixed(2)}
+                ${Math.max(0, weeklyBudget - (tripSheet?.tripSpend ?? 0)).toFixed(2)}
               </Text>
             </View>
+          </View>
+
+          <View style={styles.weeklySpendContext}>
+            <Text style={[styles.spendLabel, { color: colors.muted }]}>Weekly spend</Text>
+            <Text style={[styles.weeklySpendValue, { color: colors.muted }]}>
+              ${(tripSheet?.weeklySpend ?? weeklySpend).toFixed(2)}
+            </Text>
           </View>
 
           <Text style={[styles.sheetHint, { color: colors.muted }]}>
@@ -1434,6 +1469,7 @@ function makeStyles(colors: AppColors) {
     budgetSection: { alignItems: 'flex-end', gap: 4 },
     budgetTitle: { fontSize: 11, color: colors.muted, fontFamily: fonts.bodyMedium },
     budgetRow: { alignItems: 'flex-end', gap: 4 },
+    tripAmount: { fontSize: 20, lineHeight: 24, color: colors.primaryDeep, fontFamily: fonts.monoMedium },
     budgetBar: {
       width: 110,
       height: 6,
@@ -1443,6 +1479,7 @@ function makeStyles(colors: AppColors) {
     },
     budgetFill: { height: 6, borderRadius: 3 },
     budgetLabel: { fontSize: 11, color: colors.muted, fontFamily: fonts.bodyMedium },
+    weeklyContext: { fontSize: 10, color: colors.muted, fontFamily: fonts.body, opacity: 0.82 },
     storeBar: { height: 50, flexGrow: 0, flexShrink: 0, backgroundColor: colors.background },
     storeBarContent: {
       paddingHorizontal: 16,
@@ -1826,6 +1863,32 @@ function makeStyles(colors: AppColors) {
     spendDivider: { width: StyleSheet.hairlineWidth, marginVertical: 4 },
     spendLabel: { fontSize: 12, fontFamily: fonts.bodyMedium },
     spendValue: { fontSize: 26, fontFamily: fonts.mono, letterSpacing: 0 },
+    tripAnalyticsTab: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      alignSelf: 'stretch',
+      justifyContent: 'center',
+      borderRadius: 999,
+      backgroundColor: colors.faint,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    tripAnalyticsTabText: {
+      color: colors.primary,
+      fontSize: 12,
+      fontFamily: fonts.bodySemiBold,
+      textAlign: 'center',
+    },
+    weeklySpendContext: {
+      width: '100%',
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 6,
+      marginTop: -2,
+    },
+    weeklySpendValue: { fontSize: 14, fontFamily: fonts.monoMedium },
     sheetHint: { fontSize: 13, fontFamily: fonts.body, textAlign: 'center', paddingHorizontal: 8 },
     sheetPrimary: {
       flexDirection: 'row',
