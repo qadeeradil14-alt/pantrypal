@@ -3,7 +3,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import {
   View, Text, SectionList, StyleSheet,
   ActivityIndicator, ScrollView, Alert, Animated, Linking, Platform, Modal,
-  TouchableOpacity, TouchableWithoutFeedback, TextInput,
+  TouchableOpacity, TouchableWithoutFeedback, TextInput, KeyboardAvoidingView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -231,12 +231,31 @@ export default function GroceryScreen() {
     [allShoppingSections],
   );
 
+  const completedRouteStoreIds = useMemo(() => {
+    const ids: string[] = [];
+    const seen = new Set<string>();
+    completedStoreIds.forEach((id) => {
+      seen.add(id);
+      ids.push(id);
+    });
+    receiptCompletedStoreIds.forEach((id) => {
+      if (!seen.has(id)) {
+        seen.add(id);
+        ids.push(id);
+      }
+    });
+    return ids;
+  }, [completedStoreIds, receiptCompletedStoreIds]);
+
   useEffect(() => {
     if (!shoppingMode) {
       setRouteStoreIds([]);
       return;
     }
-    const currentIds = assignedRouteSections.map((section) => section.storeId!);
+    const currentIds = Array.from(new Set([
+      ...completedRouteStoreIds,
+      ...assignedRouteSections.map((section) => section.storeId!),
+    ]));
     setRouteStoreIds((prev) => {
       if (prev.length === 0) return currentIds.length === 0 ? prev : currentIds;
       const seen = new Set(prev);
@@ -249,7 +268,7 @@ export default function GroceryScreen() {
       });
       return next.length === prev.length ? prev : next;
     });
-  }, [assignedRouteSections, shoppingMode]);
+  }, [assignedRouteSections, completedRouteStoreIds, shoppingMode]);
 
   const stopNumberByStoreId = useMemo(() => {
     const ids = routeStoreIds.length > 0
@@ -680,6 +699,8 @@ export default function GroceryScreen() {
 
   const continueAfterStoreSpend = useCallback(() => {
     const finishedStoreId = storeSpendSheet?.storeId;
+    const count = startCount;
+    const spend = weeklySpend;
     setStoreSpendSheet(null);
     setStoreSpendAmount('');
     setPendingReceiptStoreId(null);
@@ -691,15 +712,26 @@ export default function GroceryScreen() {
       setActiveStore(nextStop.storeId);
       return;
     }
-    if (allActiveItems.length === 0) finishShopping();
+    if (allActiveItems.length === 0) {
+      void hapticSuccess();
+      setShoppingMode(false);
+      setActiveStore(null);
+      clearReceiptTrip();
+      setRouteStoreIds([]);
+      setStartCount(0);
+      setGrabbedCount(0);
+      if (count > 0) setTripSheet({ itemCount: count, spend });
+    }
   }, [
     allActiveItems.length,
-    finishShopping,
+    clearReceiptTrip,
     markReceiptCompleted,
     nextStop,
     setActiveStore,
     setPendingReceiptStoreId,
+    startCount,
     storeSpendSheet?.storeId,
+    weeklySpend,
   ]);
 
   const saveStoreSpend = useCallback(async () => {
@@ -1188,91 +1220,93 @@ export default function GroceryScreen() {
         animationType="slide"
         onRequestClose={blockSpendSheetDismiss}
       >
-        <TouchableWithoutFeedback onPress={blockSpendSheetDismiss}>
-          <View style={styles.sheetOverlay} />
-        </TouchableWithoutFeedback>
-        <View style={[styles.spendSheet, { backgroundColor: colors.surface }]}>
-          <View style={styles.sheetHandle} />
+        <KeyboardAvoidingView
+          style={styles.keyboardSheetRoot}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={0}
+        >
+          <TouchableWithoutFeedback onPress={blockSpendSheetDismiss}>
+            <View style={styles.sheetOverlay} />
+          </TouchableWithoutFeedback>
+          <View style={[styles.spendSheet, { backgroundColor: colors.surface }]}>
+            <View style={styles.sheetHandle} />
 
-          {/* Store name + stop-complete badge */}
-          <View style={styles.spendHeader}>
-            <View style={styles.spendHeaderLeft}>
-              <Text style={[styles.spendStoreName, { color: colors.ink }]} numberOfLines={1}>
-                {storeSpendSheet?.storeName ?? 'Store'}
-              </Text>
-              <Text style={[styles.spendCompleteLabel, { color: colors.primary }]}>Stop complete</Text>
+            <View style={styles.spendHeader}>
+              <View style={styles.spendHeaderLeft}>
+                <Text style={[styles.spendStoreName, { color: colors.ink }]} numberOfLines={1}>
+                  {storeSpendSheet?.storeName ?? 'Store'}
+                </Text>
+                <Text style={[styles.spendCompleteLabel, { color: colors.primary }]}>Stop complete</Text>
+              </View>
+              <View style={[styles.spendCheckBadge, { backgroundColor: colors.primarySoft }]}>
+                <Ionicons name="checkmark" size={17} color={colors.primary} />
+              </View>
             </View>
-            <View style={[styles.spendCheckBadge, { backgroundColor: colors.primarySoft }]}>
-              <Ionicons name="checkmark" size={17} color={colors.primary} />
+
+            <View style={[styles.spendAmountRow, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.spendCurrencySymbol, { color: colors.primary }]}>$</Text>
+              <TextInput
+                value={storeSpendAmount}
+                onChangeText={setStoreSpendAmount}
+                placeholder="0.00"
+                placeholderTextColor={colors.muted}
+                keyboardType="decimal-pad"
+                returnKeyType="done"
+                style={[styles.spendAmountInput, { color: colors.ink }]}
+              />
             </View>
-          </View>
-
-          {/* Large amount input */}
-          <View style={[styles.spendAmountRow, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.spendCurrencySymbol, { color: colors.primary }]}>$</Text>
-            <TextInput
-              value={storeSpendAmount}
-              onChangeText={setStoreSpendAmount}
-              placeholder="0.00"
-              placeholderTextColor={colors.muted}
-              keyboardType="decimal-pad"
-              style={[styles.spendAmountInput, { color: colors.ink }]}
-            />
-          </View>
-          <Text style={[styles.spendHintText, { color: colors.muted }]}>
-            How much did you spend here? Save to continue — receipt photo is optional.
-          </Text>
-
-          {/* Primary: save amount */}
-          <TouchableOpacity
-            style={[styles.spendSaveBtn, { backgroundColor: colors.primary }]}
-            onPress={saveStoreSpend}
-            activeOpacity={0.85}
-            disabled={savingStoreSpend}
-          >
-            {savingStoreSpend ? (
-              <ActivityIndicator size="small" color={colors.onPrimary} />
-            ) : (
-              <Text style={[styles.spendSaveBtnText, { color: colors.onPrimary }]}>Save amount</Text>
-            )}
-          </TouchableOpacity>
-
-          {/* Secondary: receipt options side by side */}
-          <View style={styles.spendReceiptRow}>
-            <TouchableOpacity
-              style={[styles.spendReceiptChip, { backgroundColor: colors.faint }]}
-              onPress={() => uploadStoreReceipt('camera')}
-              activeOpacity={0.8}
-              disabled={savingStoreSpend}
-            >
-              <Ionicons name="camera-outline" size={15} color={colors.muted} />
-              <Text style={[styles.spendReceiptChipText, { color: colors.muted }]}>Camera</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.spendReceiptChip, { backgroundColor: colors.faint }]}
-              onPress={() => uploadStoreReceipt('library')}
-              activeOpacity={0.8}
-              disabled={savingStoreSpend}
-            >
-              <Ionicons name="image-outline" size={15} color={colors.muted} />
-              <Text style={[styles.spendReceiptChipText, { color: colors.muted }]}>Library</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Skip */}
-          <TouchableOpacity
-            style={styles.sheetGhost}
-            onPress={continueAfterStoreSpend}
-            activeOpacity={0.7}
-            disabled={savingStoreSpend}
-          >
-            <Text style={[styles.sheetGhostText, { color: colors.muted }]}>
-              {storeSpendSheet?.nextStoreName
-                ? `Skip · next: ${storeSpendSheet.nextStoreName}`
-                : 'Skip for now'}
+            <Text style={[styles.spendHintText, { color: colors.muted }]}>
+              How much did you spend here? Save to continue — receipt photo is optional.
             </Text>
-          </TouchableOpacity>
-        </View>
+
+            <TouchableOpacity
+              style={[styles.spendSaveBtn, { backgroundColor: colors.primary }]}
+              onPress={saveStoreSpend}
+              activeOpacity={0.85}
+              disabled={savingStoreSpend}
+            >
+              {savingStoreSpend ? (
+                <ActivityIndicator size="small" color={colors.onPrimary} />
+              ) : (
+                <Text style={[styles.spendSaveBtnText, { color: colors.onPrimary }]}>Save amount</Text>
+              )}
+            </TouchableOpacity>
+
+            <View style={styles.spendReceiptRow}>
+              <TouchableOpacity
+                style={[styles.spendReceiptChip, { backgroundColor: colors.faint }]}
+                onPress={() => uploadStoreReceipt('camera')}
+                activeOpacity={0.8}
+                disabled={savingStoreSpend}
+              >
+                <Ionicons name="camera-outline" size={15} color={colors.muted} />
+                <Text style={[styles.spendReceiptChipText, { color: colors.muted }]}>Camera</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.spendReceiptChip, { backgroundColor: colors.faint }]}
+                onPress={() => uploadStoreReceipt('library')}
+                activeOpacity={0.8}
+                disabled={savingStoreSpend}
+              >
+                <Ionicons name="image-outline" size={15} color={colors.muted} />
+                <Text style={[styles.spendReceiptChipText, { color: colors.muted }]}>Library</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={styles.sheetGhost}
+              onPress={continueAfterStoreSpend}
+              activeOpacity={0.7}
+              disabled={savingStoreSpend}
+            >
+              <Text style={[styles.sheetGhostText, { color: colors.muted }]}>
+                {storeSpendSheet?.nextStoreName
+                  ? `Skip · next: ${storeSpendSheet.nextStoreName}`
+                  : 'Skip for now'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal
@@ -1656,6 +1690,10 @@ function makeStyles(colors: AppColors) {
     sheetOverlay: {
       flex: 1,
       backgroundColor: 'rgba(0,0,0,0.45)',
+    },
+    keyboardSheetRoot: {
+      flex: 1,
+      justifyContent: 'flex-end',
     },
     /* Legacy sheet used by tripSheet modal */
     sheet: {
