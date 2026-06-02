@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <radialGradient id="bg" cx="42%" cy="30%" r="80%">
+      <stop offset="0%" stop-color="#2A2018"/>
+      <stop offset="62%" stop-color="#17130F"/>
+      <stop offset="100%" stop-color="#100D0A"/>
+    </radialGradient>
+    <linearGradient id="copper" x1="250" y1="180" x2="780" y2="850">
+      <stop offset="0%" stop-color="#E7A25E"/>
+      <stop offset="55%" stop-color="#D4874E"/>
+      <stop offset="100%" stop-color="#B76531"/>
+    </linearGradient>
+    <linearGradient id="cream" x1="320" y1="300" x2="740" y2="720">
+      <stop offset="0%" stop-color="#FFF8EE"/>
+      <stop offset="100%" stop-color="#F4E3CD"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-color="#000000" flood-opacity="0.34"/>
+    </filter>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <circle cx="512" cy="536" r="340" fill="#F4E7D5" opacity="0.045"/>
+<g filter="url(#shadow)">
+      <path d="M268 322h102l70 326h306l64-222H426" fill="none" stroke="url(#copper)" stroke-width="52" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M469 733h268" fill="none" stroke="url(#copper)" stroke-width="52" stroke-linecap="round"/>
+      <circle cx="496" cy="814" r="43" fill="url(#copper)"/>
+      <circle cx="718" cy="814" r="43" fill="url(#copper)"/>
+      <path d="M507 446h236l-34-70H541l-34 70Z" fill="url(#cream)"/>
+      <rect x="535" y="446" width="180" height="112" rx="20" fill="url(#cream)"/>
+      <path d="M572 522l40 40 88-104" fill="none" stroke="#D4874E" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
+    </g></svg>

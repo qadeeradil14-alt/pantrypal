@@ -1,0 +1,13 @@
+<svg width="120" height="120" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background (optional) -->
+  <rect width="120" height="120" fill="#3d2817" rx="10"/>
+
+  <!-- Bowl -->
+  <ellipse cx="60" cy="70" rx="38" ry="26" fill="none" stroke="#f5f3f0" stroke-width="2.5" stroke-linecap="round"/>
+
+  <!-- Apple -->
+  <circle cx="60" cy="55" r="14" fill="#f5f3f0"/>
+
+  <!-- Stem -->
+  <line x1="60" y1="40" x2="60" y2="28" stroke="#f5f3f0" stroke-width="1.5" stroke-linecap="round"/>
+</svg>

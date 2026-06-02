@@ -19,6 +19,9 @@ appId: com.pantrypal.app
       - inputText: ${MAESTRO_PASSWORD}
       - tapOn:
           id: auth-sign-in-submit
+      - tapOn:
+          text: "Not Now"
+          optional: true
 
 # Existing household → pantry; new user → setup (handled by create-household.yaml).
 - extendedWaitUntil:

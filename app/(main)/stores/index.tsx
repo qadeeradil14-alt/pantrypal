@@ -231,7 +231,9 @@ export default function StoresScreen() {
                       style={[styles.pinBtn, isPinned && styles.pinBtnActive]}
                       onPress={() => { void hapticSelection(); togglePin(item.id); }}
                     >
-                      <Ionicons name={isPinned ? 'bookmark' : 'bookmark-outline'} size={15} color={isPinned ? colors.primary : colors.muted} />
+                      <View style={styles.pinBtnInner}>
+                        <Ionicons name={isPinned ? 'bookmark' : 'bookmark-outline'} size={15} color={isPinned ? colors.primary : colors.muted} />
+                      </View>
                     </ScalePressable>
                     {item.latitude != null && (
                       <ScalePressable
@@ -837,8 +839,11 @@ function makeStyles(colors: AppColors, placeCardWidth = 210) {
     storeNameRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
     pinBtn: {
       width: 34, height: 34, borderRadius: 17,
-      alignItems: 'center', justifyContent: 'center',
       backgroundColor: colors.faint,
+    },
+    pinBtnInner: {
+      width: 34, height: 34,
+      alignItems: 'center', justifyContent: 'center',
     },
     pinBtnActive: { backgroundColor: colors.primarySoft },
     sectionHeader: {

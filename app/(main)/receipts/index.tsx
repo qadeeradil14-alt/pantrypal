@@ -13,9 +13,7 @@ import { useAuthStore } from '../../../store/auth';
 import { useSettingsStore } from '../../../store/settings';
 import { useItemsStore } from '../../../store/items';
 import { addItemWithQueue } from '../../../lib/items';
-import { useStoresStore } from '../../../store/stores';
 import { uploadReceipt, fetchReceipts, deleteReceipt, addManualReceipt, deleteReceiptItem, getSpendSummary, type Receipt, type SpendSummary } from '../../../lib/receipts';
-import { fetchRecentActivity, formatActivityTime, type ActivityEvent } from '../../../lib/activity';
 import { radii, shadow, fonts } from '../../../constants/theme';
 import { makeSheetStyles } from '../../../constants/sheetStyles';
 import ScalePressable from '../../../components/ScalePressable';
@@ -52,14 +50,12 @@ export default function ReceiptsScreen() {
   const { household } = useHouseholdStore();
   const { session } = useAuthStore();
   const weeklyBudget = useSettingsStore((s) => s.weeklyBudget);
-  const { items, upsertItem } = useItemsStore();
-  const stores = useStoresStore((s) => s.stores);
+  const { upsertItem } = useItemsStore();
   const householdId = household?.id ?? null;
   const userId = session?.user?.id ?? null;
 
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [spend, setSpend] = useState<SpendSummary>({ weeklyTotal: 0, monthlyTotal: 0, byStore: [] });
-  const [activity, setActivity] = useState<ActivityEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -67,7 +63,6 @@ export default function ReceiptsScreen() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [lastUploadSource, setLastUploadSource] = useState<'camera' | 'library' | null>(null);
   const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
-  const [showAllPurchases, setShowAllPurchases] = useState(false);
   const [pantryPickMode, setPantryPickMode] = useState(false);
   const [selectedPantryIds, setSelectedPantryIds] = useState<Set<string>>(new Set());
   const [addingToPantry, setAddingToPantry] = useState(false);
@@ -89,19 +84,16 @@ export default function ReceiptsScreen() {
       setSpend({ weeklyTotal: 0, monthlyTotal: 0, byStore: [] });
       return;
     }
-    const [r, s, a] = await Promise.all([
+    const [r, s] = await Promise.all([
       fetchReceipts(householdId),
       getSpendSummary(householdId),
-      fetchRecentActivity(householdId, userId, 10),
     ]);
     setReceipts(r);
     setSpend(s);
-    setActivity(a);
   }, [householdId, userId]);
 
   useEffect(() => { load().finally(() => setLoading(false)); }, [load]);
 
-  // Re-fetch activity every time the tab comes into focus so new grabs appear immediately
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
   useEffect(() => {
@@ -217,10 +209,6 @@ export default function ReceiptsScreen() {
   const budgetProgress = Math.min(spend.weeklyTotal / weeklyBudget, 1);
   const budgetColor = budgetProgress > 0.9 ? colors.danger : budgetProgress > 0.65 ? colors.warning : colors.success;
   const maxStoreTotal = Math.max(...spend.byStore.map((s) => s.total), 1);
-  const allPurchases = activity.filter((e) => e.type === 'picked_up');
-  const recentPurchases = showAllPurchases ? allPurchases : allPurchases.slice(0, 3);
-
-  const sourceItemMap = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
 
   useEffect(() => {
     setPantryPickMode(false);
@@ -369,46 +357,6 @@ export default function ReceiptsScreen() {
               </View>
             )}
 
-            {/* Recent purchases */}
-            {recentPurchases.length > 0 && (
-              <View style={styles.recentCard}>
-                <Text style={styles.sectionLabel}>Recent purchases</Text>
-                {recentPurchases.map((event) => {
-                  const sourceItem = event.itemId ? sourceItemMap.get(event.itemId) : undefined;
-                  const storeName = sourceItem?.preferred_store_id
-                    ? stores.find((s) => s.id === sourceItem.preferred_store_id)?.name
-                    : null;
-                  return (
-                    <View key={event.itemId + event.type} style={styles.recentRow}>
-                      <View style={styles.recentDot} />
-                      <View style={styles.recentBody}>
-                        <Text style={styles.recentName} numberOfLines={1}>{event.itemName}</Text>
-                        <Text style={styles.recentMeta}>
-                          Purchased{storeName ? ` · ${storeName}` : ''}
-                        </Text>
-                      </View>
-                      <Text style={styles.recentTime}>{formatActivityTime(event.updatedAt)}</Text>
-                    </View>
-                  );
-                })}
-                {allPurchases.length > 3 && (
-                  <ScalePressable
-                    onPress={() => setShowAllPurchases((v) => !v)}
-                    style={styles.showMoreBtn}
-                  >
-                    <Text style={styles.showMoreText}>
-                      {showAllPurchases ? 'Show less' : `Show ${allPurchases.length - 3} more`}
-                    </Text>
-                    <Ionicons
-                      name={showAllPurchases ? 'chevron-up' : 'chevron-down'}
-                      size={13}
-                      color={colors.primary}
-                    />
-                  </ScalePressable>
-                )}
-              </View>
-            )}
-
             {receipts.length > 0 && (
               <Text style={styles.receiptsSectionTitle}>Receipts</Text>
             )}
@@ -425,7 +373,7 @@ export default function ReceiptsScreen() {
             style={styles.card}
             onPress={() => setSelectedReceipt(item)}
           >
-            <StoreLogo name={item.store_name ?? 'Receipt'} size={40} />
+            <StoreLogo name={item.store_name ?? 'Receipt'} size={40} fallbackToAppIcon />
             <View style={styles.cardBody}>
               <View style={styles.cardTop}>
                 <View style={styles.cardMeta}>
@@ -481,7 +429,7 @@ export default function ReceiptsScreen() {
 
             <View style={styles.detailHeader}>
               <View style={sheetStyles.rowLogo}>
-                <StoreLogo name={selectedReceipt?.store_name ?? 'Receipt'} size={40} />
+                <StoreLogo name={selectedReceipt?.store_name ?? 'Receipt'} size={40} fallbackToAppIcon />
               </View>
               <View style={sheetStyles.headerText}>
                 <Text style={sheetStyles.headerTitle} numberOfLines={1}>
@@ -737,7 +685,7 @@ export default function ReceiptsScreen() {
           <View style={styles.qaSheet}>
             <View style={styles.qaHandle} />
             <View style={styles.qaHeaderRow}>
-              <StoreLogo name={quickStore || 'Receipt'} size={44} />
+              <StoreLogo name={quickStore || 'Receipt'} size={44} fallbackToAppIcon />
               <View style={{ flex: 1 }}>
                 <Text style={styles.qaTitle}>Add Spend</Text>
                 <Text style={styles.qaSub}>No receipt? Log it manually.</Text>
@@ -899,27 +847,6 @@ function makeStyles(colors: AppColors) {
     storeBarTrack: { flex: 1, height: 6, borderRadius: 3, backgroundColor: colors.faint, overflow: 'hidden' },
     storeBarFill: { height: 6, borderRadius: 3, backgroundColor: colors.primary },
     storeAmount: { fontSize: 13, fontFamily: fonts.mono, color: colors.ink, minWidth: 72, flexShrink: 0, textAlign: 'right' },
-
-    // Recent purchases
-    recentCard: {
-      marginHorizontal: 16, marginBottom: 12, backgroundColor: colors.surface,
-      borderRadius: radii.lg, padding: 16,
-    },
-    recentRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
-    recentDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: colors.success, flexShrink: 0 },
-    recentBody: { flex: 1, gap: 2 },
-    recentName: { fontSize: 14, fontFamily: fonts.bodySemiBold, color: colors.ink },
-    recentMeta: { fontSize: 12, color: colors.muted, fontFamily: fonts.body },
-    recentTime: { fontSize: 11, color: colors.muted, fontFamily: fonts.mono, flexShrink: 0 },
-    showMoreBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 4,
-      paddingTop: 10,
-      paddingBottom: 2,
-    },
-    showMoreText: { fontSize: 13, color: colors.primary, fontFamily: fonts.bodySemiBold },
 
     // Receipts list
     receiptsSectionTitle: {

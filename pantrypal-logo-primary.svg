@@ -1,0 +1,22 @@
+<svg width="280" height="140" viewBox="0 0 280 140" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background (optional) -->
+  <rect width="280" height="140" fill="#f5f3f0" rx="8"/>
+
+  <!-- Icon Container -->
+  <rect x="10" y="10" width="120" height="120" fill="white" rx="8" stroke="#e8e6e3" stroke-width="1"/>
+
+  <!-- Bowl (geometric minimalist) -->
+  <ellipse cx="70" cy="80" rx="45" ry="30" fill="none" stroke="#a86f3f" stroke-width="2.5"/>
+
+  <!-- Apple (clean circle) -->
+  <circle cx="70" cy="65" r="16" fill="#c85c3a"/>
+
+  <!-- Stem (minimal line) -->
+  <line x1="70" y1="48" x2="70" y2="38" stroke="#6b4423" stroke-width="1.5" stroke-linecap="round"/>
+
+  <!-- Wordmark -->
+  <text x="150" y="75" font-family="Inter, -apple-system, sans-serif" font-size="32" font-weight="700" fill="#3d2817" letter-spacing="-0.5">PantryPal</text>
+
+  <!-- Tagline (optional) -->
+  <text x="150" y="105" font-family="Inter, -apple-system, sans-serif" font-size="12" font-weight="400" fill="#a86f3f" letter-spacing="0.5">ORGANIZED LIVING</text>
+</svg>

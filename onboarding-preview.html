@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stokit — Onboarding Animation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;1,700;1,800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ─── Design tokens (light palette from DESIGN.md) ─── */
+:root {
+  --bg:          #F5EFE6;
+  --surface:     #FFFBF5;
+  --surface-tint: rgba(245, 232, 213, 0.78);
+  --primary:     #C07038;
+  --primary-soft: rgba(192, 112, 56, 0.12);
+  --primary-ring: rgba(192, 112, 56, 0.09);
+  --primary-glow: rgba(192, 112, 56, 0.19);
+  --ink:         #221A12;
+  --muted:       #907660;
+  --border:      #D8CABC;
+  --on-primary:  #221A12;
+
+  --font-display: 'Playfair Display', Georgia, serif;
+  --font-body:    'DM Sans', system-ui, sans-serif;
+
+  --r-card: 24px;
+  --r-zone: 18px;
+  --r-chip: 21px;
+  --r-btn:  16px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* ─── Page shell ─── */
+body {
+  min-height: 100vh;
+  background: linear-gradient(145deg, #DDD4C3 0%, #C8BCA8 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-body);
+  padding: 40px 20px;
+}
+
+/* ─── Phone frame ─── */
+.phone {
+  width: 390px;
+  background: var(--bg);
+  border-radius: 50px;
+  box-shadow:
+    0 0 0 10px #18130E,
+    0 0 0 12px #2C2218,
+    0 50px 100px rgba(0,0,0,0.45),
+    0 25px 50px rgba(0,0,0,0.3),
+    inset 0 1px 0 rgba(255,255,255,0.08);
+  overflow: hidden;
+  position: relative;
+  animation: float-phone 6s ease-in-out infinite;
+}
+
+@keyframes float-phone {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-8px); }
+}
+
+/* Dynamic island */
+.island {
+  width: 120px;
+  height: 34px;
+  background: #18130E;
+  border-radius: 20px;
+  margin: 12px auto 0;
+}
+
+/* Status bar */
+.status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 28px 0;
+  height: 40px;
+}
+.status-time {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--ink);
+  letter-spacing: -0.3px;
+}
+.status-icons {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.icon-signal, .icon-wifi, .icon-battery {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+.signal-bar {
+  width: 3px;
+  background: var(--ink);
+  border-radius: 1px;
+}
+.signal-bar:nth-child(1) { height: 4px; }
+.signal-bar:nth-child(2) { height: 6px; }
+.signal-bar:nth-child(3) { height: 8px; }
+.signal-bar:nth-child(4) { height: 10px; }
+.wifi-icon {
+  width: 14px;
+  height: 10px;
+  border: 2px solid var(--ink);
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+  position: relative;
+}
+.wifi-icon::after {
+  content: '';
+  position: absolute;
+  width: 6px;
+  height: 4px;
+  border: 2px solid var(--ink);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  top: 2px;
+  left: 2px;
+}
+.battery-body {
+  width: 22px;
+  height: 11px;
+  border: 1.5px solid var(--ink);
+  border-radius: 2.5px;
+  position: relative;
+}
+.battery-fill {
+  position: absolute;
+  top: 1.5px;
+  left: 1.5px;
+  bottom: 1.5px;
+  width: 75%;
+  background: var(--ink);
+  border-radius: 1px;
+}
+.battery-tip {
+  position: absolute;
+  right: -4px;
+  top: 2.5px;
+  width: 2.5px;
+  height: 5px;
+  background: var(--ink);
+  border-radius: 0 1px 1px 0;
+}
+
+/* ─── Content ─── */
+.content {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 32px;
+}
+
+/* Header */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 20px 14px;
+}
+.app-title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 26px;
+  color: var(--ink);
+  letter-spacing: -0.2px;
+}
+.app-cart { font-size: 22px; line-height: 1; }
+
+/* Slide */
+.slide {
+  padding: 0 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  align-items: center;
+}
+
+/* ─── Hero card ─── */
+.hero-card {
+  width: 100%;
+  height: 300px;
+  border-radius: var(--r-card);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 32px rgba(34, 26, 18, 0.09);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Outer decorative ring */
+.ring {
+  position: absolute;
+  width: 262px;
+  height: 262px;
+  border-radius: 50%;
+  border: 5px solid var(--primary-ring);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Soft inner glow */
+.glow {
+  position: absolute;
+  width: 124px;
+  height: 124px;
+  border-radius: 50%;
+  background: var(--primary-glow);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ─── Destination zone chips (always visible) ─── */
+.zone {
+  position: absolute;
+  width: 58px;
+  height: 58px;
+  border-radius: var(--r-zone);
+  background: var(--surface-tint);
+  border: 1.5px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  line-height: 1;
+  top: 50%;
+  left: 50%;
+  z-index: 2;
+  transition: box-shadow 0.4s ease, transform 0.4s ease;
+}
+/* Zone positions: Fridge (top-left), Freezer (top-right), Pantry (bottom) */
+.zone-fridge  { transform: translate(calc(-50% - 88px), calc(-50% - 72px)); }
+.zone-freezer { transform: translate(calc(-50% + 88px), calc(-50% - 72px)); }
+.zone-pantry  { transform: translate(calc(-50% + 0px),  calc(-50% + 86px)); }
+
+/* Zone chips — gentle idle pulse, no complex timing needed */
+.zone-fridge  { animation: zone-idle 4.2s ease-in-out 0.0s infinite; }
+.zone-freezer { animation: zone-idle 4.2s ease-in-out 1.4s infinite; }
+.zone-pantry  { animation: zone-idle 4.2s ease-in-out 2.8s infinite; }
+
+@keyframes zone-idle {
+  0%, 100% { box-shadow: none; opacity: 1; }
+  50%      { box-shadow: 0 0 0 4px rgba(192,112,56,0.13); opacity: 0.92; }
+}
+
+/* ─── Animated food item chips ─── */
+.food {
+  position: absolute;
+  width: 42px;
+  height: 42px;
+  border-radius: var(--r-chip);
+  background: rgba(255, 251, 245, 0.9);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 23px;
+  line-height: 1;
+  /* anchor at card center */
+  top: 50%;
+  left: 50%;
+  margin-top: -21px;
+  margin-left: -21px;
+  opacity: 0;
+  z-index: 3;
+  pointer-events: none;
+  /* subtle drop shadow on chips */
+  box-shadow: 0 2px 8px rgba(34,26,18,0.10);
+  will-change: transform, opacity;
+}
+
+/*
+  Animation plan:
+  Duration: 4.5s per item, staggered by 1.5s
+
+  Path timing:
+    0%–8%   → fade in at start position (off-card edge)
+    8%–40%  → travel inward, arcing through space near center
+    40%–60% → slow down, brief float near center
+    60%–82% → arc decisively toward destination zone
+    82%–90% → arrive at zone, scale down fast
+    90%–100%→ invisible (hold at zone, ready to restart)
+
+  The arcs are approximated with 7 keyframe stops.
+  Each item has a unique start edge and destination.
+*/
+
+/*
+  Revised concept: items travel FROM the feature zones → INTO the home center.
+  Story: groceries come from the Store, live in your Pantry, receipts are saved —
+  everything flows into 🏠 Home for management.
+
+  Zone positions:
+    Store  🏪 (top-left):  (-88, -72)
+    Pantry 🥫 (top-right): (+88, -72)
+    Receipt🧾 (bottom):    (  0, +86)
+
+  Each item: starts at a card edge, decelerates briefly near one of the 3 zones
+  (as if being "tagged"), then continues inward to the home center and fades in.
+  Duration 4.5s, staggered 1.5s. Two items per zone.
+
+  Keyframe rhythm:
+    0%   — at far edge, invisible
+    10%  — entered frame, opacity 1
+    38%  — near zone chip (decelerated, almost pausing)
+    50%  — leaving zone, still near it
+    70%  — arcing toward center
+    86%  — at home center, scale shrinking
+    94%  — absorbed into home, opacity 0
+    100% — hold (invisible), ready to loop
+*/
+
+/* ── Items via Store 🏪 (top-left zone at -88, -72) ── */
+
+/* Item 1: 🧀 Cheese — enters from top-left corner */
+.food-1 { animation: path-cheese 4.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0s infinite; }
+@keyframes path-cheese {
+  0%   { transform: translate(-168px, -130px) scale(1.0); opacity: 0; }
+  10%  { transform: translate(-128px,  -98px) scale(1.0); opacity: 1; }
+  38%  { transform: translate( -88px,  -72px) scale(1.0); opacity: 1; } /* at Store */
+  50%  { transform: translate( -68px,  -58px) scale(0.98); opacity: 1; }
+  70%  { transform: translate( -28px,  -24px) scale(0.88); opacity: 1; }
+  86%  { transform: translate(   0px,    0px) scale(0.38); opacity: 0.6; }
+  94%  { transform: translate(   0px,    0px) scale(0.05); opacity: 0; }
+  100% { transform: translate(-168px, -130px) scale(0.05); opacity: 0; }
+}
+
+/* Item 4: 🍯 Honey — enters from left edge, arcs up to Store then inward */
+.food-4 { animation: path-honey 4.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) 4.5s infinite; }
+@keyframes path-honey {
+  0%   { transform: translate(-168px,  30px) scale(1.0); opacity: 0; }
+  10%  { transform: translate(-138px,  10px) scale(1.0); opacity: 1; }
+  38%  { transform: translate( -88px, -72px) scale(1.0); opacity: 1; } /* at Store */
+  50%  { transform: translate( -66px, -56px) scale(0.98); opacity: 1; }
+  70%  { transform: translate( -26px, -22px) scale(0.88); opacity: 1; }
+  86%  { transform: translate(   0px,   0px) scale(0.38); opacity: 0.6; }
+  94%  { transform: translate(   0px,   0px) scale(0.05); opacity: 0; }
+  100% { transform: translate(-168px,  30px) scale(0.05); opacity: 0; }
+}
+
+/* ── Items via Pantry 🥫 (top-right zone at +88, -72) ── */
+
+/* Item 2: 🍞 Bread — enters from top-right corner */
+.food-2 { animation: path-bread 4.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) 1.5s infinite; }
+@keyframes path-bread {
+  0%   { transform: translate( 168px, -128px) scale(1.0); opacity: 0; }
+  10%  { transform: translate( 128px,  -96px) scale(1.0); opacity: 1; }
+  38%  { transform: translate(  88px,  -72px) scale(1.0); opacity: 1; } /* at Pantry */
+  50%  { transform: translate(  66px,  -56px) scale(0.98); opacity: 1; }
+  70%  { transform: translate(  26px,  -22px) scale(0.88); opacity: 1; }
+  86%  { transform: translate(   0px,    0px) scale(0.38); opacity: 0.6; }
+  94%  { transform: translate(   0px,    0px) scale(0.05); opacity: 0; }
+  100% { transform: translate( 168px, -128px) scale(0.05); opacity: 0; }
+}
+
+/* Item 5: 🧂 Salt — enters from right edge, arcs up to Pantry then inward */
+.food-5 { animation: path-salt 4.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) 6.0s infinite; }
+@keyframes path-salt {
+  0%   { transform: translate( 168px,  24px) scale(1.0); opacity: 0; }
+  10%  { transform: translate( 136px,   6px) scale(1.0); opacity: 1; }
+  38%  { transform: translate(  88px, -72px) scale(1.0); opacity: 1; } /* at Pantry */
+  50%  { transform: translate(  66px, -55px) scale(0.98); opacity: 1; }
+  70%  { transform: translate(  26px, -22px) scale(0.88); opacity: 1; }
+  86%  { transform: translate(   0px,   0px) scale(0.38); opacity: 0.6; }
+  94%  { transform: translate(   0px,   0px) scale(0.05); opacity: 0; }
+  100% { transform: translate( 168px,  24px) scale(0.05); opacity: 0; }
+}
+
+/* ── Items via Receipt 🧾 (bottom zone at 0, +86) ── */
+
+/* Item 3: 🥚 Eggs — enters from bottom-left */
+.food-3 { animation: path-egg 4.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) 3.0s infinite; }
+@keyframes path-egg {
+  0%   { transform: translate( -90px, 148px) scale(1.0); opacity: 0; }
+  10%  { transform: translate( -60px, 118px) scale(1.0); opacity: 1; }
+  38%  { transform: translate(   0px,  86px) scale(1.0); opacity: 1; } /* at Receipt */
+  50%  { transform: translate(   0px,  66px) scale(0.98); opacity: 1; }
+  70%  { transform: translate(   0px,  26px) scale(0.88); opacity: 1; }
+  86%  { transform: translate(   0px,   0px) scale(0.38); opacity: 0.6; }
+  94%  { transform: translate(   0px,   0px) scale(0.05); opacity: 0; }
+  100% { transform: translate( -90px, 148px) scale(0.05); opacity: 0; }
+}
+
+/* Item 6: 🥑 Avocado — enters from bottom-right */
+.food-6 { animation: path-avocado 4.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) 7.5s infinite; }
+@keyframes path-avocado {
+  0%   { transform: translate(  90px, 148px) scale(1.0); opacity: 0; }
+  10%  { transform: translate(  60px, 118px) scale(1.0); opacity: 1; }
+  38%  { transform: translate(   0px,  86px) scale(1.0); opacity: 1; } /* at Receipt */
+  50%  { transform: translate(   0px,  66px) scale(0.98); opacity: 1; }
+  70%  { transform: translate(   0px,  26px) scale(0.88); opacity: 1; }
+  86%  { transform: translate(   0px,   0px) scale(0.38); opacity: 0.6; }
+  94%  { transform: translate(   0px,   0px) scale(0.05); opacity: 0; }
+  100% { transform: translate(  90px, 148px) scale(0.05); opacity: 0; }
+}
+
+/* ─── Hero center (house) ─── */
+.hero-center {
+  width: 132px;
+  height: 132px;
+  border-radius: 66px;
+  background: var(--surface-tint);
+  border: 1.5px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 76px;
+  line-height: 1;
+  z-index: 4;
+  position: relative;
+  animation: breathe 3.4s ease-in-out infinite;
+  box-shadow: 0 4px 16px rgba(34,26,18,0.08);
+}
+@keyframes breathe {
+  0%, 100% { transform: scale(1.0); }
+  50%       { transform: scale(1.036); }
+}
+
+/* ─── Text block ─── */
+.text-block {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 12px;
+  width: 100%;
+}
+.slide-title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 31px;
+  color: var(--ink);
+  line-height: 1.24;
+  letter-spacing: -0.3px;
+}
+.slide-sub {
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+/* ─── Pagination dots ─── */
+.dots {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 0 10px;
+}
+.dot {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--primary);
+}
+.dot-active  { width: 22px; }
+.dot-inactive { width: 6px; opacity: 0.28; }
+
+/* ─── Footer ─── */
+.footer {
+  padding: 4px 24px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.btn-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.btn-primary {
+  flex: 1;
+  background: var(--primary);
+  color: var(--on-primary);
+  border: none;
+  border-radius: var(--r-btn);
+  padding: 17px 0;
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 17px;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+  -webkit-font-smoothing: antialiased;
+}
+.btn-primary:hover { opacity: 0.92; transform: scale(0.99); }
+.btn-skip {
+  background: var(--primary-soft);
+  color: var(--primary);
+  border: none;
+  border-radius: var(--r-btn);
+  padding: 17px 20px;
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease;
+  -webkit-font-smoothing: antialiased;
+  white-space: nowrap;
+}
+.btn-skip:hover { background: rgba(192,112,56,0.18); transform: scale(0.99); }
+.sign-in-row {
+  text-align: center;
+  padding: 12px 0 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.sign-in-link {
+  color: var(--primary);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ─── Page fade-in ─── */
+.phone {
+  animation: page-enter 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) both, float-phone 6s ease-in-out 0.7s infinite;
+}
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(28px) scale(0.94); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+</style>
+</head>
+<body>
+
+<div class="phone">
+
+  <!-- Dynamic island -->
+  <div class="island"></div>
+
+  <!-- Status bar -->
+  <div class="status-bar">
+    <span class="status-time">9:41</span>
+    <div class="status-icons">
+      <div class="icon-signal">
+        <div class="signal-bar"></div>
+        <div class="signal-bar"></div>
+        <div class="signal-bar"></div>
+        <div class="signal-bar"></div>
+      </div>
+      <div class="icon-wifi">
+        <div class="wifi-icon"></div>
+      </div>
+      <div class="icon-battery">
+        <div class="battery-body">
+          <div class="battery-fill"></div>
+          <div class="battery-tip"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- App header -->
+    <header class="app-header">
+      <span class="app-title">Stokit</span>
+      <span class="app-cart">🛒</span>
+    </header>
+
+    <!-- Slide 1 -->
+    <div class="slide">
+
+      <!-- Hero animation card -->
+      <div class="hero-card">
+        <div class="ring"></div>
+        <div class="glow"></div>
+
+        <!-- Feature zones: Store · Pantry · Receipts -->
+        <div class="zone zone-fridge">🏪</div>
+        <div class="zone zone-freezer">🧺</div>
+        <div class="zone zone-pantry">🧾</div>
+
+        <!-- Grocery items — all start ON the outer ring, fly inward to home -->
+        <div class="food food-1">🥦</div>
+        <div class="food food-2">🍎</div>
+        <div class="food food-3">🥕</div>
+        <div class="food food-4">🫑</div>
+        <div class="food food-5">🍌</div>
+
+        <!-- Center house -->
+        <div class="hero-center">🏠</div>
+      </div>
+
+      <!-- Text content -->
+      <div class="text-block">
+        <h1 class="slide-title">Your kitchen,<br>always in order</h1>
+        <p class="slide-sub">Shop, stock your pantry, and track receipts — everything managed from one home.</p>
+      </div>
+
+    </div><!-- /slide -->
+
+    <!-- Pagination dots -->
+    <div class="dots">
+      <div class="dot dot-active"></div>
+      <div class="dot dot-inactive"></div>
+      <div class="dot dot-inactive"></div>
+    </div>
+
+    <!-- Footer buttons -->
+    <div class="footer">
+      <div class="btn-row">
+        <button class="btn-primary">Next</button>
+        <button class="btn-skip">Skip</button>
+      </div>
+      <div class="sign-in-row">
+        Already have an account? <span class="sign-in-link">Sign in</span>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /phone -->
+
+</body>
+</html>

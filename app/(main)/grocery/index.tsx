@@ -21,7 +21,7 @@ import { completeShoppingEntryWithQueue, setShoppingEntryAisleWithQueue } from '
 import { hapticError, hapticSelection, hapticSuccess } from '../../../lib/haptics';
 import type { Item } from '../../../lib/items';
 import { CATEGORY_LABELS, type ItemCategory } from '../../../constants/defaultItems';
-import { getItemEmoji } from '../../../constants/itemEmojis';
+import ItemThumbnail from '../../../components/ItemThumbnail';
 import { resolveStoreSection } from '../../../constants/storeSections';
 import { groceryItemTestId } from '../../../lib/testIds';
 import { radii, shadow, fonts } from '../../../constants/theme';
@@ -56,8 +56,11 @@ export default function GroceryScreen() {
     stores,
     activeStoreId,
     pendingReceiptStoreId,
+    receiptCompletedStoreIds,
     setActiveStore,
     setPendingReceiptStoreId,
+    markReceiptCompleted,
+    clearReceiptTrip,
   } = useStoresStore();
   const { entries, removeEntry, upsertEntry } = useShoppingStore();
   const [shoppingMode, setShoppingMode] = useState(false);
@@ -322,31 +325,111 @@ export default function GroceryScreen() {
     });
   }, [nextStoreNameAfter, setPendingReceiptStoreId, stopNumberByStoreId, stores]);
 
-  const currentStoreNeedsReceiptStep = useMemo(() => {
-    if (!shoppingMode || !activeStoreId) return false;
-    if (pendingReceiptStoreId === activeStoreId) return true;
-    if (completedStoreIds.has(activeStoreId)) return false;
-    return lowItems.length === 0 && (startCount > 0 || grabbedCount > 0);
+  const isStoreReceiptDone = useCallback(
+    (storeId: string) =>
+      completedStoreIds.has(storeId) || receiptCompletedStoreIds.includes(storeId),
+    [completedStoreIds, receiptCompletedStoreIds],
+  );
+
+  const remainingItemsAtStore = useCallback(
+    (storeId: string) =>
+      allActiveItems.filter((entry) => {
+        if (purchasedIds.has(entry.id)) return false;
+        const linked = entry.source_item_id ? sourceItemMap.get(entry.source_item_id) : null;
+        return linked?.preferred_store_id === storeId;
+      }).length,
+    [allActiveItems, purchasedIds, sourceItemMap],
+  );
+
+  const storeNeedsReceiptStep = useCallback(
+    (storeId: string): boolean => {
+      if (!shoppingMode || !storeId || isStoreReceiptDone(storeId)) return false;
+      if (pendingReceiptStoreId === storeId) return true;
+      if (remainingItemsAtStore(storeId) > 0) return false;
+
+      if (storeId === activeStoreId) {
+        return startCount > 0 || grabbedCount > 0;
+      }
+
+      if (!routeStoreIds.includes(storeId)) return false;
+      const section = assignedRouteSections.find((s) => s.storeId === storeId);
+      return !!section;
+    },
+    [
+      activeStoreId,
+      assignedRouteSections,
+      grabbedCount,
+      isStoreReceiptDone,
+      pendingReceiptStoreId,
+      remainingItemsAtStore,
+      routeStoreIds,
+      shoppingMode,
+      startCount,
+    ],
+  );
+
+  const resolveStoreNeedingReceipt = useCallback((): string | null => {
+    if (pendingReceiptStoreId && !isStoreReceiptDone(pendingReceiptStoreId)) {
+      return pendingReceiptStoreId;
+    }
+    if (activeStoreId && storeNeedsReceiptStep(activeStoreId)) return activeStoreId;
+
+    const sectionByStoreId = new Map(
+      assignedRouteSections
+        .filter((s): s is typeof s & { storeId: string } => !!s.storeId)
+        .map((s) => [s.storeId, s]),
+    );
+    const orderedIds = (
+      routeStoreIds.length > 0 ? routeStoreIds : assignedRouteSections.map((s) => s.storeId!)
+    ).filter((id): id is string => !!id && sectionByStoreId.has(id));
+
+    for (const id of orderedIds) {
+      if (storeNeedsReceiptStep(id)) return id;
+    }
+    return null;
   }, [
     activeStoreId,
-    completedStoreIds,
+    assignedRouteSections,
+    isStoreReceiptDone,
+    pendingReceiptStoreId,
+    routeStoreIds,
+    storeNeedsReceiptStep,
+  ]);
+
+  const currentStoreNeedsReceiptStep = useMemo(() => {
+    if (!activeStoreId) return false;
+    return storeNeedsReceiptStep(activeStoreId);
+  }, [activeStoreId, storeNeedsReceiptStep]);
+
+  useEffect(() => {
+    if (!shoppingMode || !activeStoreId) return;
+    if (isStoreReceiptDone(activeStoreId)) return;
+    if (lowItems.length === 0 && (startCount > 0 || grabbedCount > 0)) {
+      if (pendingReceiptStoreId !== activeStoreId) {
+        setPendingReceiptStoreId(activeStoreId);
+      }
+    }
+  }, [
+    activeStoreId,
     grabbedCount,
+    isStoreReceiptDone,
     lowItems.length,
     pendingReceiptStoreId,
+    setPendingReceiptStoreId,
     shoppingMode,
     startCount,
   ]);
 
   useEffect(() => {
     if (!activeStoreComplete || !activeStoreId || !activeStore) return;
-    if (completedStoreIds.has(activeStoreId)) return;
+    if (isStoreReceiptDone(activeStoreId)) return;
     if (pendingReceiptStoreId === activeStoreId || storeSpendSheet) return;
     openStoreSpendPrompt(activeStoreId);
   }, [
     activeStore,
     activeStoreComplete,
     activeStoreId,
-    completedStoreIds,
+    isStoreReceiptDone,
     openStoreSpendPrompt,
     pendingReceiptStoreId,
     storeSpendSheet,
@@ -354,6 +437,10 @@ export default function GroceryScreen() {
 
   useEffect(() => {
     if (!shoppingMode || !pendingReceiptStoreId) return;
+    if (isStoreReceiptDone(pendingReceiptStoreId)) {
+      setPendingReceiptStoreId(null);
+      return;
+    }
     if (activeStoreId !== pendingReceiptStoreId) {
       setActiveStore(pendingReceiptStoreId);
     }
@@ -373,6 +460,7 @@ export default function GroceryScreen() {
   }, [
     activeStoreId,
     nextStoreNameAfter,
+    isStoreReceiptDone,
     pendingReceiptStoreId,
     setActiveStore,
     setPendingReceiptStoreId,
@@ -393,6 +481,23 @@ export default function GroceryScreen() {
     setTapping(entry.id);
     setPurchasedIds((prev) => new Set(prev).add(entry.id));
     setGrabbedCount((prev) => prev + 1);
+    const linked = entry.source_item_id ? sourceItemMap.get(entry.source_item_id) : null;
+    const finishedStoreId = linked?.preferred_store_id ?? null;
+    if (
+      finishedStoreId
+      && shoppingMode
+      && !isStoreReceiptDone(finishedStoreId)
+      && !pendingReceiptStoreId
+    ) {
+      const othersAtStore = allActiveItems.filter((e) => {
+        if (e.id === entry.id || purchasedIds.has(e.id)) return false;
+        const l = e.source_item_id ? sourceItemMap.get(e.source_item_id) : null;
+        return l?.preferred_store_id === finishedStoreId;
+      }).length;
+      if (othersAtStore === 0) {
+        openStoreSpendPrompt(finishedStoreId);
+      }
+    }
     if (entry.source_item_id) {
       updateItem(entry.source_item_id, { is_low: false, got_it_by: userId, macro_status: 'in_stock' as Item['macro_status'] });
     }
@@ -439,7 +544,18 @@ export default function GroceryScreen() {
     } finally {
       setTapping(null);
     }
-  }, [session?.user.id, removeEntry, upsertEntry, updateItem]);
+  }, [
+    allActiveItems,
+    isStoreReceiptDone,
+    openStoreSpendPrompt,
+    pendingReceiptStoreId,
+    purchasedIds,
+    removeEntry,
+    session?.user.id,
+    shoppingMode,
+    sourceItemMap,
+    updateItem,
+  ]);
 
   const openDirections = useCallback(async (storeId: string | null) => {
     const store = storeId ? stores.find((s) => s.id === storeId) : null;
@@ -456,47 +572,57 @@ export default function GroceryScreen() {
     await Linking.openURL(canOpenNative ? nativeUrl : fallbackUrl);
   }, [stores]);
 
-  const trySetActiveStore = useCallback((storeId: string | null) => {
-    if (pendingReceiptStoreId && storeId !== pendingReceiptStoreId) {
-      const pendingStore = stores.find((s) => s.id === pendingReceiptStoreId);
-      Alert.alert(
-        'Receipt still needed',
-        `Log a receipt for ${pendingStore?.name ?? 'this store'} before switching.`,
-        [{ text: 'OK', onPress: () => openStoreSpendPrompt(pendingReceiptStoreId) }],
-      );
-      return;
-    }
-    setActiveStore(storeId);
-  }, [openStoreSpendPrompt, pendingReceiptStoreId, setActiveStore, stores]);
+  const trySetActiveStore = useCallback(
+    (storeId: string | null) => {
+      if (
+        pendingReceiptStoreId
+        && storeId !== pendingReceiptStoreId
+        && !isStoreReceiptDone(pendingReceiptStoreId)
+      ) {
+        const pendingStore = stores.find((s) => s.id === pendingReceiptStoreId);
+        Alert.alert(
+          'Finish this stop',
+          `Enter how much you spent at ${pendingStore?.name ?? 'this store'} before switching. A receipt photo is optional.`,
+          [{ text: 'OK', onPress: () => openStoreSpendPrompt(pendingReceiptStoreId) }],
+        );
+        return;
+      }
+      if (activeStoreId && storeId !== activeStoreId && storeNeedsReceiptStep(activeStoreId)) {
+        openStoreSpendPrompt(activeStoreId);
+        return;
+      }
+      setActiveStore(storeId);
+    },
+    [
+      activeStoreId,
+      isStoreReceiptDone,
+      openStoreSpendPrompt,
+      pendingReceiptStoreId,
+      setActiveStore,
+      storeNeedsReceiptStep,
+      stores,
+    ],
+  );
 
   const tryAdvanceToNextStop = useCallback(() => {
     if (!nextStop) return;
     void hapticSelection();
-    if (activeStoreId && currentStoreNeedsReceiptStep) {
-      openStoreSpendPrompt(activeStoreId);
-      return;
-    }
-    if (pendingReceiptStoreId) {
-      openStoreSpendPrompt(pendingReceiptStoreId);
+    const storeId = resolveStoreNeedingReceipt();
+    if (storeId) {
+      openStoreSpendPrompt(storeId);
       return;
     }
     setActiveStore(nextStop.storeId);
-  }, [
-    activeStoreId,
-    currentStoreNeedsReceiptStep,
-    nextStop,
-    openStoreSpendPrompt,
-    pendingReceiptStoreId,
-    setActiveStore,
-  ]);
+  }, [nextStop, openStoreSpendPrompt, resolveStoreNeedingReceipt, setActiveStore]);
 
   const finishShopping = useCallback(() => {
-    if (pendingReceiptStoreId) {
-      const pendingStore = stores.find((s) => s.id === pendingReceiptStoreId);
+    const blockingReceiptStoreId = resolveStoreNeedingReceipt();
+    if (blockingReceiptStoreId) {
+      const pendingStore = stores.find((s) => s.id === blockingReceiptStoreId);
       Alert.alert(
-        'Receipt still needed',
-        `Log a receipt for ${pendingStore?.name ?? 'this store'} before finishing your trip.`,
-        [{ text: 'OK', onPress: () => openStoreSpendPrompt(pendingReceiptStoreId) }],
+        'Finish this stop',
+        `Enter how much you spent at ${pendingStore?.name ?? 'this store'} before finishing your trip. A receipt photo is optional.`,
+        [{ text: 'OK', onPress: () => openStoreSpendPrompt(blockingReceiptStoreId) }],
       );
       return;
     }
@@ -515,7 +641,7 @@ export default function GroceryScreen() {
               const spend = weeklySpend;
               setShoppingMode(false);
               setActiveStore(null);
-              setPendingReceiptStoreId(null);
+              clearReceiptTrip();
               setRouteStoreIds([]);
               setStartCount(0);
               setGrabbedCount(0);
@@ -530,19 +656,19 @@ export default function GroceryScreen() {
       const spend = weeklySpend;
       setShoppingMode(false);
       setActiveStore(null);
-      setPendingReceiptStoreId(null);
+      clearReceiptTrip();
       setRouteStoreIds([]);
       setStartCount(0);
       setGrabbedCount(0);
       if (count > 0) setTripSheet({ itemCount: count, spend });
     }
   }, [
+    clearReceiptTrip,
     entries,
     openStoreSpendPrompt,
-    pendingReceiptStoreId,
     purchasedIds,
+    resolveStoreNeedingReceipt,
     setActiveStore,
-    setPendingReceiptStoreId,
     startCount,
     stores,
     weeklySpend,
@@ -558,6 +684,7 @@ export default function GroceryScreen() {
     setStoreSpendAmount('');
     setPendingReceiptStoreId(null);
     if (finishedStoreId) {
+      markReceiptCompleted(finishedStoreId);
       setCompletedStoreIds((prev) => new Set(prev).add(finishedStoreId));
     }
     if (nextStop) {
@@ -568,6 +695,7 @@ export default function GroceryScreen() {
   }, [
     allActiveItems.length,
     finishShopping,
+    markReceiptCompleted,
     nextStop,
     setActiveStore,
     setPendingReceiptStoreId,
@@ -576,15 +704,16 @@ export default function GroceryScreen() {
 
   const saveStoreSpend = useCallback(async () => {
     if (!storeSpendSheet || !householdId || !session?.user.id) return;
-    const amount = parseFloat(storeSpendAmount.replace(/[^0-9.]/g, ''));
-    if (isNaN(amount) || amount <= 0) {
-      Alert.alert('Invalid amount', 'Enter a valid dollar amount.');
+    const parsed = parseFloat(storeSpendAmount.replace(/[^0-9.]/g, ''));
+    const hasAmount = Number.isFinite(parsed) && parsed > 0;
+    if (!hasAmount) {
+      continueAfterStoreSpend();
       return;
     }
     setSavingStoreSpend(true);
     try {
       const today = new Date().toISOString().slice(0, 10);
-      await addManualReceipt(householdId, session.user.id, storeSpendSheet.storeName, amount, today);
+      await addManualReceipt(householdId, session.user.id, storeSpendSheet.storeName, parsed, today);
       refreshSpend();
       void hapticSuccess();
       continueAfterStoreSpend();
@@ -679,19 +808,25 @@ export default function GroceryScreen() {
             style={[styles.modeBtn, shoppingMode && styles.modeBtnActive]}
             onPress={() => {
               void hapticSelection();
-              if (shoppingMode && pendingReceiptStoreId) {
-                const pendingStore = stores.find((s) => s.id === pendingReceiptStoreId);
-                Alert.alert(
-                  'Receipt still needed',
-                  `Log a receipt for ${pendingStore?.name ?? 'this store'} before leaving shopping mode.`,
-                  [{ text: 'OK', onPress: () => openStoreSpendPrompt(pendingReceiptStoreId) }],
-                );
-                return;
+              if (shoppingMode) {
+                const blockingReceiptStoreId = resolveStoreNeedingReceipt();
+                if (blockingReceiptStoreId) {
+                  const pendingStore = stores.find((s) => s.id === blockingReceiptStoreId);
+                  Alert.alert(
+                    'Finish this stop',
+                    `Enter how much you spent at ${pendingStore?.name ?? 'this store'} before leaving shopping mode. A receipt photo is optional.`,
+                    [{ text: 'OK', onPress: () => openStoreSpendPrompt(blockingReceiptStoreId) }],
+                  );
+                  return;
+                }
+              }
+              if (!shoppingMode) {
+                clearReceiptTrip();
               }
               setShoppingMode((v) => !v);
               if (shoppingMode) {
                 setActiveStore(null);
-                setPendingReceiptStoreId(null);
+                clearReceiptTrip();
               }
             }}
           >
@@ -956,7 +1091,6 @@ export default function GroceryScreen() {
             const isTapping = tapping === entry.id;
             const purchased = purchasedIds.has(entry.id);
             const categoryLabel = CATEGORY_LABELS[normalizeShoppingCategory(entry.category)];
-            const emoji = getItemEmoji(entry.name, entry.category ?? '');
 
             function handleSetAisle() {
               void hapticSelection();
@@ -995,7 +1129,9 @@ export default function GroceryScreen() {
                     <Ionicons name="checkmark" size={13} color={colors.surface} />
                   ) : null}
                 </View>
-                <Text style={styles.itemEmoji}>{emoji}</Text>
+                <View style={styles.itemEmojiWrap}>
+                  <ItemThumbnail name={entry.name} category={entry.category} size={28} />
+                </View>
                 <View style={styles.rowBody}>
                   <Text style={[styles.itemName, shoppingMode && styles.itemNameShop, purchased && styles.itemPurchased]}>
                     {entry.name}
@@ -1084,7 +1220,7 @@ export default function GroceryScreen() {
             />
           </View>
           <Text style={[styles.spendHintText, { color: colors.muted }]}>
-            How much did you spend here?
+            How much did you spend here? Save to continue — receipt photo is optional.
           </Text>
 
           {/* Primary: save amount */}
@@ -1483,7 +1619,7 @@ function makeStyles(colors: AppColors) {
       borderColor: colors.success,
       backgroundColor: colors.success,
     },
-    itemEmoji: { fontSize: 22, width: 28, textAlign: 'center' },
+    itemEmojiWrap: { width: 28, alignItems: 'center', justifyContent: 'center' },
     rowBody: { flex: 1 },
     itemName: { fontSize: 16, color: colors.ink, fontFamily: fonts.bodyMedium },
     itemNameShop: { fontSize: 18 },

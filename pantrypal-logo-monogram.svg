@@ -1,0 +1,11 @@
+<svg width="120" height="120" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="120" height="120" fill="#a86f3f" rx="12"/>
+
+  <!-- Geometric "P" shape -->
+  <rect x="30" y="35" width="24" height="56" fill="#f5f3f0" rx="2"/>
+  <circle cx="54" cy="45" r="16" fill="#f5f3f0"/>
+
+  <!-- Apple accent -->
+  <circle cx="65" cy="62" r="10" fill="#c85c3a"/>
+</svg>

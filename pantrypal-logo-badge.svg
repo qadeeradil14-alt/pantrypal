@@ -1,0 +1,19 @@
+<svg width="140" height="140" viewBox="0 0 140 140" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="140" height="140" fill="#f5f3f0" rx="70"/>
+
+  <!-- Outer ring -->
+  <circle cx="70" cy="70" r="65" fill="none" stroke="#a86f3f" stroke-width="2.5"/>
+
+  <!-- Inner accent ring -->
+  <circle cx="70" cy="70" r="55" fill="none" stroke="#c85c3a" stroke-width="1"/>
+
+  <!-- Bowl icon -->
+  <ellipse cx="70" cy="75" rx="32" ry="22" fill="none" stroke="#a86f3f" stroke-width="2"/>
+
+  <!-- Apple -->
+  <circle cx="70" cy="60" r="11" fill="#c85c3a"/>
+
+  <!-- Stem -->
+  <line x1="70" y1="48" x2="70" y2="40" stroke="#6b4423" stroke-width="1.5" stroke-linecap="round"/>
+</svg>

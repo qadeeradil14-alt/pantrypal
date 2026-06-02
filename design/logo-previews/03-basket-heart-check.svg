@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <radialGradient id="bg" cx="42%" cy="32%" r="78%">
+      <stop offset="0%" stop-color="#2A2018"/>
+      <stop offset="64%" stop-color="#17130F"/>
+      <stop offset="100%" stop-color="#100D0A"/>
+    </radialGradient>
+    <linearGradient id="copper" x1="260" y1="180" x2="760" y2="850">
+      <stop offset="0%" stop-color="#E7A25E"/>
+      <stop offset="54%" stop-color="#D4874E"/>
+      <stop offset="100%" stop-color="#B76531"/>
+    </linearGradient>
+    <linearGradient id="cream" x1="320" y1="300" x2="720" y2="720">
+      <stop offset="0%" stop-color="#FFF8EE"/>
+      <stop offset="100%" stop-color="#F4E3CD"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-color="#000000" flood-opacity="0.32"/>
+    </filter>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <circle cx="512" cy="536" r="340" fill="#F4E7D5" opacity="0.045"/>
+<g filter="url(#shadow)">
+      <path d="M336 392c38-102 90-154 176-154s138 52 176 154" fill="none" stroke="url(#copper)" stroke-width="54" stroke-linecap="round"/>
+      <path d="M262 410h500l-72 316c-10 45-42 69-88 69H422c-46 0-78-24-88-69l-72-316Z" fill="url(#copper)"/>
+      <path d="M348 485h328l-44 207c-5 24-22 36-47 36H439c-25 0-42-12-47-36l-44-207Z" fill="#17130F" opacity="0.92"/>
+      <path d="M414 558c0-37 27-64 64-64 17 0 30 6 42 18 12-12 25-18 42-18 37 0 64 27 64 64 0 61-47 117-106 153-59-36-106-92-106-153Z" fill="url(#cream)"/>
+      <path d="M477 587l35 35 71-84" fill="none" stroke="#D4874E" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+    </g></svg>

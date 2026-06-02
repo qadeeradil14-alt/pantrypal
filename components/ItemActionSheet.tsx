@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../hooks/useTheme';
 import { makeSheetStyles } from '../constants/sheetStyles';
-import { getItemEmoji } from '../constants/itemEmojis';
+import ItemThumbnail from './ItemThumbnail';
 import { hapticSelection } from '../lib/haptics';
 import type { Item } from '../lib/items';
 
@@ -72,8 +72,6 @@ export default function ItemActionSheet({
   if (!mounted && !visible) return null;
   if (!item) return null;
 
-  const emoji = getItemEmoji(item.name, item.category ?? '');
-
   return (
     <Modal
       transparent
@@ -99,7 +97,7 @@ export default function ItemActionSheet({
 
         <View style={sheetStyles.header}>
           <View style={sheetStyles.headerEmoji}>
-            <Text style={sheetStyles.headerEmojiText}>{emoji}</Text>
+            <ItemThumbnail name={item.name} category={item.category} size={40} />
           </View>
           <View style={sheetStyles.headerText}>
             <Text style={sheetStyles.headerTitle} numberOfLines={1}>

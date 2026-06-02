@@ -6,24 +6,14 @@ appId: com.pantrypal.app
     visible:
       id: pantry-search-input
     timeout: 15000
-- scrollUntilVisible:
-    element:
-      id: pantry-item-drag-bread
-    direction: DOWN
-    timeout: 20000
-    centerElement: true
 - swipe:
-    from:
-      id: pantry-item-drag-bread
     direction: UP
-    duration: 1800
+    duration: 1200
+- longPressOn:
+    point: "44%,22%"
 - tapOn:
-    id: pantry-store-target-giant
-- scrollUntilVisible:
-    element:
-      id: pantry-item-bread
-    direction: DOWN
-    timeout: 15000
-    centerElement: true
+    point: "36%,84%"
+- longPressOn:
+    point: "44%,22%"
 - tapOn:
-    id: pantry-store-target-all-groceries
+    point: "32%,89%"

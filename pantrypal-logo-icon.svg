@@ -1,0 +1,16 @@
+<svg width="120" height="120" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+  <!-- Transparent background -->
+  <rect width="120" height="120" fill="none"/>
+
+  <!-- Icon container (optional background circle) -->
+  <circle cx="60" cy="60" r="58" fill="none" stroke="#f5f3f0" stroke-width="2" opacity="0.3"/>
+
+  <!-- Bowl (clean geometric) -->
+  <ellipse cx="60" cy="70" rx="38" ry="26" fill="none" stroke="#a86f3f" stroke-width="2.5" stroke-linecap="round"/>
+
+  <!-- Apple (simple solid circle) -->
+  <circle cx="60" cy="55" r="14" fill="#c85c3a"/>
+
+  <!-- Stem -->
+  <line x1="60" y1="40" x2="60" y2="28" stroke="#6b4423" stroke-width="1.5" stroke-linecap="round"/>
+</svg>

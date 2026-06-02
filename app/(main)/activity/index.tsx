@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import {
-  View, Text, Image, SectionList, StyleSheet,
+  View, Text, SectionList, StyleSheet,
   RefreshControl, ActivityIndicator,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
@@ -12,6 +12,8 @@ import { useTheme } from '../../../hooks/useTheme';
 import { fonts, type AppColors } from '../../../constants/theme';
 import EmptyState from '../../../components/EmptyState';
 import ScalePressable from '../../../components/ScalePressable';
+import AppIcon from '../../../components/AppIcon';
+import StoreLogo from '../../../components/StoreLogo';
 
 interface ActivitySection {
   title: string;
@@ -20,7 +22,6 @@ interface ActivitySection {
 }
 
 const SECTION_PREVIEW_LIMIT = 6;
-const APP_ICON = require('../../../assets/icon.png');
 
 function dateLabel(isoString: string): string {
   const d = new Date(isoString);
@@ -40,8 +41,14 @@ function actorInitials(event: ActivityEvent): string {
   return '';
 }
 
+function useStoreLogo(event: ActivityEvent): boolean {
+  return !!event.storeName && (event.type === 'picked_up' || event.type === 'store_arrival');
+}
+
 function useAppIconAvatar(event: ActivityEvent): boolean {
-  if (event.type === 'store_arrival') return false;
+  if (useStoreLogo(event)) return false;
+  if (event.type === 'marked_low') return true;
+  if (event.type === 'picked_up' && !event.storeName) return true;
   return !event.actorName?.trim();
 }
 
@@ -52,15 +59,6 @@ function eventDescription(event: ActivityEvent, isSelf: boolean): string {
     case 'marked_low': return `${actor} marked ${event.itemName} as low`;
     case 'store_arrival': return `${actor} arrived at ${event.storeName}`;
     default: return '';
-  }
-}
-
-function eventIcon(type: ActivityEvent['type']): string {
-  switch (type) {
-    case 'picked_up': return '✓';
-    case 'marked_low': return '↓';
-    case 'store_arrival': return '🛒';
-    default: return '·';
   }
 }
 
@@ -154,13 +152,19 @@ export default function ActivityScreen() {
         }}
         renderItem={({ item: ev }) => (
           <View style={styles.row}>
-            <View style={[styles.avatar, ev.isSelf && styles.avatarSelf]}>
-              {ev.type === 'store_arrival' ? (
-                <Text style={[styles.avatarText, ev.isSelf && styles.avatarTextSelf]}>
-                  {eventIcon(ev.type)}
-                </Text>
+            <View style={[styles.avatar, !useStoreLogo(ev) && ev.isSelf && styles.avatarSelf]}>
+              {useStoreLogo(ev) ? (
+                <View style={styles.storeLogoClip}>
+                  <StoreLogo
+                    name={ev.storeName!}
+                    size={28}
+                    domain={ev.storeBrandDomain}
+                    logoUrl={ev.storeLogoUrl}
+                    fallbackToAppIcon
+                  />
+                </View>
               ) : useAppIconAvatar(ev) ? (
-                <Image source={APP_ICON} style={styles.avatarLogo} resizeMode="cover" />
+                <AppIcon size={28} />
               ) : (
                 <Text style={[styles.avatarText, ev.isSelf && styles.avatarTextSelf]}>
                   {actorInitials(ev)}
@@ -242,11 +246,16 @@ function makeStyles(colors: AppColors) {
       backgroundColor: colors.faint,
       alignItems: 'center',
       justifyContent: 'center',
+      overflow: 'hidden',
+    },
+    storeLogoClip: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      transform: [{ scale: 0.92 }],
     },
     avatarSelf: { backgroundColor: colors.primarySoft },
     avatarText: { fontSize: 14, fontFamily: fonts.bodySemiBold, color: colors.muted },
     avatarTextSelf: { color: colors.primary },
-    avatarLogo: { width: 38, height: 38, borderRadius: 19 },
     rowContent: { flex: 1, gap: 3 },
     rowDesc: { fontSize: 14, fontFamily: fonts.bodyMedium, color: colors.ink, lineHeight: 19 },
     rowTime: { fontSize: 12, fontFamily: fonts.mono, color: colors.muted, fontVariant: ['tabular-nums'] },

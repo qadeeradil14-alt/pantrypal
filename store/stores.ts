@@ -19,6 +19,8 @@ interface StoresState {
    * Blocks switching to another store until cleared.
    */
   pendingReceiptStoreId: string | null;
+  /** Stores where the post-stop receipt step (amount / upload / skip) was completed this trip. */
+  receiptCompletedStoreIds: string[];
   /**
    * Set only by the realtime store_arrivals subscription — meaning a *partner*
    * just walked into a store. This drives the ArrivalBanner only, and is never
@@ -31,6 +33,8 @@ interface StoresState {
   removeStore: (id: string) => void;
   setActiveStore: (id: string | null) => void;
   setPendingReceiptStoreId: (id: string | null) => void;
+  markReceiptCompleted: (storeId: string) => void;
+  clearReceiptTrip: () => void;
   setArrivalStore: (notice: string | ArrivalNotice | null) => void;
   togglePin: (storeId: string) => void;
 }
@@ -42,6 +46,7 @@ export const useStoresStore = create<StoresState>()(
       pinnedStoreIds: [],
       activeStoreId: null,
       pendingReceiptStoreId: null,
+      receiptCompletedStoreIds: [],
       arrivalStoreId: null,
       arrivalNotice: null,
       setStores: (stores) => set({ stores }),
@@ -52,6 +57,13 @@ export const useStoresStore = create<StoresState>()(
       })),
       setActiveStore: (activeStoreId) => set({ activeStoreId }),
       setPendingReceiptStoreId: (pendingReceiptStoreId) => set({ pendingReceiptStoreId }),
+      markReceiptCompleted: (storeId) => set((s) => ({
+        receiptCompletedStoreIds: s.receiptCompletedStoreIds.includes(storeId)
+          ? s.receiptCompletedStoreIds
+          : [...s.receiptCompletedStoreIds, storeId],
+        pendingReceiptStoreId: s.pendingReceiptStoreId === storeId ? null : s.pendingReceiptStoreId,
+      })),
+      clearReceiptTrip: () => set({ receiptCompletedStoreIds: [], pendingReceiptStoreId: null }),
       setArrivalStore: (notice) => set({
         arrivalStoreId: typeof notice === 'string' ? notice : notice?.storeId ?? null,
         arrivalNotice: typeof notice === 'string'
@@ -72,8 +84,17 @@ export const useStoresStore = create<StoresState>()(
         stores: state.stores,
         activeStoreId: state.activeStoreId,
         pendingReceiptStoreId: state.pendingReceiptStoreId,
+        receiptCompletedStoreIds: state.receiptCompletedStoreIds,
         pinnedStoreIds: state.pinnedStoreIds,
       }),
+      onRehydrateStorage: () => (state) => {
+        if (
+          state?.pendingReceiptStoreId
+          && state.receiptCompletedStoreIds.includes(state.pendingReceiptStoreId)
+        ) {
+          state.setPendingReceiptStoreId(null);
+        }
+      },
     },
   ),
 );

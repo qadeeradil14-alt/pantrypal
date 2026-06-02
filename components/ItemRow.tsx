@@ -8,7 +8,7 @@ import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../l
 import type { Item } from '../lib/items';
 import type { Store } from '../lib/stores';
 import { pantryItemStoreMetaTestId, pantryItemTestId } from '../lib/testIds';
-import { getItemEmoji } from '../constants/itemEmojis';
+import ItemThumbnail from './ItemThumbnail';
 import { useTheme } from '../hooks/useTheme';
 import { fonts, type AppColors } from '../constants/theme';
 import ScalePressable from './ScalePressable';
@@ -91,7 +91,6 @@ function ItemRowComponent({ item, userId, onEditPress, onLiftPress }: Props) {
     }
   }
 
-  const emoji = useMemo(() => getItemEmoji(item.name, item.category ?? ''), [item.name, item.category]);
   const expiryInfo = useMemo(() => {
     if (!item.expires_at) return null;
     const now = Date.now();
@@ -106,36 +105,37 @@ function ItemRowComponent({ item, userId, onEditPress, onLiftPress }: Props) {
 
   return (
     <>
-      <ScalePressable
-        testID={pantryItemTestId(item.name)}
-        style={styles.card}
-        onPress={handleTap}
-        onLongPress={handleLongPress}
-        delayLongPress={500}
-      >
-        <Text style={styles.emoji}>{emoji}</Text>
-        <View style={styles.content}>
-          <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
-          <Text testID={pantryItemStoreMetaTestId(item.name)} style={styles.meta} numberOfLines={1}>
-            {assignedStoreName ?? 'No store set'}
-          </Text>
-        </View>
-        {expiryInfo && (
-          <View style={[styles.expiryChip, expiryInfo.urgent && styles.expiryChipUrgent]}>
-            <Text style={[styles.expiryChipText, expiryInfo.urgent && styles.expiryChipTextUrgent]}>
-              {expiryInfo.label}
+      <View testID={pantryItemTestId(item.name)} collapsable={false}>
+        <ScalePressable
+          style={styles.card}
+          onPress={handleTap}
+          onLongPress={handleLongPress}
+          delayLongPress={500}
+        >
+          <ItemThumbnail name={item.name} category={item.category} size={32} />
+          <View style={styles.content}>
+            <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
+            <Text testID={pantryItemStoreMetaTestId(item.name)} style={styles.meta} numberOfLines={1}>
+              {assignedStoreName ?? 'No store set'}
             </Text>
           </View>
-        )}
-        {item.is_low ? (
-          <View style={styles.lowBadge}>
-            <View style={styles.lowDot} />
-            <Text style={styles.lowBadgeText}>Low</Text>
-          </View>
-        ) : (
-          <View style={styles.stockDot} accessibilityLabel="In stock" />
-        )}
-      </ScalePressable>
+          {expiryInfo && (
+            <View style={[styles.expiryChip, expiryInfo.urgent && styles.expiryChipUrgent]}>
+              <Text style={[styles.expiryChipText, expiryInfo.urgent && styles.expiryChipTextUrgent]}>
+                {expiryInfo.label}
+              </Text>
+            </View>
+          )}
+          {item.is_low ? (
+            <View style={styles.lowBadge}>
+              <View style={styles.lowDot} />
+              <Text style={styles.lowBadgeText}>Low</Text>
+            </View>
+          ) : (
+            <View style={styles.stockDot} accessibilityLabel="In stock" />
+          )}
+        </ScalePressable>
+      </View>
 
       {showSheet && !onLiftPress && (
         <ItemRowActionSheetHost
@@ -194,7 +194,6 @@ function makeStyles(colors: AppColors) {
       paddingVertical: 14,
       gap: 12,
     },
-    emoji: { fontSize: 24 },
     content: { flex: 1, gap: 3 },
     name: { fontSize: 16, fontFamily: fonts.bodySemiBold, color: colors.ink },
     meta: { fontSize: 13, color: colors.muted, fontFamily: fonts.bodyMedium },

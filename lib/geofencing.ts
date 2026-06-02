@@ -255,8 +255,12 @@ export async function handleStoreGeofenceEnter(storeId: string): Promise<void> {
   ]);
 
   const { useStoresStore } = await import('../store/stores');
-  const { pendingReceiptStoreId, setActiveStore } = useStoresStore.getState();
-  if (pendingReceiptStoreId && pendingReceiptStoreId !== store.id) {
+  const { pendingReceiptStoreId, receiptCompletedStoreIds, setActiveStore } = useStoresStore.getState();
+  if (
+    pendingReceiptStoreId
+    && pendingReceiptStoreId !== store.id
+    && !receiptCompletedStoreIds.includes(pendingReceiptStoreId)
+  ) {
     return;
   }
   setActiveStore(store.id);

@@ -478,18 +478,12 @@ const ITEM_EMOJI_PAIRS: [string[], string][] = [
   [['tart', 'pie crust', 'puff pastry', 'phyllo', 'filo'], '🥐'],
 ];
 
-const CATEGORY_FALLBACK: Record<string, string> = {
-  fridge: '🥛',
-  freezer: '🧊',
-  pantry: '🧺',
-};
-
-export function getItemEmoji(name: string, category: string): string {
+export function getItemEmoji(name: string, _category?: string | null): string | null {
   const lower = name.toLowerCase().trim();
   for (const [keywords, emoji] of ITEM_EMOJI_PAIRS) {
     if (keywords.some((kw) => lower.includes(kw))) {
       return emoji;
     }
   }
-  return CATEGORY_FALLBACK[category?.toLowerCase()] ?? '📦';
+  return null;
 }

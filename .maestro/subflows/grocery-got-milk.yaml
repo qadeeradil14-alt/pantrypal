@@ -7,7 +7,7 @@ appId: com.pantrypal.app
       id: grocery-item-milk
     timeout: 15000
 - tapOn:
-    id: grocery-item-milk
+    point: "50%,67%"
 - extendedWaitUntil:
     notVisible:
       id: grocery-item-milk

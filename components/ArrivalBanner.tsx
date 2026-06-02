@@ -1,32 +1,35 @@
-import { useEffect, useRef, useMemo } from 'react';
-import { Animated, Text, StyleSheet, Pressable, View } from 'react-native';
+import { useEffect, useMemo, useRef } from 'react';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useStoresStore } from '../store/stores';
 import { useTheme } from '../hooks/useTheme';
 import { fonts, type AppColors } from '../constants/theme';
 
-// Banner is always dark-on-cream regardless of theme — it's a high-contrast
-// toast that must be readable in any lighting condition.
-const BANNER_BG     = '#131211';
-const BANNER_TEXT   = '#F0EDE8';
+const BANNER_BG = '#131211';
+const BANNER_TEXT = '#F0EDE8';
 const BANNER_COPPER = '#D4874E';
 
 export default function ArrivalBanner() {
   const { colors } = useTheme();
   const router = useRouter();
-  // Only watch arrivalStoreId — set exclusively by the realtime store_arrivals
-  // subscription when a *partner* arrives. Never triggered by chip taps.
   const { arrivalStoreId, arrivalNotice, stores, setArrivalStore } = useStoresStore();
   const translateY = useRef(new Animated.Value(-180)).current;
   const prevStoreId = useRef<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
-
   const arrivalStore = stores.find((s) => s.id === arrivalStoreId);
   const actorName = arrivalNotice?.actorName?.trim() || 'Someone';
   const arrivedLabel = formatArrivalTime(arrivalNotice?.arrivedAt);
+
+  function hide() {
+    Animated.timing(translateY, {
+      toValue: -180,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => setArrivalStore(null));
+  }
 
   function show() {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -39,20 +42,12 @@ export default function ArrivalBanner() {
     timerRef.current = setTimeout(() => hide(), 6000);
   }
 
-  function hide() {
-    Animated.timing(translateY, {
-      toValue: -180,
-      duration: 300,
-      useNativeDriver: true,
-    }).start(() => setArrivalStore(null));
-  }
-
   useEffect(() => {
-    if (arrivalStoreId && arrivalStoreId !== prevStoreId.current) {
-      show();
-    }
+    if (arrivalStoreId && arrivalStoreId !== prevStoreId.current) show();
     prevStoreId.current = arrivalStoreId;
-    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
   }, [arrivalStoreId]);
 
   if (!arrivalStore) return null;

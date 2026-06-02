@@ -58,6 +58,8 @@ export async function uploadReceipt(
   userId: string,
   uri: string,
   mimeType: string,
+  storeName?: string | null,
+  transactionDate?: string | null,
 ): Promise<Receipt> {
   const ext = mimeType === 'application/pdf' ? 'pdf' : 'jpg';
   const path = `${householdId}/${Date.now()}.${ext}`;
@@ -92,6 +94,8 @@ export async function uploadReceipt(
     .insert({
       household_id: householdId,
       uploaded_by: userId,
+      store_name: storeName ?? null,
+      transaction_date: transactionDate ?? null,
       image_url: path,
       status: 'processing',
     })

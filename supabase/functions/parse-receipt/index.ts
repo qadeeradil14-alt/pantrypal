@@ -158,14 +158,14 @@ Be precise with prices. Include every line item on the receipt.`;
 
     const { data: receiptRow } = await supabase
       .from('receipts')
-      .select('uploaded_by')
+      .select('uploaded_by, store_name, transaction_date')
       .eq('id', receiptId)
       .single();
 
     // Update receipt record with extracted data
     await supabase.from('receipts').update({
-      store_name: parsed.store_name,
-      transaction_date: parsed.transaction_date,
+      store_name: parsed.store_name ?? receiptRow?.store_name ?? null,
+      transaction_date: parsed.transaction_date ?? receiptRow?.transaction_date ?? null,
       total_amount: parsed.total_amount,
       status: 'done',
     }).eq('id', receiptId);

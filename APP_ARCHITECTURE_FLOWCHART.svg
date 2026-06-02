@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1100" viewBox="0 0 1400 1100">
+  <defs>
+    <style>
+      .bg { fill: #F5EFE6; }
+      .box { fill: #FFFDF8; stroke: #D8C7B5; stroke-width: 2; rx: 18; }
+      .core { fill: #F3DFCC; stroke: #C07038; stroke-width: 3; rx: 18; }
+      .title { font-family: Arial, sans-serif; font-size: 38px; font-weight: 700; fill: #221A12; }
+      .label { font-family: Arial, sans-serif; font-size: 24px; font-weight: 700; fill: #221A12; }
+      .small { font-family: Arial, sans-serif; font-size: 18px; fill: #7B6858; }
+      .arrow { stroke: #9A7B62; stroke-width: 3; fill: none; marker-end: url(#arrowhead); }
+    </style>
+    <marker id="arrowhead" markerWidth="12" markerHeight="8" refX="11" refY="4" orient="auto">
+      <polygon points="0 0, 12 4, 0 8" fill="#9A7B62"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" width="1400" height="1100"/>
+  <text x="700" y="70" text-anchor="middle" class="title">Stokit App Architecture</text>
+
+  <rect x="80" y="140" width="250" height="110" class="box"/>
+  <text x="205" y="180" text-anchor="middle" class="label">App Code</text>
+  <text x="205" y="215" text-anchor="middle" class="small">React Native + Expo</text>
+
+  <rect x="420" y="140" width="250" height="110" class="box"/>
+  <text x="545" y="180" text-anchor="middle" class="label">GitHub</text>
+  <text x="545" y="215" text-anchor="middle" class="small">Stores source code</text>
+
+  <rect x="760" y="140" width="250" height="110" class="core"/>
+  <text x="885" y="180" text-anchor="middle" class="label">EAS Build</text>
+  <text x="885" y="215" text-anchor="middle" class="small">Expo cloud build service</text>
+
+  <rect x="1090" y="140" width="250" height="110" class="box"/>
+  <text x="1215" y="180" text-anchor="middle" class="label">Apple Developer</text>
+  <text x="1215" y="215" text-anchor="middle" class="small">Certificates + signing</text>
+
+  <rect x="760" y="330" width="250" height="110" class="box"/>
+  <text x="885" y="370" text-anchor="middle" class="label">.IPA File</text>
+  <text x="885" y="405" text-anchor="middle" class="small">Installable iPhone build</text>
+
+  <rect x="760" y="520" width="250" height="110" class="core"/>
+  <text x="885" y="560" text-anchor="middle" class="label">App Store Connect</text>
+  <text x="885" y="595" text-anchor="middle" class="small">TestFlight dashboard</text>
+
+  <rect x="420" y="710" width="250" height="110" class="box"/>
+  <text x="545" y="750" text-anchor="middle" class="label">Internal Testers</text>
+  <text x="545" y="785" text-anchor="middle" class="small">Fast access</text>
+
+  <rect x="760" y="710" width="250" height="110" class="box"/>
+  <text x="885" y="750" text-anchor="middle" class="label">Beta App Review</text>
+  <text x="885" y="785" text-anchor="middle" class="small">Apple approval</text>
+
+  <rect x="1090" y="710" width="250" height="110" class="box"/>
+  <text x="1215" y="750" text-anchor="middle" class="label">External Testers</text>
+  <text x="1215" y="785" text-anchor="middle" class="small">Public TestFlight link</text>
+
+  <rect x="760" y="900" width="250" height="110" class="core"/>
+  <text x="885" y="940" text-anchor="middle" class="label">Stokit on iPhone</text>
+  <text x="885" y="975" text-anchor="middle" class="small">User installs from TestFlight</text>
+
+  <rect x="80" y="900" width="250" height="110" class="box"/>
+  <text x="205" y="940" text-anchor="middle" class="label">Supabase</text>
+  <text x="205" y="975" text-anchor="middle" class="small">Database + auth + storage</text>
+
+  <rect x="1090" y="900" width="250" height="110" class="box"/>
+  <text x="1215" y="940" text-anchor="middle" class="label">iOS Services</text>
+  <text x="1215" y="975" text-anchor="middle" class="small">GPS, push, camera, photos</text>
+
+  <path d="M330 195 H420" class="arrow"/>
+  <path d="M670 195 H760" class="arrow"/>
+  <path d="M1090 195 H1010" class="arrow"/>
+  <path d="M885 250 V330" class="arrow"/>
+  <path d="M885 440 V520" class="arrow"/>
+  <path d="M760 575 C620 575 545 650 545 710" class="arrow"/>
+  <path d="M885 630 V710" class="arrow"/>
+  <path d="M1010 575 C1140 575 1215 650 1215 710" class="arrow"/>
+  <path d="M545 820 C545 880 700 955 760 955" class="arrow"/>
+  <path d="M885 820 V900" class="arrow"/>
+  <path d="M1215 820 C1215 880 1070 955 1010 955" class="arrow"/>
+  <path d="M760 955 H330" class="arrow"/>
+  <path d="M1010 955 H1090" class="arrow"/>
+</svg>

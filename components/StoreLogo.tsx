@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
+import AppIcon from './AppIcon';
 import { useTheme } from '../hooks/useTheme';
 import { fonts, type AppColors } from '../constants/theme';
 
@@ -73,6 +74,10 @@ const STORE_DOMAIN_MAP: Record<string, string> = {
   'trader joes': 'traderjoes.com',
   'trader joe s': 'traderjoes.com',
   sprouts: 'sprouts.com',
+  'moms organic': 'momsorganicmarket.com',
+  'mom s organic': 'momsorganicmarket.com',
+  'moms organic market': 'momsorganicmarket.com',
+  'mom s organic market': 'momsorganicmarket.com',
   'natural grocers': 'naturalgrocers.com',
   'fresh thyme': 'freshthyme.com',
   'earth fare': 'earthfare.com',
@@ -247,9 +252,11 @@ interface Props {
   size?: number;
   domain?: string | null;
   logoUrl?: string | null;
+  /** When no remote logo resolves, show the Stokit app icon instead of store initials. */
+  fallbackToAppIcon?: boolean;
 }
 
-export default function StoreLogo({ name, size = 34, domain, logoUrl }: Props) {
+export default function StoreLogo({ name, size = 34, domain, logoUrl, fallbackToAppIcon = false }: Props) {
   const { colors } = useTheme();
   const [sourceIndex, setSourceIndex] = useState(0);
   const sources = useMemo(() => [
@@ -275,6 +282,10 @@ export default function StoreLogo({ name, size = 34, domain, logoUrl }: Props) {
         />
       </View>
     );
+  }
+
+  if (fallbackToAppIcon) {
+    return <AppIcon size={size} />;
   }
 
   return (
