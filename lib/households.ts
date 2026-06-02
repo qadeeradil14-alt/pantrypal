@@ -19,11 +19,34 @@ type HouseholdCore = {
   id: string;
   name: string;
   invite_code?: string;
+  plan?: HouseholdPlan;
+};
+
+export type HouseholdPlan = 'free' | 'paid';
+
+export const HOUSEHOLD_MEMBER_LIMITS: Record<HouseholdPlan, number> = {
+  free: 2,
+  paid: 5,
 };
 
 function isMissingRpc(error: any): boolean {
   // PostgreSQL error code 42883 = undefined_function (RPC not deployed yet)
   return error?.code === '42883';
+}
+
+function isMemberLimitError(error: any): boolean {
+  const text = `${error?.message ?? ''} ${error?.details ?? ''}`.toLowerCase();
+  return text.includes('household member limit reached');
+}
+
+function planFromMemberLimitError(error: any): HouseholdPlan {
+  const text = `${error?.message ?? ''} ${error?.details ?? ''}`.toLowerCase();
+  return text.includes('paid household') ? 'paid' : 'free';
+}
+
+function memberLimitMessage(plan: HouseholdPlan = 'free'): string {
+  const limit = HOUSEHOLD_MEMBER_LIMITS[plan] ?? HOUSEHOLD_MEMBER_LIMITS.free;
+  return `This household is full. The ${plan} plan allows up to ${limit} members.`;
 }
 
 function normalizeRpcRow(data: unknown): HouseholdCore | null {
@@ -32,7 +55,7 @@ function normalizeRpcRow(data: unknown): HouseholdCore | null {
   return data as HouseholdCore;
 }
 
-export async function createHousehold(name: string, userId: string) {
+export async function createHousehold(name: string, userId: string): Promise<HouseholdCore & { invite_code: string }> {
   const fallbackCreate = async (inviteCode: string): Promise<HouseholdCore> => {
     const { data: created, error: householdError } = await supabase
       .from('households')
@@ -100,10 +123,11 @@ export async function createHousehold(name: string, userId: string) {
     id: household.id,
     name: household.name,
     invite_code: household.invite_code,
+    plan: household.plan ?? 'free',
   };
 }
 
-export async function joinHousehold(inviteCode: string, userId: string) {
+export async function joinHousehold(inviteCode: string, userId: string): Promise<HouseholdCore> {
   const code = normalizeInviteCode(inviteCode);
   if (!code) {
     throw new Error('Invalid invite code. Check the code and try again.');
@@ -116,6 +140,9 @@ export async function joinHousehold(inviteCode: string, userId: string) {
   if (error && !isMissingRpc(error)) {
     if ((error.message ?? '').toLowerCase().includes('invalid invite code')) {
       throw new Error('Invalid invite code. Check the code and try again.');
+    }
+    if (isMemberLimitError(error)) {
+      throw new Error(memberLimitMessage(planFromMemberLimitError(error)));
     }
     throw error;
   }
@@ -138,8 +165,11 @@ export async function joinHousehold(inviteCode: string, userId: string) {
     .from('household_members')
     .insert({ household_id: household.id, user_id: userId, role: 'member' });
 
-  if (joinError && joinError.code !== '23505') throw joinError;
-  return household;
+  if (joinError && joinError.code !== '23505') {
+    if (isMemberLimitError(joinError)) throw new Error(memberLimitMessage());
+    throw joinError;
+  }
+  return household as HouseholdCore;
 }
 
 export async function updateHouseholdName(householdId: string, name: string) {
@@ -153,7 +183,7 @@ export async function updateHouseholdName(householdId: string, name: string) {
 export async function fetchHouseholdById(householdId: string): Promise<HouseholdCore | null> {
   const { data, error } = await supabase
     .from('households')
-    .select('id, name, invite_code')
+    .select('id, name, invite_code, plan')
     .eq('id', householdId)
     .maybeSingle();
   if (error) throw error;
@@ -171,7 +201,7 @@ export async function leaveHousehold(householdId: string, userId: string) {
 export async function getMyHousehold(userId: string) {
   const { data, error } = await supabase
     .from('household_members')
-    .select('household_id, role, households(id, name, invite_code)')
+    .select('household_id, role, households(id, name, invite_code, plan)')
     .eq('user_id', userId)
     .order('joined_at', { ascending: false })
     .limit(1)

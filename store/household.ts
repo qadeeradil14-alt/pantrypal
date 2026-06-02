@@ -5,6 +5,7 @@ interface Household {
   name: string;
   inviteCode: string;
   role: 'owner' | 'member';
+  plan: 'free' | 'paid';
 }
 
 interface HouseholdStore {

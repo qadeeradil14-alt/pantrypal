@@ -37,7 +37,7 @@ export default function CreateHouseholdScreen() {
     setLoading(true);
     try {
       const household = await createHousehold(name.trim(), session.user.id);
-      setHousehold({ id: household.id, name: household.name, inviteCode: household.invite_code, role: 'owner' });
+      setHousehold({ id: household.id, name: household.name, inviteCode: household.invite_code, role: 'owner', plan: household.plan ?? 'free' });
       setInviteCode(household.invite_code);
     } catch (e: any) {
       setError(e.message ?? 'Something went wrong. Try again.');

@@ -11,6 +11,9 @@ interface Props {
   message: string;
   primaryLabel?: string;
   onPrimary: () => void;
+  secondaryLabel?: string;
+  onSecondary?: () => void;
+  destructive?: boolean;
 }
 
 export default function ThemedPopup({
@@ -20,6 +23,9 @@ export default function ThemedPopup({
   message,
   primaryLabel = 'OK',
   onPrimary,
+  secondaryLabel,
+  onSecondary,
+  destructive = false,
 }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -33,9 +39,16 @@ export default function ThemedPopup({
           </View>
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.message}>{message}</Text>
-          <ScalePressable style={styles.primary} onPress={onPrimary}>
-            <Text style={styles.primaryText}>{primaryLabel}</Text>
-          </ScalePressable>
+          <View style={styles.actions}>
+            {secondaryLabel && onSecondary ? (
+              <ScalePressable style={styles.secondary} onPress={onSecondary} profile="chip">
+                <Text style={styles.secondaryText}>{secondaryLabel}</Text>
+              </ScalePressable>
+            ) : null}
+            <ScalePressable style={[styles.primary, destructive && styles.primaryDanger]} onPress={onPrimary}>
+              <Text style={[styles.primaryText, destructive && styles.primaryDangerText]}>{primaryLabel}</Text>
+            </ScalePressable>
+          </View>
         </View>
       </View>
     </Modal>
@@ -87,9 +100,14 @@ function makeStyles(colors: AppColors) {
       textAlign: 'center',
       paddingHorizontal: 4,
     },
-    primary: {
+    actions: {
       marginTop: 8,
       alignSelf: 'stretch',
+      flexDirection: 'row',
+      gap: 10,
+    },
+    primary: {
+      flex: 1,
       borderRadius: 999,
       backgroundColor: colors.primary,
       paddingVertical: 14,
@@ -100,6 +118,21 @@ function makeStyles(colors: AppColors) {
       fontSize: 16,
       fontFamily: fonts.bodySemiBold,
       color: colors.onPrimary,
+    },
+    primaryDanger: { backgroundColor: colors.dangerSoft },
+    primaryDangerText: { color: colors.danger },
+    secondary: {
+      flex: 1,
+      borderRadius: 999,
+      backgroundColor: colors.faint,
+      paddingVertical: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    secondaryText: {
+      fontSize: 16,
+      fontFamily: fonts.bodySemiBold,
+      color: colors.muted,
     },
   });
 }

@@ -29,7 +29,7 @@ export default function JoinDeepLink() {
 
     joinHousehold(inviteCode, session.user.id)
       .then((household) => {
-        setHousehold({ id: household.id, name: household.name, inviteCode, role: 'member' });
+        setHousehold({ id: household.id, name: household.name, inviteCode, role: 'member', plan: household.plan ?? 'free' });
         router.replace('/(main)/pantry');
       })
       .catch((e: any) => {

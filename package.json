@@ -45,12 +45,16 @@
     "patch-package": "^8.0.1",
     "typescript": "~6.0.3"
   },
+  "overrides": {
+    "tmp": "^0.2.7"
+  },
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
     "ios": "env LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 COPYFILE_DISABLE=1 expo run:ios",
     "web": "expo start --web",
     "postinstall": "patch-package",
+    "verify:item-icons": "node scripts/verify-item-icons.mjs",
     "test:e2e": "bash scripts/maestro-test.sh",
     "test:e2e:smoke": "bash scripts/maestro-test.sh .maestro/flows/smoke-core.yaml"
   },

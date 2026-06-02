@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import {
   Modal, View, Text, TextInput,
-  StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
+  StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useItemsStore } from '../store/items';
@@ -22,6 +22,7 @@ import { makeSheetStyles } from '../constants/sheetStyles';
 import ScalePressable from './ScalePressable';
 import StoreLogo from './StoreLogo';
 import BarcodeScannerModal from './BarcodeScannerModal';
+import ThemedPopup from './ThemedPopup';
 
 interface Props {
   item: Item;
@@ -54,6 +55,7 @@ export default function EditItemModal({ item, onClose }: Props) {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
   const [showScanner, setShowScanner] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const nameInputRef = useRef<TextInput>(null);
 
   const sheetStyles = useMemo(() => makeSheetStyles(colors), [colors]);
@@ -134,29 +136,25 @@ export default function EditItemModal({ item, onClose }: Props) {
   }
 
   function handleDelete() {
-    Alert.alert('Delete item', `Remove "${item.name}" from your pantry?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          void hapticWarning();
-          setDeleting(true);
-          removeItem(item.id);
-          try {
-            await deleteItemWithQueue(item.id);
-            void hapticSuccess();
-            onClose();
-          } catch (e: any) {
-            restoreItem(item);
-            setError(e?.message ?? 'Could not delete. Try again.');
-            void hapticError();
-          } finally {
-            setDeleting(false);
-          }
-        },
-      },
-    ]);
+    setShowDeleteConfirm(true);
+  }
+
+  async function confirmDelete() {
+    setShowDeleteConfirm(false);
+    void hapticWarning();
+    setDeleting(true);
+    removeItem(item.id);
+    try {
+      await deleteItemWithQueue(item.id);
+      void hapticSuccess();
+      onClose();
+    } catch (e: any) {
+      restoreItem(item);
+      setError(e?.message ?? 'Could not delete. Try again.');
+      void hapticError();
+    } finally {
+      setDeleting(false);
+    }
   }
 
   return (
@@ -277,6 +275,17 @@ export default function EditItemModal({ item, onClose }: Props) {
         onClose={() => setShowScanner(false)}
         onAddProduct={handleScannedProduct}
         onManualAdd={() => setShowScanner(false)}
+      />
+      <ThemedPopup
+        visible={showDeleteConfirm}
+        emoji="🗑️"
+        title="Delete item?"
+        message={`Remove "${item.name}" from your pantry?`}
+        primaryLabel="Delete"
+        onPrimary={() => { void confirmDelete(); }}
+        secondaryLabel="Cancel"
+        onSecondary={() => setShowDeleteConfirm(false)}
+        destructive
       />
     </Modal>
   );

@@ -37,12 +37,17 @@ export async function startGeofencing(stores: Store[]): Promise<boolean> {
   const geofenceable = await getBestGeofenceStores(stores);
   if (geofenceable.length === 0) return false;
 
-  let { status } = await Location.getBackgroundPermissionsAsync();
-  if (status !== 'granted') {
-    const requested = await Location.requestBackgroundPermissionsAsync();
-    status = requested.status;
+  let foreground = await Location.getForegroundPermissionsAsync();
+  if (foreground.status !== 'granted') {
+    foreground = await Location.requestForegroundPermissionsAsync();
   }
-  if (status !== 'granted') return false;
+  if (foreground.status !== 'granted') return false;
+
+  let background = await Location.getBackgroundPermissionsAsync();
+  if (background.status !== 'granted') {
+    background = await Location.requestBackgroundPermissionsAsync();
+  }
+  if (background.status !== 'granted') return false;
 
   await Location.startGeofencingAsync(
     GEOFENCE_TASK,

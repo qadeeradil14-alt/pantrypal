@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useMemo } from 'react';
 import {
   Modal, View, Text, TextInput, ScrollView, Pressable,
   StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator,
-  Alert, Keyboard,
+  Keyboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useItemsStore } from '../store/items';
@@ -15,6 +15,7 @@ import { fonts, type AppColors } from '../constants/theme';
 import { makeSheetStyles } from '../constants/sheetStyles';
 import ScalePressable from './ScalePressable';
 import StoreLogo from './StoreLogo';
+import ThemedPopup from './ThemedPopup';
 import type { Item } from '../lib/items';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -40,6 +41,7 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
   const [addingStore, setAddingStore] = useState(false);
   const [newStoreName, setNewStoreName] = useState('');
   const [storeAdding, setStoreAdding] = useState(false);
+  const [duplicateStoreItem, setDuplicateStoreItem] = useState<Item | null>(null);
   const ready = UUID_RE.test(householdId);
   const nameInputRef = useRef<TextInput>(null);
 
@@ -107,33 +109,7 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
     const existing = items.find((i) => i.name.trim().toLowerCase() === normalized.toLowerCase());
     if (existing) {
       if (storeId && existing.preferred_store_id !== storeId) {
-        Alert.alert(
-          'Already in pantry',
-          `"${existing.name}" already exists. Update its store instead?`,
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Update store',
-              onPress: async () => {
-                const updated = { ...existing, preferred_store_id: storeId };
-                upsertItem(updated);
-                setLoading(true);
-                try {
-                  await setItemStoreWithQueue(existing.id, storeId);
-                  onAdded?.(updated);
-                  void hapticSuccess();
-                  onClose();
-                } catch (e: any) {
-                  upsertItem(existing);
-                  setError(e.message ?? 'Could not update item.');
-                  void hapticError();
-                } finally {
-                  setLoading(false);
-                }
-              },
-            },
-          ],
-        );
+        setDuplicateStoreItem(existing);
         return;
       }
       setError(`"${existing.name}" is already in My Groceries.`);
@@ -156,6 +132,27 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
       onClose();
     } catch (e: any) {
       setError(e.message ?? 'Could not add item.');
+      void hapticError();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleUpdateDuplicateStore() {
+    const existing = duplicateStoreItem;
+    if (!existing || !storeId) return;
+    const updated = { ...existing, preferred_store_id: storeId };
+    setDuplicateStoreItem(null);
+    upsertItem(updated);
+    setLoading(true);
+    try {
+      await setItemStoreWithQueue(existing.id, storeId);
+      onAdded?.(updated);
+      void hapticSuccess();
+      onClose();
+    } catch (e: any) {
+      upsertItem(existing);
+      setError(e.message ?? 'Could not update item.');
       void hapticError();
     } finally {
       setLoading(false);
@@ -304,6 +301,16 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
           </ScalePressable>
         </View>
       </KeyboardAvoidingView>
+      <ThemedPopup
+        visible={!!duplicateStoreItem}
+        emoji="🛒"
+        title="Already saved"
+        message={duplicateStoreItem ? `"${duplicateStoreItem.name}" already exists. Update its store instead?` : ''}
+        primaryLabel="Update store"
+        onPrimary={() => { void handleUpdateDuplicateStore(); }}
+        secondaryLabel="Cancel"
+        onSecondary={() => setDuplicateStoreItem(null)}
+      />
     </Modal>
   );
 }

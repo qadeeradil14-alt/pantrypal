@@ -7,6 +7,7 @@ import {
 import { useFocusEffect } from 'expo-router';
 import { Linking } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
+import * as Location from 'expo-location';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useHouseholdStore } from '../../../store/household';
@@ -318,6 +319,7 @@ function AddStoreModal({
   const [saving, setSaving] = useState(false);
   const [searching, setSearching] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
+  const [locating, setLocating] = useState(false);
   const [error, setError] = useState('');
   const [mapQuery, setMapQuery] = useState('');
   const [zipCode, setZipCode] = useState('');
@@ -377,6 +379,55 @@ function AddStoreModal({
     }
   }
 
+  async function handleUseCurrentLocation(storeName?: string) {
+    const store = ((storeName ?? mapQuery) || name).trim();
+    if (!store) {
+      setError('Enter a store name first.');
+      return;
+    }
+    setLocating(true);
+    setError('');
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== 'granted') {
+        setError('Location permission is needed to use your current position.');
+        return;
+      }
+      const here = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
+      const { latitude, longitude } = here.coords;
+      let currentAddress = 'Current location';
+      try {
+        const [addr] = await Location.reverseGeocodeAsync({ latitude, longitude });
+        const parts = [
+          addr?.streetNumber,
+          addr?.street,
+          addr?.city,
+          addr?.region,
+          addr?.postalCode,
+        ].filter((part) => typeof part === 'string' && part.trim().length > 0);
+        if (parts.length > 0) currentAddress = parts.join(', ');
+      } catch { /* keep generic current location label */ }
+
+      const place: StorePlace = {
+        name: store,
+        address: currentAddress,
+        latitude,
+        longitude,
+      };
+      setMapQuery(store);
+      setGeocodedPlace(place);
+      setSelectedPlace(place);
+      setPlaces([place]);
+      setManualAddress(currentAddress);
+      void hapticSuccess();
+    } catch (e: any) {
+      setError(e?.message ?? 'Could not read your current location.');
+      void hapticError();
+    } finally {
+      setLocating(false);
+    }
+  }
+
   async function handleGeocodeManual() {
     const trimmed = manualAddress.trim();
     if (!trimmed) return;
@@ -432,20 +483,20 @@ function AddStoreModal({
     }
   }
 
-  async function handleSave(storeName: string, storeAddress?: string) {
+  async function handleSave(storeName: string, storeAddress?: string, allowNoLocation = false) {
     if (existingNames.includes(storeName.toLowerCase())) {
       setError(`"${storeName}" is already in your stores.`);
       void hapticError();
       return;
     }
-    if (!storeAddress?.trim()) {
+    if (!storeAddress?.trim() && !allowNoLocation) {
       await openNearbyPicker(storeName);
       return;
     }
     setSaving(true);
     setError('');
     try {
-      const { store, queued } = await addStoreWithQueue(householdId, storeName, storeAddress, selectedBrand);
+      const { store, queued } = await addStoreWithQueue(householdId, storeName, storeAddress, selectedBrand, allowNoLocation);
       onAdd(store);
       if (queued) {
         setError("Saved offline — will sync when you're back online.");
@@ -557,11 +608,22 @@ function AddStoreModal({
                   }
                 </ScalePressable>
                 <ScalePressable
+                  style={[styles.currentLocationBtn, locating && styles.currentLocationBtnDisabled]}
+                  profile="chip"
+                  onPress={() => { void hapticSelection(); void handleUseCurrentLocation(mapQuery); }}
+                  disabled={locating}
+                >
+                  {locating
+                    ? <ActivityIndicator size="small" color={colors.primary} />
+                    : <Ionicons name="locate-outline" size={16} color={colors.primary} />
+                  }
+                  <Text style={styles.currentLocationText}>Use where I am now</Text>
+                </ScalePressable>
+                <ScalePressable
                   style={styles.skipBtn}
                   profile="chip"
                   onPress={() => {
-                    // Save without coordinates — no geofencing but store is saved
-                    void handleSave(mapQuery, undefined);
+                    void handleSave(mapQuery, undefined, true);
                     setMapQuery('');
                   }}
                 >
@@ -582,6 +644,19 @@ function AddStoreModal({
                     />
                   ))}
                 </MapView>
+
+                <ScalePressable
+                  style={[styles.currentLocationBtn, locating && styles.currentLocationBtnDisabled]}
+                  profile="chip"
+                  onPress={() => { void hapticSelection(); void handleUseCurrentLocation(mapQuery); }}
+                  disabled={locating}
+                >
+                  {locating
+                    ? <ActivityIndicator size="small" color={colors.primary} />
+                    : <Ionicons name="locate-outline" size={16} color={colors.primary} />
+                  }
+                  <Text style={styles.currentLocationText}>Use where I am now</Text>
+                </ScalePressable>
 
                 {/* Address cards — scrollable if multiple results, single card if geocoded */}
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.placeList}>
@@ -620,7 +695,7 @@ function AddStoreModal({
                   style={styles.skipBtn}
                   profile="chip"
                   onPress={() => {
-                    void handleSave(mapQuery, undefined);
+                    void handleSave(mapQuery, undefined, true);
                     setMapQuery('');
                   }}
                 >
@@ -678,6 +753,18 @@ function AddStoreModal({
             }}
             placeholderTextColor={colors.placeholder}
           />
+          <ScalePressable
+            style={[styles.currentLocationBtn, locating && styles.currentLocationBtnDisabled, { marginBottom: 12 }]}
+            profile="chip"
+            onPress={() => { void hapticSelection(); void handleUseCurrentLocation(name.trim()); }}
+            disabled={locating || !name.trim()}
+          >
+            {locating
+              ? <ActivityIndicator size="small" color={colors.primary} />
+              : <Ionicons name="locate-outline" size={16} color={colors.primary} />
+            }
+            <Text style={styles.currentLocationText}>Use my current location for this store</Text>
+          </ScalePressable>
           <TextInput
             style={[styles.input, { marginTop: 8 }]}
             placeholder="Zip code (optional — for accurate local results)"
@@ -892,6 +979,19 @@ function makeStyles(colors: AppColors, placeCardWidth = 210) {
       gap: 10,
     },
     mapLoadingText: { color: colors.muted, fontSize: 14, fontFamily: fonts.bodySemiBold },
+    currentLocationBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 7,
+      borderRadius: 999,
+      backgroundColor: colors.primarySoft,
+      paddingHorizontal: 14,
+      paddingVertical: 11,
+      marginBottom: 12,
+    },
+    currentLocationBtnDisabled: { opacity: 0.58 },
+    currentLocationText: { color: colors.primary, fontSize: 13, fontFamily: fonts.bodySemiBold },
     placeList: {
       gap: 10,
       paddingRight: 20,

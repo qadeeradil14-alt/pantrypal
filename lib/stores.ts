@@ -133,6 +133,7 @@ export async function addStore(
   name: string,
   address?: string,
   brand?: StoreBrand | null,
+  skipGeocode = false,
 ): Promise<Store> {
   const normalizedName = name.trim();
   const { data: existingStore } = await supabase
@@ -147,7 +148,9 @@ export async function addStore(
   let latitude: number | null = null;
   let longitude: number | null = null;
 
-  if (finalAddress) {
+  if (skipGeocode) {
+    finalAddress = null;
+  } else if (finalAddress) {
     const coords = await geocodeAddress(finalAddress);
     latitude = coords?.latitude ?? null;
     longitude = coords?.longitude ?? null;
@@ -323,9 +326,10 @@ export async function addStoreWithQueue(
   name: string,
   address?: string,
   brand?: StoreBrand | null,
+  skipGeocode = false,
 ): Promise<{ queued: boolean; store: Store }> {
   try {
-    const store = await addStore(householdId, name, address, brand);
+    const store = await addStore(householdId, name, address, brand, skipGeocode);
     return { queued: false, store };
   } catch (error) {
     if (!isTransientNetworkErrorForQueue(error)) throw error;

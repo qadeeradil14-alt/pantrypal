@@ -11,6 +11,7 @@ if (!url || !anonKey) {
 const stamp = `${Date.now()}_${Math.floor(Math.random() * 10000)}`;
 const emailA = `pp_smoke_a_${stamp}@example.com`;
 const emailB = `pp_smoke_b_${stamp}@example.com`;
+const emailC = `pp_smoke_c_${stamp}@example.com`;
 const password = 'PantryPal!234';
 
 function makeClient() {
@@ -33,9 +34,11 @@ async function run() {
   console.log('Starting Supabase smoke test...');
   console.log(`User A: ${emailA}`);
   console.log(`User B: ${emailB}`);
+  console.log(`User C: ${emailC}`);
 
   const clientA = await signUpAndGetClient(emailA);
   const clientB = await signUpAndGetClient(emailB);
+  const clientC = await signUpAndGetClient(emailC);
 
   const code = `SMK${Math.floor(100000 + Math.random() * 900000)}`;
   const householdName = `Smoke Household ${stamp}`;
@@ -54,6 +57,20 @@ async function run() {
   const joined = Array.isArray(joinRes.data) ? joinRes.data[0] : joinRes.data;
   if (!joined?.id || joined.id !== created.id) throw new Error('Joined household does not match created household');
   console.log('Join by invite code works');
+
+  const blockedJoin = await clientC.rpc('join_household_by_code', { p_invite_code: created.invite_code });
+  if (!blockedJoin.error || !blockedJoin.error.message.toLowerCase().includes('household member limit')) {
+    throw new Error('Free household member limit did not block the third member');
+  }
+  console.log('Free household member limit blocks third member');
+
+  const directJoinBypass = await clientC
+    .from('household_members')
+    .insert({ household_id: created.id, user_id: (await clientC.auth.getUser()).data.user.id, role: 'member' });
+  if (!directJoinBypass.error) {
+    throw new Error('Direct household_members insert bypass unexpectedly succeeded');
+  }
+  console.log('Direct household member insert bypass is blocked');
 
   const insertItem = await clientA
     .from('items')

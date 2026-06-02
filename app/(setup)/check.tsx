@@ -28,6 +28,7 @@ export default function CheckScreen() {
             name: h.name,
             inviteCode: h.invite_code,
             role: data.role,
+            plan: h.plan ?? 'free',
           });
           router.replace('/(main)/pantry');
         } else {
