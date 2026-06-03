@@ -655,6 +655,18 @@ function AddStoreModal({
 
           {error ? <View style={styles.errorBox}><Text style={styles.error}>{error}</Text></View> : null}
 
+          {/* Zip code at the top — anchors ALL searches (quick add + custom) to your area */}
+          <TextInput
+            style={[styles.input, { marginBottom: 16 }]}
+            placeholder="Your zip code (e.g. 22060)"
+            value={zipCode}
+            onChangeText={setZipCode}
+            placeholderTextColor={colors.placeholder}
+            keyboardType="number-pad"
+            maxLength={5}
+            returnKeyType="done"
+          />
+
           <Text style={styles.label}>Quick add</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.presetsRow} contentContainerStyle={styles.presetsContent}>
             {presets.map((p) => (
@@ -712,15 +724,6 @@ function AddStoreModal({
               })}
             </ScrollView>
           )}
-          <TextInput
-            style={[styles.input, { marginTop: 8 }]}
-            placeholder="Zip code (optional — for accurate local results)"
-            value={zipCode}
-            onChangeText={setZipCode}
-            placeholderTextColor={colors.placeholder}
-            keyboardType="number-pad"
-            maxLength={5}
-          />
           {selectedBrand && brands.length === 0 && (
             <View style={styles.selectedBrand}>
               <StoreLogo name={selectedBrand.name} size={24} domain={selectedBrand.domain} logoUrl={selectedBrand.logo_url} />
