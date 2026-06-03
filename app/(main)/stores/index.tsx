@@ -697,7 +697,7 @@ function AddStoreModal({
             placeholderTextColor={colors.placeholder}
           />
           {/* Brand suggestions appear immediately below the name input, not below zip code */}
-          {name.trim().length >= 2 && brands.length === 0 && !selectedBrand && (
+          {name.trim().length >= 2 && brands.length === 0 && !selectedBrand && !existingNames.includes(name.trim().toLowerCase()) && (
             <Text style={styles.noBrandsText}>No known brands matched — you can still add it as a custom store.</Text>
           )}
           {brands.length > 0 && (
