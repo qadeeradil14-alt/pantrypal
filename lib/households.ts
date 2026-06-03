@@ -24,6 +24,12 @@ type HouseholdCore = {
 
 export type HouseholdPlan = 'free' | 'paid';
 
+type MyHouseholdRow = {
+  household_id: string;
+  role: 'owner' | 'member';
+  households: HouseholdCore | HouseholdCore[] | null;
+};
+
 export const HOUSEHOLD_MEMBER_LIMITS: Record<HouseholdPlan, number> = {
   free: 2,
   paid: 5,
@@ -53,6 +59,11 @@ function normalizeRpcRow(data: unknown): HouseholdCore | null {
   if (!data) return null;
   if (Array.isArray(data)) return (data[0] as HouseholdCore) ?? null;
   return data as HouseholdCore;
+}
+
+function isMissingPlanColumn(error: any): boolean {
+  const text = `${error?.message ?? ''} ${error?.details ?? ''}`.toLowerCase();
+  return text.includes('plan') && text.includes('does not exist');
 }
 
 export async function createHousehold(name: string, userId: string): Promise<HouseholdCore & { invite_code: string }> {
@@ -186,7 +197,16 @@ export async function fetchHouseholdById(householdId: string): Promise<Household
     .select('id, name, invite_code, plan')
     .eq('id', householdId)
     .maybeSingle();
-  if (error) throw error;
+  if (error && !isMissingPlanColumn(error)) throw error;
+  if (error && isMissingPlanColumn(error)) {
+    const fallback = await supabase
+      .from('households')
+      .select('id, name, invite_code')
+      .eq('id', householdId)
+      .maybeSingle();
+    if (fallback.error) throw fallback.error;
+    return { ...(fallback.data as HouseholdCore), plan: 'free' };
+  }
   return data as HouseholdCore | null;
 }
 
@@ -198,7 +218,7 @@ export async function leaveHousehold(householdId: string, userId: string) {
   if (error) throw error;
 }
 
-export async function getMyHousehold(userId: string) {
+export async function getMyHousehold(userId: string): Promise<MyHouseholdRow | null> {
   const { data, error } = await supabase
     .from('household_members')
     .select('household_id, role, households(id, name, invite_code, plan)')
@@ -207,6 +227,21 @@ export async function getMyHousehold(userId: string) {
     .limit(1)
     .maybeSingle();
 
-  if (error) return null;
-  return data;
+  if (error && !isMissingPlanColumn(error)) throw error;
+  if (error && isMissingPlanColumn(error)) {
+    const fallback = await supabase
+      .from('household_members')
+      .select('household_id, role, households(id, name, invite_code)')
+      .eq('user_id', userId)
+      .order('joined_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (fallback.error) throw fallback.error;
+    const raw = fallback.data?.households;
+    const h = Array.isArray(raw) ? raw[0] : raw;
+    return h
+      ? { ...(fallback.data as MyHouseholdRow), households: { ...(h as HouseholdCore), plan: 'free' } }
+      : fallback.data as MyHouseholdRow | null;
+  }
+  return data as MyHouseholdRow | null;
 }

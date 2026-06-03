@@ -10,12 +10,18 @@ interface Household {
 
 interface HouseholdStore {
   household: Household | null;
+  loading: boolean;
+  loaded: boolean;
   setHousehold: (h: Household | null) => void;
+  setLoading: (loading: boolean) => void;
   clearHousehold: () => void;
 }
 
 export const useHouseholdStore = create<HouseholdStore>((set) => ({
   household: null,
-  setHousehold: (household) => set({ household }),
-  clearHousehold: () => set({ household: null }),
+  loading: false,
+  loaded: false,
+  setHousehold: (household) => set({ household, loaded: true, loading: false }),
+  setLoading: (loading) => set({ loading }),
+  clearHousehold: () => set({ household: null, loaded: true, loading: false }),
 }));

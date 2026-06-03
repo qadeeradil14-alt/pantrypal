@@ -17,11 +17,11 @@ const normalize = (value) => value
 const itemIcons = fs.readFileSync(itemIconsPath, 'utf8');
 const defaultItems = fs.readFileSync(defaultItemsPath, 'utf8');
 
-if (/\bincludes\s*\(|levenshtein|similarity|fuzzy|vector/i.test(itemIcons)) {
-  throw new Error('Item icon resolver must stay exact-only. Remove fuzzy/includes matching.');
+if (/levenshtein|similarity|vector/i.test(itemIcons)) {
+  throw new Error('Item icon resolver must use deterministic aliases/keywords, not fuzzy scoring.');
 }
 
-const aliasMatches = itemIcons.matchAll(/type:\s*InventoryItemType\.([A-Za-z0-9_]+),\s*aliases:\s*\[([^\]]*)\]/g);
+const aliasMatches = itemIcons.matchAll(/key:\s*'([^']+)',\s*emoji:\s*'[^']+',\s*aliases:\s*\[([^\]]*)\]/g);
 const aliasToType = new Map();
 const duplicates = [];
 
@@ -46,4 +46,8 @@ if (duplicates.length > 0) {
   throw new Error(`Duplicate item icon aliases: ${duplicates.join('; ')}`);
 }
 
-console.log(`Verified ${aliasToType.size} exact item icon aliases.`);
+if (aliasToType.size < 500) {
+  throw new Error(`Expected at least 500 item icon aliases, found ${aliasToType.size}.`);
+}
+
+console.log(`Verified ${aliasToType.size} item icon aliases.`);

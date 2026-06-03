@@ -281,32 +281,45 @@ export default function SettingsScreen() {
   }
 
   function handleLeaveHousehold() {
-    Alert.alert(
-      'Leave household?',
-      "You'll lose access to this pantry. You can join a new one with an invite code.",
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Leave', style: 'destructive',
-          onPress: async () => {
-            if (!household || !session?.user?.id) return;
-            void hapticWarning();
-            setLeavingHousehold(true);
-            try {
-              await leaveHousehold(household.id, session.user.id);
-              clearHousehold();
-              setItems([]);
-              void hapticSuccess();
-            } catch (e: any) {
-              Alert.alert('Could not leave', e?.message ?? 'Try again.');
-              void hapticError();
-            } finally {
-              setLeavingHousehold(false);
-            }
-          },
+    if (!household || !session?.user?.id) return;
+
+    const isOwner = household.role === 'owner';
+    const title = 'Leave household?';
+    const message = isOwner
+      ? "You're the household owner. If you leave, other members will still have access but there will be no owner. Make sure someone else can manage the household.\n\nYou'll lose access to this pantry."
+      : "You'll no longer see this household's pantry, shopping lists, stores, or receipts. You can join a new one with an invite code.";
+
+    Alert.alert(title, message, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Leave household', style: 'destructive',
+        onPress: async () => {
+          if (!household || !session?.user?.id) return;
+          void hapticWarning();
+          setLeavingHousehold(true);
+          try {
+            await leaveHousehold(household.id, session.user.id);
+            // Clear all household-scoped state before navigating
+            clearHousehold();
+            setItems([]);
+            setStores([]);
+            setShoppingEntries([]);
+            setActiveStore(null);
+            setPendingReceiptStoreId(null);
+            clearReceiptTrip();
+            setArrivalStore(null);
+            await stopGeofencing().catch(() => {});
+            void hapticSuccess();
+            router.replace('/(setup)/create-or-join');
+          } catch (e: any) {
+            Alert.alert('Could not leave', e?.message ?? 'Try again.');
+            void hapticError();
+          } finally {
+            setLeavingHousehold(false);
+          }
         },
-      ],
-    );
+      },
+    ]);
   }
 
   return (
@@ -600,7 +613,7 @@ export default function SettingsScreen() {
             )}
         </ScalePressable>
 
-        <Text style={styles.versionText}>PantryPal v{appVersion}</Text>
+        <Text style={styles.versionText}>Stokit v{appVersion}</Text>
       </ScrollView>
     </SafeAreaView>
   );

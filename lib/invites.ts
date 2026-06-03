@@ -1,6 +1,7 @@
 export const INVITE_CODE_RE = /^[A-Z0-9]{6}$/;
 
 const TESTFLIGHT_URL = 'https://testflight.apple.com/join/eJTwChas';
+const INVITE_BASE_URL = process.env.EXPO_PUBLIC_INVITE_BASE_URL?.replace(/\/+$/, '') ?? null;
 
 function safeDecode(value: string): string {
   let decoded = value;
@@ -51,11 +52,22 @@ export function buildInviteDeepLink(inviteCode: string): string {
   return `pantrypal://join?code=${encodeURIComponent(code)}`;
 }
 
+export function buildInviteWebLink(inviteCode: string): string {
+  const code = normalizeInviteCode(inviteCode);
+  if (!code) throw new Error('Invalid invite code.');
+  if (!INVITE_BASE_URL) return TESTFLIGHT_URL;
+  return `${INVITE_BASE_URL}/join?code=${encodeURIComponent(code)}`;
+}
+
 export function buildInviteMessage(inviteCode: string): string {
   const code = normalizeInviteCode(inviteCode);
   if (!code) throw new Error('Invalid invite code.');
-  const link = buildInviteDeepLink(code);
-  return `Hey! Join my household on Stokit.\n\n1. Install Stokit with TestFlight:\n${TESTFLIGHT_URL}\n\n2. After installing, tap this invite link:\n${link}\n\nIf the link does not open, enter this invite code in Stokit: ${code}`;
+  if (INVITE_BASE_URL) {
+    // Web join link available — one-tap flow
+    return `Join my household on Stokit!\n${buildInviteWebLink(code)}\nInvite code: ${code}`;
+  }
+  // No web URL yet — clear two-step fallback so recipient knows exactly what to do
+  return `Join my household on Stokit!\n\n1. Install Stokit:\n${TESTFLIGHT_URL}\n\n2. Open Stokit, tap "Join household", and enter:\n${code}`;
 }
 
-export { TESTFLIGHT_URL };
+export { TESTFLIGHT_URL, INVITE_BASE_URL };

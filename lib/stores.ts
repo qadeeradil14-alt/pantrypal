@@ -269,7 +269,9 @@ export async function searchNearbyStores(storeName: string, zipCode?: string): P
   try {
     const permission = await Location.requestForegroundPermissionsAsync();
     if (permission.status === 'granted') {
-      const here = await Location.getCurrentPositionAsync({});
+      const here = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.BestForNavigation,
+      });
       const { latitude: lat, longitude: lon } = here.coords;
 
       // Reverse geocode to get city/state for smarter query context
@@ -388,7 +390,7 @@ async function geocodeAddress(address: string): Promise<{ latitude: number; long
       `https://nominatim.openstreetmap.org/search?q=${encoded}&format=json&limit=1`,
       {
         headers: {
-          'User-Agent': 'PantryPal/1.0',
+          'User-Agent': 'Stokit/1.0',
           'Accept': 'application/json',
           'Accept-Language': 'en-US,en;q=0.9',
         },
@@ -412,7 +414,9 @@ async function geocodeStoreName(
     const permission = await Location.requestForegroundPermissionsAsync();
     let results: StorePlace[] = [];
     if (permission.status === 'granted') {
-      const here = await Location.getCurrentPositionAsync({});
+      const here = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.BestForNavigation,
+      });
       const delta = 0.35;
       const left = here.coords.longitude - delta;
       const right = here.coords.longitude + delta;
@@ -438,7 +442,7 @@ async function searchNominatimStores(storeName: string, suffix = '', limit = 12)
     `https://nominatim.openstreetmap.org/search?q=${encoded}&format=json&limit=${limit}&addressdetails=1${suffix}`,
     {
       headers: {
-        'User-Agent': 'PantryPal/1.0',
+        'User-Agent': 'Stokit/1.0',
         'Accept': 'application/json',
         'Accept-Language': 'en-US,en;q=0.9',
       },
@@ -446,7 +450,7 @@ async function searchNominatimStores(storeName: string, suffix = '', limit = 12)
   );
   if (!res.ok) throw new Error('Could not search nearby stores.');
   const results = await res.json();
-  const places = (results as any[]).map((result) => ({
+  const places = (results as any[]).filter(hasNamedPlace).map((result) => ({
     name: bestPlaceName(result, storeName),
     address: formatNominatimAddress(result) ?? result?.display_name ?? storeName,
     latitude: parseFloat(result.lat),
@@ -471,6 +475,12 @@ async function searchNominatimStores(storeName: string, suffix = '', limit = 12)
     }
   }
   return places;
+}
+
+function hasNamedPlace(result: any): boolean {
+  const addr = result?.address ?? {};
+  const name = result?.namedetails?.name ?? result?.name ?? addr.shop ?? addr.amenity ?? addr.building;
+  return typeof name === 'string' && name.trim().length > 0;
 }
 
 function formatNominatimAddress(result: any): string | undefined {

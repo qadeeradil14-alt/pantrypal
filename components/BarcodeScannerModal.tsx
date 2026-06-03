@@ -298,7 +298,7 @@ export default function BarcodeScannerModal({ visible, onClose, onAddProduct, on
               <View style={styles.cornerBottomRight} />
             </View>
             <View style={styles.scanHint}>
-              <Ionicons name="scan-outline" size={15} color="#FFFFFF" />
+              <Ionicons name="scan-outline" size={15} color={colors.ink} />
               <Text style={styles.scanHintText}>
                 {busy ? 'Looking up product' : 'Center the barcode'}
               </Text>
@@ -409,7 +409,7 @@ export default function BarcodeScannerModal({ visible, onClose, onAddProduct, on
           onPress={handleClose}
         >
           <View style={styles.closeBtn} pointerEvents="none">
-            <Ionicons name="close" size={24} color="#FFFFFF" />
+            <Ionicons name="close" size={24} color={colors.ink} />
           </View>
           <View style={styles.titleWrap} pointerEvents="none">
             <Text style={styles.eyebrow}>Inventory scan</Text>
@@ -491,7 +491,7 @@ function makeStyles(colors: AppColors) {
       height: 42,
       borderTopWidth: 4,
       borderLeftWidth: 4,
-      borderColor: '#FFFFFF',
+      borderColor: colors.ink,
       borderTopLeftRadius: 18,
     },
     cornerTopRight: {
@@ -502,7 +502,7 @@ function makeStyles(colors: AppColors) {
       height: 42,
       borderTopWidth: 4,
       borderRightWidth: 4,
-      borderColor: '#FFFFFF',
+      borderColor: colors.ink,
       borderTopRightRadius: 18,
     },
     cornerBottomLeft: {
@@ -513,7 +513,7 @@ function makeStyles(colors: AppColors) {
       height: 42,
       borderBottomWidth: 4,
       borderLeftWidth: 4,
-      borderColor: '#FFFFFF',
+      borderColor: colors.ink,
       borderBottomLeftRadius: 18,
     },
     cornerBottomRight: {
@@ -524,7 +524,7 @@ function makeStyles(colors: AppColors) {
       height: 42,
       borderBottomWidth: 4,
       borderRightWidth: 4,
-      borderColor: '#FFFFFF',
+      borderColor: colors.ink,
       borderBottomRightRadius: 18,
     },
     scanHint: {
@@ -539,7 +539,7 @@ function makeStyles(colors: AppColors) {
       borderRadius: 999,
       backgroundColor: 'rgba(0,0,0,0.55)',
     },
-    scanHintText: { color: '#FFFFFF', fontSize: 13, fontFamily: fonts.bodySemiBold },
+    scanHintText: { color: colors.ink, fontSize: 13, fontFamily: fonts.bodySemiBold },
     resultSheet: {
       position: 'absolute',
       left: 0,

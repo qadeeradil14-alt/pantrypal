@@ -403,6 +403,14 @@ export default function PantryScreen() {
     }
   }, [selectedStoreId]);
 
+  // Stable component fn — created once, never changes reference.
+  // VirtualizedList sees the same component type on every render,
+  // so it reconciles normally instead of unmounting/remounting the header.
+  const listHeaderRef = useRef<React.ReactNode>(null);
+  const ListHeaderFn = useRef(function ListHeader() {
+    return listHeaderRef.current as React.ReactElement | null;
+  }).current;
+
   const storePicker = useMemo(() => (
     <View style={styles.storeSection}>
       <View style={styles.storeSectionHeader}>
@@ -417,9 +425,26 @@ export default function PantryScreen() {
         scrollEventThrottle={64}
       >
         {stores.length === 0 ? (
-          <View style={styles.emptyStoreTarget}>
-            <Text style={styles.emptyStoreText}>Add stores to assign groceries.</Text>
-          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Add a store"
+            style={({ pressed }) => [
+              styles.emptyStoreTarget,
+              pressed && styles.emptyStoreTargetPressed,
+            ]}
+            onPress={() => {
+              void hapticSelection();
+              router.push({ pathname: '/(main)/stores', params: { add: '1' } });
+            }}
+          >
+            <View style={styles.emptyStoreCopy}>
+              <Text style={styles.emptyStoreText}>Add stores to assign groceries.</Text>
+              <Text style={styles.emptyStoreSubText}>Set up store locations for faster shopping.</Text>
+            </View>
+            <View style={styles.emptyStoreAddIcon}>
+              <Ionicons name="add" size={22} color={colors.onPrimary} />
+            </View>
+          </Pressable>
         ) : (
           <>
             {stores.map((store: Store) => {
@@ -448,7 +473,7 @@ export default function PantryScreen() {
         )}
       </ScrollView>
     </View>
-  ), [styles, colors, stores, selectedStoreId, items.length, storeCounts]);
+  ), [styles, colors, stores, selectedStoreId, storeCounts, router]);
 
   const sortLabels: Record<SortMode, string> = { alpha: 'A–Z', category: 'Category', store: 'Store' };
   const sortIcons: Record<SortMode, React.ComponentProps<typeof Ionicons>['name']> = {
@@ -594,7 +619,8 @@ export default function PantryScreen() {
       </View>
     </>
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ), [firstName, household?.name, styles, colors, filtered.length, query, streak, notifPromptState, handleEnableNotifs, handleDismissNotifPrompt, selectedStore, canAdd, openScanner, storePicker, sortMode, expiringItems, showExpiryOnly]);
+  ), [firstName, household?.name, styles, colors, query, streak, notifPromptState, handleEnableNotifs, handleDismissNotifPrompt, selectedStore, canAdd, openScanner, storePicker, sortMode, expiringItems, showExpiryOnly]);
+  listHeaderRef.current = listHeader;
 
   const renderPantryItem = useCallback(({ item }: { item: Item }) => (
     <SwipeableItemRow
@@ -672,7 +698,7 @@ export default function PantryScreen() {
         ref={listRef}
         sections={sections}
         keyExtractor={(item) => item.id}
-        ListHeaderComponent={listHeader}
+        ListHeaderComponent={ListHeaderFn}
         renderItem={renderPantryItem}
         renderSectionHeader={renderPantrySectionHeader}
         ListEmptyComponent={emptyState}
@@ -685,7 +711,6 @@ export default function PantryScreen() {
         stickySectionHeadersEnabled={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        scrollEventThrottle={16}
         initialNumToRender={12}
         maxToRenderPerBatch={8}
         updateCellsBatchingPeriod={50}
@@ -889,12 +914,27 @@ function makeStyles(colors: AppColors) {
     emptyStoreTarget: {
       minHeight: 74,
       minWidth: 240,
+      flexDirection: 'row',
+      alignItems: 'center',
       justifyContent: 'center',
       borderRadius: 18,
       paddingHorizontal: 16,
+      paddingVertical: 12,
       backgroundColor: colors.faint,
+      gap: 12,
     },
+    emptyStoreTargetPressed: { opacity: 0.78 },
+    emptyStoreCopy: { flex: 1, gap: 4 },
     emptyStoreText: { fontSize: 14, fontFamily: fonts.bodyMedium, color: colors.muted },
+    emptyStoreSubText: { fontSize: 12, fontFamily: fonts.body, color: colors.placeholder },
+    emptyStoreAddIcon: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.primary,
+    },
     masterHeader: {
       flexDirection: 'column',
       alignItems: 'flex-start',

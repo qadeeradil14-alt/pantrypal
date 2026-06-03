@@ -12,7 +12,7 @@ const stamp = `${Date.now()}_${Math.floor(Math.random() * 10000)}`;
 const emailA = `pp_smoke_a_${stamp}@example.com`;
 const emailB = `pp_smoke_b_${stamp}@example.com`;
 const emailC = `pp_smoke_c_${stamp}@example.com`;
-const password = 'PantryPal!234';
+const password = 'Stokit!234';
 
 function makeClient() {
   return createClient(url, anonKey, {
@@ -59,6 +59,9 @@ async function run() {
   console.log('Join by invite code works');
 
   const blockedJoin = await clientC.rpc('join_household_by_code', { p_invite_code: created.invite_code });
+  if (!blockedJoin.error && !('plan' in created)) {
+    throw new Error('Household limit migration is not applied: third member joined and household plan column is missing');
+  }
   if (!blockedJoin.error || !blockedJoin.error.message.toLowerCase().includes('household member limit')) {
     throw new Error('Free household member limit did not block the third member');
   }

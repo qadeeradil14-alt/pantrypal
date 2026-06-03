@@ -4,7 +4,7 @@ import {
   Alert, ActivityIndicator, TextInput, ScrollView, Modal, useWindowDimensions,
   KeyboardAvoidingView, Platform, RefreshControl,
 } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Linking } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
@@ -52,6 +52,8 @@ function compactAddress(address: string, storeName: string): string {
 
 export default function StoresScreen() {
   const { colors } = useTheme();
+  const router = useRouter();
+  const params = useLocalSearchParams<{ add?: string }>();
   const { household } = useHouseholdStore();
   const { stores, pinnedStoreIds, setStores, addStore: addToStore, removeStore, togglePin } = useStoresStore();
   const { items } = useItemsStore();
@@ -104,6 +106,12 @@ export default function StoresScreen() {
   useEffect(() => {
     if (!householdId) setShowAdd(false);
   }, [householdId]);
+
+  useEffect(() => {
+    if (params.add !== '1' || !canManageStores) return;
+    setShowAdd(true);
+    router.setParams({ add: '' });
+  }, [params.add, canManageStores, router]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -393,8 +401,14 @@ function AddStoreModal({
         setError('Location permission is needed to use your current position.');
         return;
       }
-      const here = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
-      const { latitude, longitude } = here.coords;
+      const here = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.BestForNavigation,
+      });
+      const { latitude, longitude, accuracy } = here.coords;
+      if (typeof accuracy === 'number' && accuracy > 150) {
+        setError('Location is not precise yet. Move closer to the store entrance and try again.');
+        return;
+      }
       let currentAddress = 'Current location';
       try {
         const [addr] = await Location.reverseGeocodeAsync({ latitude, longitude });
@@ -451,7 +465,7 @@ function AddStoreModal({
         const encoded = encodeURIComponent(trimmed);
         const res = await fetch(
           `https://nominatim.openstreetmap.org/search?q=${encoded}&format=json&limit=1&addressdetails=1`,
-          { headers: { 'User-Agent': 'PantryPal/1.0', Accept: 'application/json' } },
+          { headers: { 'User-Agent': 'Stokit/1.0', Accept: 'application/json' } },
         );
         const results = await res.json();
         if (results.length > 0) {
@@ -639,7 +653,7 @@ function AddStoreModal({
                       coordinate={{ latitude: place.latitude, longitude: place.longitude }}
                       title={place.name}
                       description={place.address}
-                      pinColor={selectedPlace === place ? colors.primary : '#9CA3AF'}
+                      pinColor={selectedPlace === place ? colors.primary : colors.muted}
                       onPress={() => setSelectedPlace(place)}
                     />
                   ))}

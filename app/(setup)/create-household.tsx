@@ -12,6 +12,7 @@ import { useHouseholdStore } from '../../store/household';
 import { useTheme } from '../../hooks/useTheme';
 import { fonts } from '../../constants/theme';
 import type { AppColors } from '../../constants/theme';
+import { buildInviteMessage } from '../../lib/invites';
 
 export default function CreateHouseholdScreen() {
   const { colors } = useTheme();
@@ -48,7 +49,7 @@ export default function CreateHouseholdScreen() {
 
   async function handleShare() {
     if (!inviteCode) return;
-    await Share.share({ message: `Join my household on PantryPal! Use invite code: ${inviteCode}` });
+    await Share.share({ message: buildInviteMessage(inviteCode) });
   }
 
   if (inviteCode) {

@@ -45,7 +45,7 @@ function ordinalStop(n: number): string {
 
 type ShoppingSection = { title: string; storeId: string | null; data: ShoppingEntry[]; stopNumber?: number };
 type StoreSpendSheet = { storeId: string; storeName: string; stopNumber: number; nextStoreName: string | null };
-type TripSheet = { itemCount: number; tripSpend: number; weeklySpend: number };
+type TripSheet = { itemCount: number; tripSpend: number; weeklySpend: number; receiptCount: number };
 
 export default function GroceryScreen() {
   const router = useRouter();
@@ -70,6 +70,7 @@ export default function GroceryScreen() {
   const weeklyBudget = useSettingsStore((s) => s.weeklyBudget);
   const [weeklySpend, setWeeklySpend] = useState(0);
   const [tripSpend, setTripSpend] = useState(0);
+  const [tripReceiptCount, setTripReceiptCount] = useState(0);
   const [startCount, setStartCount] = useState(0);
   const [grabbedCount, setGrabbedCount] = useState(0);
   const [tripSheet, setTripSheet] = useState<TripSheet | null>(null);
@@ -183,6 +184,7 @@ export default function GroceryScreen() {
       setStoreSpendSheet(null);
       setStoreSpendAmount('');
       setPendingReceiptStoreId(null);
+      setTripReceiptCount(0);
       tripStartItemCountRef.current = 0;
     }
   }, [shoppingMode, setPendingReceiptStoreId]);
@@ -675,13 +677,14 @@ export default function GroceryScreen() {
               const count = startCount;
               const finishedTripSpend = tripSpend;
               const finishedWeeklySpend = weeklySpend;
+              const finishedReceiptCount = tripReceiptCount;
               setShoppingMode(false);
               setActiveStore(null);
               clearReceiptTrip();
               setRouteStoreIds([]);
               setStartCount(0);
               setGrabbedCount(0);
-              if (count > 0) setTripSheet({ itemCount: count, tripSpend: finishedTripSpend, weeklySpend: finishedWeeklySpend });
+              if (count > 0) setTripSheet({ itemCount: count, tripSpend: finishedTripSpend, weeklySpend: finishedWeeklySpend, receiptCount: finishedReceiptCount });
             },
           },
         ],
@@ -691,13 +694,14 @@ export default function GroceryScreen() {
       const count = startCount;
       const finishedTripSpend = tripSpend;
       const finishedWeeklySpend = weeklySpend;
+      const finishedReceiptCount = tripReceiptCount;
       setShoppingMode(false);
       setActiveStore(null);
       clearReceiptTrip();
       setRouteStoreIds([]);
       setStartCount(0);
       setGrabbedCount(0);
-      if (count > 0) setTripSheet({ itemCount: count, tripSpend: finishedTripSpend, weeklySpend: finishedWeeklySpend });
+      if (count > 0) setTripSheet({ itemCount: count, tripSpend: finishedTripSpend, weeklySpend: finishedWeeklySpend, receiptCount: finishedReceiptCount });
     }
   }, [
     clearReceiptTrip,
@@ -709,6 +713,7 @@ export default function GroceryScreen() {
     startCount,
     stores,
     tripSpend,
+    tripReceiptCount,
     weeklySpend,
   ]);
 
@@ -716,12 +721,14 @@ export default function GroceryScreen() {
     // Receipt step must finish via Save amount, upload, or Skip — not backdrop/back.
   }, []);
 
-  const continueAfterStoreSpend = useCallback((amount = 0) => {
+  const continueAfterStoreSpend = useCallback((amount = 0, receiptAdded = false) => {
     const finishedStoreId = storeSpendSheet?.storeId;
     const count = startCount;
     const finishedTripSpend = tripSpend + amount;
     const finishedWeeklySpend = weeklySpend + amount;
+    const finishedReceiptCount = tripReceiptCount + (receiptAdded ? 1 : 0);
     if (amount > 0) setTripSpend(finishedTripSpend);
+    if (receiptAdded) setTripReceiptCount(finishedReceiptCount);
     setStoreSpendSheet(null);
     setStoreSpendAmount('');
     setPendingReceiptStoreId(null);
@@ -741,7 +748,7 @@ export default function GroceryScreen() {
       setRouteStoreIds([]);
       setStartCount(0);
       setGrabbedCount(0);
-      if (count > 0) setTripSheet({ itemCount: count, tripSpend: finishedTripSpend, weeklySpend: finishedWeeklySpend });
+      if (count > 0) setTripSheet({ itemCount: count, tripSpend: finishedTripSpend, weeklySpend: finishedWeeklySpend, receiptCount: finishedReceiptCount });
     }
   }, [
     allActiveItems.length,
@@ -753,6 +760,7 @@ export default function GroceryScreen() {
     startCount,
     storeSpendSheet?.storeId,
     tripSpend,
+    tripReceiptCount,
     weeklySpend,
   ]);
 
@@ -770,7 +778,7 @@ export default function GroceryScreen() {
       await addManualReceipt(householdId, session.user.id, storeSpendSheet.storeName, parsed, today);
       refreshSpend();
       void hapticSuccess();
-      continueAfterStoreSpend(parsed);
+      continueAfterStoreSpend(parsed, true);
     } catch (e: any) {
       void hapticError();
       Alert.alert('Could not save', e?.message ?? 'Please try again.');
@@ -781,7 +789,7 @@ export default function GroceryScreen() {
 
   const uploadStoreReceipt = useCallback((source: 'camera' | 'library') => {
     if (!storeSpendSheet || !householdId || !session?.user.id) return;
-    Alert.alert('Upload receipt?', `Attach this receipt to ${storeSpendSheet.storeName}.`, [
+    Alert.alert('Add receipt?', `Attach this receipt to ${storeSpendSheet.storeName}.`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Continue',
@@ -805,7 +813,7 @@ export default function GroceryScreen() {
             refreshSpend();
             void hapticSuccess();
             Alert.alert('Receipt uploaded', 'Processing this store receipt.');
-            continueAfterStoreSpend();
+            continueAfterStoreSpend(0, true);
           } catch (e: any) {
             void hapticError();
             Alert.alert('Upload failed', e?.message ?? 'Please try again.');
@@ -877,6 +885,7 @@ export default function GroceryScreen() {
               if (!shoppingMode) {
                 clearReceiptTrip();
                 setTripSpend(0);
+                setTripReceiptCount(0);
               }
               setShoppingMode((v) => !v);
               if (shoppingMode) {
@@ -1351,7 +1360,7 @@ export default function GroceryScreen() {
 
           <View style={styles.tripAnalyticsTab}>
             <Ionicons name="analytics-outline" size={14} color={colors.primary} />
-            <Text style={styles.tripAnalyticsTabText}>That's how much you spend for these trips</Text>
+            <Text style={styles.tripAnalyticsTabText}>Trip spending summary</Text>
           </View>
 
           <View style={[styles.spendRow, { backgroundColor: colors.primarySoft }]}>
@@ -1378,7 +1387,12 @@ export default function GroceryScreen() {
           </View>
 
           <Text style={[styles.sheetHint, { color: colors.muted }]}>
-            Upload your receipt to keep the spend tracker accurate.
+            Upload receipts from each store you visited.
+          </Text>
+          <Text style={[styles.sheetHint, { color: colors.muted }]}>
+            {tripSheet?.receiptCount
+              ? `${tripSheet.receiptCount} ${tripSheet.receiptCount === 1 ? 'receipt' : 'receipts'} uploaded`
+              : 'No receipts uploaded yet'}
           </Text>
 
           <TouchableOpacity
@@ -1387,7 +1401,9 @@ export default function GroceryScreen() {
             activeOpacity={0.85}
           >
             <Ionicons name="receipt-outline" size={18} color={colors.onPrimary} />
-            <Text style={[styles.sheetPrimaryText, { color: colors.onPrimary }]}>Upload receipt</Text>
+            <Text style={[styles.sheetPrimaryText, { color: colors.onPrimary }]}>
+              {tripSheet?.receiptCount ? 'Add another receipt' : 'Add receipt'}
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.sheetGhost} onPress={closeTripSheet} activeOpacity={0.7}>

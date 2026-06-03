@@ -58,7 +58,7 @@ export default function SwipeableItemRow({ item, userId, onEditPress, onLiftPres
     return (
       <TouchableOpacity style={styles.gotItAction} onPress={handleSwipeGotIt} activeOpacity={0.85}>
         <Animated.View style={[styles.actionInner, { transform: [{ scale }] }]}>
-          <Ionicons name="checkmark-circle-outline" size={22} color="#FFFFFF" />
+          <Ionicons name="checkmark-circle-outline" size={22} color={colors.onPrimary} />
           <Text style={styles.gotItLabel}>Got it</Text>
         </Animated.View>
       </TouchableOpacity>
@@ -73,7 +73,7 @@ export default function SwipeableItemRow({ item, userId, onEditPress, onLiftPres
     return (
       <TouchableOpacity style={styles.deleteAction} onPress={handleSwipeDelete} activeOpacity={0.85}>
         <Animated.View style={[styles.actionInner, { transform: [{ scale }] }]}>
-          <Ionicons name="trash-outline" size={22} color="#FFFFFF" />
+          <Ionicons name="trash-outline" size={22} color={colors.onPrimary} />
           <Text style={styles.deleteLabel}>Delete</Text>
         </Animated.View>
       </TouchableOpacity>
@@ -120,12 +120,12 @@ function makeStyles(colors: AppColors) {
       gap: 4,
     },
     gotItLabel: {
-      color: '#FFFFFF',
+      color: colors.onPrimary,
       fontSize: 11,
       fontFamily: fonts.bodySemiBold,
     },
     deleteLabel: {
-      color: '#FFFFFF',
+      color: colors.onPrimary,
       fontSize: 11,
       fontFamily: fonts.bodySemiBold,
     },

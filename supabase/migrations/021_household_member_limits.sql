@@ -107,7 +107,9 @@ CREATE TRIGGER household_members_limit_guard
   FOR EACH ROW
   EXECUTE FUNCTION enforce_household_member_limit();
 
-CREATE OR REPLACE FUNCTION create_household_with_owner(
+DROP FUNCTION IF EXISTS create_household_with_owner(text, text);
+
+CREATE FUNCTION create_household_with_owner(
   p_name text,
   p_invite_code text
 )
@@ -141,7 +143,9 @@ BEGIN
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION join_household_by_code(
+DROP FUNCTION IF EXISTS join_household_by_code(text);
+
+CREATE FUNCTION join_household_by_code(
   p_invite_code text
 )
 RETURNS TABLE (

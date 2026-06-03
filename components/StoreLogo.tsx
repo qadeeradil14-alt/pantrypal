@@ -33,6 +33,8 @@ const STORE_DOMAIN_MAP: Record<string, string> = {
   heb: 'heb.com',
   'h e b': 'heb.com',
   wegmans: 'wegmans.com',
+  shoprite: 'shoprite.com',
+  'shop rite': 'shoprite.com',
   'food lion': 'foodlion.com',
   'harris teeter': 'harristeeter.com',
   'stop and shop': 'stopandshop.com',
@@ -89,6 +91,8 @@ const STORE_DOMAIN_MAP: Record<string, string> = {
   // ── Asian & Ethnic ──
   'h mart': 'hmart.com',
   hmart: 'hmart.com',
+  'lotte plaza': 'lotteplaza.com',
+  'lotte plaza market': 'lotteplaza.com',
   mitsuwa: 'mitsuwa.com',
   'seafood city': 'seafoodcity.com',
   'ranch 99': '99ranch.com',
@@ -139,6 +143,7 @@ const STORE_DOMAIN_MAP: Record<string, string> = {
   'bed bath': 'bedbathandbeyond.com',
   // ── Online / Delivery ──
   amazon: 'amazon.com',
+  'amazon fresh': 'amazon.com',
   instacart: 'instacart.com',
   doordash: 'doordash.com',
   // ── Restaurant / Fast Food (for receipt scanning) ──
@@ -304,7 +309,7 @@ function makeStyles(colors: AppColors, size: number, hasLogo: boolean) {
       borderRadius: Math.round(size * 0.28),
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: '#FFFFFF',
+      backgroundColor: colors.surface,
       paddingHorizontal: Math.max(4, Math.round(size * 0.14)),
       paddingVertical: Math.max(3, Math.round(size * 0.12)),
       overflow: 'hidden',

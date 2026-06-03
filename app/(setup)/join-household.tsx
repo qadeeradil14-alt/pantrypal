@@ -65,8 +65,9 @@ export default function JoinHouseholdScreen() {
       <TextInput
         style={[styles.input, styles.codeInput]}
         placeholder="ABC123"
-        autoCapitalize="none"
+        autoCapitalize="characters"
         autoCorrect={false}
+        spellCheck={false}
         autoFocus
         keyboardType="default"
         maxLength={6}

@@ -143,7 +143,7 @@ export default function ReceiptsScreen() {
       const receipt = await uploadReceipt(householdId, userId, asset.uri, asset.mimeType ?? 'image/jpeg');
       setReceipts((prev) => [receipt, ...prev]);
       setUploadStage('processing');
-      Alert.alert('Receipt uploaded', 'Processing your receipt — this takes about 30 seconds.');
+      Alert.alert('Receipt added', 'Processing this receipt. You can add another one any time.');
     } catch (e: any) {
       const message = e?.message ?? 'Try again.';
       setUploadStage('failed');
@@ -183,7 +183,7 @@ export default function ReceiptsScreen() {
   }
 
   function handleAdd() {
-    Alert.alert('Add Receipt', 'How would you like to add your receipt?', [
+    Alert.alert('Add receipt', 'How would you like to add this receipt?', [
       { text: 'Take Photo', onPress: () => { void handleCapture('camera'); } },
       { text: 'Choose from Library', onPress: () => { void handleCapture('library'); } },
       { text: 'Enter Manually', onPress: () => {
@@ -699,7 +699,7 @@ export default function ReceiptsScreen() {
                     onPress={() => {
                       if (!selectedReceipt) return;
                       Alert.alert(
-                        'Delete Receipt',
+                        'Delete receipt',
                         'This will permanently remove this receipt and its data.',
                         [
                           { text: 'Cancel', style: 'cancel' },
