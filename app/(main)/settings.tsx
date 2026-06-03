@@ -27,6 +27,7 @@ import { useTheme } from '../../hooks/useTheme';
 import { fonts } from '../../constants/theme';
 import type { AppColors } from '../../constants/theme';
 import ScalePressable from '../../components/ScalePressable';
+import AppIcon from '../../components/AppIcon';
 
 const appVersion = Constants.expoConfig?.version ?? '—';
 
@@ -434,6 +435,10 @@ export default function SettingsScreen() {
               <Pressable style={styles.qrOverlay} onPress={() => setShowQR(false)}>
                 <Pressable style={styles.qrSheet} onPress={(e) => e.stopPropagation()}>
                   <View style={styles.qrHandle} />
+                  <View style={styles.qrBrand}>
+                    <AppIcon size={48} />
+                    <Text style={styles.qrBrandName}>Stokit</Text>
+                  </View>
                   <Text style={styles.qrTitle}>Scan to join</Text>
                   <Text style={styles.qrSub}>Open camera and point at this code to join {household?.name ?? 'the household'}.</Text>
                   <View style={styles.qrBox}>
@@ -699,11 +704,19 @@ function makeStyles(colors: AppColors) {
     },
     qrHandle: {
       width: 36, height: 4, borderRadius: 2,
-      backgroundColor: colors.border, marginBottom: 20,
+      backgroundColor: colors.border, marginBottom: 16,
+    },
+    qrBrand: {
+      flexDirection: 'row', alignItems: 'center', gap: 10,
+      marginBottom: 16,
+    },
+    qrBrandName: {
+      fontSize: 22, fontFamily: fonts.displayExtraBoldItalic,
+      color: colors.primary, letterSpacing: 0,
     },
     qrTitle: {
-      fontSize: 22, fontFamily: fonts.displayExtraBoldItalic, color: colors.ink,
-      marginBottom: 6, letterSpacing: 0,
+      fontSize: 20, fontFamily: fonts.bodySemiBold, color: colors.ink,
+      marginBottom: 6,
     },
     qrSub: {
       fontSize: 14, fontFamily: fonts.body, color: colors.muted,
