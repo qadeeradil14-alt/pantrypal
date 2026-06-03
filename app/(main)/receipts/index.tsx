@@ -73,7 +73,10 @@ export default function ReceiptsScreen() {
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [quickStore, setQuickStore] = useState('');
   const [quickAmount, setQuickAmount] = useState('');
-  const [quickDate, setQuickDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [quickDate, setQuickDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
   const [quickSaving, setQuickSaving] = useState(false);
 
   const canUpload = !!householdId && !!userId && !uploading;
@@ -189,7 +192,8 @@ export default function ReceiptsScreen() {
       { text: 'Enter Manually', onPress: () => {
         setQuickStore('');
         setQuickAmount('');
-        setQuickDate(new Date().toISOString().slice(0, 10));
+        const _d = new Date();
+        setQuickDate(`${_d.getFullYear()}-${String(_d.getMonth() + 1).padStart(2, '0')}-${String(_d.getDate()).padStart(2, '0')}`);
         setShowQuickAdd(true);
       }},
       { text: 'Cancel', style: 'cancel' },
@@ -204,7 +208,8 @@ export default function ReceiptsScreen() {
       return;
     }
     const store = quickStore.trim() || 'Unknown store';
-    const date = quickDate.trim() || new Date().toISOString().slice(0, 10);
+    const _fd = new Date();
+    const date = quickDate.trim() || `${_fd.getFullYear()}-${String(_fd.getMonth() + 1).padStart(2, '0')}-${String(_fd.getDate()).padStart(2, '0')}`;
     setQuickSaving(true);
     try {
       const receipt = await addManualReceipt(householdId, userId, store, amount, date);
@@ -431,7 +436,7 @@ export default function ReceiptsScreen() {
                   <Text style={styles.cardStore}>{item.store_name ?? 'Unknown store'}</Text>
                   <Text style={styles.cardDate}>
                     {item.transaction_date
-                      ? new Date(item.transaction_date).toLocaleDateString()
+                      ? new Date(item.transaction_date + 'T12:00:00').toLocaleDateString()
                       : new Date(item.created_at).toLocaleDateString()}
                   </Text>
                 </View>
@@ -488,7 +493,7 @@ export default function ReceiptsScreen() {
                 </Text>
                 <Text style={sheetStyles.headerSubtitle}>
                   {selectedReceipt?.transaction_date
-                    ? new Date(selectedReceipt.transaction_date).toLocaleDateString('en-US', {
+                    ? new Date(selectedReceipt.transaction_date + 'T12:00:00').toLocaleDateString('en-US', {
                         weekday: 'long',
                         month: 'long',
                         day: 'numeric',

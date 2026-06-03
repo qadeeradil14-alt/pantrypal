@@ -364,7 +364,8 @@ export default function PantryScreen() {
             const amount = parseFloat(value.replace(/[^0-9.]/g, ''));
             if (isNaN(amount) || amount <= 0) return;
             const storeName = stores.find((s) => s.id === selectedStoreId)?.name ?? 'Grocery run';
-            const today = new Date().toISOString().slice(0, 10);
+            const d = new Date();
+            const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
             void addManualReceipt(hId, uId, storeName, amount, today).catch(() => {});
           },
           'plain-text',

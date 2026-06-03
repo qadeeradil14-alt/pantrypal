@@ -43,6 +43,12 @@ function ordinalStop(n: number): string {
   return `${n}${s[(v - 20) % 10] || s[v] || s[0]} stop`;
 }
 
+/** Returns today as YYYY-MM-DD in local time — avoids UTC midnight rollover bug. */
+function localToday(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 type ShoppingSection = { title: string; storeId: string | null; data: ShoppingEntry[]; stopNumber?: number };
 type StoreSpendSheet = { storeId: string; storeName: string; stopNumber: number; nextStoreName: string | null };
 type TripSheet = { itemCount: number; tripSpend: number; weeklySpend: number; receiptCount: number };
@@ -774,7 +780,7 @@ export default function GroceryScreen() {
     }
     setSavingStoreSpend(true);
     try {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = localToday();
       await addManualReceipt(householdId, session.user.id, storeSpendSheet.storeName, parsed, today);
       refreshSpend();
       void hapticSuccess();
@@ -808,7 +814,7 @@ export default function GroceryScreen() {
               : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
             if (result.canceled || !result.assets[0]) return;
             const asset = result.assets[0];
-            const today = new Date().toISOString().slice(0, 10);
+            const today = localToday();
             await uploadReceipt(householdId, session.user.id, asset.uri, asset.mimeType ?? 'image/jpeg', storeSpendSheet.storeName, today);
             refreshSpend();
             void hapticSuccess();
@@ -1007,7 +1013,7 @@ export default function GroceryScreen() {
                   <Text style={styles.routeStepNumber}>{section.stopNumber ?? index + 1}</Text>
                   <StoreLogo
                     name={section.title}
-                    size={20}
+                    size={28}
                     domain={store?.brand_domain}
                     logoUrl={store?.logo_url}
                   />
@@ -1026,8 +1032,13 @@ export default function GroceryScreen() {
           </View>
           <View style={styles.unassignedBody}>
             <Text style={styles.unassignedTitle}>Store missing</Text>
-            <Text style={styles.unassignedSub}>
-              {unassignedEntries.length} {unassignedEntries.length === 1 ? 'item needs' : 'items need'} a store for accurate directions.
+            <Text style={styles.unassignedSub} numberOfLines={2}>
+              {(() => {
+                const names = unassignedEntries.map((e) => e.name);
+                if (names.length === 1) return `${names[0]} needs a store for accurate directions.`;
+                if (names.length === 2) return `${names[0]} and ${names[1]} need stores.`;
+                return `${names[0]}, ${names[1]} and ${names.length - 2} more need stores.`;
+              })()}
             </Text>
           </View>
           <ScalePressable style={styles.unassignedBtn} onPress={assignFirstUnassigned}>
@@ -1137,9 +1148,6 @@ export default function GroceryScreen() {
                 logoUrl={section.storeId ? stores.find((s) => s.id === section.storeId)?.logo_url : undefined}
               />
               <View style={styles.sectionTitleWrap}>
-                {section.stopNumber && (
-                  <Text style={styles.sectionStopLabel}>{ordinalStop(section.stopNumber)}</Text>
-                )}
                 <Text style={styles.sectionTitle}>{section.title}</Text>
               </View>
               <View style={styles.sectionBadge}>
