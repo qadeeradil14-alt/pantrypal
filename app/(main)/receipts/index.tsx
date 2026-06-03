@@ -14,6 +14,7 @@ import { useSettingsStore } from '../../../store/settings';
 import { useItemsStore } from '../../../store/items';
 import { addItemWithQueue } from '../../../lib/items';
 import { uploadReceipt, fetchReceipts, deleteReceipt, deleteReceiptsSince, addManualReceipt, deleteReceiptItem, getSpendSummary, type Receipt, type SpendSummary } from '../../../lib/receipts';
+import { localToday, parseLocalDate } from '../../../lib/dates';
 import { radii, shadow, fonts } from '../../../constants/theme';
 import { makeSheetStyles } from '../../../constants/sheetStyles';
 import ScalePressable from '../../../components/ScalePressable';
@@ -73,10 +74,7 @@ export default function ReceiptsScreen() {
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [quickStore, setQuickStore] = useState('');
   const [quickAmount, setQuickAmount] = useState('');
-  const [quickDate, setQuickDate] = useState(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  });
+  const [quickDate, setQuickDate] = useState(() => localToday());
   const [quickSaving, setQuickSaving] = useState(false);
 
   const canUpload = !!householdId && !!userId && !uploading;
@@ -192,8 +190,7 @@ export default function ReceiptsScreen() {
       { text: 'Enter Manually', onPress: () => {
         setQuickStore('');
         setQuickAmount('');
-        const _d = new Date();
-        setQuickDate(`${_d.getFullYear()}-${String(_d.getMonth() + 1).padStart(2, '0')}-${String(_d.getDate()).padStart(2, '0')}`);
+        setQuickDate(localToday());
         setShowQuickAdd(true);
       }},
       { text: 'Cancel', style: 'cancel' },
@@ -208,8 +205,7 @@ export default function ReceiptsScreen() {
       return;
     }
     const store = quickStore.trim() || 'Unknown store';
-    const _fd = new Date();
-    const date = quickDate.trim() || `${_fd.getFullYear()}-${String(_fd.getMonth() + 1).padStart(2, '0')}-${String(_fd.getDate()).padStart(2, '0')}`;
+    const date = quickDate.trim() || localToday();
     setQuickSaving(true);
     try {
       const receipt = await addManualReceipt(householdId, userId, store, amount, date);
@@ -436,7 +432,7 @@ export default function ReceiptsScreen() {
                   <Text style={styles.cardStore}>{item.store_name ?? 'Unknown store'}</Text>
                   <Text style={styles.cardDate}>
                     {item.transaction_date
-                      ? new Date(item.transaction_date + 'T12:00:00').toLocaleDateString()
+                      ? parseLocalDate(item.transaction_date).toLocaleDateString()
                       : new Date(item.created_at).toLocaleDateString()}
                   </Text>
                 </View>
@@ -449,7 +445,7 @@ export default function ReceiptsScreen() {
               </View>
               {item.receipt_items && item.receipt_items.length > 0 && (
                 <Text style={styles.cardItems}>
-                  {item.receipt_items.length} items
+                  {item.receipt_items.length} {item.receipt_items.length === 1 ? 'item' : 'items'}
                   {item.receipt_items.filter((i) => i.matched_item_id).length > 0 &&
                     ` · ${item.receipt_items.filter((i) => i.matched_item_id).length} matched to pantry`}
                 </Text>
@@ -493,7 +489,7 @@ export default function ReceiptsScreen() {
                 </Text>
                 <Text style={sheetStyles.headerSubtitle}>
                   {selectedReceipt?.transaction_date
-                    ? new Date(selectedReceipt.transaction_date + 'T12:00:00').toLocaleDateString('en-US', {
+                    ? parseLocalDate(selectedReceipt.transaction_date).toLocaleDateString('en-US', {
                         weekday: 'long',
                         month: 'long',
                         day: 'numeric',

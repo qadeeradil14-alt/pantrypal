@@ -21,6 +21,7 @@ import { completeShoppingEntryWithQueue, setShoppingEntryAisleWithQueue } from '
 import { hapticError, hapticSelection, hapticSuccess } from '../../../lib/haptics';
 import type { Item } from '../../../lib/items';
 import { CATEGORY_LABELS, type ItemCategory } from '../../../constants/defaultItems';
+import { localToday } from '../../../lib/dates';
 import ItemThumbnail from '../../../components/ItemThumbnail';
 import { resolveStoreSection } from '../../../constants/storeSections';
 import { groceryItemTestId } from '../../../lib/testIds';
@@ -43,11 +44,6 @@ function ordinalStop(n: number): string {
   return `${n}${s[(v - 20) % 10] || s[v] || s[0]} stop`;
 }
 
-/** Returns today as YYYY-MM-DD in local time — avoids UTC midnight rollover bug. */
-function localToday(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
 
 type ShoppingSection = { title: string; storeId: string | null; data: ShoppingEntry[]; stopNumber?: number };
 type StoreSpendSheet = { storeId: string; storeName: string; stopNumber: number; nextStoreName: string | null };
@@ -1401,12 +1397,9 @@ export default function GroceryScreen() {
           </View>
 
           <Text style={[styles.sheetHint, { color: colors.muted }]}>
-            Upload receipts from each store you visited.
-          </Text>
-          <Text style={[styles.sheetHint, { color: colors.muted }]}>
             {tripSheet?.receiptCount
-              ? `${tripSheet.receiptCount} ${tripSheet.receiptCount === 1 ? 'receipt' : 'receipts'} uploaded`
-              : 'No receipts uploaded yet'}
+              ? `${tripSheet.receiptCount} ${tripSheet.receiptCount === 1 ? 'receipt' : 'receipts'} logged this trip.`
+              : 'Add a receipt photo or log spending from each store.'}
           </Text>
 
           <TouchableOpacity
