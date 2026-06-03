@@ -7,7 +7,6 @@ import {
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Linking } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
-import * as Location from 'expo-location';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useHouseholdStore } from '../../../store/household';
@@ -327,7 +326,6 @@ function AddStoreModal({
   const [saving, setSaving] = useState(false);
   const [searching, setSearching] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
-  const [locating, setLocating] = useState(false);
   const [error, setError] = useState('');
   const [mapQuery, setMapQuery] = useState('');
   const [zipCode, setZipCode] = useState('');
@@ -387,64 +385,6 @@ function AddStoreModal({
     }
   }
 
-  async function handleUseCurrentLocation(storeName?: string) {
-    const store = ((storeName ?? mapQuery) || name).trim();
-    if (!store) {
-      setError('Enter a store name first.');
-      return;
-    }
-    setLocating(true);
-    setError('');
-    try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (permission.status !== 'granted') {
-        setError('Location permission is needed to use your current position.');
-        return;
-      }
-      // Race GPS against a 10-second timeout so the button never stays permanently
-      // disabled when satellite lock takes too long (indoors, urban canyon, etc.)
-      const locationPromise = Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.BestForNavigation });
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Location timed out. Move outside and try again, or enter the address manually.')), 10_000),
-      );
-      const here = await Promise.race([locationPromise, timeoutPromise]);
-      const { latitude, longitude, accuracy } = here.coords;
-      if (typeof accuracy === 'number' && accuracy > 150) {
-        setError('Location is not precise yet. Move closer to the store entrance and try again.');
-        return;
-      }
-      let currentAddress = 'Current location';
-      try {
-        const [addr] = await Location.reverseGeocodeAsync({ latitude, longitude });
-        const parts = [
-          addr?.streetNumber,
-          addr?.street,
-          addr?.city,
-          addr?.region,
-          addr?.postalCode,
-        ].filter((part) => typeof part === 'string' && part.trim().length > 0);
-        if (parts.length > 0) currentAddress = parts.join(', ');
-      } catch { /* keep generic current location label */ }
-
-      const place: StorePlace = {
-        name: store,
-        address: currentAddress,
-        latitude,
-        longitude,
-      };
-      setMapQuery(store);
-      setGeocodedPlace(place);
-      setSelectedPlace(place);
-      setPlaces([place]);
-      setManualAddress(currentAddress);
-      void hapticSuccess();
-    } catch (e: any) {
-      setError(e?.message ?? 'Could not read your current location.');
-      void hapticError();
-    } finally {
-      setLocating(false);
-    }
-  }
 
   async function handleGeocodeManual() {
     const trimmed = manualAddress.trim();
@@ -626,18 +566,6 @@ function AddStoreModal({
                   }
                 </ScalePressable>
                 <ScalePressable
-                  style={[styles.currentLocationBtn, locating && styles.currentLocationBtnDisabled]}
-                  profile="chip"
-                  onPress={() => { void hapticSelection(); void handleUseCurrentLocation(mapQuery); }}
-                  disabled={locating}
-                >
-                  {locating
-                    ? <ActivityIndicator size="small" color={colors.primary} />
-                    : <Ionicons name="locate-outline" size={16} color={colors.primary} />
-                  }
-                  <Text style={styles.currentLocationText}>Use where I am now</Text>
-                </ScalePressable>
-                <ScalePressable
                   style={styles.skipBtn}
                   profile="chip"
                   onPress={() => {
@@ -662,19 +590,6 @@ function AddStoreModal({
                     />
                   ))}
                 </MapView>
-
-                <ScalePressable
-                  style={[styles.currentLocationBtn, locating && styles.currentLocationBtnDisabled]}
-                  profile="chip"
-                  onPress={() => { void hapticSelection(); void handleUseCurrentLocation(mapQuery); }}
-                  disabled={locating}
-                >
-                  {locating
-                    ? <ActivityIndicator size="small" color={colors.primary} />
-                    : <Ionicons name="locate-outline" size={16} color={colors.primary} />
-                  }
-                  <Text style={styles.currentLocationText}>Use where I am now</Text>
-                </ScalePressable>
 
                 {/* Address cards — scrollable if multiple results, single card if geocoded */}
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.placeList}>
@@ -797,18 +712,6 @@ function AddStoreModal({
               })}
             </ScrollView>
           )}
-          <ScalePressable
-            style={[styles.currentLocationBtn, locating && styles.currentLocationBtnDisabled, { marginBottom: 12 }]}
-            profile="chip"
-            onPress={() => { void hapticSelection(); void handleUseCurrentLocation(name.trim()); }}
-            disabled={locating || !name.trim()}
-          >
-            {locating
-              ? <ActivityIndicator size="small" color={colors.primary} />
-              : <Ionicons name="locate-outline" size={16} color={colors.primary} />
-            }
-            <Text style={styles.currentLocationText}>Use my current location for this store</Text>
-          </ScalePressable>
           <TextInput
             style={[styles.input, { marginTop: 8 }]}
             placeholder="Zip code (optional — for accurate local results)"
