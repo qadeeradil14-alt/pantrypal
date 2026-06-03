@@ -716,6 +716,7 @@ function AddStoreModal({
                       void hapticSelection();
                       setSelectedBrand(brand);
                       setName(brand.name);
+                      setBrands([]); // collapse dropdown immediately on selection
                     }}
                   >
                     <StoreLogo name={brand.name} size={24} domain={brand.domain} logoUrl={brand.logo_url} />
