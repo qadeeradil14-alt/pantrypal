@@ -343,6 +343,21 @@ function AddStoreModal({
   const existingNames = useMemo(() => existingStores.map((s) => s.name.toLowerCase()), [existingStores]);
   const presets = PRESET_STORES.filter((p) => !existingNames.includes(p.toLowerCase()));
 
+  /**
+   * Generic reset for the custom-store section.
+   * Clears name, address, selected brand, search results, and error.
+   * Call this from the X button, after a successful add, and whenever the
+   * user needs a completely clean state for a new store entry.
+   * Does NOT clear zipCode — the user likely wants to keep it for the next search.
+   */
+  function resetCustomSection() {
+    setName('');
+    setAddress('');
+    setSelectedBrand(null);
+    setBrands([]);
+    setError('');
+  }
+
   useEffect(() => {
     const q = name.trim();
     // Don't re-search if a brand is already selected — prevents the dropdown
@@ -367,7 +382,9 @@ function AddStoreModal({
     setMapQuery(trimmed);
     setGeocodedPlace(null);
     setManualAddress('');
-    setSelectedBrand(null); // clear stale brand from previous search
+    // Reset custom section so brand/name don't linger if user taps Back from the map view
+    setBrands([]);
+    setSelectedBrand(null);
     try {
       const found = await searchNearbyStores(trimmed, zipCode.trim() || undefined);
       setPlaces(found);
@@ -458,6 +475,7 @@ function AddStoreModal({
     setError('');
     try {
       const { store, queued } = await addStoreWithQueue(householdId, storeName, storeAddress, selectedBrand, allowNoLocation);
+      resetCustomSection();
       onAdd(store);
       if (queued) {
         setError("Saved offline — will sync when you're back online.");
@@ -476,6 +494,7 @@ function AddStoreModal({
     setError('');
     try {
       const store = await addStoreFromPlace(householdId, place, selectedBrand);
+      resetCustomSection();
       onAdd(store);
       void hapticSuccess();
     } catch (e: any) {
@@ -526,7 +545,7 @@ function AddStoreModal({
                   {noResults ? 'No nearby locations found. Enter the address or zip code below.' : 'Tap a pin to select the right location.'}
                 </Text>
               </View>
-              <ScalePressable profile="chip" style={styles.mapBackBtn} onPress={() => { setMapQuery(''); setError(''); }}>
+              <ScalePressable profile="chip" style={styles.mapBackBtn} onPress={() => { setMapQuery(''); resetCustomSection(); }}>
                 <Text style={styles.mapBackText}>Back</Text>
               </ScalePressable>
             </View>
@@ -734,7 +753,7 @@ function AddStoreModal({
                 style={styles.clearBrandBtn}
                 onPress={() => {
                   void hapticSelection();
-                  setSelectedBrand(null);
+                  resetCustomSection(); // clears name + brand so brand search doesn't re-fire
                 }}
               >
                 <Ionicons name="close" size={16} color={colors.primary} />
