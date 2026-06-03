@@ -1287,11 +1287,12 @@ export default function GroceryScreen() {
               <Text style={[styles.spendCurrencySymbol, { color: colors.primary }]}>$</Text>
               <TextInput
                 value={storeSpendAmount}
-                onChangeText={setStoreSpendAmount}
+                onChangeText={(t) => setStoreSpendAmount(t.replace(/[^0-9.]/g, ''))}
                 placeholder="0.00"
                 placeholderTextColor={colors.muted}
-                keyboardType="decimal-pad"
+                keyboardType="default"
                 returnKeyType="done"
+                onSubmitEditing={saveStoreSpend}
                 style={[styles.spendAmountInput, { color: colors.ink }]}
               />
             </View>
