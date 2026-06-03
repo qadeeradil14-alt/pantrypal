@@ -993,33 +993,6 @@ export default function GroceryScreen() {
         </ScrollView>
       )}
 
-      {routedShoppingSections.length > 0 && (
-        <View style={styles.routeCard}>
-          <View style={styles.routeCardHeader}>
-            <Ionicons name="navigate-outline" size={16} color={colors.primary} />
-            <Text style={styles.routeCardTitle}>
-              {routedShoppingSections.length} {routedShoppingSections.length === 1 ? 'stop' : 'stops'}
-            </Text>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.routeSteps}>
-            {routedShoppingSections.map((section, index) => {
-              const store = section.storeId ? stores.find((s) => s.id === section.storeId) : null;
-              return (
-                <View key={section.title} style={styles.routeStep}>
-                  <Text style={styles.routeStepNumber}>{section.stopNumber ?? index + 1}</Text>
-                  <StoreLogo
-                    name={section.title}
-                    size={28}
-                    domain={store?.brand_domain}
-                    logoUrl={store?.logo_url}
-                  />
-                  <Text style={styles.routeStepText}>{section.title}</Text>
-                </View>
-              );
-            })}
-          </ScrollView>
-        </View>
-      )}
 
       {unassignedEntries.length > 0 && (
         <View style={styles.unassignedBanner}>
