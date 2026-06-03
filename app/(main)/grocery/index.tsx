@@ -445,6 +445,11 @@ export default function GroceryScreen() {
   useEffect(() => {
     if (!shoppingMode || !activeStoreId) return;
     if (isStoreReceiptDone(activeStoreId)) return;
+    // Only set pending receipt for stores that were actually in the planned route.
+    // Stores with zero items (e.g. Afghanistan market when no items assigned) are
+    // never added to routeStoreIds, so startCount/grabbedCount from other stores
+    // should not trigger the spend sheet for them.
+    if (!routeStoreIds.includes(activeStoreId)) return;
     if (lowItems.length === 0 && (startCount > 0 || grabbedCount > 0)) {
       if (pendingReceiptStoreId !== activeStoreId) {
         setPendingReceiptStoreId(activeStoreId);
@@ -456,6 +461,7 @@ export default function GroceryScreen() {
     isStoreReceiptDone,
     lowItems.length,
     pendingReceiptStoreId,
+    routeStoreIds,
     setPendingReceiptStoreId,
     shoppingMode,
     startCount,
@@ -465,6 +471,8 @@ export default function GroceryScreen() {
     if (!activeStoreComplete || !activeStoreId || !activeStore) return;
     if (isStoreReceiptDone(activeStoreId)) return;
     if (pendingReceiptStoreId === activeStoreId || storeSpendSheet) return;
+    // Same guard — only prompt for stores that had items in the route.
+    if (!routeStoreIds.includes(activeStoreId)) return;
     openStoreSpendPrompt(activeStoreId);
   }, [
     activeStore,
@@ -473,6 +481,7 @@ export default function GroceryScreen() {
     isStoreReceiptDone,
     openStoreSpendPrompt,
     pendingReceiptStoreId,
+    routeStoreIds,
     storeSpendSheet,
   ]);
 
