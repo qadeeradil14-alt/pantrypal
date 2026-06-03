@@ -13,7 +13,6 @@ import { useAuthStore } from '../../../store/auth';
 import { useItemsStore } from '../../../store/items';
 import { useStoresStore } from '../../../store/stores';
 import { addItemWithQueue, ensureDefaultItems, fetchItems, markItemOkWithQueue, updateItemDetailsWithQueue } from '../../../lib/items';
-import { addManualReceipt } from '../../../lib/receipts';
 import { setItemStoreWithQueue, type Store } from '../../../lib/stores';
 import { recordLocalOverride } from '../../../lib/realtime';
 import { registerPushToken } from '../../../lib/notifications';
@@ -351,34 +350,12 @@ export default function PantryScreen() {
     try {
       await Promise.all(lowOnes.map((item) => markItemOkWithQueue(item.id)));
       void hapticSuccess();
-
-      // Prompt to log spend — non-blocking, user can skip
-      const hId = household?.id;
-      const uId = session?.user?.id;
-      if (hId && uId) {
-        Alert.prompt(
-          '🛒 How much did you spend?',
-          'Log your grocery total to track your budget. Leave blank to skip.',
-          (value) => {
-            if (!value?.trim()) return;
-            const amount = parseFloat(value.replace(/[^0-9.]/g, ''));
-            if (isNaN(amount) || amount <= 0) return;
-            const storeName = stores.find((s) => s.id === selectedStoreId)?.name ?? 'Grocery run';
-            const d = new Date();
-            const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-            void addManualReceipt(hId, uId, storeName, amount, today).catch(() => {});
-          },
-          'plain-text',
-          '',
-          'decimal-pad',
-        );
-      }
     } catch {
       // Restore on failure
       lowOnes.forEach((item) => updateItem(item.id, { is_low: item.is_low, marked_low_by: item.marked_low_by, got_it_by: item.got_it_by }));
       void hapticError();
     }
-  }, [items, updateItem, household?.id, session?.user?.id, stores, selectedStoreId]);
+  }, [items, updateItem]);
 
   const assignItemToStore = useCallback(async (item: Item, storeId: string | null) => {
     const previousStoreId = item.preferred_store_id;
