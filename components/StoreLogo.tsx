@@ -239,8 +239,10 @@ function logoSources(name: string): string[] {
   const guessed = guessDomains(name);
 
   const sources: (string | null)[] = [
-    knownDomain ? `https://logo.clearbit.com/${knownDomain}?size=512` : null,
+    // Wikipedia first for known stores — verified URLs, higher quality than Clearbit.
+    // Clearbit sometimes returns wrong logos (e.g. Publix for giantfood.com).
     wikiImg ?? null,
+    knownDomain ? `https://logo.clearbit.com/${knownDomain}?size=512` : null,
     knownDomain ? `https://www.google.com/s2/favicons?sz=256&domain=${knownDomain}` : null,
     // If no known domain, try guessed domains through Clearbit
     !knownDomain ? `https://logo.clearbit.com/${guessed[0]}?size=512` : null,

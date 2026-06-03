@@ -661,9 +661,9 @@ function AddStoreModal({
             style={[styles.input, { marginBottom: 16 }]}
             placeholder="Your zip code (e.g. 22060)"
             value={zipCode}
-            onChangeText={setZipCode}
+            onChangeText={(t) => setZipCode(t.replace(/[^0-9]/g, ''))}
             placeholderTextColor={colors.placeholder}
-            keyboardType="number-pad"
+            keyboardType="default"
             maxLength={5}
             returnKeyType="done"
           />
