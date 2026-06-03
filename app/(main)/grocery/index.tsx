@@ -1044,7 +1044,7 @@ export default function GroceryScreen() {
             {nextStop && (
               <StoreLogo
                 name={nextStop.title}
-                size={28}
+                size={44}
                 domain={nextStop.storeId ? stores.find((s) => s.id === nextStop.storeId)?.brand_domain : undefined}
                 logoUrl={nextStop.storeId ? stores.find((s) => s.id === nextStop.storeId)?.logo_url : undefined}
               />
