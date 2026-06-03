@@ -1278,9 +1278,14 @@ export default function GroceryScreen() {
                 </Text>
                 <Text style={[styles.spendCompleteLabel, { color: colors.primary }]}>Stop complete</Text>
               </View>
-              <View style={[styles.spendCheckBadge, { backgroundColor: colors.primarySoft }]}>
+              <ScalePressable
+                profile="chip"
+                style={[styles.spendCheckBadge, { backgroundColor: colors.primarySoft }]}
+                onPress={() => { void hapticSuccess(); continueAfterStoreSpend(); }}
+                disabled={savingStoreSpend}
+              >
                 <Ionicons name="checkmark" size={17} color={colors.primary} />
-              </View>
+              </ScalePressable>
             </View>
 
             <View style={[styles.spendAmountRow, { borderBottomColor: colors.border }]}>
