@@ -628,12 +628,9 @@ function AddStoreModal({
                 <ScalePressable
                   style={styles.skipBtn}
                   profile="chip"
-                  onPress={() => {
-                    void handleSave(mapQuery, undefined, true);
-                    setMapQuery('');
-                  }}
+                  onPress={() => setPlaces([])}
                 >
-                  <Text style={styles.skipText}>Save without location (no geofencing)</Text>
+                  <Text style={styles.skipText}>Enter address manually instead</Text>
                 </ScalePressable>
               </>
             )}
