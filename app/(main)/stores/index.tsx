@@ -365,6 +365,7 @@ function AddStoreModal({
     setMapQuery(trimmed);
     setGeocodedPlace(null);
     setManualAddress('');
+    setSelectedBrand(null); // clear stale brand from previous search
     try {
       const found = await searchNearbyStores(trimmed, zipCode.trim() || undefined);
       setPlaces(found);
