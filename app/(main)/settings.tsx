@@ -165,10 +165,10 @@ export default function SettingsScreen() {
     if (!message) return;
     try {
       void hapticSelection();
-      await Share.share({
-        message,
-        url: TESTFLIGHT_URL,
-      });
+      // Do NOT pass url: separately — iOS fetches OG metadata for the URL and shows
+      // TestFlight's logo as the share preview instead of Stokit's icon.
+      // The TestFlight link is already inside the message text.
+      await Share.share({ message });
     } catch (e: any) {
       Alert.alert('Could not share', e?.message ?? 'Please try again.');
       void hapticError();

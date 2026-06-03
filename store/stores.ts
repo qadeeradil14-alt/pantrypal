@@ -79,22 +79,14 @@ export const useStoresStore = create<StoresState>()(
     {
       name: 'pantrypal:stores-store:v1',
       storage: createJSONStorage(() => AsyncStorage),
-      // Don't persist arrivalStoreId — it should always be fresh on next launch
+      // Only persist static store data and UI preferences.
+      // Shopping session state (activeStoreId, pendingReceiptStoreId, receiptCompletedStoreIds)
+      // must NOT be persisted — stale values on app reopen cause shopping mode to auto-start,
+      // the spend sheet to reopen immediately, and geofence notifications to misbehave.
       partialize: (state) => ({
         stores: state.stores,
-        activeStoreId: state.activeStoreId,
-        pendingReceiptStoreId: state.pendingReceiptStoreId,
-        receiptCompletedStoreIds: state.receiptCompletedStoreIds,
         pinnedStoreIds: state.pinnedStoreIds,
       }),
-      onRehydrateStorage: () => (state) => {
-        if (
-          state?.pendingReceiptStoreId
-          && state.receiptCompletedStoreIds.includes(state.pendingReceiptStoreId)
-        ) {
-          state.setPendingReceiptStoreId(null);
-        }
-      },
     },
   ),
 );

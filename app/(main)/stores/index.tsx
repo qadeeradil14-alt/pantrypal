@@ -401,9 +401,13 @@ function AddStoreModal({
         setError('Location permission is needed to use your current position.');
         return;
       }
-      const here = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.BestForNavigation,
-      });
+      // Race GPS against a 10-second timeout so the button never stays permanently
+      // disabled when satellite lock takes too long (indoors, urban canyon, etc.)
+      const locationPromise = Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.BestForNavigation });
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Location timed out. Move outside and try again, or enter the address manually.')), 10_000),
+      );
+      const here = await Promise.race([locationPromise, timeoutPromise]);
       const { latitude, longitude, accuracy } = here.coords;
       if (typeof accuracy === 'number' && accuracy > 150) {
         setError('Location is not precise yet. Move closer to the store entrance and try again.');

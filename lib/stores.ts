@@ -232,6 +232,25 @@ async function insertStoreWithBrandFallback(payload: Record<string, any>): Promi
   };
 }
 
+/**
+ * Fast location: last-known first (instant), then current with 5-second timeout.
+ * BestForNavigation hangs indefinitely on iOS when GPS can't get a fix — never use
+ * it for store search. Balanced accuracy is more than sufficient for city-level search.
+ */
+async function getFastLocation(): Promise<Location.LocationObject | null> {
+  try {
+    const lastKnown = await Location.getLastKnownPositionAsync({ maxAge: 30_000 });
+    if (lastKnown) return lastKnown;
+  } catch { /* fall through */ }
+  try {
+    const currentPromise = Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 5_000));
+    return await Promise.race([currentPromise, timeoutPromise]);
+  } catch {
+    return null;
+  }
+}
+
 export async function searchNearbyStores(storeName: string, zipCode?: string): Promise<StorePlace[]> {
   const normalized = storeName.trim();
   if (!normalized) return [];
@@ -269,9 +288,10 @@ export async function searchNearbyStores(storeName: string, zipCode?: string): P
   try {
     const permission = await Location.requestForegroundPermissionsAsync();
     if (permission.status === 'granted') {
-      const here = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.BestForNavigation,
-      });
+      // Use fast location (last-known → balanced current with 5s timeout).
+      // Never use BestForNavigation here — it hangs for 30+ seconds on iOS.
+      const here = await getFastLocation();
+      if (here) {
       const { latitude: lat, longitude: lon } = here.coords;
 
       // Reverse geocode to get city/state for smarter query context
@@ -299,6 +319,7 @@ export async function searchNearbyStores(storeName: string, zipCode?: string): P
       // Widen to 1° (~70 miles) before giving up on GPS
       const wide = await searchNominatimStores(contextQuery, `&bounded=1&viewbox=${lon - 1},${lat + 1},${lon + 1},${lat - 1}`);
       if (wide.length > 0) return clusterNearestResults(wide, lat, lon);
+      } // end if (here)
     }
   } catch { /* fall through */ }
 
@@ -414,15 +435,16 @@ async function geocodeStoreName(
     const permission = await Location.requestForegroundPermissionsAsync();
     let results: StorePlace[] = [];
     if (permission.status === 'granted') {
-      const here = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.BestForNavigation,
-      });
-      const delta = 0.35;
-      const left = here.coords.longitude - delta;
-      const right = here.coords.longitude + delta;
-      const top = here.coords.latitude + delta;
-      const bottom = here.coords.latitude - delta;
-      results = await searchNominatimStores(storeName, `&bounded=1&viewbox=${left},${top},${right},${bottom}`, 1);
+      // Use fast location — same reason as searchNearbyStores (no BestForNavigation).
+      const here = await getFastLocation();
+      if (here) {
+        const delta = 0.35;
+        const left = here.coords.longitude - delta;
+        const right = here.coords.longitude + delta;
+        const top = here.coords.latitude + delta;
+        const bottom = here.coords.latitude - delta;
+        results = await searchNominatimStores(storeName, `&bounded=1&viewbox=${left},${top},${right},${bottom}`, 1);
+      }
     }
     if (results.length === 0) results = await searchNominatimStores(storeName, '', 1);
     if (!results.length) return null;
