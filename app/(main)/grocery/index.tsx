@@ -1775,11 +1775,12 @@ function makeStyles(colors: AppColors) {
       marginTop: 1,
     },
     spendCheckBadge: {
-      width: 34,
-      height: 34,
-      borderRadius: 17,
+      width: 36,
+      height: 36,
+      borderRadius: 18,
       alignItems: 'center',
       justifyContent: 'center',
+      alignSelf: 'center',
     },
     spendAmountRow: {
       flexDirection: 'row',
