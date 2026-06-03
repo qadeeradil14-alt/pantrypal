@@ -520,7 +520,7 @@ function AddStoreModal({
               <View style={{ flex: 1 }}>
                 <Text style={sheetStyles.headerTitle} numberOfLines={1}>{mapQuery}</Text>
                 <Text style={sheetStyles.headerSubtitle}>
-                  {noResults ? 'Not found automatically — enter the address below.' : 'Tap a pin to select the right location.'}
+                  {noResults ? 'No nearby locations found. Enter the address or zip code below.' : 'Tap a pin to select the right location.'}
                 </Text>
               </View>
               <ScalePressable profile="chip" style={styles.mapBackBtn} onPress={() => { setMapQuery(''); setError(''); }}>
@@ -547,7 +547,7 @@ function AddStoreModal({
                 </Text>
                 <TextInput
                   style={styles.manualInput}
-                  placeholder="e.g. 123 Main St, Springfield, VA"
+                  placeholder="e.g. 123 Main St, Springfield, VA 22150"
                   placeholderTextColor={colors.placeholder}
                   value={manualAddress}
                   onChangeText={setManualAddress}

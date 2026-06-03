@@ -323,14 +323,10 @@ export async function searchNearbyStores(storeName: string, zipCode?: string): P
     }
   } catch { /* fall through */ }
 
-  // Last resort: unbounded US search — only keep results whose name actually matches
-  // the search term. Without this filter, Nominatim returns unrelated places (e.g. a
-  // military commissary) that get labeled with the search query by bestPlaceName,
-  // creating fake "Kroger at Gridley Rd Fort Belvoir" results.
-  const fallback = await searchNominatimStores(normalized, '&countrycodes=us');
-  const nameKey = normalized.toLowerCase();
-  const relevant = fallback.filter((p) => p.name.toLowerCase().includes(nameKey) || nameKey.includes(p.name.toLowerCase()));
-  return relevant;
+  // No nearby results found — return empty so the UI shows the manual address
+  // entry screen. Never fall back to an unbounded US search: it returns stores
+  // from California, Kentucky, etc. which is worse than showing nothing.
+  return [];
 }
 
 /** Sort by distance from a point. Keep up to 8 nearest results within ~70 miles. */
