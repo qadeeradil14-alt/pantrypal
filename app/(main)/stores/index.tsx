@@ -771,27 +771,7 @@ function AddStoreModal({
             }}
             placeholderTextColor={colors.placeholder}
           />
-          <ScalePressable
-            style={[styles.currentLocationBtn, locating && styles.currentLocationBtnDisabled, { marginBottom: 12 }]}
-            profile="chip"
-            onPress={() => { void hapticSelection(); void handleUseCurrentLocation(name.trim()); }}
-            disabled={locating || !name.trim()}
-          >
-            {locating
-              ? <ActivityIndicator size="small" color={colors.primary} />
-              : <Ionicons name="locate-outline" size={16} color={colors.primary} />
-            }
-            <Text style={styles.currentLocationText}>Use my current location for this store</Text>
-          </ScalePressable>
-          <TextInput
-            style={[styles.input, { marginTop: 8 }]}
-            placeholder="Zip code (optional — for accurate local results)"
-            value={zipCode}
-            onChangeText={setZipCode}
-            placeholderTextColor={colors.placeholder}
-            keyboardType="number-pad"
-            maxLength={5}
-          />
+          {/* Brand suggestions appear immediately below the name input, not below zip code */}
           {name.trim().length >= 2 && brands.length === 0 && !selectedBrand && (
             <Text style={styles.noBrandsText}>No known brands matched — you can still add it as a custom store.</Text>
           )}
@@ -817,6 +797,27 @@ function AddStoreModal({
               })}
             </ScrollView>
           )}
+          <ScalePressable
+            style={[styles.currentLocationBtn, locating && styles.currentLocationBtnDisabled, { marginBottom: 12 }]}
+            profile="chip"
+            onPress={() => { void hapticSelection(); void handleUseCurrentLocation(name.trim()); }}
+            disabled={locating || !name.trim()}
+          >
+            {locating
+              ? <ActivityIndicator size="small" color={colors.primary} />
+              : <Ionicons name="locate-outline" size={16} color={colors.primary} />
+            }
+            <Text style={styles.currentLocationText}>Use my current location for this store</Text>
+          </ScalePressable>
+          <TextInput
+            style={[styles.input, { marginTop: 8 }]}
+            placeholder="Zip code (optional — for accurate local results)"
+            value={zipCode}
+            onChangeText={setZipCode}
+            placeholderTextColor={colors.placeholder}
+            keyboardType="number-pad"
+            maxLength={5}
+          />
           {selectedBrand && brands.length === 0 && (
             <View style={styles.selectedBrand}>
               <StoreLogo name={selectedBrand.name} size={24} domain={selectedBrand.domain} logoUrl={selectedBrand.logo_url} />

@@ -323,20 +323,27 @@ export async function searchNearbyStores(storeName: string, zipCode?: string): P
     }
   } catch { /* fall through */ }
 
-  // Last resort: unbounded but with US country filter so we don't get foreign results
-  return searchNominatimStores(normalized, '&countrycodes=us');
+  // Last resort: unbounded US search — only keep results whose name actually matches
+  // the search term. Without this filter, Nominatim returns unrelated places (e.g. a
+  // military commissary) that get labeled with the search query by bestPlaceName,
+  // creating fake "Kroger at Gridley Rd Fort Belvoir" results.
+  const fallback = await searchNominatimStores(normalized, '&countrycodes=us');
+  const nameKey = normalized.toLowerCase();
+  const relevant = fallback.filter((p) => p.name.toLowerCase().includes(nameKey) || nameKey.includes(p.name.toLowerCase()));
+  return relevant;
 }
 
-/** Sort by distance from a point and keep only results within the nearest cluster. */
+/** Sort by distance from a point. Keep up to 8 nearest results within ~70 miles. */
 function clusterNearestResults(places: StorePlace[], lat: number, lon: number): StorePlace[] {
   const withDist = places.map((p) => ({
     ...p,
     dist: Math.abs(p.latitude - lat) + Math.abs(p.longitude - lon),
   }));
   withDist.sort((a, b) => a.dist - b.dist);
-  // Keep all results within 2× the distance of the closest one
-  const minDist = withDist[0]?.dist ?? 0;
-  return withDist.filter((p) => p.dist <= minDist * 2 + 0.1).map(({ dist: _, ...p }) => p);
+  // Keep results within ~70 miles (1° ≈ 69 miles). Don't cluster aggressively —
+  // the old 2x filter caused only 1 result to appear in low-density areas like
+  // military bases where the nearest store might be 20+ miles away.
+  return withDist.filter((p) => p.dist <= 1.0).slice(0, 8).map(({ dist: _, ...p }) => p);
 }
 
 export async function deleteStore(storeId: string) {
