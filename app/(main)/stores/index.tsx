@@ -345,7 +345,9 @@ function AddStoreModal({
 
   useEffect(() => {
     const q = name.trim();
-    if (q.length < 2) {
+    // Don't re-search if a brand is already selected — prevents the dropdown
+    // from reappearing after the user taps a chip (setName triggers this effect).
+    if (q.length < 2 || selectedBrand) {
       setBrands([]);
       return;
     }
@@ -355,7 +357,7 @@ function AddStoreModal({
         .catch(() => setBrands([]));
     }, 250);
     return () => clearTimeout(timer);
-  }, [existingNames, name]);
+  }, [existingNames, name, selectedBrand]);
 
   async function openNearbyPicker(storeName: string) {
     const trimmed = storeName.trim();
