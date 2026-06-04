@@ -183,3 +183,52 @@ eas build --platform ios --profile production
 ```sh
 eas submit --platform ios --profile production
 ```
+
+---
+
+## Build 31 Regression Checks
+*Added after TestFlight Build 31 real-device testing*
+
+### Add Store Location Selection
+| Test | Pass/Fail |
+|---|---|
+| Enter a zip code in the zip/city field | |
+| Search/add Walmart | |
+| Confirm map shows multiple results as unselected pins (no pin pre-selected) | |
+| Confirm results are near the provided zip/current location | |
+| Confirm app does NOT auto-select Washington DC or another distant store | |
+| Tap the correct nearby result explicitly | |
+| Confirm "Add selected location" button only enables after an explicit tap | |
+| Confirm saved store card shows the correct address | |
+| Confirm geofence coordinates correspond to the saved address | |
+
+### Household Name Input
+| Test | Pass/Fail |
+|---|---|
+| Open "Create household" screen | |
+| Confirm placeholder "Household name" is NOT stretched / spaced out | |
+| Type a household name | |
+| Confirm typed text is NOT stretched | |
+| Tap "Create household" — confirm it works | |
+
+### Owner Leave Household (Sole Member)
+| Test | Pass/Fail |
+|---|---|
+| As sole owner (no other members), attempt to leave household from Settings | |
+| Confirm app BLOCKS the leave with alert: "You're the only person in this household" | |
+| Confirm the alert offers a "Create new household" option | |
+| Confirm user is NOT stranded on invite-code-only screen | |
+| Confirm user is NOT logged out | |
+
+### Owner Leave Household (With Other Members)
+| Test | Pass/Fail |
+|---|---|
+| As owner with ≥1 other member, attempt to leave | |
+| Confirm leave is allowed after confirmation | |
+| Confirm household state is cleared but auth session persists | |
+| Confirm user is routed to create-or-join screen (both options visible) | |
+| Confirm app reopen routes correctly (not back to main app) | |
+
+### iOS Keychain Persistence Note
+> On iOS, Supabase session is stored in the Keychain and persists across app reinstall / TestFlight reinstall. This is **expected behavior**, not a bug. After reinstall, the user will be auto-logged-in and routed through `check.tsx`, which will correctly route to `create-or-join` if they have no household. To fully reset auth state during testing, use **Sign Out** from Settings before uninstalling.
+

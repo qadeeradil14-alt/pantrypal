@@ -19,7 +19,7 @@ import { useStoresStore } from '../../store/stores';
 import { useShoppingStore } from '../../store/shopping';
 import { signOut } from '../../lib/auth';
 import { supabase } from '../../lib/supabase';
-import { updateHouseholdName, leaveHousehold, fetchHouseholdById } from '../../lib/households';
+import { updateHouseholdName, leaveHousehold, fetchHouseholdById, getHouseholdMemberCount } from '../../lib/households';
 import { TESTFLIGHT_URL, buildInviteDeepLink, buildInviteMessage, normalizeInviteCode } from '../../lib/invites';
 import { GEOFENCE_TASK, stopGeofencing } from '../../lib/geofencing';
 import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../../lib/haptics';
@@ -303,12 +303,50 @@ export default function SettingsScreen() {
     if (!household || !session?.user?.id) return;
 
     const isOwner = household.role === 'owner';
-    const title = 'Leave household?';
-    const message = isOwner
-      ? "You're the household owner. If you leave, other members will still have access but there will be no owner. Make sure someone else can manage the household.\n\nYou'll lose access to this pantry."
-      : "You'll no longer see this household's pantry, shopping lists, stores, or receipts. You can join a new one with an invite code.";
 
-    Alert.alert(title, message, [
+    // Sole-owner safety check — must run async before showing the confirm dialog
+    if (isOwner) {
+      setLeavingHousehold(true);
+      getHouseholdMemberCount(household.id)
+        .then((count) => {
+          setLeavingHousehold(false);
+          if (count <= 1) {
+            // Only this owner — leaving would orphan the household entirely.
+            // Block and explain clearly so the user is never stranded.
+            void hapticError();
+            Alert.alert(
+              'Cannot leave household',
+              "You're the only person in this household. Leaving would remove access to this pantry entirely.\n\nShare your invite code to add a partner first, or create a new household instead.",
+              [
+                { text: 'OK' },
+                {
+                  text: 'Create new household',
+                  onPress: () => router.push('/(setup)/create-household'),
+                },
+              ],
+            );
+            return;
+          }
+          // Other members exist — safe to leave, show standard confirm
+          showLeaveConfirm(isOwner);
+        })
+        .catch(() => {
+          setLeavingHousehold(false);
+          // If we can't check, fall back to the standard confirm (safer than hard blocking)
+          showLeaveConfirm(isOwner);
+        });
+    } else {
+      showLeaveConfirm(isOwner);
+    }
+  }
+
+  function showLeaveConfirm(isOwner: boolean) {
+    if (!household || !session?.user?.id) return;
+    const message = isOwner
+      ? "You're the household owner. Other members will still have access but there will be no owner. You'll lose access to this pantry."
+      : "You'll no longer see this household's pantry, shopping lists, stores, or receipts. You can create a new household or join one with an invite code.";
+
+    Alert.alert('Leave household?', message, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Leave household', style: 'destructive',

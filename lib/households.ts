@@ -210,6 +210,19 @@ export async function fetchHouseholdById(householdId: string): Promise<Household
   return data as HouseholdCore | null;
 }
 
+/**
+ * Returns the number of active members in a household.
+ * Used to block a sole owner from orphaning the household on leave.
+ */
+export async function getHouseholdMemberCount(householdId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from('household_members')
+    .select('*', { count: 'exact', head: true })
+    .eq('household_id', householdId);
+  if (error) throw error;
+  return count ?? 0;
+}
+
 export async function leaveHousehold(householdId: string, userId: string) {
   const { error } = await supabase
     .from('household_members')

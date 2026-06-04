@@ -396,7 +396,9 @@ function AddStoreModal({
     try {
       const found = await searchNearbyStores(trimmed, zipCode.trim() || undefined);
       setPlaces(found);
-      setSelectedPlace(found[0] ?? null);
+      // Do NOT auto-select found[0] — require explicit tap so the user consciously
+      // chooses the correct location. Save button is gated on selectedPlace !== null.
+      setSelectedPlace(null);
       // If nothing found, stay in map view but show the manual address entry.
       // Pre-fill the retry field with the zip the user already entered so they
       // don't have to type it again.

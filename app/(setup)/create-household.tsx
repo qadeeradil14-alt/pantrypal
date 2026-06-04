@@ -149,6 +149,7 @@ function makeStyles(colors: AppColors) {
       color: colors.ink,
       backgroundColor: colors.faint,
       fontFamily: fonts.body,
+      letterSpacing: 0, // prevent system/font-feature defaults from stretching placeholder
     },
     primaryBtn: {
       backgroundColor: colors.primary, borderRadius: 14,
