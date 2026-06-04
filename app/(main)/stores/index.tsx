@@ -322,7 +322,6 @@ function AddStoreModal({
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
   const [name, setName] = useState('');
-  const [address, setAddress] = useState('');
   const [saving, setSaving] = useState(false);
   const [searching, setSearching] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
@@ -352,7 +351,6 @@ function AddStoreModal({
    */
   function resetCustomSection() {
     setName('');
-    setAddress('');
     setSelectedBrand(null);
     setBrands([]);
     setError('');
@@ -366,17 +364,27 @@ function AddStoreModal({
       setBrands([]);
       return;
     }
+    // `active` guards against in-flight fetches settling after the effect
+    // is cleaned up (e.g. user taps X while a search is in progress).
+    let active = true;
     const timer = setTimeout(() => {
       searchStoreBrands(q)
-        .then((found) => setBrands(found.filter((brand) => !existingNames.includes(brand.name.toLowerCase()))))
-        .catch(() => setBrands([]));
+        .then((found) => { if (active) setBrands(found.filter((brand) => !existingNames.includes(brand.name.toLowerCase()))); })
+        .catch(() => { if (active) setBrands([]); });
     }, 250);
-    return () => clearTimeout(timer);
+    return () => { active = false; clearTimeout(timer); };
   }, [existingNames, name, selectedBrand]);
 
   async function openNearbyPicker(storeName: string) {
     const trimmed = storeName.trim();
     if (!trimmed) return;
+    // Require a location anchor — without one we'd silently use device GPS,
+    // which may be in a completely different state than the user intends.
+    if (!zipCode.trim()) {
+      setError('Enter a zip, city, or address first so we can search nearby.');
+      void hapticError();
+      return;
+    }
     setSearching(true);
     setError('');
     setMapQuery(trimmed);
@@ -389,8 +397,13 @@ function AddStoreModal({
       const found = await searchNearbyStores(trimmed, zipCode.trim() || undefined);
       setPlaces(found);
       setSelectedPlace(found[0] ?? null);
-      // If nothing found, stay in map view but show the manual address entry
-      if (found.length === 0) setError('');
+      // If nothing found, stay in map view but show the manual address entry.
+      // Pre-fill the retry field with the zip the user already entered so they
+      // don't have to type it again.
+      if (found.length === 0) {
+        setError('');
+        if (zipCode.trim()) setManualAddress(zipCode.trim());
+      }
     } catch (e: any) {
       setPlaces([]);
       setSelectedPlace(null);
@@ -542,7 +555,9 @@ function AddStoreModal({
               <View style={{ flex: 1 }}>
                 <Text style={sheetStyles.headerTitle} numberOfLines={1}>{mapQuery}</Text>
                 <Text style={sheetStyles.headerSubtitle}>
-                  {noResults ? 'No nearby locations found. Enter the address or zip code below.' : 'Tap a pin to select the right location.'}
+                  {noResults
+                    ? `${mapQuery} wasn't found automatically. Enter its address below.`
+                    : 'Tap a pin to select the right location.'}
                 </Text>
               </View>
               <ScalePressable profile="chip" style={styles.mapBackBtn} onPress={() => { setMapQuery(''); resetCustomSection(); }}>
@@ -563,13 +578,15 @@ function AddStoreModal({
                 <View style={styles.manualIconWrap}>
                   <Ionicons name="location-outline" size={28} color={colors.primary} />
                 </View>
-                <Text style={styles.manualTitle}>Enter the address</Text>
+                <Text style={styles.manualTitle}>
+                  {`Enter ${mapQuery}'s address`}
+                </Text>
                 <Text style={styles.manualSub}>
-                  We'll pin it on the map so geofencing works when you arrive.
+                  {`${mapQuery} isn't in our search index yet. Enter its street address to pin it for arrival alerts, or save without geofencing.`}
                 </Text>
                 <TextInput
                   style={styles.manualInput}
-                  placeholder="e.g. 123 Main St, Springfield, VA 22150"
+                  placeholder="e.g. 1234 Jefferson Davis Hwy, Woodbridge VA 22191"
                   placeholderTextColor={colors.placeholder}
                   value={manualAddress}
                   onChangeText={setManualAddress}
@@ -674,45 +691,56 @@ function AddStoreModal({
 
           {error ? <View style={styles.errorBox}><Text style={styles.error}>{error}</Text></View> : null}
 
-          {/* Zip code at the top — anchors ALL searches (quick add + custom) to your area */}
+          {/* Zip/address anchors the store search to the user's area */}
           <TextInput
-            style={[styles.input, { marginBottom: 16 }]}
-            placeholder="Your zip code (e.g. 22060)"
+            style={[styles.input, { marginBottom: 12 }]}
+            placeholder="Zip, city, or address (e.g. 22193 or Woodbridge VA)"
             value={zipCode}
-            onChangeText={(t) => setZipCode(t.replace(/[^0-9]/g, ''))}
+            onChangeText={setZipCode}
             placeholderTextColor={colors.placeholder}
             keyboardType="default"
-            maxLength={5}
-            returnKeyType="done"
+            returnKeyType="next"
+            autoCorrect={false}
           />
 
-          <Text style={styles.label}>Quick add</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.presetsRow} contentContainerStyle={styles.presetsContent}>
-            {presets.map((p) => (
-              <ScalePressable
-                key={p}
-                profile="chip"
-                style={styles.presetChip}
-                onPress={() => {
-                  void hapticSelection();
-                  void openNearbyPicker(p);
-                }}
-                disabled={saving}
+          {presets.length > 0 && (
+            <>
+              <Text style={styles.label}>Quick add</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.presetsRow}
+                contentContainerStyle={styles.presetsContent}
               >
-                <StoreLogo name={p} size={24} />
-                <Text style={styles.presetChipText}>{p}</Text>
-                <Ionicons name="navigate-outline" size={12} color={colors.primary} style={{ opacity: 0.6 }} />
-              </ScalePressable>
-            ))}
-          </ScrollView>
+                {presets.map((p) => (
+                  <ScalePressable
+                    key={p}
+                    profile="chip"
+                    style={styles.presetChip}
+                    onPress={() => {
+                      void hapticSelection();
+                      // Route through handleSave so the duplicate-store guard
+                      // fires before openNearbyPicker is called.
+                      void handleSave(p);
+                    }}
+                    disabled={saving}
+                  >
+                    <StoreLogo name={p} size={24} />
+                    <Text style={styles.presetChipText}>{p}</Text>
+                    <Ionicons name="navigate-outline" size={12} color={colors.primary} style={{ opacity: 0.6 }} />
+                  </ScalePressable>
+                ))}
+              </ScrollView>
+            </>
+          )}
 
-          <Text style={styles.label}>Custom store</Text>
           <TextInput
             style={styles.input}
-            placeholder="Store name (e.g. Kabul Halal Market)"
+            placeholder="Store name (e.g. Kroger, ALDI, Kabul Halal Market)"
             value={name}
             onChangeText={(text) => {
               setName(text);
+              if (error) setError('');
               if (selectedBrand && selectedBrand.name !== text) setSelectedBrand(null);
             }}
             placeholderTextColor={colors.placeholder}
@@ -744,55 +772,31 @@ function AddStoreModal({
               })}
             </ScrollView>
           )}
-          {selectedBrand && brands.length === 0 && (
-            <View style={styles.selectedBrand}>
-              <StoreLogo name={selectedBrand.name} size={24} domain={selectedBrand.domain} logoUrl={selectedBrand.logo_url} />
-              <Text style={styles.selectedBrandText} numberOfLines={1}>{selectedBrand.name}</Text>
-              <ScalePressable
-                profile="chip"
-                style={styles.clearBrandBtn}
-                onPress={() => {
-                  void hapticSelection();
-                  resetCustomSection(); // clears name + brand so brand search doesn't re-fire
-                }}
-              >
-                <Ionicons name="close" size={16} color={colors.primary} />
-              </ScalePressable>
-            </View>
-          )}
-          <View style={styles.addressWrap}>
-            <TextInput
-              style={[styles.input, { marginBottom: 0 }]}
-              placeholder="Street address (optional)"
-              value={address}
-              onChangeText={setAddress}
-              placeholderTextColor={colors.placeholder}
-              returnKeyType="done"
-            />
-            <View style={styles.addressHint}>
-              <Ionicons name="location-outline" size={13} color={colors.primary} />
-              <Text style={styles.addressHintText}>
-                {address.trim()
-                  ? 'Will be used for automatic arrival detection'
-                  : 'Leave empty to search nearby locations after tapping Add'}
-              </Text>
-            </View>
-          </View>
 
           <ScalePressable
             style={[styles.saveBtn, !name.trim() && styles.saveBtnDisabled]}
             onPress={() => {
               void hapticSelection();
-              handleSave(name.trim(), address.trim() || undefined);
+              void handleSave(name.trim());
             }}
             disabled={!name.trim() || saving}
           >
             {saving
               ? <ActivityIndicator color={colors.onPrimary} />
-              : <Text style={styles.saveBtnText}>
-                  {name.trim() && !address.trim() ? 'Add store & search nearby' : 'Add store'}
-                </Text>
+              : <Text style={styles.saveBtnText}>Find nearby stores</Text>
             }
+          </ScalePressable>
+
+          <ScalePressable
+            style={styles.skipBtn}
+            profile="chip"
+            onPress={() => {
+              void hapticSelection();
+              void handleSave(name.trim(), undefined, true);
+            }}
+            disabled={!name.trim() || saving}
+          >
+            <Text style={styles.skipText}>Save without address (no geofencing)</Text>
           </ScalePressable>
 
           <ScalePressable

@@ -9,6 +9,9 @@ import { joinHousehold } from '../../lib/households';
 import { normalizeInviteCode } from '../../lib/invites';
 import { useAuthStore } from '../../store/auth';
 import { useHouseholdStore } from '../../store/household';
+import { useItemsStore } from '../../store/items';
+import { useStoresStore } from '../../store/stores';
+import { useShoppingStore } from '../../store/shopping';
 import { useTheme } from '../../hooks/useTheme';
 import { fonts, type AppColors } from '../../constants/theme';
 
@@ -18,6 +21,9 @@ export default function JoinHouseholdScreen() {
   const params = useLocalSearchParams<{ code?: string; error?: string }>();
   const { session } = useAuthStore();
   const { setHousehold } = useHouseholdStore();
+  const { setItems } = useItemsStore();
+  const setStores = useStoresStore((s) => s.setStores);
+  const setShoppingEntries = useShoppingStore((s) => s.setEntries);
   const initialCode = normalizeInviteCode(params.code) ?? '';
   const [code, setCode] = useState(initialCode);
   const [error, setError] = useState(typeof params.error === 'string' ? params.error : '');
@@ -38,6 +44,11 @@ export default function JoinHouseholdScreen() {
     setLoading(true);
     try {
       const household = await joinHousehold(inviteCode, session.user.id);
+      // Clear any stale household-scoped data so the new household loads clean.
+      // Each main screen re-fetches on mount using the new household id.
+      setItems([]);
+      setStores([]);
+      setShoppingEntries([]);
       setHousehold({ id: household.id, name: household.name, inviteCode, role: 'member', plan: household.plan ?? 'free' });
       router.replace('/(main)/pantry');
     } catch (e: any) {

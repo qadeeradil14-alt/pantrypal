@@ -245,18 +245,27 @@ export default function PantryScreen() {
     const normalItems = filtered.filter((i) => !i.is_low).sort((a, b) => a.name.localeCompare(b.name));
     const result: PantrySection[] = [];
 
-    if (lowItems.length > 0) {
-      result.push({ title: 'Needs attention', data: lowItems, key: '__low__', count: lowItems.length, isLow: true });
-    }
-
     if (sortMode === 'alpha') {
+      // Single section in A-Z mode — section headers are hidden, so multiple
+      // sections create gapless boundaries (ItemSeparatorComponent only fires
+      // within a section, not between sections). One flat section ensures
+      // every item gets the same 8px separator.
       result.push({
         title: selectedStore ? selectedStore.name : 'My Groceries',
-        data: normalItems,
+        data: filtered,
         key: '__all__',
-        count: normalItems.length,
+        count: filtered.length,
       });
-    } else if (sortMode === 'category') {
+    } else {
+      // Category and Store modes: show "Needs attention" section at top so
+      // low items are visually grouped. Section headers are visible here so
+      // the section boundary gap is provided by the header padding.
+      if (lowItems.length > 0) {
+        result.push({ title: 'Needs attention', data: lowItems, key: '__low__', count: lowItems.length, isLow: true });
+      }
+    }
+
+    if (sortMode === 'category') {
       const byCat = new Map<string, Item[]>();
       normalItems.forEach((item) => {
         const cat = item.category
@@ -276,7 +285,7 @@ export default function PantryScreen() {
             emoji: getCategoryEmoji(cat),
           });
         });
-    } else {
+    } else if (sortMode === 'store') {
       // store grouping
       const byStore = new Map<string, Item[]>();
       normalItems.forEach((item) => {

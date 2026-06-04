@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import * as Location from 'expo-location';
 import { enqueueOfflineMutation, isTransientNetworkErrorForQueue, runWithOfflineQueue } from './offlineQueue';
+import { geocodeLocation, searchStoreLocations } from './storeSearch';
 
 export const OFFLINE_STORE_ID_PREFIX = 'offline-store:';
 
@@ -251,81 +252,38 @@ async function getFastLocation(): Promise<Location.LocationObject | null> {
   }
 }
 
-export async function searchNearbyStores(storeName: string, zipCode?: string): Promise<StorePlace[]> {
+export async function searchNearbyStores(storeName: string, locationText?: string): Promise<StorePlace[]> {
   const normalized = storeName.trim();
   if (!normalized) return [];
 
-  // If zip code provided, geocode it and search near that location
-  if (zipCode?.trim()) {
-    const zip = zipCode.trim();
-    try {
-      const geoRes = await fetch(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(zip)}&format=json&limit=1&addressdetails=1&countrycodes=us`,
-        { headers: { 'User-Agent': 'Stokit/1.0', Accept: 'application/json' } },
-      );
-      if (geoRes.ok) {
-        const geoData = await geoRes.json();
-        if (geoData[0]) {
-          const lat = parseFloat(geoData[0].lat);
-          const lon = parseFloat(geoData[0].lon);
-          // Use city/state from geocoded zip to add context to query
-          const addr = geoData[0].address ?? {};
-          const city = addr.city ?? addr.town ?? addr.village ?? addr.county ?? '';
-          const state = addr.state ?? '';
-          const contextQuery = city ? `${normalized} ${city} ${state}` : normalized;
-          const delta = 0.35;
-          const viewbox = `${lon - delta},${lat + delta},${lon + delta},${lat - delta}`;
-          const results = await searchNominatimStores(contextQuery, `&bounded=1&viewbox=${viewbox}`);
-          if (results.length > 0) return clusterNearestResults(results, lat, lon);
-          // Widen to 1° (~70 miles) before giving up on zip
-          const wide = await searchNominatimStores(contextQuery, `&bounded=1&viewbox=${lon - 1},${lat + 1},${lon + 1},${lat - 1}`);
-          if (wide.length > 0) return clusterNearestResults(wide, lat, lon);
-        }
-      }
-    } catch { /* fall through to GPS */ }
+  // ── Location-text path (zip / city / full address) — resolved via Geoapify ──
+  if (locationText?.trim()) {
+    const anchor = await geocodeLocation(locationText.trim());
+    if (anchor) {
+      const results = await searchStoreLocations({ storeName: normalized, anchor });
+      if (results.length > 0) return results;
+      // Location resolved successfully — no stores found nearby.
+      // Return empty; never fall through to GPS when the user gave an explicit
+      // location anchor (avoids returning results from a completely different state).
+      return [];
+    }
+    // geocodeLocation returned null (key not set or network failure) → fall to GPS
   }
 
+  // ── GPS fallback — used when no location text provided, or Geoapify unavailable ──
   try {
     const permission = await Location.requestForegroundPermissionsAsync();
     if (permission.status === 'granted') {
-      // Use fast location (last-known → balanced current with 5s timeout).
-      // Never use BestForNavigation here — it hangs for 30+ seconds on iOS.
+      // Use fast location (last-known → balanced current with 5 s timeout).
+      // Never BestForNavigation — hangs 30+ s on iOS.
       const here = await getFastLocation();
       if (here) {
-      const { latitude: lat, longitude: lon } = here.coords;
-
-      // Reverse geocode to get city/state for smarter query context
-      let contextQuery = normalized;
-      try {
-        const rev = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&addressdetails=1`,
-          { headers: { 'User-Agent': 'Stokit/1.0', Accept: 'application/json' } },
-        );
-        if (rev.ok) {
-          const revData = await rev.json();
-          const addr = revData.address ?? {};
-          const city = addr.city ?? addr.town ?? addr.village ?? addr.county ?? '';
-          const state = addr.state ?? '';
-          if (city) contextQuery = `${normalized} ${city} ${state}`;
-        }
-      } catch { /* use plain name */ }
-
-      // Try tight 0.35° box (~24 miles) first
-      const delta = 0.35;
-      const viewbox = `${lon - delta},${lat + delta},${lon + delta},${lat - delta}`;
-      const tight = await searchNominatimStores(contextQuery, `&bounded=1&viewbox=${viewbox}`);
-      if (tight.length > 0) return clusterNearestResults(tight, lat, lon);
-
-      // Widen to 1° (~70 miles) before giving up on GPS
-      const wide = await searchNominatimStores(contextQuery, `&bounded=1&viewbox=${lon - 1},${lat + 1},${lon + 1},${lat - 1}`);
-      if (wide.length > 0) return clusterNearestResults(wide, lat, lon);
-      } // end if (here)
+        const anchor = { lat: here.coords.latitude, lon: here.coords.longitude };
+        return await searchStoreLocations({ storeName: normalized, anchor });
+      }
     }
   } catch { /* fall through */ }
 
-  // No nearby results found — return empty so the UI shows the manual address
-  // entry screen. Never fall back to an unbounded US search: it returns stores
-  // from California, Kentucky, etc. which is worse than showing nothing.
   return [];
 }
 

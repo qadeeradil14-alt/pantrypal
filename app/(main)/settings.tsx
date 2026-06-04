@@ -281,6 +281,24 @@ export default function SettingsScreen() {
     );
   }
 
+  function handleJoinAnotherHousehold() {
+    if (household) {
+      Alert.alert(
+        'Switch household?',
+        `You're currently in "${household.name}". Entering a new invite code will switch your shared pantry, shopping list, stores, receipts, and activity to the new household.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Continue',
+            onPress: () => router.push('/(setup)/join-household'),
+          },
+        ],
+      );
+    } else {
+      router.push('/(setup)/join-household');
+    }
+  }
+
   function handleLeaveHousehold() {
     if (!household || !session?.user?.id) return;
 
@@ -363,6 +381,18 @@ export default function SettingsScreen() {
                 }
                 <Ionicons name="pencil-outline" size={14} color={colors.muted} />
               </View>
+            </ScalePressable>
+            <ScalePressable
+              style={[styles.row, styles.rowBorderTop]}
+              onPress={() => { void hapticSelection(); handleJoinAnotherHousehold(); }}
+            >
+              <View style={styles.rowLabelWrap}>
+                <Ionicons name="key-outline" size={17} color={colors.primary} />
+                <Text style={[styles.rowLabel, { color: colors.primary }]}>
+                  {household ? 'Join another household' : 'Join a household'}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.primary} />
             </ScalePressable>
             {household ? (
               <ScalePressable
@@ -541,7 +571,7 @@ export default function SettingsScreen() {
             >
               <View style={styles.rowLabelWrap}>
                 <Ionicons name="bug-outline" size={17} color={colors.muted} />
-                <Text style={styles.rowLabel}>Geofence debug</Text>
+                <Text style={styles.rowLabel}>Geofence info</Text>
               </View>
               <Ionicons name="chevron-forward" size={16} color={colors.muted} />
             </ScalePressable>

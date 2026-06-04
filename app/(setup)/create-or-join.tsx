@@ -21,25 +21,26 @@ export default function CreateOrJoinScreen() {
         <Text style={styles.kicker}>Almost ready</Text>
         <Text style={styles.title}>Set up your household</Text>
         <Text style={styles.subtitle}>
-          Create a new household or join one{'\n'}your partner already set up.
+          Join your family's shared pantry with an invite code, or create a new household.
         </Text>
       </View>
 
       <View style={styles.actions}>
         <ScalePressable
-          testID="setup-create-household"
+          testID="setup-join-household"
           style={styles.primaryBtn}
-          onPress={() => router.push('/(setup)/create-household')}
+          onPress={() => router.push('/(setup)/join-household')}
         >
-          <Ionicons name="add-circle-outline" size={20} color={colors.onPrimary} />
-          <Text style={styles.primaryBtnText}>Create a household</Text>
+          <Ionicons name="key-outline" size={20} color={colors.onPrimary} />
+          <Text style={styles.primaryBtnText}>Join existing household</Text>
         </ScalePressable>
         <ScalePressable
+          testID="setup-create-household"
           style={styles.secondaryBtn}
-          onPress={() => router.push('/(setup)/join-household')}
+          onPress={() => router.push('/(setup)/create-household')}
           profile="chip"
         >
-          <Text style={styles.secondaryBtnText}>Join with an invite code</Text>
+          <Text style={styles.secondaryBtnText}>Create a new household</Text>
         </ScalePressable>
       </View>
     </View>

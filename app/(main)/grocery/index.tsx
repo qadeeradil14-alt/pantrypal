@@ -33,6 +33,11 @@ import EmptyState from '../../../components/EmptyState';
 import StoreLogo from '../../../components/StoreLogo';
 import LiftAssignPanel from '../../../components/LiftAssignPanel';
 import { useSettingsStore } from '../../../store/settings';
+import {
+  activeCountForStore,
+  countActiveShoppingByStore,
+  formatStoreChipLabel,
+} from '../../../lib/shoppingActiveByStore';
 
 function normalizeShoppingCategory(category: ShoppingEntry['category']): ItemCategory {
   return category === 'spice_rack' ? 'pantry' : category;
@@ -82,6 +87,8 @@ export default function GroceryScreen() {
   const [storeSpendAmount, setStoreSpendAmount] = useState('');
   const [savingStoreSpend, setSavingStoreSpend] = useState(false);
   const [assignItem, setAssignItem] = useState<Item | null>(null);
+  /** Chip filter only — may point at a store with 0 items without starting a shopping session. */
+  const [selectedStoreChipId, setSelectedStoreChipId] = useState<string | null>(null);
 
   // Pulse animation for the Start button — draws attention before shopping begins
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -110,11 +117,6 @@ export default function GroceryScreen() {
     else deactivateKeepAwake(tag);
     return () => { deactivateKeepAwake(tag); };
   }, [shoppingMode]);
-
-  useEffect(() => {
-    if (!activeStoreId) return;
-    setShoppingMode(true);
-  }, [activeStoreId]);
 
   const refreshSpend = useCallback(() => {
     if (!householdId) return;
@@ -156,7 +158,31 @@ export default function GroceryScreen() {
       });
   }, [entries, sourceItemMap, stores]);
 
-  const totalActiveCount = allActiveItems.length;
+  const activeShoppingCounts = useMemo(
+    () => countActiveShoppingByStore(allActiveItems, sourceItemMap),
+    [allActiveItems, sourceItemMap],
+  );
+
+  const totalActiveCount = activeShoppingCounts.total;
+
+  const viewingEmptyStoreChip = useMemo(
+    () => selectedStoreChipId !== null && activeCountForStore(activeShoppingCounts, selectedStoreChipId) === 0,
+    [activeShoppingCounts, selectedStoreChipId],
+  );
+
+  useEffect(() => {
+    if (!activeStoreId) return;
+    const count = activeCountForStore(activeShoppingCounts, activeStoreId);
+    if (count > 0) {
+      setShoppingMode(true);
+      return;
+    }
+    setShoppingMode(false);
+  }, [activeStoreId, activeShoppingCounts]);
+
+  useEffect(() => {
+    if (activeStoreId) setSelectedStoreChipId(activeStoreId);
+  }, [activeStoreId]);
 
   const firstRouteStoreId = useMemo(() => {
     for (const entry of allActiveItems) {
@@ -167,13 +193,13 @@ export default function GroceryScreen() {
   }, [allActiveItems, sourceItemMap]);
 
   const lowItems = useMemo(() => {
-    const scopedStoreId = activeStoreId ?? (shoppingMode ? firstRouteStoreId : null);
+    const scopedStoreId = selectedStoreChipId ?? activeStoreId ?? (shoppingMode ? firstRouteStoreId : null);
     if (!scopedStoreId) return allActiveItems;
     return allActiveItems.filter((entry) => {
       const linked = entry.source_item_id ? sourceItemMap.get(entry.source_item_id) : null;
       return linked?.preferred_store_id === scopedStoreId;
     });
-  }, [activeStoreId, allActiveItems, firstRouteStoreId, shoppingMode, sourceItemMap]);
+  }, [activeStoreId, allActiveItems, firstRouteStoreId, selectedStoreChipId, shoppingMode, sourceItemMap]);
 
   useEffect(() => {
     setStartCount(0);
@@ -296,8 +322,14 @@ export default function GroceryScreen() {
     const ids = routeStoreIds.length > 0
       ? routeStoreIds
       : assignedRouteSections.map((section) => section.storeId!);
-    return new Map(ids.map((storeId, index) => [storeId, index + 1]));
-  }, [assignedRouteSections, routeStoreIds]);
+    const withItems = ids.filter(
+      (id) =>
+        (activeShoppingCounts.byStoreId[id] ?? 0) > 0
+        || completedRouteStoreIds.includes(id)
+        || receiptCompletedStoreIds.includes(id),
+    );
+    return new Map(withItems.map((storeId, index) => [storeId, index + 1]));
+  }, [activeShoppingCounts.byStoreId, assignedRouteSections, completedRouteStoreIds, receiptCompletedStoreIds, routeStoreIds]);
 
   const routedShoppingSections = useMemo(
     () => shoppingSections.map((section) => ({
@@ -335,7 +367,7 @@ export default function GroceryScreen() {
     return !!linked && !linked.preferred_store_id;
   }), [allActiveItems, sourceItemMap]);
 
-  const activeStoreComplete = shoppingMode && (
+  const activeStoreComplete = !viewingEmptyStoreChip && shoppingMode && (
     (!!activeStoreId && lowItems.length === 0 && (startCount > 0 || grabbedCount > 0))
     || (!activeStoreId && !!nextStop && allActiveItems.length > 0)
     || (!activeStoreId && hasUnassignedItems && allActiveItems.length > 0)
@@ -354,6 +386,7 @@ export default function GroceryScreen() {
   }, [assignedRouteSections, routeStoreIds]);
 
   const openStoreSpendPrompt = useCallback((storeId: string) => {
+    if (activeCountForStore(activeShoppingCounts, storeId) === 0) return;
     const store = stores.find((s) => s.id === storeId);
     if (!store) return;
     setPendingReceiptStoreId(storeId);
@@ -364,7 +397,7 @@ export default function GroceryScreen() {
       stopNumber: stopNumberByStoreId.get(storeId) ?? 1,
       nextStoreName: nextStoreNameAfter(storeId),
     });
-  }, [nextStoreNameAfter, setPendingReceiptStoreId, stopNumberByStoreId, stores]);
+  }, [activeShoppingCounts, nextStoreNameAfter, setPendingReceiptStoreId, stopNumberByStoreId, stores]);
 
   const isStoreReceiptDone = useCallback(
     (storeId: string) =>
@@ -385,6 +418,7 @@ export default function GroceryScreen() {
   const storeNeedsReceiptStep = useCallback(
     (storeId: string): boolean => {
       if (!shoppingMode || !storeId || isStoreReceiptDone(storeId)) return false;
+      if (activeCountForStore(activeShoppingCounts, storeId) === 0) return false;
       if (pendingReceiptStoreId === storeId) return true;
       if (remainingItemsAtStore(storeId) > 0) return false;
 
@@ -397,6 +431,7 @@ export default function GroceryScreen() {
       return !!section;
     },
     [
+      activeShoppingCounts,
       activeStoreId,
       assignedRouteSections,
       grabbedCount,
@@ -445,6 +480,7 @@ export default function GroceryScreen() {
   useEffect(() => {
     if (!shoppingMode || !activeStoreId) return;
     if (isStoreReceiptDone(activeStoreId)) return;
+    if (activeCountForStore(activeShoppingCounts, activeStoreId) === 0) return;
     // Only set pending receipt for stores that were actually in the planned route.
     // Stores with zero items (e.g. Afghanistan market when no items assigned) are
     // never added to routeStoreIds, so startCount/grabbedCount from other stores
@@ -456,6 +492,7 @@ export default function GroceryScreen() {
       }
     }
   }, [
+    activeShoppingCounts,
     activeStoreId,
     grabbedCount,
     isStoreReceiptDone,
@@ -470,11 +507,13 @@ export default function GroceryScreen() {
   useEffect(() => {
     if (!activeStoreComplete || !activeStoreId || !activeStore) return;
     if (isStoreReceiptDone(activeStoreId)) return;
+    if (activeCountForStore(activeShoppingCounts, activeStoreId) === 0) return;
     if (pendingReceiptStoreId === activeStoreId || storeSpendSheet) return;
     // Same guard — only prompt for stores that had items in the route.
     if (!routeStoreIds.includes(activeStoreId)) return;
     openStoreSpendPrompt(activeStoreId);
   }, [
+    activeShoppingCounts,
     activeStore,
     activeStoreComplete,
     activeStoreId,
@@ -487,6 +526,10 @@ export default function GroceryScreen() {
 
   useEffect(() => {
     if (!shoppingMode || !pendingReceiptStoreId) return;
+    if (activeCountForStore(activeShoppingCounts, pendingReceiptStoreId) === 0) {
+      setPendingReceiptStoreId(null);
+      return;
+    }
     if (isStoreReceiptDone(pendingReceiptStoreId)) {
       setPendingReceiptStoreId(null);
       return;
@@ -508,6 +551,7 @@ export default function GroceryScreen() {
       nextStoreName: nextStoreNameAfter(pendingReceiptStoreId),
     });
   }, [
+    activeShoppingCounts,
     activeStoreId,
     nextStoreNameAfter,
     isStoreReceiptDone,
@@ -536,6 +580,7 @@ export default function GroceryScreen() {
     const finishedStoreId = linked?.preferred_store_id ?? null;
     const shouldOpenSpendAfterVisual = (() => {
       if (!finishedStoreId || !shoppingMode || isStoreReceiptDone(finishedStoreId) || pendingReceiptStoreId) return false;
+      if (activeCountForStore(activeShoppingCounts, finishedStoreId) === 0) return false;
       const othersAtStore = allActiveItems.filter((e) => {
         if (e.id === entry.id || purchasedIds.has(e.id)) return false;
         const l = e.source_item_id ? sourceItemMap.get(e.source_item_id) : null;
@@ -593,6 +638,7 @@ export default function GroceryScreen() {
       setTapping(null);
     }
   }, [
+    activeShoppingCounts,
     allActiveItems,
     isStoreReceiptDone,
     openStoreSpendPrompt,
@@ -622,6 +668,19 @@ export default function GroceryScreen() {
 
   const trySetActiveStore = useCallback(
     (storeId: string | null) => {
+      if (storeId === null) {
+        setSelectedStoreChipId(null);
+        setActiveStore(null);
+        return;
+      }
+      const itemCount = activeCountForStore(activeShoppingCounts, storeId);
+      if (itemCount === 0) {
+        setSelectedStoreChipId(storeId);
+        if (activeStoreId === storeId) {
+          setActiveStore(null);
+        }
+        return;
+      }
       if (
         pendingReceiptStoreId
         && storeId !== pendingReceiptStoreId
@@ -639,9 +698,11 @@ export default function GroceryScreen() {
         openStoreSpendPrompt(activeStoreId);
         return;
       }
+      setSelectedStoreChipId(storeId);
       setActiveStore(storeId);
     },
     [
+      activeShoppingCounts,
       activeStoreId,
       isStoreReceiptDone,
       openStoreSpendPrompt,
@@ -691,6 +752,7 @@ export default function GroceryScreen() {
               const finishedReceiptCount = tripReceiptCount;
               setShoppingMode(false);
               setActiveStore(null);
+              setSelectedStoreChipId(null);
               clearReceiptTrip();
               setRouteStoreIds([]);
               setStartCount(0);
@@ -708,6 +770,7 @@ export default function GroceryScreen() {
       const finishedReceiptCount = tripReceiptCount;
       setShoppingMode(false);
       setActiveStore(null);
+      setSelectedStoreChipId(null);
       clearReceiptTrip();
       setRouteStoreIds([]);
       setStartCount(0);
@@ -967,7 +1030,7 @@ export default function GroceryScreen() {
       </View>
 
 
-      {stores.length > 0 && totalActiveCount > 0 && (
+      {stores.length > 0 && (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -976,26 +1039,28 @@ export default function GroceryScreen() {
         >
           <ScalePressable
             profile="chip"
-            style={[styles.chip, !activeStoreId && styles.chipActive]}
+            style={[styles.chip, selectedStoreChipId === null && styles.chipActive]}
             onPress={() => {
               void hapticSelection();
               trySetActiveStore(null);
             }}
           >
-            <Text style={[styles.chipText, !activeStoreId && styles.chipTextActive]}>All stores</Text>
+            <Text style={[styles.chipText, selectedStoreChipId === null && styles.chipTextActive]}>
+              {formatStoreChipLabel('All stores', totalActiveCount)}
+            </Text>
           </ScalePressable>
           {stores.map((s) => (
             <ScalePressable
               key={s.id}
               profile="chip"
-              style={[styles.chip, activeStoreId === s.id && styles.chipActive]}
+              style={[styles.chip, selectedStoreChipId === s.id && styles.chipActive]}
               onPress={() => {
                 void hapticSelection();
-                trySetActiveStore(activeStoreId === s.id ? null : s.id);
+                trySetActiveStore(selectedStoreChipId === s.id ? null : s.id);
               }}
             >
-              <Text style={[styles.chipText, activeStoreId === s.id && styles.chipTextActive]}>
-                {s.name}
+              <Text style={[styles.chipText, selectedStoreChipId === s.id && styles.chipTextActive]}>
+                {formatStoreChipLabel(s.name, activeCountForStore(activeShoppingCounts, s.id))}
               </Text>
             </ScalePressable>
           ))}
@@ -1025,7 +1090,7 @@ export default function GroceryScreen() {
         </View>
       )}
 
-      {activeStoreComplete && (nextStop || hasUnassignedItems) && !pendingReceiptStoreId && !storeSpendSheet && (
+      {!viewingEmptyStoreChip && activeStoreComplete && (nextStop || hasUnassignedItems) && !pendingReceiptStoreId && !storeSpendSheet && (
         <View style={styles.nextStopCard}>
           <View style={styles.nextStopTop}>
             <View style={styles.nextStopIcon}>
@@ -1083,12 +1148,18 @@ export default function GroceryScreen() {
         </View>
       )}
 
-      {lowItems.length === 0 ? (
+      {viewingEmptyStoreChip ? (
+        <EmptyState
+          emoji="🏪"
+          title="0 items for this store"
+          subtitle={`No active shopping items are assigned to ${stores.find((s) => s.id === selectedStoreChipId)?.name ?? 'this store'}. Assign items from the list or pick another store.`}
+        />
+      ) : lowItems.length === 0 ? (
         <EmptyState
           emoji={
             shoppingMode && startCount > 0
               ? '🍽️'
-              : activeStoreId
+              : selectedStoreChipId ?? activeStoreId
               ? '🏪'
               : shoppingMode
               ? '🛒'
@@ -1097,8 +1168,8 @@ export default function GroceryScreen() {
           title={
             shoppingMode && startCount > 0
               ? 'All grabbed!'
-              : activeStoreId
-              ? `Nothing at ${activeStore?.name ?? 'this store'}`
+              : selectedStoreChipId ?? activeStoreId
+              ? `Nothing at ${stores.find((s) => s.id === (selectedStoreChipId ?? activeStoreId))?.name ?? 'this store'}`
               : shoppingMode
               ? 'List is clear'
               : 'All stocked up'
@@ -1106,7 +1177,7 @@ export default function GroceryScreen() {
           subtitle={
             shoppingMode && startCount > 0
               ? `You picked up all ${startCount} ${startCount === 1 ? 'item' : 'items'}. Tap Done when you're finished.`
-              : activeStoreId
+              : selectedStoreChipId ?? activeStoreId
               ? 'No low items are assigned to this store. Tap All stores above to see the full list.'
               : shoppingMode
               ? "Nothing on the list right now. Mark items low from the Pantry tab and they'll appear here."
@@ -1756,7 +1827,11 @@ function makeStyles(colors: AppColors) {
       paddingTop: 14,
       paddingBottom: 36,
       gap: 10,
-      ...shadow,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: -6 },
+      shadowOpacity: 0.14,
+      shadowRadius: 20,
+      elevation: 18,
     },
     sheetHandle: {
       width: 36,

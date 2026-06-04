@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useHouseholdStore } from '../../../store/household';
 import { useAuthStore } from '../../../store/auth';
 import { fetchAllActivity, formatActivityTime, type ActivityEvent } from '../../../lib/activity';
+import { getItemEmoji } from '../../../constants/itemEmojis';
 import { useTheme } from '../../../hooks/useTheme';
 import { fonts, type AppColors } from '../../../constants/theme';
 import EmptyState from '../../../components/EmptyState';
@@ -152,12 +153,12 @@ export default function ActivityScreen() {
         }}
         renderItem={({ item: ev }) => (
           <View style={styles.row}>
-            <View style={[styles.avatar, !useStoreLogo(ev) && ev.isSelf && styles.avatarSelf]}>
+            <View style={[styles.avatar, useStoreLogo(ev) ? styles.avatarStoreLogo : (ev.isSelf && styles.avatarSelf)]}>
               {useStoreLogo(ev) ? (
                 <View style={styles.storeLogoClip}>
                   <StoreLogo
                     name={ev.storeName!}
-                    size={28}
+                    size={36}
                     domain={ev.storeBrandDomain}
                     logoUrl={ev.storeLogoUrl}
                     fallbackToAppIcon
@@ -172,7 +173,9 @@ export default function ActivityScreen() {
               )}
             </View>
             <View style={styles.rowContent}>
-              <Text style={styles.rowDesc}>{eventDescription(ev, ev.isSelf)}</Text>
+              <Text style={styles.rowDesc}>
+                {ev.itemName ? `${getItemEmoji(ev.itemName, null)} ` : ''}{eventDescription(ev, ev.isSelf)}
+              </Text>
               <Text style={styles.rowTime}>{formatActivityTime(ev.updatedAt)}</Text>
             </View>
             {ev.type !== 'store_arrival' && (
@@ -240,9 +243,9 @@ function makeStyles(colors: AppColors) {
       padding: 14,
     },
     avatar: {
-      width: 38,
-      height: 38,
-      borderRadius: 19,
+      width: 46,
+      height: 46,
+      borderRadius: 23,
       backgroundColor: colors.faint,
       alignItems: 'center',
       justifyContent: 'center',
@@ -253,6 +256,7 @@ function makeStyles(colors: AppColors) {
       justifyContent: 'center',
       transform: [{ scale: 0.92 }],
     },
+    avatarStoreLogo: { backgroundColor: 'transparent' },
     avatarSelf: { backgroundColor: colors.primarySoft },
     avatarText: { fontSize: 14, fontFamily: fonts.bodySemiBold, color: colors.muted },
     avatarTextSelf: { color: colors.primary },
