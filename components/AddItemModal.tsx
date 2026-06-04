@@ -20,6 +20,31 @@ import type { Item } from '../lib/items';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+/**
+ * Extract a short city/town hint from a saved store's address string.
+ * Returns the first non-street, non-zip, non-country segment so chips can
+ * show "Walmart · Alexandria" instead of just "Walmart".
+ * Returns null when no useful hint is extractable.
+ */
+function storeLocationHint(address: string | null): string | null {
+  if (!address) return null;
+  const parts = address.split(',').map((p) => p.trim()).filter(Boolean);
+  if (parts.length < 2) return null; // single segment — can't extract city
+  // Walk from the end, skipping country, state+zip, and bare zip codes.
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const p = parts[i];
+    if (/^(united states|US)$/i.test(p)) continue;
+    if (/^[A-Z]{2}\s+\d{5}(-\d{4})?$/.test(p)) continue; // "VA 22193"
+    if (/^\d{5}(-\d{4})?$/.test(p)) continue;            // bare zip
+    if (/^\d/.test(p)) continue;                          // street number
+    if (p.length > 2) {
+      // Keep at most 2 words (e.g. "Tysons Corner" → "Tysons Corner", "Woodbridge" → "Woodbridge")
+      return p.split(/\s+/).slice(0, 2).join(' ');
+    }
+  }
+  return null;
+}
+
 interface Props {
   householdId: string;
   userId: string;
@@ -213,6 +238,7 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
           >
             {stores.map((store) => {
               const active = storeId === store.id;
+              const hint = storeLocationHint(store.address);
               return (
                 <Pressable
                   key={store.id}
@@ -224,7 +250,7 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
                   }}
                 >
                   <Text style={[styles.chipText, active && styles.chipTextActive]} numberOfLines={1}>
-                    {store.name}
+                    {hint ? `${store.name} · ${hint}` : store.name}
                   </Text>
                 </Pressable>
               );
@@ -268,22 +294,25 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
           )}
 
           {addingStore && presetSuggestions.length > 0 && (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.presetScroll}
-              contentContainerStyle={styles.presetRow}
-            >
-              {presetSuggestions.map((preset) => (
-                <Pressable
-                  key={preset}
-                  style={({ pressed }) => [styles.presetChip, pressed && { opacity: 0.7 }]}
-                  onPress={() => { void hapticSelection(); setNewStoreName(preset); }}
-                >
-                  <Text style={styles.presetChipText}>{preset}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
+            <>
+              <Text style={styles.presetLabel}>Quick suggestions</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.presetScroll}
+                contentContainerStyle={styles.presetRow}
+              >
+                {presetSuggestions.map((preset) => (
+                  <Pressable
+                    key={preset}
+                    style={({ pressed }) => [styles.presetChip, pressed && { opacity: 0.7 }]}
+                    onPress={() => { void hapticSelection(); setNewStoreName(preset); }}
+                  >
+                    <Text style={styles.presetChipText}>{preset}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </>
           )}
 
           <ScalePressable
@@ -387,6 +416,14 @@ function makeStyles(colors: AppColors, sheetStyles: ReturnType<typeof makeSheetS
     newStoreAddDisabled: { backgroundColor: colors.disabled },
     newStoreAddText: { color: colors.onPrimary, fontSize: 13, fontFamily: fonts.bodySemiBold },
     newStoreCancelText: { fontSize: 13, fontFamily: fonts.bodySemiBold, color: colors.muted },
+    presetLabel: {
+      fontSize: 11,
+      fontFamily: fonts.bodySemiBold,
+      color: colors.muted,
+      textTransform: 'uppercase',
+      letterSpacing: 0.4,
+      marginBottom: 8,
+    },
     presetScroll: { flexGrow: 0, marginBottom: 16 },
     presetRow: { gap: 8, flexDirection: 'row' },
     presetChip: {

@@ -232,3 +232,18 @@ eas submit --platform ios --profile production
 ### iOS Keychain Persistence Note
 > On iOS, Supabase session is stored in the Keychain and persists across app reinstall / TestFlight reinstall. This is **expected behavior**, not a bug. After reinstall, the user will be auto-logged-in and routed through `check.tsx`, which will correctly route to `create-or-join` if they have no household. To fully reset auth state during testing, use **Sign Out** from Settings before uninstalling.
 
+
+---
+
+## Grocery Store Assignment
+| Test | Pass/Fail |
+|---|---|
+| Open Pantry → tap New Grocery | |
+| STORE section shows saved stores with location hint (e.g. "Walmart · Woodbridge") | |
+| Tapping "+ New" reveals a **"Quick suggestions"** label above preset chips | |
+| Preset chips (Kroger, Food Lion, etc.) are clearly labelled as suggestions, NOT saved stores | |
+| Selecting a saved store chip highlights it and shows "Add to store" on the button | |
+| Save grocery → item appears in pantry assigned to the selected store | |
+| Shopping list / store grouping uses the correct saved store | |
+| No duplicate store is silently created | |
+| Item with no store selected shows "Add unassigned" and saves with no preferred_store_id | |
