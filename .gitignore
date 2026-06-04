@@ -45,3 +45,13 @@ supabase/.temp/
 /ios
 /android
 .gstack/
+
+# AI / dev tooling artifacts
+CURSOR_SHELL_HANDOFF.md
+GEMINI_PROMPT_ENGINEER_BRIEF.md
+*.savedSearch
+*.backup
+graphify-out/
+
+# QA / build artifacts
+*.pdf
