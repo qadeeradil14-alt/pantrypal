@@ -311,6 +311,10 @@ export default function GroceryScreen() {
       setTripReceiptCount(0);
       tripStartItemCountRef.current = 0;
       setItemQty(new Map());
+      // purchasedIds is normally drained by the 520ms finishVisual timers in
+      // handleGotIt, but reset here too so a race condition (session ending
+      // before all timers fire) cannot carry stale IDs into the next session.
+      setPurchasedIds(new Set());
       setPurchasedQty(new Map());
       setStoreGrabbedCount(new Map());
       setStoreSpendByStore(new Map());
@@ -1207,20 +1211,11 @@ export default function GroceryScreen() {
                 startPausedStore();
                 return;
               }
-              // Done path → finish the current session (after any pending receipt).
-              const blockingReceiptStoreId = resolveStoreNeedingReceipt();
-              if (blockingReceiptStoreId) {
-                const pendingStore = stores.find((s) => s.id === blockingReceiptStoreId);
-                Alert.alert(
-                  'Finish this stop',
-                  `Enter how much you spent at ${pendingStore?.name ?? 'this store'} before leaving shopping mode. A receipt photo is optional.`,
-                  [{ text: 'OK', onPress: () => openStoreSpendPrompt(blockingReceiptStoreId) }],
-                );
-                return;
-              }
-              setShoppingMode(false);
-              setActiveStore(null);
-              clearReceiptTrip();
+              // Done path — route through finishShopping() so the trip summary
+              // sheet, remaining-items warning, and receipt blocking all fire
+              // correctly. Previously this directly called setShoppingMode(false)
+              // which bypassed the trip sheet entirely.
+              finishShopping();
             }}
           >
             <Ionicons

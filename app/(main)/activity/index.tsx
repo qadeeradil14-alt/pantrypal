@@ -11,6 +11,7 @@ import { useDataSignal } from '../../../store/dataSignal';
 import { fetchAllActivity, formatActivityTime, type ActivityEvent } from '../../../lib/activity';
 import { normalizeStoreName } from '../../../lib/stores';
 import { getItemEmoji } from '../../../constants/itemEmojis';
+import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../../hooks/useTheme';
 import { fonts, type AppColors } from '../../../constants/theme';
 import EmptyState from '../../../components/EmptyState';
@@ -58,9 +59,11 @@ function useStoreLogo(event: ActivityEvent): boolean {
 
 function useAppIconAvatar(event: ActivityEvent): boolean {
   if (useStoreLogo(event)) return false;
+  // Only 'marked_low' uses the app icon — it has no store or person context.
+  // 'picked_up' without a store name uses a person-icon fallback instead, so the
+  // Stokit app logo never appears to "claim credit" for a person grabbing an item.
   if (event.type === 'marked_low') return true;
-  if (event.type === 'picked_up' && !event.storeName) return true;
-  return !event.actorName?.trim();
+  return !event.actorName?.trim() && event.type !== 'picked_up';
 }
 
 function eventDescription(event: ActivityEvent, isSelf: boolean): string {
@@ -190,10 +193,14 @@ export default function ActivityScreen() {
                 </View>
               ) : useAppIconAvatar(ev) ? (
                 <AppIcon size={28} />
-              ) : (
+              ) : actorInitials(ev) ? (
                 <Text style={[styles.avatarText, ev.isSelf && styles.avatarTextSelf]}>
                   {actorInitials(ev)}
                 </Text>
+              ) : (
+                // picked_up with no store and no actor name — show a person icon
+                // rather than the app logo or an empty avatar.
+                <Ionicons name="person" size={18} color={ev.isSelf ? colors.onPrimary : colors.muted} />
               )}
             </View>
             <View style={styles.rowContent}>
