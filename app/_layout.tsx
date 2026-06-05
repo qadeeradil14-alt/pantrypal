@@ -2,6 +2,7 @@ import { useEffect, Component, type ReactNode } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StyleSheet, View, Text, ActivityIndicator, LogBox, TouchableOpacity } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import * as Notifications from 'expo-notifications';
 import { useFonts as usePlayfairFonts } from '@expo-google-fonts/playfair-display';
 import { useFonts as useDMSansFonts } from '@expo-google-fonts/dm-sans';
 import { useFonts as useDMMonoFonts } from '@expo-google-fonts/dm-mono';
@@ -9,6 +10,7 @@ import { useFonts as useFrauncesFonts } from '@expo-google-fonts/fraunces';
 import { supabase } from '../lib/supabase';
 import { wasIntentionalSignOut } from '../lib/auth';
 import { useAuthStore } from '../store/auth';
+import { useStoresStore } from '../store/stores';
 import { defineGeofenceTask } from '../lib/geofencing';
 import { startMutationQueueWorker, flushMutationQueue } from '../lib/offlineQueue';
 import { lightColors } from '../constants/theme';
@@ -78,6 +80,7 @@ export default function RootLayout() {
   const fontsLoaded = playfairLoaded && frauncesLoaded && dmSansLoaded && dmMonoLoaded;
 
   const { session, loading, setSession, setLoading } = useAuthStore();
+  const setActiveStore = useStoresStore((s) => s.setActiveStore);
   const router = useRouter();
   const segments = useSegments();
 
@@ -115,9 +118,22 @@ export default function RootLayout() {
       }
     });
 
+    // Fix #8 — notification tap routing:
+    // When user taps an arrival notification, set the correct store as active
+    // and navigate to the Shopping tab so the right list opens immediately.
+    const notifSub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data as Record<string, unknown>;
+      if (data?.type === 'arrival_self' && typeof data.storeId === 'string') {
+        setActiveStore(data.storeId);
+        // Navigate to Shopping tab — route depends on whether user is in (main) already
+        router.push('/(main)/grocery');
+      }
+    });
+
     return () => {
       subscription.unsubscribe();
       stopWorker();
+      notifSub.remove();
     };
   }, []);
 

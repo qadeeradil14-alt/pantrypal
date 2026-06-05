@@ -5,6 +5,91 @@ import { geocodeLocation, searchStoreLocations } from './storeSearch';
 
 export const OFFLINE_STORE_ID_PREFIX = 'offline-store:';
 
+/**
+ * Normalise a raw store name to its canonical brand display form.
+ * Applied at render-time only — never mutates DB values.
+ *
+ * Examples:  "sam's club" → "Sam's Club"
+ *            "7 eleven"   → "7-Eleven"
+ *            "aldi"       → "ALDI"
+ */
+export function normalizeStoreName(raw: string): string {
+  const trimmed = raw?.trim() ?? '';
+  if (!trimmed) return trimmed;
+  const KNOWN: Record<string, string> = {
+    'walmart': 'Walmart',
+    'walmart supercenter': 'Walmart',
+    'walmart neighborhood market': 'Walmart',
+    "sam's club": "Sam's Club",
+    'sams club': "Sam's Club",
+    'target': 'Target',
+    'costco': 'Costco',
+    'costco wholesale': 'Costco',
+    'aldi': 'ALDI',
+    'amazon fresh': 'Amazon Fresh',
+    'amazon': 'Amazon',
+    'whole foods': 'Whole Foods',
+    'whole foods market': 'Whole Foods',
+    'kroger': 'Kroger',
+    '7-eleven': '7-Eleven',
+    '7 eleven': '7-Eleven',
+    '7eleven': '7-Eleven',
+    'food lion': 'Food Lion',
+    "trader joe's": "Trader Joe's",
+    'trader joes': "Trader Joe's",
+    'publix': 'Publix',
+    'wegmans': "Wegmans",
+    'heb': 'H-E-B',
+    'h-e-b': 'H-E-B',
+    'cvs': 'CVS',
+    'walgreens': 'Walgreens',
+    'safeway': 'Safeway',
+    'meijer': 'Meijer',
+    'hy-vee': 'Hy-Vee',
+    'hyvee': 'Hy-Vee',
+    'stop & shop': 'Stop & Shop',
+    'stop and shop': 'Stop & Shop',
+    'giant': 'Giant',
+    'harris teeter': 'Harris Teeter',
+    'sprouts': 'Sprouts',
+    'sprouts farmers market': 'Sprouts',
+    'wingstop': 'Wingstop',
+    'papa johns': "Papa John's",
+    "papa john's": "Papa John's",
+    'dollar tree': 'Dollar Tree',
+    'giant food': 'Giant Food',
+    'kabul halal market': 'Kabul Halal Market',
+  };
+  return KNOWN[trimmed.toLowerCase()] ?? trimmed;
+}
+
+/**
+ * Extract the US state name or 2-letter abbreviation from a store address string.
+ * Used to detect wrong-state stores in the UI.
+ * Returns e.g. "Virginia", "California", "VA", "CA", or null if not found.
+ */
+export function extractAddressState(address: string | null): string | null {
+  if (!address) return null;
+  const parts = address.split(',').map((p) => p.trim()).filter(Boolean);
+  // Walk from end: skip ZIP codes, country, find state segment
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const p = parts[i];
+    // "VA 22193" or "VA" — 2-letter state abbreviation
+    const abbrMatch = p.match(/^([A-Z]{2})(\s+\d[\d-]*)?$/);
+    if (abbrMatch) return abbrMatch[1];
+    // bare ZIP — skip
+    if (/^\d{5}(-\d{4})?$/.test(p)) continue;
+    // Country — skip
+    if (/^(united states|usa|us)$/i.test(p)) continue;
+    // Full state name: starts uppercase, no digits, length > 3
+    if (/^[A-Z][a-zA-Z ]+$/.test(p) && p.length > 3 && !/\d/.test(p)) return p;
+  }
+  return null;
+}
+
+// Re-export from the shared utility so call sites don't need to change.
+export { normalizeUSState } from './usStates';
+
 export function isOfflineStoreId(id: string): boolean {
   return id.startsWith(OFFLINE_STORE_ID_PREFIX);
 }
@@ -261,13 +346,15 @@ export async function searchNearbyStores(storeName: string, locationText?: strin
     const anchor = await geocodeLocation(locationText.trim());
     if (anchor) {
       const results = await searchStoreLocations({ storeName: normalized, anchor });
-      if (results.length > 0) return results;
-      // Location resolved successfully — no stores found nearby.
-      // Return empty; never fall through to GPS when the user gave an explicit
-      // location anchor (avoids returning results from a completely different state).
-      return [];
+      // Return results from the resolved location (even if empty).
+      // Never fall through to GPS — that would risk returning stores from a
+      // completely different state than the one the user specified.
+      return results;
     }
-    // geocodeLocation returned null (key not set or network failure) → fall to GPS
+    // geocodeLocation returned null (key not configured or network failure).
+    // Do NOT fall through to GPS when the user provided an explicit location —
+    // GPS position may be in a different region and would produce wrong-state results.
+    return [];
   }
 
   // ── GPS fallback — used when no location text provided, or Geoapify unavailable ──

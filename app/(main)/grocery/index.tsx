@@ -16,7 +16,7 @@ import { useHouseholdStore } from '../../../store/household';
 import { useStoresStore } from '../../../store/stores';
 import { useShoppingStore, type ShoppingEntry } from '../../../store/shopping';
 import { markItemGotItWithQueue } from '../../../lib/items';
-import { setItemStoreWithQueue } from '../../../lib/stores';
+import { setItemStoreWithQueue, normalizeStoreName } from '../../../lib/stores';
 import { completeShoppingEntryWithQueue, setShoppingEntryAisleWithQueue } from '../../../lib/shoppingList';
 import { hapticError, hapticSelection, hapticSuccess } from '../../../lib/haptics';
 import type { Item } from '../../../lib/items';
@@ -69,11 +69,29 @@ export default function GroceryScreen() {
     setPendingReceiptStoreId,
     markReceiptCompleted,
     clearReceiptTrip,
+    ambiguousArrivals,
+    setAmbiguousArrivals,
   } = useStoresStore();
   const { entries, removeEntry, upsertEntry } = useShoppingStore();
   const [shoppingMode, setShoppingMode] = useState(false);
+  /**
+   * Store-first "Where are you shopping?" selector, shown when the user taps
+   * Start. Prevents blindly entering shopping mode on a stale/mixed store.
+   */
+  const [startSheet, setStartSheet] = useState(false);
   const [tapping, setTapping] = useState<string | null>(null);
   const [purchasedIds, setPurchasedIds] = useState<Set<string>>(() => new Set());
+  /** Per-entry grab quantity (Sam's Club stepper). Defaults to 1. Local-only — not persisted. */
+  const [itemQty, setItemQty] = useState<Map<string, number>>(() => new Map());
+  /** Qty at the moment of grab — kept for the 520 ms purchased-visual window. */
+  const [purchasedQty, setPurchasedQty] = useState<Map<string, number>>(() => new Map());
+  /** Items grabbed per store this session — used to guard the done/spend sheet. */
+  const [storeGrabbedCount, setStoreGrabbedCount] = useState<Map<string, number>>(() => new Map());
+  /**
+   * "Are you done at [Store]?" confirmation sheet that gates the spend/receipt sheet.
+   * Only shows after all items at a store are grabbed and the user has grabbed ≥ 1 item there.
+   */
+  const [doneConfirmSheet, setDoneConfirmSheet] = useState<{ storeId: string; storeName: string } | null>(null);
   const weeklyBudget = useSettingsStore((s) => s.weeklyBudget);
   const [weeklySpend, setWeeklySpend] = useState(0);
   const [tripSpend, setTripSpend] = useState(0);
@@ -110,6 +128,15 @@ export default function GroceryScreen() {
   }, [shoppingMode, pulseAnim]);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  const getQty = useCallback((id: string) => itemQty.get(id) ?? 1, [itemQty]);
+  const adjustQty = useCallback((id: string, delta: number) => {
+    setItemQty((prev) => {
+      const next = new Map(prev);
+      next.set(id, Math.max(1, Math.min(99, (prev.get(id) ?? 1) + delta)));
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     const tag = 'shopping-mode';
@@ -165,6 +192,20 @@ export default function GroceryScreen() {
 
   const totalActiveCount = activeShoppingCounts.total;
 
+  /**
+   * Stores ranked for the Start "Where are you shopping?" selector:
+   *   1. only stores that have active shopping items
+   *   2. highest item count first
+   *   3. alphabetical tie-break
+   * (Nearby ranking is handled separately by the geofence ambiguity sheet.)
+   */
+  const startSheetStores = useMemo(() => {
+    return stores
+      .map((s) => ({ store: s, count: activeCountForStore(activeShoppingCounts, s.id) }))
+      .filter((x) => x.count > 0)
+      .sort((a, b) => b.count - a.count || a.store.name.localeCompare(b.store.name));
+  }, [stores, activeShoppingCounts]);
+
   const viewingEmptyStoreChip = useMemo(
     () => selectedStoreChipId !== null && activeCountForStore(activeShoppingCounts, selectedStoreChipId) === 0,
     [activeShoppingCounts, selectedStoreChipId],
@@ -214,6 +255,10 @@ export default function GroceryScreen() {
       setPendingReceiptStoreId(null);
       setTripReceiptCount(0);
       tripStartItemCountRef.current = 0;
+      setItemQty(new Map());
+      setPurchasedQty(new Map());
+      setStoreGrabbedCount(new Map());
+      setDoneConfirmSheet(null);
     }
   }, [shoppingMode, setPendingReceiptStoreId]);
 
@@ -385,11 +430,10 @@ export default function GroceryScreen() {
     return next?.title ?? null;
   }, [assignedRouteSections, routeStoreIds]);
 
-  const openStoreSpendPrompt = useCallback((storeId: string) => {
-    if (activeCountForStore(activeShoppingCounts, storeId) === 0) return;
+  /** Open the spend/receipt sheet directly — only called after user confirms "Yes, finish stop". */
+  const openStoreSpendSheetDirect = useCallback((storeId: string) => {
     const store = stores.find((s) => s.id === storeId);
     if (!store) return;
-    setPendingReceiptStoreId(storeId);
     setStoreSpendAmount('');
     setStoreSpendSheet({
       storeId,
@@ -397,7 +441,25 @@ export default function GroceryScreen() {
       stopNumber: stopNumberByStoreId.get(storeId) ?? 1,
       nextStoreName: nextStoreNameAfter(storeId),
     });
-  }, [activeShoppingCounts, nextStoreNameAfter, setPendingReceiptStoreId, stopNumberByStoreId, stores]);
+  }, [nextStoreNameAfter, stopNumberByStoreId, stores]);
+
+  /**
+   * Gate the spend sheet behind a "Are you done?" confirmation.
+   * If the user grabbed 0 items at this store, skip silently.
+   */
+  const openStoreSpendPrompt = useCallback((storeId: string) => {
+    if (activeCountForStore(activeShoppingCounts, storeId) === 0) return;
+    const store = stores.find((s) => s.id === storeId);
+    if (!store) return;
+
+    // Guard: 0 items grabbed at this store → don't force receipt entry
+    const grabbed = storeGrabbedCount.get(storeId) ?? 0;
+    if (grabbed === 0) return;
+
+    setPendingReceiptStoreId(storeId);
+    // Show confirmation sheet first; spend sheet only opens on "Yes, finish stop"
+    setDoneConfirmSheet({ storeId, storeName: store.name });
+  }, [activeShoppingCounts, setPendingReceiptStoreId, storeGrabbedCount, stores]);
 
   const isStoreReceiptDone = useCallback(
     (storeId: string) =>
@@ -570,12 +632,20 @@ export default function GroceryScreen() {
     [tripSpend, weeklyBudget],
   );
 
-  const handleGotIt = useCallback(async (entry: ShoppingEntry) => {
+  const handleGotIt = useCallback(async (entry: ShoppingEntry, qty = 1) => {
     const userId = session?.user.id ?? '';
     void hapticSelection();
     setTapping(entry.id);
     setPurchasedIds((prev) => new Set(prev).add(entry.id));
+    setPurchasedQty((prev) => new Map(prev).set(entry.id, qty));
     setGrabbedCount((prev) => prev + 1);
+    const linkedForCount = entry.source_item_id ? sourceItemMap.get(entry.source_item_id) : null;
+    const countStoreId = linkedForCount?.preferred_store_id ?? '__unassigned__';
+    setStoreGrabbedCount((prev) => {
+      const next = new Map(prev);
+      next.set(countStoreId, (prev.get(countStoreId) ?? 0) + 1);
+      return next;
+    });
     const linked = entry.source_item_id ? sourceItemMap.get(entry.source_item_id) : null;
     const finishedStoreId = linked?.preferred_store_id ?? null;
     const shouldOpenSpendAfterVisual = (() => {
@@ -601,6 +671,8 @@ export default function GroceryScreen() {
             next.delete(entry.id);
             return next;
           });
+          setItemQty((prev) => { const next = new Map(prev); next.delete(entry.id); return next; });
+          setPurchasedQty((prev) => { const next = new Map(prev); next.delete(entry.id); return next; });
           if (shouldOpenSpendAfterVisual && finishedStoreId) {
             openStoreSpendPrompt(finishedStoreId);
           }
@@ -698,6 +770,24 @@ export default function GroceryScreen() {
         openStoreSpendPrompt(activeStoreId);
         return;
       }
+      // Switch confirmation: while actively shopping, never silently jump from
+      // one store session to another — the user must confirm the switch.
+      if (shoppingMode && activeStoreId && storeId !== activeStoreId) {
+        const fromName = normalizeStoreName(stores.find((s) => s.id === activeStoreId)?.name ?? 'this store');
+        const toName = normalizeStoreName(stores.find((s) => s.id === storeId)?.name ?? 'that store');
+        Alert.alert(
+          `Switch from ${fromName} to ${toName}?`,
+          'Your current store session will be replaced.',
+          [
+            { text: `Stay at ${fromName}`, style: 'cancel' },
+            {
+              text: 'Switch store',
+              onPress: () => { setSelectedStoreChipId(storeId); setActiveStore(storeId); },
+            },
+          ],
+        );
+        return;
+      }
       setSelectedStoreChipId(storeId);
       setActiveStore(storeId);
     },
@@ -708,9 +798,28 @@ export default function GroceryScreen() {
       openStoreSpendPrompt,
       pendingReceiptStoreId,
       setActiveStore,
+      shoppingMode,
       storeNeedsReceiptStep,
       stores,
     ],
+  );
+
+  /**
+   * Begin a personal, store-locked shopping session from the Start selector.
+   * Passing null = "Shop all items" (no single-store lock).
+   */
+  const beginShopping = useCallback(
+    (storeId: string | null) => {
+      void hapticSelection();
+      setStartSheet(false);
+      clearReceiptTrip();
+      setTripSpend(0);
+      setTripReceiptCount(0);
+      setSelectedStoreChipId(storeId);
+      setActiveStore(storeId);
+      setShoppingMode(true);
+    },
+    [clearReceiptTrip, setActiveStore],
   );
 
   const tryAdvanceToNextStop = useCallback(() => {
@@ -936,7 +1045,7 @@ export default function GroceryScreen() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Text style={styles.eyebrow}>{shoppingMode ? 'Shopping mode' : 'Grocery list'}</Text>
+          <Text style={styles.eyebrow}>{shoppingMode ? 'Shopping mode' : 'Shopping'}</Text>
           <Text style={styles.headerTitle}>{activeStore ? activeStore.name : 'Shopping list'}</Text>
         </View>
         <Animated.View style={!shoppingMode && { transform: [{ scale: pulseAnim }] }}>
@@ -944,28 +1053,26 @@ export default function GroceryScreen() {
             style={[styles.modeBtn, shoppingMode && styles.modeBtnActive]}
             onPress={() => {
               void hapticSelection();
-              if (shoppingMode) {
-                const blockingReceiptStoreId = resolveStoreNeedingReceipt();
-                if (blockingReceiptStoreId) {
-                  const pendingStore = stores.find((s) => s.id === blockingReceiptStoreId);
-                  Alert.alert(
-                    'Finish this stop',
-                    `Enter how much you spent at ${pendingStore?.name ?? 'this store'} before leaving shopping mode. A receipt photo is optional.`,
-                    [{ text: 'OK', onPress: () => openStoreSpendPrompt(blockingReceiptStoreId) }],
-                  );
-                  return;
-                }
-              }
+              // Start path → open the store-first "Where are you shopping?" selector
+              // instead of blindly entering shopping mode on a stale/mixed store.
               if (!shoppingMode) {
-                clearReceiptTrip();
-                setTripSpend(0);
-                setTripReceiptCount(0);
+                setStartSheet(true);
+                return;
               }
-              setShoppingMode((v) => !v);
-              if (shoppingMode) {
-                setActiveStore(null);
-                clearReceiptTrip();
+              // Done path → finish the current session (after any pending receipt).
+              const blockingReceiptStoreId = resolveStoreNeedingReceipt();
+              if (blockingReceiptStoreId) {
+                const pendingStore = stores.find((s) => s.id === blockingReceiptStoreId);
+                Alert.alert(
+                  'Finish this stop',
+                  `Enter how much you spent at ${pendingStore?.name ?? 'this store'} before leaving shopping mode. A receipt photo is optional.`,
+                  [{ text: 'OK', onPress: () => openStoreSpendPrompt(blockingReceiptStoreId) }],
+                );
+                return;
               }
+              setShoppingMode(false);
+              setActiveStore(null);
+              clearReceiptTrip();
             }}
           >
             <Ionicons
@@ -1060,7 +1167,7 @@ export default function GroceryScreen() {
               }}
             >
               <Text style={[styles.chipText, selectedStoreChipId === s.id && styles.chipTextActive]}>
-                {formatStoreChipLabel(s.name, activeCountForStore(activeShoppingCounts, s.id))}
+                {formatStoreChipLabel(normalizeStoreName(s.name), activeCountForStore(activeShoppingCounts, s.id))}
               </Text>
             </ScalePressable>
           ))}
@@ -1233,15 +1340,18 @@ export default function GroceryScreen() {
               );
             }
 
+            const qty = getQty(entry.id);
+            const grabbedQty = purchasedQty.get(entry.id) ?? 1;
+
             return (
               <ScalePressable
                 testID={groceryItemTestId(entry.name)}
                 profile="card"
                 style={[styles.row, shoppingMode && styles.rowShop, purchased && styles.rowPurchased]}
-                onPress={shoppingMode ? () => handleGotIt(entry) : undefined}
+                onPress={shoppingMode && !purchased ? () => handleGotIt(entry, qty) : undefined}
                 onLongPress={shoppingMode ? (storeName ? handleSetAisle : () => assignEntryToStore(entry)) : (sourceItem ? () => assignEntryToStore(entry) : undefined)}
                 delayLongPress={400}
-                disabled={shoppingMode ? (isTapping) : false}
+                disabled={shoppingMode ? isTapping : false}
               >
                 <View style={[styles.lead, shoppingMode && styles.leadShop, isTapping && styles.leadTapping, purchased && styles.leadPurchased]}>
                   {isTapping ? (
@@ -1259,7 +1369,7 @@ export default function GroceryScreen() {
                   </Text>
                   <Text style={[styles.itemMeta, purchased && styles.itemMetaPurchased]}>
                     {purchased
-                      ? 'Purchased ✓'
+                      ? (grabbedQty > 1 ? `Grabbed ×${grabbedQty} ✓` : 'Grabbed ✓')
                       : storeName
                         ? `${categoryLabel} · ${storeName}`
                         : sourceItem
@@ -1267,7 +1377,7 @@ export default function GroceryScreen() {
                           : categoryLabel}
                   </Text>
                 </View>
-                {shoppingMode && !storeName && sourceItem ? (
+                {shoppingMode && !purchased && !storeName && sourceItem ? (
                   <ScalePressable
                     profile="chip"
                     style={styles.assignStoreChip}
@@ -1275,11 +1385,33 @@ export default function GroceryScreen() {
                   >
                     <Text style={styles.assignStoreChipText}>Store</Text>
                   </ScalePressable>
-                ) : (shoppingMode || purchased) && (
-                  <Text style={[styles.tapHint, purchased && styles.tapHintPurchased]}>
-                    {purchased ? 'Purchased' : 'Grab'}
-                  </Text>
-                )}
+                ) : purchased ? (
+                  <View style={styles.qtyGrabbedBadge}>
+                    <Text style={styles.qtyGrabbedText}>
+                      {grabbedQty > 1 ? `×${grabbedQty}` : '✓'}
+                    </Text>
+                  </View>
+                ) : shoppingMode ? (
+                  <View style={styles.qtyPill}>
+                    <TouchableOpacity
+                      style={styles.qtyBtn}
+                      onPress={() => adjustQty(entry.id, -1)}
+                      hitSlop={{ top: 10, bottom: 10, left: 6, right: 4 }}
+                      activeOpacity={0.6}
+                    >
+                      <Text style={styles.qtyBtnText}>−</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.qtyCount}>{qty}</Text>
+                    <TouchableOpacity
+                      style={styles.qtyBtn}
+                      onPress={() => adjustQty(entry.id, +1)}
+                      hitSlop={{ top: 10, bottom: 10, left: 4, right: 6 }}
+                      activeOpacity={0.6}
+                    >
+                      <Text style={styles.qtyBtnText}>+</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
               </ScalePressable>
             );
           }}
@@ -1468,6 +1600,169 @@ export default function GroceryScreen() {
 
           <TouchableOpacity style={styles.sheetGhost} onPress={closeTripSheet} activeOpacity={0.7}>
             <Text style={[styles.sheetGhostText, { color: colors.muted }]}>Maybe later</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+
+      {/* ── "Are you done?" confirmation — gates the spend/receipt sheet ── */}
+      <Modal
+        visible={!!doneConfirmSheet}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          setDoneConfirmSheet(null);
+          setPendingReceiptStoreId(null);
+        }}
+      >
+        <TouchableWithoutFeedback onPress={() => {
+          setDoneConfirmSheet(null);
+          setPendingReceiptStoreId(null);
+        }}>
+          <View style={styles.sheetOverlay} />
+        </TouchableWithoutFeedback>
+        <View style={[styles.doneConfirmSheet, { backgroundColor: colors.surface }]}>
+          <View style={styles.sheetHandle} />
+          <Text style={[styles.doneConfirmTitle, { color: colors.ink }]}>
+            Done at {doneConfirmSheet?.storeName}?
+          </Text>
+          <Text style={[styles.doneConfirmSubtitle, { color: colors.muted }]}>
+            You can keep shopping or log this stop.
+          </Text>
+          <TouchableOpacity
+            style={[styles.doneConfirmPrimary, { backgroundColor: colors.primary }]}
+            activeOpacity={0.85}
+            onPress={() => {
+              const sheet = doneConfirmSheet;
+              setDoneConfirmSheet(null);
+              if (sheet) openStoreSpendSheetDirect(sheet.storeId);
+            }}
+          >
+            <Text style={[styles.doneConfirmPrimaryText, { color: colors.onPrimary }]}>
+              Yes, finish stop
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.sheetGhost}
+            activeOpacity={0.7}
+            onPress={() => {
+              setDoneConfirmSheet(null);
+              setPendingReceiptStoreId(null);
+            }}
+          >
+            <Text style={[styles.sheetGhostText, { color: colors.muted }]}>Keep shopping</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+
+      {/* ── Multi-store disambiguation — "Where are you shopping?" ── */}
+      <Modal
+        visible={ambiguousArrivals.length > 0}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setAmbiguousArrivals([])}
+      >
+        <TouchableWithoutFeedback onPress={() => setAmbiguousArrivals([])}>
+          <View style={styles.sheetOverlay} />
+        </TouchableWithoutFeedback>
+        <View style={[styles.disambigSheet, { backgroundColor: colors.surface }]}>
+          <View style={styles.sheetHandle} />
+          <Text style={[styles.disambigTitle, { color: colors.ink }]}>Where are you shopping?</Text>
+          <Text style={[styles.disambigSubtitle, { color: colors.muted }]}>
+            Multiple stores are nearby. Pick the one you're in.
+          </Text>
+          {ambiguousArrivals.map((sid) => {
+            const s = stores.find((st) => st.id === sid);
+            if (!s) return null;
+            return (
+              <TouchableOpacity
+                key={sid}
+                style={[styles.disambigOption, { backgroundColor: colors.faint }]}
+                activeOpacity={0.8}
+                onPress={() => {
+                  setAmbiguousArrivals([]);
+                  setActiveStore(sid);
+                  setSelectedStoreChipId(sid);
+                }}
+              >
+                <StoreLogo name={s.name} size={32} domain={s.brand_domain} logoUrl={s.logo_url} fallbackToAppIcon />
+                <Text style={[styles.disambigOptionText, { color: colors.ink }]}>{normalizeStoreName(s.name)}</Text>
+                <Ionicons name="chevron-forward" size={16} color={colors.muted} />
+              </TouchableOpacity>
+            );
+          })}
+          <TouchableOpacity
+            style={styles.sheetGhost}
+            activeOpacity={0.7}
+            onPress={() => setAmbiguousArrivals([])}
+          >
+            <Text style={[styles.sheetGhostText, { color: colors.muted }]}>Not at any of these</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+
+      {/* ── Start selector — "Where are you shopping?" (store-first session) ── */}
+      <Modal
+        visible={startSheet}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setStartSheet(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setStartSheet(false)}>
+          <View style={styles.sheetOverlay} />
+        </TouchableWithoutFeedback>
+        <View style={[styles.disambigSheet, { backgroundColor: colors.surface }]}>
+          <View style={styles.sheetHandle} />
+          <Text style={[styles.disambigTitle, { color: colors.ink }]}>Where are you shopping?</Text>
+          <Text style={[styles.disambigSubtitle, { color: colors.muted }]}>
+            {startSheetStores.length > 0
+              ? "Pick the store you're at — your trip will lock to it."
+              : 'Start a shopping trip across all your items.'}
+          </Text>
+          {startSheetStores.map(({ store: s, count }) => (
+            <TouchableOpacity
+              key={s.id}
+              style={[styles.disambigOption, { backgroundColor: colors.faint }]}
+              activeOpacity={0.8}
+              onPress={() => beginShopping(s.id)}
+            >
+              <StoreLogo name={s.name} size={32} domain={s.brand_domain} logoUrl={s.logo_url} fallbackToAppIcon />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.disambigOptionText, { color: colors.ink }]}>{normalizeStoreName(s.name)}</Text>
+                <Text style={[styles.disambigSubtitle, { color: colors.muted, marginBottom: 0 }]}>
+                  {count} {count === 1 ? 'item' : 'items'}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.muted} />
+            </TouchableOpacity>
+          ))}
+          {startSheetStores.length > 0 && (
+            <TouchableOpacity
+              style={[styles.disambigOption, { backgroundColor: colors.faint }]}
+              activeOpacity={0.8}
+              onPress={() => beginShopping(null)}
+            >
+              <Ionicons name="cart-outline" size={26} color={colors.primary} />
+              <Text style={[styles.disambigOptionText, { color: colors.ink, flex: 1 }]}>Shop all items</Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.muted} />
+            </TouchableOpacity>
+          )}
+          {startSheetStores.length === 0 && (
+            <TouchableOpacity
+              style={[styles.disambigOption, { backgroundColor: colors.faint }]}
+              activeOpacity={0.8}
+              onPress={() => beginShopping(null)}
+            >
+              <Ionicons name="cart-outline" size={26} color={colors.primary} />
+              <Text style={[styles.disambigOptionText, { color: colors.ink, flex: 1 }]}>Start shopping</Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.muted} />
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={styles.sheetGhost}
+            activeOpacity={0.7}
+            onPress={() => setStartSheet(false)}
+          >
+            <Text style={[styles.sheetGhostText, { color: colors.muted }]}>Not shopping right now</Text>
           </TouchableOpacity>
         </View>
       </Modal>
@@ -1775,6 +2070,47 @@ function makeStyles(colors: AppColors) {
     itemMetaPurchased: { color: colors.success, fontFamily: fonts.bodySemiBold },
     tapHint: { fontSize: 12, color: colors.muted, fontFamily: fonts.bodySemiBold },
     tapHintPurchased: { color: colors.success },
+    // ── Quantity stepper (Sam's Club style) ────────────────────────────────
+    qtyPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderRadius: 999,
+      backgroundColor: colors.primarySoft,
+      overflow: 'hidden',
+    },
+    qtyBtn: {
+      width: 34,
+      height: 34,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    qtyBtnText: {
+      fontSize: 20,
+      lineHeight: 22,
+      color: colors.primary,
+      fontFamily: fonts.bodySemiBold,
+    },
+    qtyCount: {
+      minWidth: 22,
+      textAlign: 'center',
+      fontSize: 15,
+      color: colors.primary,
+      fontFamily: fonts.bodySemiBold,
+    },
+    qtyGrabbedBadge: {
+      minWidth: 28,
+      height: 28,
+      borderRadius: 999,
+      backgroundColor: colors.successSoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 6,
+    },
+    qtyGrabbedText: {
+      fontSize: 13,
+      color: colors.success,
+      fontFamily: fonts.bodySemiBold,
+    },
     assignStoreChip: {
       borderRadius: 999,
       backgroundColor: colors.surface,
@@ -1985,5 +2321,83 @@ function makeStyles(colors: AppColors) {
     sheetPrimaryText: { fontSize: 16, fontFamily: fonts.bodySemiBold },
     sheetGhost: { paddingVertical: 10, paddingHorizontal: 20 },
     sheetGhostText: { fontSize: 14, fontFamily: fonts.bodySemiBold },
+    // ── Done-confirmation sheet ──────────────────────────────────────────────
+    doneConfirmSheet: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      borderTopLeftRadius: 28,
+      borderTopRightRadius: 28,
+      paddingHorizontal: 24,
+      paddingBottom: 36,
+      paddingTop: 14,
+      gap: 12,
+      alignItems: 'center',
+    },
+    doneConfirmTitle: {
+      fontSize: 22,
+      fontFamily: fonts.displayExtraBoldItalic,
+      letterSpacing: 0,
+      textAlign: 'center',
+      marginTop: 4,
+    },
+    doneConfirmSubtitle: {
+      fontSize: 14,
+      fontFamily: fonts.bodyMedium,
+      textAlign: 'center',
+      lineHeight: 20,
+    },
+    doneConfirmPrimary: {
+      alignSelf: 'stretch',
+      borderRadius: 16,
+      paddingVertical: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 4,
+    },
+    doneConfirmPrimaryText: { fontSize: 16, fontFamily: fonts.bodySemiBold },
+    // ── Multi-store disambiguation sheet ────────────────────────────────────
+    disambigSheet: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      borderTopLeftRadius: 28,
+      borderTopRightRadius: 28,
+      paddingHorizontal: 20,
+      paddingBottom: 36,
+      paddingTop: 14,
+      gap: 10,
+      alignItems: 'center',
+    },
+    disambigTitle: {
+      fontSize: 22,
+      fontFamily: fonts.displayExtraBoldItalic,
+      letterSpacing: 0,
+      textAlign: 'center',
+      marginTop: 4,
+    },
+    disambigSubtitle: {
+      fontSize: 14,
+      fontFamily: fonts.bodyMedium,
+      textAlign: 'center',
+      lineHeight: 20,
+      marginBottom: 4,
+    },
+    disambigOption: {
+      alignSelf: 'stretch',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      borderRadius: 16,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+    },
+    disambigOptionText: {
+      flex: 1,
+      fontSize: 16,
+      fontFamily: fonts.bodySemiBold,
+    },
   });
 }

@@ -214,7 +214,7 @@ export default function SettingsScreen() {
   function handleEditBudget() {
     Alert.prompt(
       'Weekly budget',
-      'Set your weekly grocery spend target (e.g. 200).',
+      'Set your weekly shopping budget (e.g. 200).',
       (value) => {
         const parsed = parseFloat(value ?? '');
         if (isNaN(parsed) || parsed <= 0) {
@@ -571,11 +571,11 @@ export default function SettingsScreen() {
                 <Ionicons name="wallet-outline" size={17} color={colors.muted} />
                 <View>
                   <Text style={styles.rowLabel}>Weekly budget</Text>
-                  <Text style={styles.rowSubLabel}>Tap to adjust your grocery target</Text>
+                  <Text style={styles.rowSubLabel}>Tap to adjust your weekly shopping budget</Text>
                 </View>
               </View>
-              <View style={styles.rowEditWrap}>
-                <Text style={[styles.rowValue, { color: colors.primary, fontFamily: fonts.bodySemiBold }]}>${weeklyBudget}</Text>
+              <View style={[styles.rowEditWrap, { flexShrink: 0 }]}>
+                <Text style={[styles.rowValue, { color: colors.primary, fontFamily: fonts.bodySemiBold }]} numberOfLines={1}>${weeklyBudget}</Text>
                 <Ionicons name="pencil-outline" size={15} color={colors.primary} />
               </View>
             </ScalePressable>

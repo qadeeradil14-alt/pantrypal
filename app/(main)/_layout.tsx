@@ -7,9 +7,11 @@ import type { ColorValue } from 'react-native';
 import { fetchStores } from '../../lib/stores';
 import { fetchItems } from '../../lib/items';
 import { fetchActiveShoppingList } from '../../lib/shoppingList';
+import { getMyHousehold } from '../../lib/households';
 import { flushMutationQueue } from '../../lib/offlineQueue';
 import { startGeofencing, stopGeofencing, ACTIVE_STORE_TTL_MS } from '../../lib/geofencing';
 import { useRealtime } from '../../lib/realtime';
+import { useAuthStore } from '../../store/auth';
 import { useHouseholdStore } from '../../store/household';
 import { useStoresStore } from '../../store/stores';
 import { useItemsStore } from '../../store/items';
@@ -29,7 +31,9 @@ function tabIcon(name: IoniconName, focusedName: IoniconName) {
 export default function MainLayout() {
   const { colors } = useTheme();
   const router = useRouter();
-  const householdId = useHouseholdStore((s) => s.household?.id);
+  const { household, loaded: householdLoaded, setHousehold, setLoading: setHouseholdLoading } = useHouseholdStore();
+  const householdId = household?.id ?? null;
+  const userId = useAuthStore((s) => s.session?.user.id ?? null);
   const setStores = useStoresStore((s) => s.setStores);
   const setItems = useItemsStore((s) => s.setItems);
   const setShoppingEntries = useShoppingStore((s) => s.setEntries);
@@ -109,14 +113,40 @@ export default function MainLayout() {
     return () => sub.remove();
   }, [householdId, setStores, setItems, setShoppingEntries]);
 
+  // Re-fetch household if we land in (main) without it loaded (e.g. after process restart).
+  useEffect(() => {
+    if (householdLoaded || !userId) return;
+    let cancelled = false;
+    setHouseholdLoading(true);
+    getMyHousehold(userId)
+      .then((data) => {
+        if (cancelled) return;
+        const raw = data?.households;
+        const h = Array.isArray(raw) ? raw[0] : raw;
+        if (h && data?.role) {
+          setHousehold({ id: h.id, name: h.name, inviteCode: h.invite_code ?? '', role: data.role, plan: h.plan ?? 'free' });
+        } else {
+          setHousehold(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setHousehold(null);
+      });
+    return () => { cancelled = true; };
+  }, [householdLoaded, userId, setHousehold, setHouseholdLoading]);
+
   useEffect(() => {
     let cancelled = false;
 
     async function bootstrapStoresAndGeofencing() {
       if (!householdId) {
-        setStores([]);
-        setItems([]);
-        setShoppingEntries([]);
+        // Only clear household-scoped data once we've confirmed there is no household.
+        // While householdLoaded is false, data is still loading — do not wipe it.
+        if (householdLoaded) {
+          setStores([]);
+          setItems([]);
+          setShoppingEntries([]);
+        }
         await stopGeofencing();
         return;
       }
@@ -135,7 +165,7 @@ export default function MainLayout() {
 
     bootstrapStoresAndGeofencing();
     return () => { cancelled = true; };
-  }, [householdId, setItems, setShoppingEntries, setStores]);
+  }, [householdId, householdLoaded, setItems, setShoppingEntries, setStores]);
 
   return (
     <View style={styles.root}>

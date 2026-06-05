@@ -6,32 +6,88 @@ import { Platform } from 'react-native';
 import type { Store } from './stores';
 import { supabase } from './supabase';
 
+// ── Public constants ──────────────────────────────────────────────────────────
+
 export const GEOFENCE_TASK = 'PANTRYPAL_GEOFENCE';
 
 /** Same-store re-enters within this window are ignored (parking-lot GPS bounce). */
 export const GEOFENCE_DEBOUNCE_MS = 3 * 60 * 1000;
 
 /** How long grocery "shopping mode" stays pinned after an arrival. */
-export const ACTIVE_STORE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+export const ACTIVE_STORE_TTL_MS = 2 * 60 * 60 * 1000;
+
 export const GEOFENCE_ACCURACY_BUFFER_M = 75;
 export const ARRIVAL_RECORD_DEDUPE_MS = 10 * 60 * 1000;
 
-const GEOFENCE_DEBOUNCE_KEY = 'pantrypal:geofence:last-enter:v1';
+// ── Private tunables ──────────────────────────────────────────────────────────
+
+/** GPS accuracy worse than this suppresses arrival detection entirely. */
+const MAX_ACCEPTABLE_ACCURACY_M = 200;
+
+/**
+ * Stability window: wait this long after geofence enter, then re-verify position.
+ * Filters drive-bys — a car at 50 km/h covers 500 m in ~36 s, so 25 s catches most.
+ */
+const STABILITY_WINDOW_MS = 25_000;
+
+/** Global cooldown: suppress ALL arrival notifications within this window. */
+const GLOBAL_NOTIF_COOLDOWN_MS = 5 * 60 * 1000;
+
+/**
+ * Two stores whose centroids are within this radius of each other are
+ * considered "ambiguous" — we ask the user rather than guessing.
+ */
+const AMBIGUOUS_RADIUS_M = 300;
 
 const MAX_ACTIVE_GEOFENCES = Platform.OS === 'ios' ? 20 : 100;
+
+// ── AsyncStorage keys ─────────────────────────────────────────────────────────
+
+const GEOFENCE_DEBOUNCE_KEY   = 'pantrypal:geofence:last-enter:v1';
+const GLOBAL_NOTIF_KEY        = 'pantrypal:geofence:last-notification:v1';
+const GEO_LOG_KEY             = 'pantrypal:geofence:debug-log:v1';
+
+// ── Debug log ─────────────────────────────────────────────────────────────────
+
+async function geoLog(storeId: string, message: string): Promise<void> {
+  try {
+    const entry = `[${new Date().toISOString()}] store=${storeId} | ${message}`;
+    const raw = await AsyncStorage.getItem(GEO_LOG_KEY).catch(() => null);
+    const lines: string[] = raw ? (JSON.parse(raw) as string[]) : [];
+    lines.unshift(entry);
+    await AsyncStorage.setItem(GEO_LOG_KEY, JSON.stringify(lines.slice(0, 100)));
+  } catch { /* non-fatal */ }
+}
+
+/** Read the last 100 geofence debug log lines (newest first). */
+export async function getGeoDebugLog(): Promise<string[]> {
+  try {
+    const raw = await AsyncStorage.getItem(GEO_LOG_KEY);
+    return raw ? (JSON.parse(raw) as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+// ── Task definition ───────────────────────────────────────────────────────────
 
 export function defineGeofenceTask(onEnter: (storeId: string) => void) {
   if (TaskManager.isTaskDefined(GEOFENCE_TASK)) return;
 
   TaskManager.defineTask(GEOFENCE_TASK, async ({ data, error }: any) => {
     if (error) return;
-    const { eventType, region } = data;
+    const { eventType, region } = data as {
+      eventType: Location.GeofencingEventType;
+      region: { identifier: string };
+    };
     if (eventType === Location.GeofencingEventType.Enter && region?.identifier) {
       await handleStoreGeofenceEnter(region.identifier).catch(() => {});
       onEnter(region.identifier);
     }
   });
 }
+
+// ── Geofence start / stop ─────────────────────────────────────────────────────
 
 export async function startGeofencing(stores: Store[]): Promise<boolean> {
   const geofenceable = await getBestGeofenceStores(stores);
@@ -60,16 +116,19 @@ export async function startGeofencing(stores: Store[]): Promise<boolean> {
       notifyOnExit: false,
     })),
   );
-
   return true;
 }
 
+/**
+ * Candidate ranking (fix #1): if user has more stores than the OS limit,
+ * select the MAX_ACTIVE_GEOFENCES closest to current position.
+ */
 async function getBestGeofenceStores(stores: Store[]): Promise<Store[]> {
   const geofenceable = stores.filter((s) => s.latitude != null && s.longitude != null);
   if (geofenceable.length <= MAX_ACTIVE_GEOFENCES) return geofenceable;
 
   const here = await Location.getLastKnownPositionAsync()
-    .then((position) => position ?? Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }))
+    .then((p) => p ?? Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }))
     .catch(() => null);
 
   if (!here) {
@@ -93,6 +152,12 @@ export async function stopGeofencing() {
   if (active) await Location.stopGeofencingAsync(GEOFENCE_TASK);
 }
 
+// ── Debounce / cooldown ───────────────────────────────────────────────────────
+
+/**
+ * Per-store debounce (fix #6 hysteresis): ignore re-entries within 3 minutes
+ * for the same store — prevents parking-lot GPS bounce.
+ */
 async function shouldHandleGeofenceEnter(storeId: string): Promise<boolean> {
   try {
     const raw = await AsyncStorage.getItem(GEOFENCE_DEBOUNCE_KEY);
@@ -109,6 +174,76 @@ async function shouldHandleGeofenceEnter(storeId: string): Promise<boolean> {
     return true;
   }
 }
+
+/**
+ * Global notification cooldown (fix #5): no matter which store fires,
+ * suppress notifications if we already sent one within 5 minutes.
+ */
+async function shouldFireNotification(): Promise<boolean> {
+  try {
+    const raw = await AsyncStorage.getItem(GLOBAL_NOTIF_KEY);
+    const now = Date.now();
+    if (raw) {
+      const lastAt = Number(raw);
+      if (!Number.isNaN(lastAt) && now - lastAt < GLOBAL_NOTIF_COOLDOWN_MS) return false;
+    }
+    await AsyncStorage.setItem(GLOBAL_NOTIF_KEY, String(now));
+    return true;
+  } catch {
+    return true;
+  }
+}
+
+// ── Location helpers ──────────────────────────────────────────────────────────
+
+function distanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6_371_000;
+  const toRad = (d: number) => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2
+    + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/**
+ * Position check with GPS accuracy guard (fix #2).
+ * Returns false when:
+ *   - GPS accuracy is worse than MAX_ACCEPTABLE_ACCURACY_M, OR
+ *   - calculated distance exceeds allowed distance for this store.
+ */
+async function isLikelyInsideStoreRegion(store: Store): Promise<boolean> {
+  if (store.latitude == null || store.longitude == null) return true;
+
+  const position = await Location.getLastKnownPositionAsync({ maxAge: 60_000, requiredAccuracy: 500 })
+    .then((lastKnown) => lastKnown ?? Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }))
+    .catch(() => null);
+
+  if (!position) return true; // can't determine — allow
+
+  const accuracy = position.coords.accuracy ?? 0;
+
+  // Fix #2: reject when GPS accuracy is too poor to be reliable
+  if (accuracy > MAX_ACCEPTABLE_ACCURACY_M) {
+    await geoLog(store.id, `ACCURACY_GUARD: ${accuracy.toFixed(0)}m > max ${MAX_ACCEPTABLE_ACCURACY_M}m — suppressing`);
+    return false;
+  }
+
+  const distance = distanceMeters(
+    position.coords.latitude,
+    position.coords.longitude,
+    store.latitude,
+    store.longitude,
+  );
+  const allowed = Math.max(100, Math.min(store.radius_meters || 150, 500))
+    + Math.max(accuracy, GEOFENCE_ACCURACY_BUFFER_M);
+
+  await geoLog(store.id, `POSITION: dist=${distance.toFixed(0)}m allowed=${allowed.toFixed(0)}m acc=${accuracy.toFixed(0)}m`);
+  return distance <= allowed;
+}
+
+// ── Supabase helpers ──────────────────────────────────────────────────────────
 
 async function getArrivalUserId(): Promise<string | null> {
   const { data: { session } } = await supabase.auth.getSession();
@@ -129,71 +264,67 @@ async function fetchStoreById(storeId: string): Promise<Store | null> {
 }
 
 /**
- * Server-backed check so background geofence events do not rely on stale Zustand caches.
+ * Fix #9: server-backed relevance check — no notification if no active shopping items
+ * for this store.
  */
 async function hasRelevantShoppingAtStore(store: Store): Promise<boolean> {
-  const [{ data: entries, error: entriesError }, { data: items, error: itemsError }] =
-    await Promise.all([
-      supabase
-        .from('shopping_list')
-        .select('id, source_item_id')
-        .eq('household_id', store.household_id)
-        .eq('status', 'active'),
-      supabase
-        .from('items')
-        .select('id, preferred_store_id')
-        .eq('household_id', store.household_id),
-    ]);
+  const [{ data: entries, error: eErr }, { data: items, error: iErr }] = await Promise.all([
+    supabase
+      .from('shopping_list')
+      .select('id, source_item_id')
+      .eq('household_id', store.household_id)
+      .eq('status', 'active'),
+    supabase
+      .from('items')
+      .select('id, preferred_store_id')
+      .eq('household_id', store.household_id),
+  ]);
 
-  if (entriesError || itemsError || !entries?.length) return false;
+  if (eErr || iErr || !entries?.length) return false;
 
-  const itemMap = new Map((items ?? []).map((item) => [item.id, item]));
+  const itemMap = new Map((items ?? []).map((i) => [i.id, i]));
   return entries.some((entry) => {
     if (!entry.source_item_id) return true;
-    const source = itemMap.get(entry.source_item_id);
-    if (!source) return true;
-    return source.preferred_store_id == null || source.preferred_store_id === store.id;
+    const src = itemMap.get(entry.source_item_id);
+    if (!src) return true;
+    return src.preferred_store_id == null || src.preferred_store_id === store.id;
   });
 }
 
-async function isLikelyInsideStoreRegion(store: Store): Promise<boolean> {
-  if (store.latitude == null || store.longitude == null) return true;
+/**
+ * Fix #7: find other stores belonging to the same household whose centroid
+ * is within AMBIGUOUS_RADIUS_M of this store.
+ */
+async function findNearbyAmbiguousStoreIds(store: Store): Promise<string[]> {
+  if (store.latitude == null || store.longitude == null) return [];
 
-  const position = await Location.getLastKnownPositionAsync({ maxAge: 60_000, requiredAccuracy: 500 })
-    .then((lastKnown) => lastKnown ?? Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }))
-    .catch(() => null);
+  const { data } = await supabase
+    .from('stores')
+    .select('id, latitude, longitude')
+    .eq('household_id', store.household_id)
+    .neq('id', store.id);
 
-  if (!position) return true;
+  if (!data) return [];
 
-  const distance = distanceMeters(
-    position.coords.latitude,
-    position.coords.longitude,
-    store.latitude,
-    store.longitude,
-  );
-  const allowedDistance = Math.max(100, Math.min(store.radius_meters || 150, 500))
-    + Math.max(position.coords.accuracy ?? 0, GEOFENCE_ACCURACY_BUFFER_M);
-  return distance <= allowedDistance;
+  return data
+    .filter(
+      (s) =>
+        s.latitude != null
+        && s.longitude != null
+        && distanceMeters(store.latitude!, store.longitude!, s.latitude, s.longitude)
+          <= AMBIGUOUS_RADIUS_M,
+    )
+    .map((s) => s.id as string);
 }
 
-function distanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const earthRadiusM = 6_371_000;
-  const toRad = (degrees: number) => degrees * Math.PI / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) ** 2
-    + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return 2 * earthRadiusM * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
+// ── Notifications ─────────────────────────────────────────────────────────────
 
 export async function scheduleLocalArrivalNotification(storeName: string, storeId?: string) {
-  // Respect the user's notification preference stored in AsyncStorage
   try {
     const raw = await AsyncStorage.getItem('pantrypal:settings:v1');
     if (raw) {
       const prefs = JSON.parse(raw)?.state;
-      if (prefs?.notifArrivalSelf === false) return; // user turned it off
+      if (prefs?.notifArrivalSelf === false) return;
     }
   } catch { /* if we can't read prefs, fire anyway */ }
 
@@ -208,7 +339,7 @@ export async function scheduleLocalArrivalNotification(storeName: string, storeI
   });
 }
 
-/** @deprecated Use scheduleLocalArrivalNotification — local device only, not partner push. */
+/** @deprecated Use scheduleLocalArrivalNotification */
 export const notifyPartnerArrival = scheduleLocalArrivalNotification;
 
 export async function recordStoreArrival(store: Store, arrivedBy: string | null) {
@@ -239,34 +370,103 @@ export async function recordStoreArrival(store: Store, arrivedBy: string | null)
   if (legacy.error) throw legacy.error;
 }
 
+// ── Core enter handler ────────────────────────────────────────────────────────
+
 /**
- * Core geofence enter handler: debounce, server validation, local notify, DB row for partners.
+ * Full guard stack — called from the background TaskManager task.
+ *
+ * Guards (in order):
+ *   1. Per-store debounce          — 3 min same-store re-enter
+ *   2. GPS accuracy guard          — reject > 200 m accuracy
+ *   3. Stability window            — wait 25 s, re-check position (drive-by filter)
+ *   4. Active-store lock           — don't hijack an active shopping session
+ *   5. Pending receipt lock        — don't switch if receipt step is open
+ *   6. Relevance check             — 0 relevant items → suppress notification
+ *   7. Multi-store disambiguation  — 2+ stores within 300 m → let user pick
+ *   8. Global notif cooldown       — no more than 1 notification per 5 min
  */
 export async function handleStoreGeofenceEnter(storeId: string): Promise<void> {
-  if (!(await shouldHandleGeofenceEnter(storeId))) return;
 
-  const store = (await fetchStoreById(storeId)) ?? null;
-  if (!store) return;
+  // Guard 1 — per-store debounce
+  if (!(await shouldHandleGeofenceEnter(storeId))) {
+    await geoLog(storeId, 'SUPPRESSED [G1]: within 3-min same-store debounce window');
+    return;
+  }
 
-  if (!(await isLikelyInsideStoreRegion(store))) return;
+  const store = await fetchStoreById(storeId);
+  if (!store) {
+    await geoLog(storeId, 'SUPPRESSED: store not found in DB');
+    return;
+  }
 
+  // Guard 2 — initial position + accuracy check
+  if (!(await isLikelyInsideStoreRegion(store))) {
+    await geoLog(storeId, 'SUPPRESSED [G2]: failed initial position/accuracy check');
+    return;
+  }
+
+  // Guard 3 — stability window (drive-by filter)
+  await geoLog(storeId, `STABILITY: waiting ${STABILITY_WINDOW_MS / 1000}s before confirming...`);
+  await new Promise<void>((resolve) => setTimeout(resolve, STABILITY_WINDOW_MS));
+  if (!(await isLikelyInsideStoreRegion(store))) {
+    await geoLog(storeId, 'SUPPRESSED [G3]: drive-by — failed position re-check after stability window');
+    return;
+  }
+
+  // Guards 4 & 5 — active store lock + pending receipt lock
+  const {
+    activeStoreId,
+    pendingReceiptStoreId,
+    receiptCompletedStoreIds,
+    setAmbiguousArrivals,
+  } = (await import('../store/stores')).useStoresStore.getState();
+
+  if (activeStoreId && activeStoreId !== storeId) {
+    await geoLog(storeId, `SUPPRESSED [G4]: active-store lock — already shopping at ${activeStoreId}`);
+    return;
+  }
+
+  if (
+    pendingReceiptStoreId
+    && pendingReceiptStoreId !== storeId
+    && !receiptCompletedStoreIds.includes(pendingReceiptStoreId)
+  ) {
+    await geoLog(storeId, `SUPPRESSED [G5]: pending receipt open for store ${pendingReceiptStoreId}`);
+    return;
+  }
+
+  // Guard 6 — relevance check (fix #9)
   const relevant = await hasRelevantShoppingAtStore(store);
-  if (!relevant) return;
+  if (!relevant) {
+    await geoLog(storeId, 'SUPPRESSED [G6]: no relevant shopping items at this store');
+    return;
+  }
 
+  // Guard 7 — multi-store disambiguation (fix #7)
+  const nearbyIds = await findNearbyAmbiguousStoreIds(store);
+  if (nearbyIds.length > 0) {
+    await geoLog(storeId, `DISAMBIGUATION [G7]: ${nearbyIds.length} other store(s) within ${AMBIGUOUS_RADIUS_M}m — deferring to user`);
+    setAmbiguousArrivals([storeId, ...nearbyIds]);
+    return; // grocery screen shows "Where are you shopping?" sheet
+  }
+
+  // Guard 8 — global notification cooldown (fix #5)
+  const canNotify = await shouldFireNotification();
+  if (!canNotify) {
+    await geoLog(storeId, 'SUPPRESSED [G8]: global notification cooldown (< 5 min since last notification)');
+    // Suggest-only: do NOT auto-set the active store or auto-start shopping mode.
+    // The user starts shopping by tapping the notification or the Start selector.
+    return;
+  }
+
+  // ✅ All guards passed — geofence only SUGGESTS (fires a notification).
+  // It must never auto-set activeStoreId / auto-enter shopping mode. The user
+  // accepts the suggestion by tapping the notification, which routes via the
+  // payload storeId in app/(main)/_layout.tsx and sets the active store there.
+  await geoLog(storeId, 'CONFIRMED: all guards passed — firing suggestion notification + recording arrival');
   const arrivedBy = await getArrivalUserId();
   await Promise.all([
     scheduleLocalArrivalNotification(store.name, store.id),
     recordStoreArrival(store, arrivedBy),
   ]);
-
-  const { useStoresStore } = await import('../store/stores');
-  const { pendingReceiptStoreId, receiptCompletedStoreIds, setActiveStore } = useStoresStore.getState();
-  if (
-    pendingReceiptStoreId
-    && pendingReceiptStoreId !== store.id
-    && !receiptCompletedStoreIds.includes(pendingReceiptStoreId)
-  ) {
-    return;
-  }
-  setActiveStore(store.id);
 }

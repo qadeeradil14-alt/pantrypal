@@ -9,18 +9,24 @@
  * call sites — the exported function signatures are the stable API.
  */
 
+import { normalizeUSState } from './usStates';
+
 const GEOAPIFY_KEY = process.env.EXPO_PUBLIC_GEOAPIFY_API_KEY ?? '';
 const GEO_BASE = 'https://api.geoapify.com';
 const HEADERS = { Accept: 'application/json' };
 
-/** Server-side Places API radius (50 km ≈ 31 miles). */
-const SEARCH_RADIUS_M = 50_000;
+/** Server-side Places API radius (40 km ≈ 25 miles). */
+const SEARCH_RADIUS_M = 40_000;
 
 /**
- * Hard client-side distance reject (~70 miles in Manhattan degrees).
- * Ensures wrong-state results never surface even if the server filter drifts.
+ * Hard client-side distance reject (~25 miles in Manhattan degrees).
+ *   1° lat  ≈ 69 miles  →  0.40° ≈ 27.6 miles
+ *   1° lon (at 38°N) ≈ 54 miles  →  0.40° ≈ 21.6 miles
+ * Any result farther than this from the search anchor is rejected,
+ * regardless of what the server returns.  This is the primary guard
+ * against wrong-state (CA/MD) results for a VA ZIP.
  */
-const MAX_DIST_DEG = 1.0;
+const MAX_DIST_DEG = 0.40;
 
 /** Category set covers supermarkets, grocers, convenience, warehouse, discount. */
 const STORE_CATEGORIES = [
@@ -37,6 +43,13 @@ const STORE_CATEGORIES = [
 export interface GeoAnchor {
   lat: number;
   lon: number;
+  /**
+   * Canonical 2-letter USPS state code for the resolved search area (e.g. "VA").
+   * Present when geocodeLocation successfully extracted a US state from the
+   * provider response.  Used to reject wrong-state results in searchStoreLocations
+   * and as a second-pass guard in handleSavePlace.
+   */
+  stateCode?: string | null;
 }
 
 /**
@@ -245,9 +258,35 @@ function dedupeResults(results: StoreSearchResult[]): StoreSearchResult[] {
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
+// ─── Distance helpers ─────────────────────────────────────────────────────────
+
+/**
+ * True great-circle distance between two lat/lon pairs, in miles.
+ * Uses the Haversine formula — accurate to within 0.5% for distances < 200 mi.
+ * Use this for save-time validation; use distDeg() only for fast pre-screening.
+ */
+export function haversineDistanceMiles(
+  lat1: number, lon1: number,
+  lat2: number, lon2: number,
+): number {
+  const R = 3_958.8; // Earth radius in miles
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 /**
  * Resolve any freeform location text (zip code, city/state, full address)
- * to a lat/lon anchor using the Geoapify Geocoding API.
+ * to a lat/lon anchor — plus the US state code when available — using the
+ * Geoapify Geocoding API.
+ *
+ * stateCode is the canonical 2-letter USPS code (e.g. "VA" for ZIP 22193).
+ * It is used downstream to reject wrong-state store results.
  */
 export async function geocodeLocation(text: string): Promise<GeoAnchor | null> {
   if (!GEOAPIFY_KEY || !text.trim()) return null;
@@ -262,7 +301,14 @@ export async function geocodeLocation(text: string): Promise<GeoAnchor | null> {
     const data = await res.json();
     const r = data.results?.[0];
     if (typeof r?.lat !== 'number' || typeof r?.lon !== 'number') return null;
-    return { lat: r.lat, lon: r.lon };
+
+    // Capture state — Geoapify returns state_code (2-letter) and state (full name).
+    // Normalize whichever is present; fall back to null if neither resolves.
+    const rawCode = typeof r.state_code === 'string' ? r.state_code : null;
+    const rawName = typeof r.state === 'string' ? r.state : null;
+    const stateCode = normalizeUSState(rawCode) ?? normalizeUSState(rawName) ?? null;
+
+    return { lat: r.lat, lon: r.lon, stateCode };
   } catch {
     return null;
   }
@@ -283,7 +329,8 @@ export async function geocodeLocation(text: string): Promise<GeoAnchor | null> {
  *
  *  Both tiers:
  *    • apply isAcceptableStoreMatch() (handles punctuation/suffix differences)
- *    • apply MAX_DIST_DEG hard reject (prevents wrong-state results)
+ *    • apply MAX_DIST_DEG hard reject (prevents wrong-state results, ~25 mi)
+ *    • apply state-code filter when anchor.stateCode is present
  *    • rank results with scoreStoreResult()
  *    • deduplicate by rounded coordinate
  */
@@ -295,6 +342,21 @@ export async function searchStoreLocations({
   anchor: GeoAnchor;
 }): Promise<StoreSearchResult[]> {
   if (!GEOAPIFY_KEY || !storeName.trim()) return [];
+
+  const anchorState = anchor.stateCode ?? null;
+
+  /**
+   * Returns true if a result's state matches the anchor, or if we have no
+   * anchor state to compare against (graceful: don't over-filter).
+   * Accepts both 2-letter codes and full names from the provider.
+   */
+  function stateMatches(resultState: string | null | undefined): boolean {
+    if (!anchorState) return true; // no anchor state → don't filter
+    if (!resultState) return true; // no state in result → give benefit of the doubt
+    const normalized = normalizeUSState(resultState);
+    if (!normalized) return true; // unknown token → don't reject
+    return normalized === anchorState;
+  }
 
   const collected: StoreSearchResult[] = [];
 
@@ -315,6 +377,9 @@ export async function searchStoreLocations({
         const lat = f.geometry.coordinates[1] as number;
         const lon = f.geometry.coordinates[0] as number;
         if (distDeg(lat, lon, anchor) > MAX_DIST_DEG) continue;
+        // State-code guard: reject results from the wrong US state.
+        const resultState: string | undefined = f.properties?.state_code ?? f.properties?.state;
+        if (!stateMatches(resultState)) continue;
         collected.push({
           name: pName,
           address: (f.properties.formatted ?? f.properties.address_line1 ?? '') as string,
@@ -348,6 +413,8 @@ export async function searchStoreLocations({
         return ((data.results ?? []) as any[])
           .filter((r) => isAcceptableStoreMatch(storeName, r.name ?? ''))
           .filter((r) => distDeg(r.lat, r.lon, anchor) <= MAX_DIST_DEG)
+          // State-code guard for Tier 2 results
+          .filter((r) => stateMatches(r.state_code ?? r.state))
           .map((r) => ({
             name: (r.name ?? storeName.trim()) as string,
             address: (r.formatted ?? '') as string,

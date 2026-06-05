@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useHouseholdStore } from '../../../store/household';
 import { useAuthStore } from '../../../store/auth';
 import { fetchAllActivity, formatActivityTime, type ActivityEvent } from '../../../lib/activity';
+import { normalizeStoreName } from '../../../lib/stores';
 import { getItemEmoji } from '../../../constants/itemEmojis';
 import { useTheme } from '../../../hooks/useTheme';
 import { fonts, type AppColors } from '../../../constants/theme';
@@ -24,12 +25,20 @@ interface ActivitySection {
 
 const SECTION_PREVIEW_LIMIT = 6;
 
+function localDayKey(d: Date): string {
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
 function dateLabel(isoString: string): string {
   const d = new Date(isoString);
-  const today = new Date();
-  const yesterday = new Date(Date.now() - 864e5);
-  if (d.toDateString() === today.toDateString()) return 'Today';
-  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  const now = new Date();
+  const todayKey = localDayKey(now);
+  const yd = new Date(now);
+  yd.setDate(yd.getDate() - 1);
+  const yesterdayKey = localDayKey(yd);
+  const dKey = localDayKey(d);
+  if (dKey === todayKey) return 'Today';
+  if (dKey === yesterdayKey) return 'Yesterday';
   return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
 }
 
@@ -55,10 +64,11 @@ function useAppIconAvatar(event: ActivityEvent): boolean {
 
 function eventDescription(event: ActivityEvent, isSelf: boolean): string {
   const actor = isSelf ? 'You' : (event.actorName ?? 'Someone');
+  const store = event.storeName ? normalizeStoreName(event.storeName) : null;
   switch (event.type) {
-    case 'picked_up': return `${actor} picked up ${event.itemName}${event.storeName ? ` at ${event.storeName}` : ''}`;
+    case 'picked_up': return `${actor} picked up ${event.itemName}${store ? ` at ${store}` : ''}`;
     case 'marked_low': return `${actor} marked ${event.itemName} as low`;
-    case 'store_arrival': return `${actor} arrived at ${event.storeName}`;
+    case 'store_arrival': return `${actor} arrived at ${store ?? event.storeName ?? 'a store'}`;
     default: return '';
   }
 }
@@ -85,17 +95,22 @@ export default function ActivityScreen() {
   }, [load]));
 
   const sections = useMemo((): ActivitySection[] => {
-    const byDay = new Map<string, ActivityEvent[]>();
+    const byDay = new Map<string, { evs: ActivityEvent[]; newestMs: number }>();
     for (const ev of events) {
       const label = dateLabel(ev.updatedAt);
-      if (!byDay.has(label)) byDay.set(label, []);
-      byDay.get(label)!.push(ev);
+      const ms = new Date(ev.updatedAt).getTime();
+      if (!byDay.has(label)) byDay.set(label, { evs: [], newestMs: 0 });
+      const bucket = byDay.get(label)!;
+      bucket.evs.push(ev);
+      if (ms > bucket.newestMs) bucket.newestMs = ms;
     }
-    return [...byDay.entries()].map(([title, data]) => ({
-      title,
-      data: expandedDays.has(title) ? data : data.slice(0, SECTION_PREVIEW_LIMIT),
-      total: data.length,
-    }));
+    return [...byDay.entries()]
+      .sort(([, a], [, b]) => b.newestMs - a.newestMs)
+      .map(([title, { evs }]) => ({
+        title,
+        data: expandedDays.has(title) ? evs : evs.slice(0, SECTION_PREVIEW_LIMIT),
+        total: evs.length,
+      }));
   }, [events, expandedDays]);
 
   const toggleDay = useCallback((title: string) => {
@@ -173,7 +188,7 @@ export default function ActivityScreen() {
               )}
             </View>
             <View style={styles.rowContent}>
-              <Text style={styles.rowDesc}>
+              <Text style={styles.rowDesc} numberOfLines={2} ellipsizeMode="tail">
                 {ev.itemName ? `${getItemEmoji(ev.itemName, null)} ` : ''}{eventDescription(ev, ev.isSelf)}
               </Text>
               <Text style={styles.rowTime}>{formatActivityTime(ev.updatedAt)}</Text>

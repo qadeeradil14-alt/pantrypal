@@ -120,7 +120,8 @@ export default function BarcodeScannerModal({ visible, onClose, onAddProduct, on
       }
       setProduct(found);
       setMessage(''); // clear any stale error from a previous scan
-      setExpiryInput(defaultExpiryDate(found.estimatedLifeLabel));
+      // Only pre-fill expiry for perishables — pantry items (incl. non-food) have no useful default.
+      setExpiryInput(found.category !== 'pantry' ? defaultExpiryDate(found.estimatedLifeLabel) : '');
       void hapticSuccess();
     } catch (error: any) {
       setMessage(error?.message ?? 'Barcode lookup failed.');
@@ -171,7 +172,7 @@ export default function BarcodeScannerModal({ visible, onClose, onAddProduct, on
       }
       setProduct(found);
       setMessage('');
-      setExpiryInput(defaultExpiryDate(found.estimatedLifeLabel));
+      setExpiryInput(found.category !== 'pantry' ? defaultExpiryDate(found.estimatedLifeLabel) : '');
       void hapticSuccess();
     } catch (error: any) {
       setMessage(error?.message ?? 'Barcode lookup failed.');
@@ -236,7 +237,7 @@ export default function BarcodeScannerModal({ visible, onClose, onAddProduct, on
 
       setProduct(identified);
       setMessage('');
-      setExpiryInput(defaultExpiryDate(identified.estimatedLifeLabel));
+      setExpiryInput(identified.category !== 'pantry' ? defaultExpiryDate(identified.estimatedLifeLabel) : '');
       void hapticSuccess();
     } catch (err: any) {
       setMessage(err?.message ?? 'Identification failed.');

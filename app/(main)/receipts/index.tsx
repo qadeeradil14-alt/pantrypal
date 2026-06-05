@@ -15,6 +15,7 @@ import { useItemsStore } from '../../../store/items';
 import { addItemWithQueue } from '../../../lib/items';
 import { uploadReceipt, fetchReceipts, deleteReceipt, deleteReceiptsSince, addManualReceipt, deleteReceiptItem, getSpendSummary, type Receipt, type SpendSummary } from '../../../lib/receipts';
 import { localToday, parseLocalDate } from '../../../lib/dates';
+import { normalizeStoreName } from '../../../lib/stores';
 import { radii, shadow, fonts } from '../../../constants/theme';
 import { makeSheetStyles } from '../../../constants/sheetStyles';
 import ScalePressable from '../../../components/ScalePressable';
@@ -395,7 +396,7 @@ export default function ReceiptsScreen() {
                 <Text style={styles.sectionLabel}>Last 30 days by store</Text>
                 {spend.byStore.map((s) => (
                   <View key={s.store} style={styles.storeRow}>
-                    <Text style={styles.storeName} numberOfLines={1}>{s.store}</Text>
+                    <Text style={styles.storeName} numberOfLines={1}>{normalizeStoreName(s.store)}</Text>
                     <View style={styles.storeBarWrap}>
                       <View style={styles.storeBarTrack}>
                         <View style={[styles.storeBarFill, {
@@ -429,7 +430,7 @@ export default function ReceiptsScreen() {
             <View style={styles.cardBody}>
               <View style={styles.cardTop}>
                 <View style={styles.cardMeta}>
-                  <Text style={styles.cardStore}>{item.store_name ?? 'Unknown store'}</Text>
+                  <Text style={styles.cardStore}>{normalizeStoreName(item.store_name ?? 'Unknown store')}</Text>
                   <Text style={styles.cardDate}>
                     {item.transaction_date
                       ? parseLocalDate(item.transaction_date).toLocaleDateString()
@@ -485,7 +486,7 @@ export default function ReceiptsScreen() {
               </View>
               <View style={sheetStyles.headerText}>
                 <Text style={sheetStyles.headerTitle} numberOfLines={1}>
-                  {selectedReceipt?.store_name ?? 'Unknown store'}
+                  {normalizeStoreName(selectedReceipt?.store_name ?? 'Unknown store')}
                 </Text>
                 <Text style={sheetStyles.headerSubtitle}>
                   {selectedReceipt?.transaction_date

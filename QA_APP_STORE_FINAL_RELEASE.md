@@ -247,3 +247,218 @@ eas submit --platform ios --profile production
 | Shopping list / store grouping uses the correct saved store | |
 | No duplicate store is silently created | |
 | Item with no store selected shows "Add unassigned" and saves with no preferred_store_id | |
+
+---
+
+## Auth / Household / Shopping State Consistency
+
+> Release blocker fixed in Build 32: pantry emptying + shopping showing stale picked items after process restart or mid-session state disruption.
+
+| Test | Pass/Fail |
+|---|---|
+| Open app as existing logged-in user — Pantry loads household name and items correctly | |
+| Switch between Pantry, Shopping, Stores, Settings for 2–3 minutes — no sudden empty state | |
+| App never shows Pantry empty while Shopping still has stale picked items | |
+| Force-close app and reopen — user remains logged in, household loads before empty state appears | |
+| Force-close app and reopen — Pantry shows spinner (not empty "Nothing here yet") while loading | |
+| Force-close app and reopen — once household loads, items appear correctly | |
+| Start a shopping trip (enter a store chip), pick/check items, force-close and reopen — shopping mode does NOT auto-restart | |
+| Force-close mid-shopping and reopen — Pantry shows correct items, Shopping shows blank or correct resumed trip | |
+| Sign out from Settings — household, items, and shopping state all clear together | |
+| Sign back in — data loads correctly from server, no stale state visible | |
+| Lock phone for several minutes, unlock and return — app does not show empty Pantry or phantom shopping trip | |
+
+---
+
+## Activity Date Grouping
+
+| Test | Pass/Fail |
+|---|---|
+| Complete/pick up an item today → open Activity tab → item appears under **Today** | |
+| Relative time label (e.g. "13m ago") agrees with the **Today** section header | |
+| Yesterday's activity appears under **Yesterday** with a matching relative time | |
+| Older activity appears under the correct local calendar date (e.g. "Tuesday, Jun 2") | |
+| Expanding/collapsing an activity group does not move items into a different date section | |
+| All section headers use the device's **local timezone**, not UTC | |
+
+---
+
+## Shopping Completion Flow (Build 32)
+
+| Test | Pass/Fail |
+|---|---|
+| Grab ≥1 item at a store → "Done at [Store]?" confirmation sheet appears (NOT the spend sheet directly) | |
+| Tap "Keep shopping" → confirmation dismisses, shopping mode continues | |
+| Tap "Yes, finish stop" → spend/receipt sheet appears | |
+| Enter amount or tap "Skip for now" — spend sheet dismisses normally | |
+| Grab 0 items at a store, tap Done → spend sheet does NOT appear | |
+| Spend sheet "Skip for now" always works — never blocks user | |
+
+---
+
+## Quantity Stepper (Build 32)
+
+| Test | Pass/Fail |
+|---|---|
+| In shopping mode each item shows — 1 + stepper (default qty = 1) | |
+| Tapping − decrements qty (floor 1), tapping + increments (cap 99) | |
+| Tapping the − / + buttons does NOT grab the item | |
+| Tapping the item row grabs at the displayed quantity | |
+| Purchased item meta shows "Grabbed ×2 ✓" when qty > 1 | |
+| Quantities reset when shopping mode ends | |
+
+---
+
+## Barcode Scanner — Category & Expiry (Build 32)
+
+| Test | Pass/Fail |
+|---|---|
+| Scan Dial hand soap → category shows **Pantry** (not Fridge) | |
+| Scan Dial hand soap → expiry field is **blank** (not pre-filled) | |
+| Scan milk/yogurt → category shows **Fridge**, expiry pre-filled ~7 days | |
+| Scan frozen item → category shows **Freezer**, expiry pre-filled ~90 days | |
+| Add soap via scanner → it does NOT appear in "Expiring soon" on Pantry home | |
+| User can still manually type an expiry date for any scanned item | |
+| Manually-set expiry for food item (yogurt expiring in 3 days) appears in "Expiring soon" | |
+
+---
+
+## Duplicate Item Handling (Build 32)
+
+| Test | Pass/Fail |
+|---|---|
+| Type an item name that already exists → yellow warning shows with actionable hint | |
+| Select a different store, tap Add → "Move to store?" popup appears | |
+| Tap "Move to store" → item's store assignment is updated, modal closes | |
+| No store selected, tap Add → "Got it" popup with pantry guidance appears | |
+| Tap "Got it" → modal stays open so user can change name or cancel | |
+
+---
+
+## Geofence Engine (Build 32)
+
+| Test | Pass/Fail |
+|---|---|
+| Walk into a store, stay 30 s → arrival notification fires | |
+| Drive past a store without stopping → no notification (25 s stability window filters it) | |
+| Walk in with poor GPS (accuracy > 200 m) → notification suppressed | |
+| Already shopping at Walmart, walk near Sam's Club → no store switch, no second notification | |
+| Two stores within 300 m of each other → "Where are you shopping?" sheet appears | |
+| Pick a store from disambiguation sheet → Shopping tab opens with that store's list | |
+| Tap arrival notification → Shopping tab opens with the correct store's list (not stale state) | |
+| Two arrivals within 5 minutes → second notification suppressed by global cooldown | |
+| Store with 0 relevant shopping items → no arrival notification fires | |
+| Same store re-entered within 3 minutes → notification suppressed (parking-lot bounce) | |
+| Check geofence debug log (Settings or dev) → each suppression shows guard label G1–G8 | |
+
+---
+
+## Cross-Screen UX / Data Cleanup (Build 32)
+
+| Test | Pass/Fail |
+|---|---|
+| Build/TestFlight does NOT show any blue floating gear button (gstack sidebar is dev-only, not in app code) | |
+| Pantry search placeholder shows **Search items...** (not "Search groceries...") | |
+| Pantry inventory header shows **My Items** (not "My Groceries") | |
+| Add item modal title shows **New item** / subtitle "Add it to your inventory." | |
+| Shopping screen eyebrow shows **Shopping** (not "Grocery list") when not in shopping mode | |
+| Settings > Weekly budget subtitle shows **Tap to adjust your weekly shopping budget** | |
+| Freezer category section uses ❄️ snowflake icon (not 🛒 shopping cart) | |
+| Fridge category section uses 🧊 icon | |
+| Pantry category section uses 📦 icon | |
+| Milk expiring in 7 days does **NOT** appear in the Expiring Soon banner | |
+| Milk expiring today or tomorrow **DOES** appear in Expiring Soon | |
+| Soap/personal care items do **NOT** appear in Expiring Soon regardless of any saved expiry | |
+| Store names display as **Sam's Club, 7-Eleven, ALDI, Amazon Fresh, Costco, Walmart** (correct casing) | |
+| Receipts screen uses normalised store names (sam's club → Sam's Club) | |
+| Activity screen uses normalised store names in event descriptions | |
+| Store search with explicit ZIP/city never returns results from a different state | |
+| If store geocoding fails for a typed location, search returns empty (no GPS fallback) | |
+| Existing wrong-state store (e.g. California 7-Eleven) can be deleted from the Stores screen | |
+
+---
+
+## Store-First Shopping Session (Build 33)
+
+| Test | Pass/Fail |
+|---|---|
+| Tap **Start** (not shopping) → "Where are you shopping?" sheet appears | |
+| Sheet lists only stores that have active shopping items, ranked by item count | |
+| "Shop all items" option appears when ≥ 1 store has items | |
+| "Not shopping right now" dismisses the sheet without starting shopping mode | |
+| Select **Sam's Club** → header shows "Shopping mode / Sam's Club", only Sam's Club items visible | |
+| Select "Shop all items" → shopping mode starts with no single-store filter applied | |
+| While in Sam's Club session, tap **Walmart** chip → "Switch from Sam's Club to Walmart?" confirm sheet appears | |
+| Confirm switch → session changes to Walmart, only Walmart items shown | |
+| Cancel switch → remain in Sam's Club session unchanged | |
+| Tap **Done** while in shopping mode → session ends, active store cleared | |
+
+---
+
+## Wife-at-Home / Husband-at-Store Shared Planning (Build 33)
+
+| Test | Pass/Fail |
+|---|---|
+| Husband starts shopping at **Sam's Club** | |
+| Wife (on separate device) adds a **Walmart** item → Walmart chip count updates; Sam's Club session not interrupted | |
+| Walmart item does **not** appear inside the Sam's Club session list | |
+| Wife adds a **Sam's Club** item → husband sees it appear in his Sam's Club list naturally (realtime) | |
+| No disruptive modal or session change fires on husband's device when wife adds any item | |
+| Husband's active store remains Sam's Club throughout all wife's additions | |
+
+---
+
+## Geofence Suggest-Only (Build 33)
+
+| Test | Pass/Fail |
+|---|---|
+| Arrive near a store with items → **notification** appears ("You're at Store X"), no auto-switch of active store | |
+| Tap notification → Shopping tab opens, store is set as active, items shown | |
+| Ignore notification → no change to app state; active store remains as-is | |
+| Arrive near store while already shopping at a **different** store → G4 active-store lock suppresses notification; session is not hijacked | |
+| Arrive near two stores within ~100m of each other → "Where are you shopping?" disambiguation sheet appears (no single notification) | |
+| Drive past a store (< 25 s in region) → notification suppressed by G3 stability window | |
+| Two arrivals at same store within 3 minutes → second notification suppressed by G1 per-store debounce | |
+| Store with 0 active shopping items → arrival notification suppressed by G6 | |
+| Global cooldown: two arrivals at different stores within 5 min → second notification suppressed by G8 | |
+
+---
+
+## Store Search & Location Validation (Build 33)
+
+| Test | Pass/Fail |
+|---|---|
+| Enter ZIP **22193** → search resolves to Woodbridge, VA; all results are Virginia stores | |
+| Enter ZIP **22151** → resolves to Springfield, VA; no Maryland/California results | |
+| Search **Walmart** + ZIP 22193 → only VA-area Walmart locations returned | |
+| Search **Giant** + ZIP 22193 → VA-area Giant if available; "no results" shown if not | |
+| Search a store name with no ZIP, no GPS → error "Enter a zip, city, or address first" | |
+| Enter invalid/nonexistent ZIP → warning "We couldn't confirm that location" | |
+| Select a search result → save succeeds only if result is ≤ 25 miles from the resolved anchor | |
+| Attempt to save a result > 25 miles from anchor → blocked with "appears outside your search area" | |
+| Result in wrong state (e.g. CA result for VA ZIP) → blocked at save with state-mismatch message | |
+| "Save without address" option always remains available for manual saves | |
+
+---
+
+## State Abbreviation Normalization (Build 33)
+
+| Test | Pass/Fail |
+|---|---|
+| Stores tab: Papa John's with address "…Woodbridge, **VA**" → **no** warning badge when household stores are also VA | |
+| Stores tab: store with "…**Virginia**" in address → compared as VA; no false warning against VA stores | |
+| Stores tab: store in **CA** while majority are VA → ⚠️ warning badge correctly shown | |
+| Warning message reads "CA instead of VA" (normalized codes, not raw strings) | |
+| normalizeUSState("virginia") = "VA", normalizeUSState("VA") = "VA", normalizeUSState("Ca") = "CA" | |
+
+---
+
+## Weekly Budget Layout (Build 33)
+
+| Test | Pass/Fail |
+|---|---|
+| Settings → Weekly budget row shows **$150** on a single line (not "$15 / 0") | |
+| Budget **$1,500** displays on one line without wrapping | |
+| Budget **$10,000** displays on one line without wrapping | |
+| Pencil icon remains visible to the right of the value | |
+| Label "Tap to adjust your weekly shopping budget" is fully readable below "Weekly budget" | |

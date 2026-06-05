@@ -13,7 +13,7 @@ import { useAuthStore } from '../../../store/auth';
 import { useItemsStore } from '../../../store/items';
 import { useStoresStore } from '../../../store/stores';
 import { addItemWithQueue, ensureDefaultItems, fetchItems, markItemOkWithQueue, updateItemDetailsWithQueue } from '../../../lib/items';
-import { setItemStoreWithQueue, type Store } from '../../../lib/stores';
+import { setItemStoreWithQueue, normalizeStoreName, type Store } from '../../../lib/stores';
 import { recordLocalOverride } from '../../../lib/realtime';
 import { registerPushToken } from '../../../lib/notifications';
 import { hapticError, hapticSelection, hapticSuccess } from '../../../lib/haptics';
@@ -46,10 +46,13 @@ interface PantrySection {
 }
 
 const CATEGORY_EMOJI: Record<string, string> = {
+  // ── Core storage categories (must match CATEGORY_LABELS values, lowercased) ──
+  fridge: '🧊', pantry: '📦', freezer: '❄️',
+  // ── Derived / sub-categories ──
   produce: '🥬', vegetables: '🥦', vegetable: '🥦', fruits: '🍎', fruit: '🍎',
   dairy: '🥛', meat: '🥩', 'meat & seafood': '🥩', seafood: '🐟', fish: '🐟',
   bakery: '🍞', bread: '🍞', beverages: '🥤', beverage: '🥤', drinks: '🥤',
-  snacks: '🍿', snack: '🍿', frozen: '🧊', canned: '🥫', 'canned goods': '🥫',
+  snacks: '🍿', snack: '🍿', frozen: '❄️', canned: '🥫', 'canned goods': '🥫',
   grains: '🌾', grain: '🌾', 'grains & pasta': '🌾', pasta: '🍝', rice: '🍚',
   condiments: '🧂', condiment: '🧂', spices: '🌶️', 'herbs & spices': '🌶️',
   breakfast: '🥣', cereal: '🥣', legumes: '🫘', legume: '🫘', beans: '🫘',
@@ -93,7 +96,7 @@ export default function PantryScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { household } = useHouseholdStore();
+  const { household, loaded: householdLoaded } = useHouseholdStore();
   const { session } = useAuthStore();
   const { items, setItems, updateItem, upsertItem } = useItemsStore();
   const stores = useStoresStore((state) => state.stores);
@@ -122,16 +125,23 @@ export default function PantryScreen() {
 
 
   const load = useCallback(async () => {
-    if (!householdId) { setItems([]); return; }
+    // While household is still being fetched, don't touch items — they may be
+    // correctly hydrated from AsyncStorage. Only clear when confirmed no household.
+    if (!householdId) {
+      if (householdLoaded) setItems([]);
+      return;
+    }
     let data = await fetchItems(householdId);
     if (data.length === 0) {
       const inserted = await ensureDefaultItems(householdId, session?.user.id);
       if (inserted > 0) data = await fetchItems(householdId);
     }
     setItems(data);
-  }, [householdId, session?.user.id, setItems]);
+  }, [householdId, householdLoaded, session?.user.id, setItems]);
 
   useEffect(() => {
+    // Don't run until household loading is resolved — prevents premature empty state.
+    if (!householdLoaded) return;
     let active = true;
     load()
       .catch(() => {
@@ -143,7 +153,7 @@ export default function PantryScreen() {
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, [householdId, load]);
+  }, [householdId, householdLoaded, load]);
 
 
   // Check AsyncStorage to see if we've already asked about notifications.
@@ -251,7 +261,7 @@ export default function PantryScreen() {
       // within a section, not between sections). One flat section ensures
       // every item gets the same 8px separator.
       result.push({
-        title: selectedStore ? selectedStore.name : 'My Groceries',
+        title: selectedStore ? selectedStore.name : 'My Items',
         data: filtered,
         key: '__all__',
         count: filtered.length,
@@ -298,7 +308,7 @@ export default function PantryScreen() {
         .sort((a, b) => a === 'No store set' ? 1 : b === 'No store set' ? -1 : a.localeCompare(b))
         .forEach((storeName) => {
           result.push({
-            title: storeName,
+            title: storeName === 'No store set' ? storeName : normalizeStoreName(storeName),
             data: byStore.get(storeName)!,
             key: `store-${storeName}`,
             count: byStore.get(storeName)!.length,
@@ -329,9 +339,21 @@ export default function PantryScreen() {
 
   const expiringItems = useMemo(() => {
     const now = Date.now();
-    const sevenDays = 7 * 24 * 60 * 60 * 1000;
+    // Only show truly urgent items (0–2 days). 3–7 day items are fine and
+    // shouldn't nag the user every time they open the app.
+    const TWO_DAYS = 2 * 24 * 60 * 60 * 1000;
+    // Non-food / personal-care items should never appear in "Expiring soon".
+    // This mirrors the exclusion logic in lib/barcodes.ts inferCategory.
+    const NON_FOOD = /\b(soap|hand.?wash|body.?wash|dish.?(soap|wash|liquid)|shampoo|conditioner|hair.?(care|mask|serum|oil|spray|gel)|lotion|moisturis|moisturiz|sunscreen|spf|deodorant|antiperspirant|toothpaste|mouthwash|dental|floss|razor|shav(e|ing)|aftershave|sanitizer|disinfect|bleach|cleaner|cleaning|all.?purpose|detergent|laundry|fabric|tissue|wipe|diaper|tampon|pad\b|feminine|bandage|first.?aid|vitamin|supplement|protein.?powder|paper.?towel)\b/i;
     return items
-      .filter((i) => i.expires_at && new Date(i.expires_at).getTime() - now <= sevenDays)
+      .filter((i) => {
+        if (!i.expires_at) return false;
+        const ms = new Date(i.expires_at).getTime() - now;
+        if (ms > TWO_DAYS) return false;
+        // Exclude non-food items — they don't have meaningful expiry in a pantry context
+        if (NON_FOOD.test(i.name)) return false;
+        return true;
+      })
       .sort((a, b) => new Date(a.expires_at!).getTime() - new Date(b.expires_at!).getTime());
   }, [items]);
 
@@ -451,7 +473,7 @@ export default function PantryScreen() {
                   }}
                 >
                   <StoreLogo name={store.name} size={44} domain={store.brand_domain} logoUrl={store.logo_url} />
-                  <Text style={styles.storeTargetName} numberOfLines={1}>{store.name}</Text>
+                  <Text style={styles.storeTargetName} numberOfLines={1}>{normalizeStoreName(store.name)}</Text>
                   <Text style={styles.storeTargetCount}>{storeCounts.get(store.id) ?? 0}</Text>
                 </Pressable>
               );
@@ -559,7 +581,7 @@ export default function PantryScreen() {
         <TextInput
           testID="pantry-search-input"
           style={styles.searchInput}
-          placeholder="Search groceries..."
+          placeholder="Search items..."
           placeholderTextColor={colors.placeholder}
           value={query}
           onChangeText={setQuery}
@@ -585,7 +607,7 @@ export default function PantryScreen() {
 
       <View style={styles.masterHeader}>
         <Text style={styles.masterTitle} numberOfLines={1}>
-          {selectedStore ? selectedStore.name : 'My Groceries'}
+          {selectedStore ? selectedStore.name : 'My Items'}
         </Text>
         <View style={styles.sortRow}>
           {(['alpha', 'category', 'store'] as SortMode[]).map((mode) => {
@@ -661,7 +683,7 @@ export default function PantryScreen() {
     <EmptyState
       emoji={q ? '🔍' : '🌿'}
       title={q ? `No results for "${query}"` : selectedStore ? `Nothing for ${selectedStore.name}` : 'Nothing here yet'}
-      subtitle={q ? 'Try a different search term.' : selectedStore ? 'Add a grocery to this store or return to the full list.' : 'Add the first item your household uses regularly.'}
+      subtitle={q ? 'Try a different search term.' : selectedStore ? 'Add an item to this store or return to the full list.' : 'Add the first item your household uses regularly.'}
       action={q
         ? undefined
         : {
@@ -707,7 +729,7 @@ export default function PantryScreen() {
       <Pressable
         testID="pantry-add-item-fab"
         accessibilityRole="button"
-        accessibilityLabel="Add grocery item"
+        accessibilityLabel="Add item"
         hitSlop={10}
         disabled={!canAdd}
         style={({ pressed }) => [

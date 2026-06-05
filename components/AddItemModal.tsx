@@ -8,14 +8,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useItemsStore } from '../store/items';
 import { useStoresStore } from '../store/stores';
 import { addItemWithQueue } from '../lib/items';
-import { addStoreWithQueue, setItemStoreWithQueue, PRESET_STORES } from '../lib/stores';
+import { setItemStoreWithQueue } from '../lib/stores';
 import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../lib/haptics';
 import { useTheme } from '../hooks/useTheme';
 import { fonts, type AppColors } from '../constants/theme';
 import { makeSheetStyles } from '../constants/sheetStyles';
 import ScalePressable from './ScalePressable';
-import StoreLogo from './StoreLogo';
 import ThemedPopup from './ThemedPopup';
+import AddStoreModal from './AddStoreModal';
 import type { Item } from '../lib/items';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -59,69 +59,41 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
   const stores = useStoresStore((state) => state.stores);
   const addStoreToList = useStoresStore((s) => s.addStore);
   const [name, setName] = useState('');
-  const [storeId, setStoreId] = useState<string | null>(initialStoreId ?? stores[0]?.id ?? null);
+  // Default to null — never auto-select the first store alphabetically, which could be a
+  // wrong-state or irrelevant store. User must explicitly pick a store.
+  const [storeId, setStoreId] = useState<string | null>(initialStoreId ?? null);
   const [storeTouched, setStoreTouched] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [addingStore, setAddingStore] = useState(false);
-  const [newStoreName, setNewStoreName] = useState('');
-  const [storeAdding, setStoreAdding] = useState(false);
+  const [showAddStore, setShowAddStore] = useState(false);
   const [duplicateStoreItem, setDuplicateStoreItem] = useState<Item | null>(null);
   const ready = UUID_RE.test(householdId);
   const nameInputRef = useRef<TextInput>(null);
 
   const sheetStyles = useMemo(() => makeSheetStyles(colors), [colors]);
   const styles = useMemo(() => makeStyles(colors, sheetStyles), [colors, sheetStyles]);
-  const existingNames = useMemo(() => new Set(stores.map((s) => s.name.toLowerCase())), [stores]);
+  const uniqueStores = useMemo(() => {
+    const seen = new Set<string>();
+    return stores.filter((s) => { if (seen.has(s.id)) return false; seen.add(s.id); return true; });
+  }, [stores]);
   const duplicateItem = useMemo(() => {
     const normalized = name.trim().toLowerCase();
     if (!normalized) return null;
     return items.find((i) => i.name.trim().toLowerCase() === normalized) ?? null;
   }, [items, name]);
-  const presetSuggestions = useMemo(
-    () => PRESET_STORES.filter((p) => !existingNames.has(p.toLowerCase())).slice(0, 8),
-    [existingNames],
-  );
 
   useEffect(() => {
     if (initialStoreId !== undefined) {
       setStoreId(initialStoreId);
-      return;
     }
-    if (!storeTouched && !storeId && stores.length > 0) setStoreId(stores[0].id);
-  }, [initialStoreId, storeId, storeTouched, stores]);
+    // Do NOT auto-select stores[0] — the first store alphabetically may be wrong-state.
+    // Users should explicitly choose their store.
+  }, [initialStoreId]);
 
   useEffect(() => {
     const focusTimer = setTimeout(() => nameInputRef.current?.focus(), 260);
     return () => clearTimeout(focusTimer);
   }, []);
-
-  async function handleAddStore() {
-    const trimmed = newStoreName.trim();
-    if (!trimmed) return;
-    if (existingNames.has(trimmed.toLowerCase())) {
-      setError(`"${trimmed}" is already in your stores.`);
-      void hapticWarning();
-      setAddingStore(false);
-      setNewStoreName('');
-      return;
-    }
-    setStoreAdding(true);
-    try {
-      const { store } = await addStoreWithQueue(householdId, trimmed);
-      addStoreToList(store);
-      setStoreId(store.id);
-      setStoreTouched(true);
-      setAddingStore(false);
-      setNewStoreName('');
-      void hapticSuccess();
-    } catch (e: any) {
-      setError(e.message ?? 'Could not add store.');
-      void hapticError();
-    } finally {
-      setStoreAdding(false);
-    }
-  }
 
   async function handleAdd() {
     if (!ready) {
@@ -133,11 +105,9 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
     if (!normalized) { setError('Enter an item name.'); void hapticWarning(); return; }
     const existing = items.find((i) => i.name.trim().toLowerCase() === normalized.toLowerCase());
     if (existing) {
-      if (storeId && existing.preferred_store_id !== storeId) {
-        setDuplicateStoreItem(existing);
-        return;
-      }
-      setError(`"${existing.name}" is already in My Groceries.`);
+      // Always route through the popup — it lets the user update the store assignment
+      // or dismiss cleanly, instead of hitting a dead-end error with no recovery path.
+      setDuplicateStoreItem(existing);
       void hapticWarning();
       return;
     }
@@ -198,8 +168,8 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
               <Ionicons name="add" size={20} color={colors.primary} />
             </View>
             <View style={sheetStyles.headerText}>
-              <Text style={sheetStyles.headerTitle}>New grocery</Text>
-              <Text style={sheetStyles.headerSubtitle}>Add it to My Groceries.</Text>
+              <Text style={sheetStyles.headerTitle}>New item</Text>
+              <Text style={sheetStyles.headerSubtitle}>Add it to your inventory.</Text>
             </View>
           </View>
 
@@ -224,7 +194,10 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
             <View style={styles.duplicateBox}>
               <Ionicons name="alert-circle-outline" size={15} color={colors.warning} />
               <Text style={styles.duplicateText}>
-                {duplicateItem.name} is already saved.
+                {duplicateItem.name} is already saved.{' '}
+                {storeId && storeId !== duplicateItem.preferred_store_id
+                  ? 'Tap Add to move it to this store.'
+                  : 'Select a different store to move it, or mark it low from the Pantry tab.'}
               </Text>
             </View>
           ) : null}
@@ -236,7 +209,7 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
             style={styles.chipScroll}
             contentContainerStyle={styles.chipRow}
           >
-            {stores.map((store) => {
+            {uniqueStores.map((store) => {
               const active = storeId === store.id;
               const hint = storeLocationHint(store.address);
               return (
@@ -255,65 +228,15 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
                 </Pressable>
               );
             })}
-            {!addingStore && (
-              <Pressable
-                style={({ pressed }) => [styles.chip, styles.chipAdd, pressed && { opacity: 0.75 }]}
-                onPress={() => { void hapticSelection(); setAddingStore(true); }}
-              >
-                <Ionicons name="add" size={14} color={colors.muted} />
-                <Text style={styles.chipAddText}>New</Text>
-              </Pressable>
-            )}
+            <Pressable
+              key="__add_store__"
+              style={({ pressed }) => [styles.chip, styles.chipAdd, pressed && { opacity: 0.75 }]}
+              onPress={() => { void hapticSelection(); setShowAddStore(true); }}
+            >
+              <Ionicons name="add" size={14} color={colors.muted} />
+              <Text style={styles.chipAddText}>New</Text>
+            </Pressable>
           </ScrollView>
-
-          {addingStore && (
-            <View style={styles.newStoreRow}>
-              <TextInput
-                style={styles.newStoreInput}
-                placeholder="Store name…"
-                placeholderTextColor={colors.placeholder}
-                value={newStoreName}
-                onChangeText={setNewStoreName}
-                autoFocus
-                returnKeyType="done"
-                onSubmitEditing={() => { void handleAddStore(); }}
-              />
-              <Pressable
-                style={({ pressed }) => [styles.newStoreAdd, (!newStoreName.trim() || storeAdding) && styles.newStoreAddDisabled, pressed && { opacity: 0.8 }]}
-                onPress={() => { void handleAddStore(); }}
-                disabled={!newStoreName.trim() || storeAdding}
-              >
-                {storeAdding
-                  ? <ActivityIndicator size="small" color={colors.onPrimary} />
-                  : <Text style={styles.newStoreAddText}>Add</Text>}
-              </Pressable>
-              <Pressable onPress={() => { setAddingStore(false); setNewStoreName(''); }} hitSlop={8}>
-                <Text style={styles.newStoreCancelText}>Cancel</Text>
-              </Pressable>
-            </View>
-          )}
-
-          {addingStore && presetSuggestions.length > 0 && (
-            <>
-              <Text style={styles.presetLabel}>Quick suggestions</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.presetScroll}
-                contentContainerStyle={styles.presetRow}
-              >
-                {presetSuggestions.map((preset) => (
-                  <Pressable
-                    key={preset}
-                    style={({ pressed }) => [styles.presetChip, pressed && { opacity: 0.7 }]}
-                    onPress={() => { void hapticSelection(); setNewStoreName(preset); }}
-                  >
-                    <Text style={styles.presetChipText}>{preset}</Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
-            </>
-          )}
 
           <ScalePressable
             style={[styles.addBtn, (!ready || loading) && styles.addBtnDisabled]}
@@ -333,13 +256,42 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
       <ThemedPopup
         visible={!!duplicateStoreItem}
         emoji="🛒"
-        title="Already saved"
-        message={duplicateStoreItem ? `"${duplicateStoreItem.name}" already exists. Update its store instead?` : ''}
-        primaryLabel="Update store"
-        onPrimary={() => { void handleUpdateDuplicateStore(); }}
+        title="Already in your inventory"
+        message={
+          duplicateStoreItem && storeId && storeId !== duplicateStoreItem.preferred_store_id
+            ? `"${duplicateStoreItem.name}" is already saved. Move it to the selected store?`
+            : duplicateStoreItem
+              ? `"${duplicateStoreItem.name}" is already in your pantry. Mark it as low from the Pantry tab to add it to your shopping list.`
+              : ''
+        }
+        primaryLabel={
+          duplicateStoreItem && storeId && storeId !== duplicateStoreItem.preferred_store_id
+            ? 'Move to store'
+            : 'Got it'
+        }
+        onPrimary={() => {
+          if (duplicateStoreItem && storeId && storeId !== duplicateStoreItem.preferred_store_id) {
+            void handleUpdateDuplicateStore();
+          } else {
+            setDuplicateStoreItem(null);
+          }
+        }}
         secondaryLabel="Cancel"
         onSecondary={() => setDuplicateStoreItem(null)}
       />
+      {showAddStore && (
+        <AddStoreModal
+          householdId={householdId}
+          existingStores={stores}
+          onAdd={(store) => {
+            addStoreToList(store);
+            setStoreId(store.id);
+            setStoreTouched(true);
+            setShowAddStore(false);
+          }}
+          onClose={() => setShowAddStore(false)}
+        />
+      )}
     </Modal>
   );
 }
@@ -395,42 +347,6 @@ function makeStyles(colors: AppColors, sheetStyles: ReturnType<typeof makeSheetS
     chipTextActive: { color: colors.onPrimary },
     chipAdd: { flexDirection: 'row', alignItems: 'center', gap: 4 },
     chipAddText: { fontSize: 13, fontFamily: fonts.bodySemiBold, color: colors.muted },
-    newStoreRow: {
-      flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8,
-    },
-    newStoreInput: {
-      flex: 1,
-      borderRadius: 10,
-      paddingHorizontal: 12,
-      paddingVertical: 9,
-      fontSize: 14,
-      color: colors.ink,
-      backgroundColor: colors.primarySoft,
-      fontFamily: fonts.body,
-    },
-    newStoreAdd: {
-      backgroundColor: colors.primary, borderRadius: 10,
-      paddingHorizontal: 14, paddingVertical: 9,
-      alignItems: 'center', justifyContent: 'center', minWidth: 48,
-    },
-    newStoreAddDisabled: { backgroundColor: colors.disabled },
-    newStoreAddText: { color: colors.onPrimary, fontSize: 13, fontFamily: fonts.bodySemiBold },
-    newStoreCancelText: { fontSize: 13, fontFamily: fonts.bodySemiBold, color: colors.muted },
-    presetLabel: {
-      fontSize: 11,
-      fontFamily: fonts.bodySemiBold,
-      color: colors.muted,
-      textTransform: 'uppercase',
-      letterSpacing: 0.4,
-      marginBottom: 8,
-    },
-    presetScroll: { flexGrow: 0, marginBottom: 16 },
-    presetRow: { gap: 8, flexDirection: 'row' },
-    presetChip: {
-      borderRadius: 999, paddingHorizontal: 11, paddingVertical: 6,
-      backgroundColor: colors.faint,
-    },
-    presetChipText: { fontSize: 12, fontFamily: fonts.bodySemiBold, color: colors.ink },
     addBtn: {
       backgroundColor: colors.primary,
       borderRadius: 14,

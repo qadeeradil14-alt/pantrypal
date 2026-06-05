@@ -28,6 +28,12 @@ interface StoresState {
    */
   arrivalStoreId: string | null;
   arrivalNotice: ArrivalNotice | null;
+  /**
+   * Set by the geofence engine when 2+ stores are within AMBIGUOUS_RADIUS_M.
+   * The grocery screen shows a "Where are you shopping?" disambiguation sheet.
+   * Cleared once the user picks a store or dismisses.
+   */
+  ambiguousArrivals: string[];
   setStores: (stores: Store[]) => void;
   addStore: (store: Store) => void;
   removeStore: (id: string) => void;
@@ -36,6 +42,7 @@ interface StoresState {
   markReceiptCompleted: (storeId: string) => void;
   clearReceiptTrip: () => void;
   setArrivalStore: (notice: string | ArrivalNotice | null) => void;
+  setAmbiguousArrivals: (ids: string[]) => void;
   togglePin: (storeId: string) => void;
 }
 
@@ -49,8 +56,11 @@ export const useStoresStore = create<StoresState>()(
       receiptCompletedStoreIds: [],
       arrivalStoreId: null,
       arrivalNotice: null,
+      ambiguousArrivals: [],
       setStores: (stores) => set({ stores }),
-      addStore: (store) => set((s) => ({ stores: [...s.stores, store] })),
+      addStore: (store) => set((s) => ({
+        stores: s.stores.some((st) => st.id === store.id) ? s.stores : [...s.stores, store],
+      })),
       removeStore: (id) => set((s) => ({
         stores: s.stores.filter((st) => st.id !== id),
         pinnedStoreIds: s.pinnedStoreIds.filter((pid) => pid !== id),
@@ -70,6 +80,7 @@ export const useStoresStore = create<StoresState>()(
           ? { storeId: notice, actorName: null, arrivedAt: null }
           : notice,
       }),
+      setAmbiguousArrivals: (ambiguousArrivals) => set({ ambiguousArrivals }),
       togglePin: (storeId) => set((s) => ({
         pinnedStoreIds: s.pinnedStoreIds.includes(storeId)
           ? s.pinnedStoreIds.filter((id) => id !== storeId)

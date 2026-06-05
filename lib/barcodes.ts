@@ -48,8 +48,20 @@ const PLU_MAP: Record<string, { name: string; category: ItemCategory }> = {
 
 function inferCategory(name: string, categories: string): ItemCategory {
   const text = `${name} ${categories}`.toLowerCase();
-  if (/\b(frozen|ice.?cream|freezer|popsicle|sorbet)\b/.test(text)) return 'freezer';
+
+  // ── Non-food / personal-care / household-cleaning ──────────────────────────
+  // Check FIRST so incidental food words ("cream", "butter") inside a product
+  // name like "Dial Coconut Cream Hand Soap" don't mis-classify it as fridge.
+  if (/\b(soap|hand.?wash|body.?wash|dish.?(soap|wash|liquid)|shampoo|conditioner|hair.?(care|mask|serum|oil|spray|gel)|lotion|moisturis|moisturiz|body.?lotion|face.?(wash|cream|scrub|serum|mask)|sunscreen|spf|deodorant|antiperspirant|toothpaste|mouthwash|dental|floss|razor|shav(e|ing)|aftershave|sanitizer|hand.?sanitizer|disinfect|bleach|all.?purpose.?clean|bathroom|toilet|paper.?towel|napkin|tissue|wipe|baby.?wipe|diaper|tampon|pad\b|feminine|cotton.?ball|q.?tip|bandage|first.?aid|vitamin|supplement|protein.?powder|laundry|detergent|fabric|softener|dryer|dish.?washer)\b/.test(text)) return 'pantry';
+
+  // ── Frozen ─────────────────────────────────────────────────────────────────
+  if (/\b(frozen|freezer|popsicle|sorbet|gelato)\b/.test(text)) return 'freezer';
+  // "ice cream" handled separately so it doesn't shadow the non-food "cream" match above
+  if (/\bice.?cream\b/.test(text)) return 'freezer';
+
+  // ── Refrigerated food ──────────────────────────────────────────────────────
   if (/\b(milk|cheese|yogurt|yoghurt|butter|cream|eggs?|meat|beef|chicken|turkey|pork|lamb|fish|salmon|tuna|shrimp|prawn|seafood|lobster|crab|deli|bacon|ham|sausage|salami|pepperoni|lettuce|spinach|kale|arugula|chard|broccoli|cauliflower|asparagus|artichoke|carrot|celery|pepper|tomato|cucumber|zucchini|squash|mushroom|scallion|leek|avocado|guacamole|mango|papaya|pineapple|kiwi|melon|cantaloupe|watermelon|berry|berries|strawberr|blueberr|raspberr|blackberr|cranberr|grape|cherry|peach|plum|apricot|nectarine|apple|pear|orange|lemon|lime|grapefruit|clementine|tangerine|mandarin|basil|cilantro|parsley|dill|mint|rosemary|thyme|tofu|tempeh|hummus|juice|produce|fresh|refrigerat|dairy|chilled)\b/.test(text)) return 'fridge';
+
   return 'pantry';
 }
 
