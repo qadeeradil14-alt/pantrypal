@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, SectionList, StyleSheet,
   RefreshControl, ActivityIndicator,
@@ -7,6 +7,7 @@ import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useHouseholdStore } from '../../../store/household';
 import { useAuthStore } from '../../../store/auth';
+import { useDataSignal } from '../../../store/dataSignal';
 import { fetchAllActivity, formatActivityTime, type ActivityEvent } from '../../../lib/activity';
 import { normalizeStoreName } from '../../../lib/stores';
 import { getItemEmoji } from '../../../constants/itemEmojis';
@@ -52,7 +53,7 @@ function actorInitials(event: ActivityEvent): string {
 }
 
 function useStoreLogo(event: ActivityEvent): boolean {
-  return !!event.storeName && (event.type === 'picked_up' || event.type === 'store_arrival');
+  return !!event.storeName && (event.type === 'picked_up' || event.type === 'store_arrival' || event.type === 'receipt');
 }
 
 function useAppIconAvatar(event: ActivityEvent): boolean {
@@ -69,6 +70,10 @@ function eventDescription(event: ActivityEvent, isSelf: boolean): string {
     case 'picked_up': return `${actor} picked up ${event.itemName}${store ? ` at ${store}` : ''}`;
     case 'marked_low': return `${actor} marked ${event.itemName} as low`;
     case 'store_arrival': return `${actor} arrived at ${store ?? event.storeName ?? 'a store'}`;
+    case 'receipt': {
+      const amount = typeof event.amount === 'number' && event.amount > 0 ? ` ($${event.amount.toFixed(2)})` : '';
+      return `${actor} logged a receipt${store ? ` for ${store}` : ''}${amount}`;
+    }
     default: return '';
   }
 }
@@ -93,6 +98,11 @@ export default function ActivityScreen() {
   useFocusEffect(useCallback(() => {
     void load().finally(() => setLoading(false));
   }, [load]));
+
+  // Refresh live when a receipt is written (this device or a partner's), so the
+  // feed updates without needing a tab switch or app restart.
+  const receiptsVersion = useDataSignal((s) => s.receiptsVersion);
+  useEffect(() => { void load(); }, [receiptsVersion, load]);
 
   const sections = useMemo((): ActivitySection[] => {
     const byDay = new Map<string, { evs: ActivityEvent[]; newestMs: number }>();
@@ -176,7 +186,6 @@ export default function ActivityScreen() {
                     size={36}
                     domain={ev.storeBrandDomain}
                     logoUrl={ev.storeLogoUrl}
-                    fallbackToAppIcon
                   />
                 </View>
               ) : useAppIconAvatar(ev) ? (
@@ -193,7 +202,7 @@ export default function ActivityScreen() {
               </Text>
               <Text style={styles.rowTime}>{formatActivityTime(ev.updatedAt)}</Text>
             </View>
-            {ev.type !== 'store_arrival' && (
+            {(ev.type === 'picked_up' || ev.type === 'marked_low' || ev.type === 'receipt') && (
               <View style={[
                 styles.typePill,
                 ev.type === 'picked_up' && styles.typePillSuccess,
@@ -204,7 +213,7 @@ export default function ActivityScreen() {
                   ev.type === 'picked_up' && styles.typePillTextSuccess,
                   ev.type === 'marked_low' && styles.typePillTextWarning,
                 ]}>
-                  {ev.type === 'picked_up' ? 'Got it' : 'Low'}
+                  {ev.type === 'picked_up' ? 'Got it' : ev.type === 'receipt' ? 'Receipt' : 'Low'}
                 </Text>
               </View>
             )}

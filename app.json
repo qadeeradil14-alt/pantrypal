@@ -116,6 +116,12 @@
         "projectId": "3d19b1e1-1003-4e33-8929-2d27e7fd7f3c"
       }
     },
-    "owner": "qadeeradil14-alt"
+    "owner": "qadeeradil14-alt",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/3d19b1e1-1003-4e33-8929-2d27e7fd7f3c"
+    }
   }
 }

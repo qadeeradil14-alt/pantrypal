@@ -7,11 +7,12 @@ export interface ActivityEvent {
   storeName?: string;
   storeBrandDomain?: string | null;
   storeLogoUrl?: string | null;
-  type: 'marked_low' | 'picked_up' | 'store_arrival';
+  type: 'marked_low' | 'picked_up' | 'store_arrival' | 'receipt';
   actorId: string;
   actorName?: string | null;
   isSelf: boolean;
   updatedAt: string;
+  amount?: number | null;
 }
 
 type StoreJoin = {
@@ -85,7 +86,7 @@ export async function fetchAllActivity(
 ): Promise<ActivityEvent[]> {
   const since = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
 
-  const [itemsResult, arrivalsResult] = await Promise.all([
+  const [itemsResult, arrivalsResult, receiptsResult] = await Promise.all([
     supabase
       .from('items')
       .select('id, name, is_low, marked_low_by, got_it_by, updated_at, stores(name, brand_domain, logo_url)')
@@ -99,6 +100,13 @@ export async function fetchAllActivity(
       .eq('household_id', householdId)
       .gt('arrived_at', since)
       .order('arrived_at', { ascending: false })
+      .limit(20),
+    supabase
+      .from('receipts')
+      .select('id, store_name, total_amount, uploaded_by, created_at')
+      .eq('household_id', householdId)
+      .gt('created_at', since)
+      .order('created_at', { ascending: false })
       .limit(20),
   ]);
 
@@ -142,6 +150,19 @@ export async function fetchAllActivity(
       actorName: arrival.arrived_by_name ?? null,
       isSelf: arrival.arrived_by === currentUserId,
       updatedAt: arrival.arrived_at,
+    });
+  }
+
+  for (const receipt of receiptsResult.data ?? []) {
+    if (!receipt.uploaded_by) continue;
+    events.push({
+      id: `receipt-${receipt.id}`,
+      storeName: receipt.store_name ?? undefined,
+      type: 'receipt',
+      actorId: receipt.uploaded_by,
+      isSelf: receipt.uploaded_by === currentUserId,
+      updatedAt: receipt.created_at,
+      amount: receipt.total_amount ?? null,
     });
   }
 

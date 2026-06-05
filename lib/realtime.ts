@@ -5,6 +5,7 @@ import { useItemsStore } from '../store/items';
 import { useStoresStore } from '../store/stores';
 import { useShoppingStore, type ShoppingEntry } from '../store/shopping';
 import { useAuthStore } from '../store/auth';
+import { useDataSignal } from '../store/dataSignal';
 import type { Item } from './items';
 
 // Fields that are managed optimistically locally — incoming realtime events
@@ -115,6 +116,14 @@ export function useRealtime(householdId: string | null) {
           const oldEntry = payload.old as ShoppingEntry;
           removeEntry(oldEntry.id);
         },
+      )
+      // Receipts have no global cache; a write here must nudge every screen that
+      // derives from spend (Activity, Receipts, Grocery weekly spend) so they
+      // refresh live instead of only on the next tab focus / app restart.
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'receipts', filter: `household_id=eq.${householdId}` },
+        () => useDataSignal.getState().bumpReceipts(),
       )
       .subscribe();
   }

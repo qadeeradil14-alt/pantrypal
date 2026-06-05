@@ -8,7 +8,6 @@ import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../l
 import type { Item } from '../lib/items';
 import type { Store } from '../lib/stores';
 import { pantryItemStoreMetaTestId, pantryItemTestId } from '../lib/testIds';
-import ItemThumbnail from './ItemThumbnail';
 import { useTheme } from '../hooks/useTheme';
 import { fonts, type AppColors } from '../constants/theme';
 import ScalePressable from './ScalePressable';
@@ -112,7 +111,6 @@ function ItemRowComponent({ item, userId, onEditPress, onLiftPress }: Props) {
           onLongPress={handleLongPress}
           delayLongPress={500}
         >
-          <ItemThumbnail name={item.name} category={item.category} size={32} />
           <View style={styles.content}>
             <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
             <Text testID={pantryItemStoreMetaTestId(item.name)} style={styles.meta} numberOfLines={1}>

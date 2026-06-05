@@ -152,6 +152,45 @@ export const PRESET_STORES = [
   'H-E-B', 'Safeway', 'Meijer', 'Giant', 'Stop & Shop',
 ];
 
+/**
+ * Keyword fragments that identify restaurants / fast-food / pickup-only places.
+ * Matched against a normalized store name (lowercase, non-alphanumeric → space).
+ * Anything NOT matched is treated as grocery / retail — the safe default.
+ */
+const PICKUP_STORE_KEYWORDS: string[] = [
+  // Fast food / QSR
+  'mcdonalds', 'starbucks', 'subway', 'chipotle', 'chick fil a', 'chickfila',
+  'taco bell', 'burger king', 'wendys', 'kfc', 'popeyes', 'raising canes',
+  'cookout', 'whataburger', 'sonic', 'arbys', 'dairy queen', 'culvers',
+  'jack in the box', 'del taco', 'checkers', 'rallys', 'hardees', 'carls jr',
+  // Pizza
+  'dominos', 'papa johns', 'pizza hut', 'blaze pizza', 'little caesars',
+  // Wings / chicken
+  'wingstop', 'wing stop', 'buffalo wild wings', 'bdubs', 'hooters', 'zaxbys',
+  // Burgers / subs
+  'five guys', 'shake shack', 'in n out', 'smashburger', 'freddys',
+  'jimmy johns', 'jersey mikes', 'firehouse subs', 'quiznos', 'potbelly',
+  // Casual dining
+  'chilis', 'applebees', 'olive garden', 'red lobster', 'red robin',
+  'texas roadhouse', 'outback', 'denny', 'ihop', 'cracker barrel',
+  // Café / coffee / bakery
+  'dunkin', 'krispy kreme', 'panera', 'panda express', 'noodles',
+  // Delivery platforms
+  'doordash', 'grubhub', 'ubereats',
+];
+
+export type StoreCategory = 'grocery' | 'pickup';
+
+/**
+ * Classify a store name as grocery/retail or pickup/restaurant.
+ * Uses keyword-fragment matching so "Wingstop #4312" → 'pickup',
+ * while "Sam's Club" or any unknown store → 'grocery' (safe default).
+ */
+export function classifyStore(name: string): StoreCategory {
+  const n = name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  return PICKUP_STORE_KEYWORDS.some((kw) => n.includes(kw)) ? 'pickup' : 'grocery';
+}
+
 const FALLBACK_STORE_BRANDS: StoreBrand[] = [
   { id: 'fallback-walmart', name: 'Walmart', aliases: ['Supercenter', 'Walmart Supercenter'], domain: 'walmart.com', logo_url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5b/Walmart_logo_%282025%29.svg/960px-Walmart_logo_%282025%29.svg.png', priority: 100, search_text: 'walmart supercenter walmart supercenter' },
   { id: 'fallback-sams-club', name: "Sam's Club", aliases: ['Sams Club', 'Sam Club'], domain: 'samsclub.com', logo_url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/Sam%27s_Club_Logo_2020.svg/960px-Sam%27s_Club_Logo_2020.svg.png', priority: 95, search_text: 'sam club sams club sam club' },

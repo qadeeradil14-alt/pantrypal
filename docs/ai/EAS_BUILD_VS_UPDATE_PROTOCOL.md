@@ -30,11 +30,19 @@ Examples:
 - receipts / activity display fixes
 - most `.ts` / `.tsx` changes
 
-Recommended command:
+Preview/internal QA command:
 
 ```bash
-eas update --branch preview --message "fix: <short description>"
+npx eas-cli update --channel preview --environment preview --message "fix: <short description>"
 ```
+
+Production/TestFlight command:
+
+```bash
+npx eas-cli update --channel production --environment production --message "fix: <short description>"
+```
+
+Do not publish production fixes to `preview` unless intentionally testing first.
 
 ---
 
@@ -54,15 +62,73 @@ Examples:
 - build number / version for TestFlight / App Store
 - anything OTA cannot safely cover
 
-Recommended command:
+Preview/internal QA command:
 
 ```bash
-eas build --platform ios --profile preview
+npx eas-cli build --platform ios --profile preview
+```
+
+Production/TestFlight command:
+
+```bash
+npx eas-cli build --platform ios --profile production
+```
+
+Production submit command:
+
+```bash
+npx eas-cli submit --platform ios --profile production --latest --non-interactive --groups "Internal Testers"
 ```
 
 > Repo note: `eas.json` defines `development`, `preview`, and `production` profiles.
 > `appVersionSource` is `remote` and `production` uses `autoIncrement`, so the build
 > number is managed remotely — a version/build bump is a **build**, not an update.
+
+---
+
+## Permanent Channel Rules
+
+`eas.json` must keep these build profile channels:
+
+```json
+{
+  "preview": {
+    "distribution": "internal",
+    "channel": "preview"
+  },
+  "production": {
+    "autoIncrement": true,
+    "channel": "production"
+  }
+}
+```
+
+EAS channel mapping must stay:
+
+```text
+production channel -> production branch
+preview channel -> preview branch
+```
+
+If the mapping drifts, fix it explicitly:
+
+```bash
+npx eas-cli channel:edit production --branch production --non-interactive
+npx eas-cli channel:edit preview --branch preview --non-interactive
+```
+
+Production iOS builds embed the `production` channel. Preview/internal QA builds embed
+the `preview` channel. Installed builds only receive OTAs from their embedded channel
+and matching runtime version.
+
+Internal testers are managed in App Store Connect:
+
+```text
+App Store Connect -> TestFlight -> Internal Testing -> Internal Testers
+```
+
+Keep the same internal tester group permanently. New production builds should be added
+to that group during TestFlight distribution.
 
 ---
 

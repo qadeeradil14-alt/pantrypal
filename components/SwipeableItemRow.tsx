@@ -4,7 +4,7 @@ import { Swipeable } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { useItemsStore } from '../store/items';
 import { deleteItemWithQueue, markItemOkWithQueue } from '../lib/items';
-import { hapticError, hapticSuccess, hapticWarning } from '../lib/haptics';
+import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../lib/haptics';
 import { useTheme } from '../hooks/useTheme';
 import { fonts, type AppColors } from '../constants/theme';
 import ItemRow from './ItemRow';
@@ -34,6 +34,13 @@ export default function SwipeableItemRow({ item, userId, onEditPress, onLiftPres
       void hapticError();
       restoreItem(item);
     }
+  }
+
+  function handleSwipeEdit() {
+    if (!onEditPress) return;
+    void hapticSelection();
+    swipeRef.current?.close();
+    onEditPress(item);
   }
 
   async function handleSwipeGotIt() {
@@ -69,14 +76,20 @@ export default function SwipeableItemRow({ item, userId, onEditPress, onLiftPres
     _progress: Animated.AnimatedInterpolation<number>,
     dragX: Animated.AnimatedInterpolation<number>,
   ) {
-    const scale = dragX.interpolate({ inputRange: [-72, 0], outputRange: [1, 0.85], extrapolate: 'clamp' });
+    const scale = dragX.interpolate({ inputRange: [-144, 0], outputRange: [1, 0.85], extrapolate: 'clamp' });
     return (
-      <TouchableOpacity style={styles.deleteAction} onPress={handleSwipeDelete} activeOpacity={0.85}>
-        <Animated.View style={[styles.actionInner, { transform: [{ scale }] }]}>
+      <Animated.View style={[styles.rightActions, { transform: [{ scale }] }]}>
+        {onEditPress && (
+          <TouchableOpacity style={styles.editAction} onPress={handleSwipeEdit} activeOpacity={0.85}>
+            <Ionicons name="pencil-outline" size={22} color={colors.onPrimary} />
+            <Text style={styles.actionLabel}>Edit</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity style={styles.deleteAction} onPress={handleSwipeDelete} activeOpacity={0.85}>
           <Ionicons name="trash-outline" size={22} color={colors.onPrimary} />
-          <Text style={styles.deleteLabel}>Delete</Text>
-        </Animated.View>
-      </TouchableOpacity>
+          <Text style={styles.actionLabel}>Delete</Text>
+        </TouchableOpacity>
+      </Animated.View>
     );
   }
 
@@ -112,7 +125,19 @@ function makeStyles(colors: AppColors) {
       justifyContent: 'center',
       alignItems: 'center',
       width: 80,
-      borderRadius: 16,
+      borderTopRightRadius: 16,
+      borderBottomRightRadius: 16,
+    },
+    editAction: {
+      backgroundColor: colors.primary,
+      justifyContent: 'center',
+      alignItems: 'center',
+      width: 80,
+      borderTopLeftRadius: 16,
+      borderBottomLeftRadius: 16,
+    },
+    rightActions: {
+      flexDirection: 'row',
       marginLeft: 8,
     },
     actionInner: {
@@ -124,7 +149,7 @@ function makeStyles(colors: AppColors) {
       fontSize: 11,
       fontFamily: fonts.bodySemiBold,
     },
-    deleteLabel: {
+    actionLabel: {
       color: colors.onPrimary,
       fontSize: 11,
       fontFamily: fonts.bodySemiBold,

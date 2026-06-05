@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useHouseholdStore } from '../../../store/household';
 import { useAuthStore } from '../../../store/auth';
 import { useSettingsStore } from '../../../store/settings';
+import { useDataSignal } from '../../../store/dataSignal';
 import { useItemsStore } from '../../../store/items';
 import { addItemWithQueue } from '../../../lib/items';
 import { uploadReceipt, fetchReceipts, deleteReceipt, deleteReceiptsSince, addManualReceipt, deleteReceiptItem, getSpendSummary, type Receipt, type SpendSummary } from '../../../lib/receipts';
@@ -50,7 +51,7 @@ function groupReceiptsByTime(receipts: Receipt[]): ReceiptSection[] {
 export default function ReceiptsScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  const params = useLocalSearchParams<{ action?: string; fromTrip?: string }>();
+  const params = useLocalSearchParams<{ action?: string; fromTrip?: string; store?: string }>();
   const { household } = useHouseholdStore();
   const { session } = useAuthStore();
   const weeklyBudget = useSettingsStore((s) => s.weeklyBudget);
@@ -101,6 +102,11 @@ export default function ReceiptsScreen() {
 
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
+  // Live refresh when a receipt is written elsewhere (trip spend sheet, partner
+  // device) so the list + spend totals update without a tab switch / restart.
+  const receiptsVersion = useDataSignal((s) => s.receiptsVersion);
+  useEffect(() => { void load(); }, [receiptsVersion, load]);
+
   useEffect(() => {
     const hasProcessing = receipts.some((r) => r.status === 'processing');
     if (!hasProcessing) return;
@@ -144,6 +150,7 @@ export default function ReceiptsScreen() {
       setUploadStage('uploading');
       const receipt = await uploadReceipt(householdId, userId, asset.uri, asset.mimeType ?? 'image/jpeg');
       setReceipts((prev) => [receipt, ...prev]);
+      useDataSignal.getState().bumpReceipts();
       setUploadStage('processing');
       Alert.alert('Receipt added', 'Processing this receipt. You can add another one any time.');
     } catch (e: any) {
@@ -175,6 +182,17 @@ export default function ReceiptsScreen() {
     router.setParams({ action: '', fromTrip: '' });
     void handleCapture('camera');
   }, [canUpload, params.action, router]));
+
+  // Deep-link from the trip summary "Add receipt" on a store that's missing one:
+  // open the manual quick-add prefilled with that store name.
+  useFocusEffect(useCallback(() => {
+    if (!params.store) return;
+    setQuickStore(params.store);
+    setQuickAmount('');
+    setQuickDate(localToday());
+    setShowQuickAdd(true);
+    router.setParams({ store: '' });
+  }, [params.store, router]));
 
   function retryUpload() {
     if (lastUploadSource) {
@@ -214,6 +232,7 @@ export default function ReceiptsScreen() {
       setShowQuickAdd(false);
       // Refresh spend summary
       getSpendSummary(householdId).then((s) => setSpend(s)).catch(() => {});
+      useDataSignal.getState().bumpReceipts();
     } catch (e: any) {
       Alert.alert('Could not save', e?.message ?? 'Please try again.');
     } finally {
@@ -241,6 +260,7 @@ export default function ReceiptsScreen() {
             try {
               await deleteReceiptsSince(householdId, sevenDaysAgoIso);
               await load();
+              useDataSignal.getState().bumpReceipts();
             } catch (e: any) {
               Alert.alert('Reset failed', e?.message ?? 'Please try again.');
             }
@@ -713,6 +733,7 @@ export default function ReceiptsScreen() {
                               setSelectedReceipt(null);
                               await deleteReceipt(id).catch(() => {});
                               setReceipts((prev) => prev.filter((r) => r.id !== id));
+                              useDataSignal.getState().bumpReceipts();
                             },
                           },
                         ],

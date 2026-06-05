@@ -31,12 +31,31 @@ interface Props {
 
 function formatDateForInput(iso: string | null | undefined): string {
   if (!iso) return '';
-  return iso.slice(0, 10); // 'YYYY-MM-DD'
+  const d = new Date(iso.length === 10 ? `${iso}T12:00:00Z` : iso);
+  if (isNaN(d.getTime())) return '';
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  const yyyy = d.getUTCFullYear();
+  return `${mm}/${dd}/${yyyy}`;
 }
 
 function parseDateInput(s: string): string | null | undefined {
   const trimmed = s.trim();
   if (!trimmed) return null; // clear it
+  const mdy = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (mdy) {
+    const month = Number(mdy[1]);
+    const day = Number(mdy[2]);
+    const year = Number(mdy[3]);
+    const d = new Date(Date.UTC(year, month - 1, day, 12));
+    if (
+      month >= 1 && month <= 12
+      && day >= 1 && day <= 31
+      && d.getUTCFullYear() === year
+      && d.getUTCMonth() === month - 1
+      && d.getUTCDate() === day
+    ) return d.toISOString();
+  }
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
     const d = new Date(trimmed + 'T12:00:00Z');
     if (!isNaN(d.getTime())) return d.toISOString();
@@ -56,12 +75,23 @@ export default function EditItemModal({ item, onClose }: Props) {
   const [error, setError] = useState('');
   const [showScanner, setShowScanner] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showAllStores, setShowAllStores] = useState(false);
   const nameInputRef = useRef<TextInput>(null);
 
   const sheetStyles = useMemo(() => makeSheetStyles(colors), [colors]);
   const styles = useMemo(() => makeStyles(colors, sheetStyles), [colors, sheetStyles]);
 
   const isDirty = name.trim() !== item.name || storeId !== item.preferred_store_id || expiresAt !== formatDateForInput(item.expires_at);
+  const visibleStores = useMemo(() => {
+    if (showAllStores || stores.length <= 8) return stores;
+    const shown = stores.slice(0, 8);
+    const selected = stores.find((store) => store.id === storeId);
+    if (selected && !shown.some((store) => store.id === selected.id)) {
+      return [...shown.slice(0, 7), selected];
+    }
+    return shown;
+  }, [showAllStores, storeId, stores]);
+  const hiddenStoreCount = Math.max(0, stores.length - visibleStores.length);
 
   async function handleScannedProduct(product: BarcodeProduct, expiry: string | null): Promise<'added' | 'updated'> {
     setName(product.name);
@@ -81,7 +111,7 @@ export default function EditItemModal({ item, onClose }: Props) {
     if (!trimmed) { setError('Name cannot be empty.'); return; }
     const parsedExpiry = parseDateInput(expiresAt);
     if (parsedExpiry === undefined && expiresAt.trim() !== '') {
-      setError('Use YYYY-MM-DD format for the expiry date (e.g. 2025-12-31).');
+      setError('Use MM/DD/YYYY format for the expiry date (e.g. 04/16/1993).');
       return;
     }
     setError('');
@@ -208,7 +238,7 @@ export default function EditItemModal({ item, onClose }: Props) {
             </View>
           ) : (
             <View style={styles.storeGrid}>
-              {stores.map((store) => {
+              {visibleStores.map((store) => {
               const active = storeId === store.id;
               return (
                 <ScalePressable
@@ -224,6 +254,18 @@ export default function EditItemModal({ item, onClose }: Props) {
                 </ScalePressable>
               );
             })}
+              {!showAllStores && hiddenStoreCount > 0 && (
+                <ScalePressable
+                  profile="chip"
+                  style={[styles.storeBtn, styles.moreStoresBtn]}
+                  onPress={() => { void hapticSelection(); setShowAllStores(true); }}
+                >
+                  <Ionicons name="ellipsis-horizontal" size={24} color={colors.primary} />
+                  <Text style={[styles.storeLabel, styles.moreStoresLabel]} numberOfLines={1}>
+                    More stores
+                  </Text>
+                </ScalePressable>
+              )}
             </View>
           )}
 
@@ -232,7 +274,7 @@ export default function EditItemModal({ item, onClose }: Props) {
             style={[styles.input, styles.expiryInput]}
             value={expiresAt}
             onChangeText={(t) => { setExpiresAt(t); if (error) setError(''); }}
-            placeholder="YYYY-MM-DD  (optional)"
+            placeholder="MM/DD/YYYY  (optional)"
             placeholderTextColor={colors.placeholder}
             keyboardType="numbers-and-punctuation"
             returnKeyType="done"
@@ -315,6 +357,7 @@ function makeStyles(colors: AppColors, sheetStyles: ReturnType<typeof makeSheetS
       borderRadius: 14,
       alignItems: 'center',
       justifyContent: 'center',
+      paddingVertical: 14,
       backgroundColor: colors.primarySoft,
     },
     input: {
@@ -350,7 +393,9 @@ function makeStyles(colors: AppColors, sheetStyles: ReturnType<typeof makeSheetS
       gap: 5,
     },
     storeBtnActive: { backgroundColor: colors.primarySoft },
+    moreStoresBtn: { borderWidth: 1, borderColor: colors.border },
     storeLabel: { fontSize: 12, color: colors.muted, fontFamily: fonts.bodySemiBold, textAlign: 'center' },
+    moreStoresLabel: { color: colors.primary },
     storeLabelActive: { color: colors.primary },
     noStoresBox: {
       borderRadius: 14,

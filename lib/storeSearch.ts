@@ -15,18 +15,9 @@ const GEOAPIFY_KEY = process.env.EXPO_PUBLIC_GEOAPIFY_API_KEY ?? '';
 const GEO_BASE = 'https://api.geoapify.com';
 const HEADERS = { Accept: 'application/json' };
 
-/** Server-side Places API radius (40 km ≈ 25 miles). */
-const SEARCH_RADIUS_M = 40_000;
-
-/**
- * Hard client-side distance reject (~25 miles in Manhattan degrees).
- *   1° lat  ≈ 69 miles  →  0.40° ≈ 27.6 miles
- *   1° lon (at 38°N) ≈ 54 miles  →  0.40° ≈ 21.6 miles
- * Any result farther than this from the search anchor is rejected,
- * regardless of what the server returns.  This is the primary guard
- * against wrong-state (CA/MD) results for a VA ZIP.
- */
-const MAX_DIST_DEG = 0.40;
+const SEARCH_RADII_M = [15_000, 25_000, 40_000, 60_000];
+const MIN_USEFUL_RESULTS = 3;
+export const MAX_STORE_SEARCH_DISTANCE_MILES = 40;
 
 /** Category set covers supermarkets, grocers, convenience, warehouse, discount. */
 const STORE_CATEGORIES = [
@@ -166,8 +157,7 @@ export function scoreStoreResult({
   else if (qCore.length >= 3 && rn.includes(qCore)) nameScore = 6;
   else if (rCore.length >= 3 && qn.includes(rCore)) nameScore = 5;
 
-  // Distance bonus: closer = higher score (0.07° ≈ 5 mi, 0.35° ≈ 24 mi)
-  const distScore = distance < 0.07 ? 4 : distance < 0.35 ? 3 : distance < 0.7 ? 2 : 1;
+  const distScore = distance < 5 ? 4 : distance < 20 ? 3 : distance < 35 ? 2 : 1;
 
   return nameScore + distScore;
 }
@@ -180,7 +170,7 @@ export function scoreStoreResult({
 const BRAND_ALIASES: Record<string, string[]> = {
   'giant': ['Giant Food', 'Giant Food Stores'],
   'whole foods': ['Whole Foods Market'],
-  'walmart': ['Walmart Supercenter'],
+  'walmart': ['Walmart Supercenter', 'Walmart Neighborhood Market'],
   'costco': ['Costco Wholesale'],
   'sams club': ['Sam\'s Club'],
   'publix': ['Publix Super Markets'],
@@ -239,8 +229,8 @@ export function buildStoreSearchQueries(storeName: string): string[] {
 
 // ─── Distance helper ──────────────────────────────────────────────────────────
 
-function distDeg(lat: number, lon: number, anchor: GeoAnchor): number {
-  return Math.abs(lat - anchor.lat) + Math.abs(lon - anchor.lon);
+function distMiles(lat: number, lon: number, anchor: GeoAnchor): number {
+  return haversineDistanceMiles(anchor.lat, anchor.lon, lat, lon);
 }
 
 // ─── Deduplication ────────────────────────────────────────────────────────────
@@ -249,9 +239,11 @@ function distDeg(lat: number, lon: number, anchor: GeoAnchor): number {
 function dedupeResults(results: StoreSearchResult[]): StoreSearchResult[] {
   const seen = new Set<string>();
   return results.filter((r) => {
-    const key = `${r.latitude.toFixed(3)},${r.longitude.toFixed(3)}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
+    const coordKey = `${r.latitude.toFixed(3)},${r.longitude.toFixed(3)}`;
+    const addressKey = `${normalizeStoreNameForMatch(r.name)}|${normalizeStoreNameForMatch(r.address)}`;
+    if (seen.has(coordKey) || seen.has(addressKey)) return false;
+    seen.add(coordKey);
+    seen.add(addressKey);
     return true;
   });
 }
@@ -319,8 +311,8 @@ export async function geocodeLocation(text: string): Promise<GeoAnchor | null> {
  *
  * Three-tier strategy:
  *
- *  Tier 1 — Geoapify Places API (one call, category-filtered, client-side
- *            name match).  Best for chains well-represented in OSM.
+ *  Tier 1 — Geoapify Places API, progressively expanded from 15 km to 60 km.
+ *            Best for chains well-represented in OSM.
  *
  *  Tier 2 — Geoapify Geocoding API, run in parallel for each query string
  *            returned by buildStoreSearchQueries().  Catches stores that
@@ -329,7 +321,7 @@ export async function geocodeLocation(text: string): Promise<GeoAnchor | null> {
  *
  *  Both tiers:
  *    • apply isAcceptableStoreMatch() (handles punctuation/suffix differences)
- *    • apply MAX_DIST_DEG hard reject (prevents wrong-state results, ~25 mi)
+ *    • apply MAX_STORE_SEARCH_DISTANCE_MILES hard reject
  *    • apply state-code filter when anchor.stateCode is present
  *    • rank results with scoreStoreResult()
  *    • deduplicate by rounded coordinate
@@ -359,76 +351,79 @@ export async function searchStoreLocations({
   }
 
   const collected: StoreSearchResult[] = [];
+  const withinSearchDistance = (lat: number, lon: number) =>
+    distMiles(lat, lon, anchor) <= MAX_STORE_SEARCH_DISTANCE_MILES;
 
-  // ── Tier 1: Places API — category search + generic name filter ────────────
-  try {
-    const url =
-      `${GEO_BASE}/v2/places` +
-      `?categories=${STORE_CATEGORIES}` +
-      `&filter=circle:${anchor.lon},${anchor.lat},${SEARCH_RADIUS_M}` +
-      `&conditions=named&limit=50` +
-      `&apiKey=${GEOAPIFY_KEY}`;
-    const res = await fetch(url, { headers: HEADERS });
-    if (res.ok) {
-      const data = await res.json();
-      for (const f of (data.features ?? []) as any[]) {
-        const pName: string = f.properties?.name ?? '';
-        if (!isAcceptableStoreMatch(storeName, pName)) continue;
-        const lat = f.geometry.coordinates[1] as number;
-        const lon = f.geometry.coordinates[0] as number;
-        if (distDeg(lat, lon, anchor) > MAX_DIST_DEG) continue;
-        // State-code guard: reject results from the wrong US state.
-        const resultState: string | undefined = f.properties?.state_code ?? f.properties?.state;
-        if (!stateMatches(resultState)) continue;
-        collected.push({
-          name: pName,
-          address: (f.properties.formatted ?? f.properties.address_line1 ?? '') as string,
-          latitude: lat,
-          longitude: lon,
-        });
+  for (const radius of SEARCH_RADII_M) {
+    try {
+      const url =
+        `${GEO_BASE}/v2/places` +
+        `?categories=${STORE_CATEGORIES}` +
+        `&filter=circle:${anchor.lon},${anchor.lat},${radius}` +
+        `&bias=proximity:${anchor.lon},${anchor.lat}` +
+        `&conditions=named&limit=50` +
+        `&apiKey=${GEOAPIFY_KEY}`;
+      const res = await fetch(url, { headers: HEADERS });
+      if (res.ok) {
+        const data = await res.json();
+        for (const f of (data.features ?? []) as any[]) {
+          const pName: string = f.properties?.name ?? '';
+          if (!isAcceptableStoreMatch(storeName, pName)) continue;
+          const lat = f.geometry.coordinates[1] as number;
+          const lon = f.geometry.coordinates[0] as number;
+          if (!withinSearchDistance(lat, lon)) continue;
+          const resultState: string | undefined = f.properties?.state_code ?? f.properties?.state;
+          if (!stateMatches(resultState)) continue;
+          collected.push({
+            name: pName,
+            address: (f.properties.formatted ?? f.properties.address_line1 ?? '') as string,
+            latitude: lat,
+            longitude: lon,
+          });
+        }
+        if (rankAndSlice(collected, storeName, anchor).length >= MIN_USEFUL_RESULTS) break;
       }
-    }
-  } catch { /* fall through to Tier 2 */ }
-
-  // If Tier 1 found good results, return early (avoids unnecessary API calls)
-  if (collected.length > 0) {
-    return rankAndSlice(collected, storeName, anchor);
+    } catch { /* continue expansion */ }
   }
 
   // ── Tier 2: Geocoding API — parallel queries via buildStoreSearchQueries ──
   // Runs one Geocoding API call per query variant and merges results.
+  // Always runs when Tier 1 is weak, so the UI waits for the full fallback.
   const queries = buildStoreSearchQueries(storeName);
-  const tier2Results = await Promise.all(
-    queries.map(async (q) => {
-      try {
-        const url =
-          `${GEO_BASE}/v1/geocode/search` +
-          `?text=${encodeURIComponent(q)}` +
-          `&bias=proximity:${anchor.lon},${anchor.lat}` +
-          `&format=json&limit=10&countrycodes=us` +
-          `&apiKey=${GEOAPIFY_KEY}`;
-        const res = await fetch(url, { headers: HEADERS });
-        if (!res.ok) return [];
-        const data = await res.json();
-        return ((data.results ?? []) as any[])
-          .filter((r) => isAcceptableStoreMatch(storeName, r.name ?? ''))
-          .filter((r) => distDeg(r.lat, r.lon, anchor) <= MAX_DIST_DEG)
-          // State-code guard for Tier 2 results
-          .filter((r) => stateMatches(r.state_code ?? r.state))
-          .map((r) => ({
-            name: (r.name ?? storeName.trim()) as string,
-            address: (r.formatted ?? '') as string,
-            latitude: r.lat as number,
-            longitude: r.lon as number,
-          }));
-      } catch {
-        return [];
-      }
-    }),
-  );
+  if (rankAndSlice(collected, storeName, anchor).length < MIN_USEFUL_RESULTS) {
+    const maxRadius = SEARCH_RADII_M[SEARCH_RADII_M.length - 1];
+    const tier2Results = await Promise.all(
+      queries.map(async (q) => {
+        try {
+          const url =
+            `${GEO_BASE}/v1/geocode/search` +
+            `?text=${encodeURIComponent(q)}` +
+            `&bias=proximity:${anchor.lon},${anchor.lat}` +
+            `&filter=circle:${anchor.lon},${anchor.lat},${maxRadius}` +
+            `&format=json&limit=10&countrycodes=us` +
+            `&apiKey=${GEOAPIFY_KEY}`;
+          const res = await fetch(url, { headers: HEADERS });
+          if (!res.ok) return [];
+          const data = await res.json();
+          return ((data.results ?? []) as any[])
+            .filter((r) => isAcceptableStoreMatch(storeName, r.name ?? ''))
+            .filter((r) => withinSearchDistance(r.lat, r.lon))
+            .filter((r) => stateMatches(r.state_code ?? r.state))
+            .map((r) => ({
+              name: (r.name ?? storeName.trim()) as string,
+              address: (r.formatted ?? '') as string,
+              latitude: r.lat as number,
+              longitude: r.lon as number,
+            }));
+        } catch {
+          return [];
+        }
+      }),
+    );
 
-  for (const batch of tier2Results) {
-    collected.push(...batch);
+    for (const batch of tier2Results) {
+      collected.push(...batch);
+    }
   }
 
   return rankAndSlice(collected, storeName, anchor);
@@ -446,7 +441,7 @@ function rankAndSlice(
       score: scoreStoreResult({
         queryName,
         resultName: r.name,
-        distance: distDeg(r.latitude, r.longitude, anchor),
+        distance: distMiles(r.latitude, r.longitude, anchor),
       }),
     }))
     .sort((a, b) => b.score - a.score)

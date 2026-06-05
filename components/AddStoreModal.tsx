@@ -10,7 +10,7 @@ import {
   extractAddressState, normalizeUSState,
   PRESET_STORES, type Store, type StoreBrand, type StorePlace,
 } from '../lib/stores';
-import { geocodeLocation, haversineDistanceMiles, type GeoAnchor } from '../lib/storeSearch';
+import { geocodeLocation, haversineDistanceMiles, MAX_STORE_SEARCH_DISTANCE_MILES, type GeoAnchor } from '../lib/storeSearch';
 import { hapticError, hapticSelection, hapticSuccess } from '../lib/haptics';
 import { useTheme } from '../hooks/useTheme';
 import { fonts, radii } from '../constants/theme';
@@ -214,13 +214,13 @@ export default function AddStoreModal({ householdId, existingStores, onAdd, onCl
       return;
     }
 
-    // Guard 2: distance from search anchor must be ≤ 25 miles.
+    // Guard 2: distance from search anchor must stay within the expanded search radius.
     if (searchAnchor) {
       const miles = haversineDistanceMiles(
         searchAnchor.lat, searchAnchor.lon,
         place.latitude, place.longitude,
       );
-      if (miles > 25) {
+      if (miles > MAX_STORE_SEARCH_DISTANCE_MILES) {
         setError('This store appears outside your search area. Try searching again with city and state.');
         void hapticError();
         return;
