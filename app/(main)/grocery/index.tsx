@@ -15,9 +15,9 @@ import { useAuthStore } from '../../../store/auth';
 import { useHouseholdStore } from '../../../store/household';
 import { useStoresStore } from '../../../store/stores';
 import { useShoppingStore, type ShoppingEntry } from '../../../store/shopping';
-import { markItemGotItWithQueue } from '../../../lib/items';
+import { markItemGotItWithQueue, fetchItems } from '../../../lib/items';
 import { setItemStoreWithQueue, normalizeStoreName } from '../../../lib/stores';
-import { completeShoppingEntryWithQueue, setShoppingEntryAisleWithQueue } from '../../../lib/shoppingList';
+import { completeShoppingEntryWithQueue, setShoppingEntryAisleWithQueue, fetchActiveShoppingList } from '../../../lib/shoppingList';
 import { hapticError, hapticSelection, hapticSuccess } from '../../../lib/haptics';
 import type { Item } from '../../../lib/items';
 import { CATEGORY_LABELS, type ItemCategory } from '../../../constants/defaultItems';
@@ -43,6 +43,26 @@ function normalizeShoppingCategory(category: ShoppingEntry['category']): ItemCat
   return category === 'spice_rack' ? 'pantry' : category;
 }
 
+function itemNeedsShopping(item: Item): boolean {
+  return item.is_low || item.macro_status === 'running_low' || item.macro_status === 'out_of_stock';
+}
+
+function makeDerivedShoppingEntry(item: Item): ShoppingEntry {
+  return {
+    id: `derived:${item.id}`,
+    household_id: item.household_id,
+    source_item_id: item.id,
+    name: item.name,
+    category: item.category,
+    aisle: null,
+    quantity: 1,
+    status: 'active',
+    completed_at: null,
+    created_at: item.created_at,
+    updated_at: item.updated_at,
+  };
+}
+
 function ordinalStop(n: number): string {
   const s = ['th', 'st', 'nd', 'rd'];
   const v = n % 100;
@@ -52,12 +72,13 @@ function ordinalStop(n: number): string {
 
 type ShoppingSection = { title: string; storeId: string | null; data: ShoppingEntry[]; stopNumber?: number };
 type StoreSpendSheet = { storeId: string; storeName: string; stopNumber: number; nextStoreName: string | null };
-type TripSheet = { itemCount: number; tripSpend: number; weeklySpend: number; receiptCount: number };
+type TripStoreSummary = { storeId: string; storeName: string; itemCount: number; spend: number; receiptAdded: boolean };
+type TripSheet = { itemCount: number; tripSpend: number; weeklySpend: number; receiptCount: number; stores: TripStoreSummary[] };
 
 export default function GroceryScreen() {
   const router = useRouter();
   const { colors } = useTheme();
-  const { items, updateItem } = useItemsStore();
+  const { items, updateItem, setItems } = useItemsStore();
   const { session } = useAuthStore();
   const householdId = useHouseholdStore((s) => s.household?.id);
   const {
@@ -72,7 +93,7 @@ export default function GroceryScreen() {
     ambiguousArrivals,
     setAmbiguousArrivals,
   } = useStoresStore();
-  const { entries, removeEntry, upsertEntry } = useShoppingStore();
+  const { entries, removeEntry, upsertEntry, setEntries } = useShoppingStore();
   const [shoppingMode, setShoppingMode] = useState(false);
   /**
    * Store-first "Where are you shopping?" selector, shown when the user taps
@@ -102,11 +123,14 @@ export default function GroceryScreen() {
   const [routeStoreIds, setRouteStoreIds] = useState<string[]>([]);
   const [completedStoreIds, setCompletedStoreIds] = useState<Set<string>>(() => new Set());
   const [storeSpendSheet, setStoreSpendSheet] = useState<StoreSpendSheet | null>(null);
+  const [nextTripSheet, setNextTripSheet] = useState(false);
   const [storeSpendAmount, setStoreSpendAmount] = useState('');
   const [savingStoreSpend, setSavingStoreSpend] = useState(false);
   const [assignItem, setAssignItem] = useState<Item | null>(null);
   /** Chip filter only — may point at a store with 0 items without starting a shopping session. */
   const [selectedStoreChipId, setSelectedStoreChipId] = useState<string | null>(null);
+  const [storeSpendByStore, setStoreSpendByStore] = useState<Map<string, number>>(() => new Map());
+  const [storeReceiptIds, setStoreReceiptIds] = useState<Set<string>>(() => new Set());
 
   // Pulse animation for the Start button — draws attention before shopping begins
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -158,6 +182,22 @@ export default function GroceryScreen() {
   // Refresh every time the Grocery tab comes back into focus (e.g. after adding a receipt)
   useFocusEffect(useCallback(() => { refreshSpend(); }, [refreshSpend]));
 
+  // Refresh items + shopping list on every focus so the store chips and item counts
+  // always reflect the latest pantry state — even if realtime missed an event or the
+  // user assigned a store / marked an item low while on another tab.
+  useFocusEffect(useCallback(() => {
+    if (!householdId) return;
+    Promise.all([
+      fetchItems(householdId),
+      fetchActiveShoppingList(householdId),
+    ]).then(([freshItems, freshEntries]) => {
+      setItems(freshItems);
+      setEntries(freshEntries);
+    }).catch(() => {
+      // Silent — stale Zustand state is better than a crash or error toast here.
+    });
+  }, [householdId, setItems, setEntries]));
+
 
   const activeStore = useMemo(
     () => stores.find((s) => s.id === activeStoreId),
@@ -172,8 +212,13 @@ export default function GroceryScreen() {
   );
 
   const allActiveItems = useMemo(() => {
-    return entries
-      .filter((e) => e.status === 'active')
+    const activeEntries = entries.filter((e) => e.status === 'active');
+    const activeSourceItemIds = new Set(activeEntries.map((entry) => entry.source_item_id).filter(Boolean));
+    const derivedEntries = items
+      .filter((item) => item.preferred_store_id && itemNeedsShopping(item) && !activeSourceItemIds.has(item.id))
+      .map(makeDerivedShoppingEntry);
+
+    return [...activeEntries, ...derivedEntries]
       .sort((a, b) => {
         const linkedA = a.source_item_id ? sourceItemMap.get(a.source_item_id) : null;
         const linkedB = b.source_item_id ? sourceItemMap.get(b.source_item_id) : null;
@@ -183,7 +228,7 @@ export default function GroceryScreen() {
         const sectionB = resolveStoreSection(b.name, normalizeShoppingCategory(b.category), b.aisle);
         return storeA.localeCompare(storeB) || sectionA.order - sectionB.order || sectionA.label.localeCompare(sectionB.label) || a.name.localeCompare(b.name);
       });
-  }, [entries, sourceItemMap, stores]);
+  }, [entries, items, sourceItemMap, stores]);
 
   const activeShoppingCounts = useMemo(
     () => countActiveShoppingByStore(allActiveItems, sourceItemMap),
@@ -218,8 +263,17 @@ export default function GroceryScreen() {
       setShoppingMode(true);
       return;
     }
+    if (
+      pendingReceiptStoreId === activeStoreId
+      || doneConfirmSheet?.storeId === activeStoreId
+      || storeSpendSheet?.storeId === activeStoreId
+      || (storeGrabbedCount.get(activeStoreId) ?? 0) > 0
+    ) {
+      setShoppingMode(true);
+      return;
+    }
     setShoppingMode(false);
-  }, [activeStoreId, activeShoppingCounts]);
+  }, [activeStoreId, activeShoppingCounts, doneConfirmSheet?.storeId, pendingReceiptStoreId, storeGrabbedCount, storeSpendSheet?.storeId]);
 
   useEffect(() => {
     if (activeStoreId) setSelectedStoreChipId(activeStoreId);
@@ -251,6 +305,7 @@ export default function GroceryScreen() {
     if (!shoppingMode) {
       setCompletedStoreIds(new Set());
       setStoreSpendSheet(null);
+      setNextTripSheet(false);
       setStoreSpendAmount('');
       setPendingReceiptStoreId(null);
       setTripReceiptCount(0);
@@ -258,6 +313,8 @@ export default function GroceryScreen() {
       setItemQty(new Map());
       setPurchasedQty(new Map());
       setStoreGrabbedCount(new Map());
+      setStoreSpendByStore(new Map());
+      setStoreReceiptIds(new Set());
       setDoneConfirmSheet(null);
     }
   }, [shoppingMode, setPendingReceiptStoreId]);
@@ -402,6 +459,16 @@ export default function GroceryScreen() {
 
   const nextStop = nextStopInfo?.stop ?? null;
 
+  const remainingStoreSections = useMemo(
+    () => assignedRouteSections.filter((section) => section.storeId && (activeShoppingCounts.byStoreId[section.storeId] ?? 0) > 0),
+    [activeShoppingCounts.byStoreId, assignedRouteSections],
+  );
+
+  const selectedPausedStore = useMemo(
+    () => selectedStoreChipId ? stores.find((store) => store.id === selectedStoreChipId) ?? null : null,
+    [selectedStoreChipId, stores],
+  );
+
   const hasUnassignedItems = allActiveItems.some((entry) => {
     const linked = entry.source_item_id ? sourceItemMap.get(entry.source_item_id) : null;
     return !linked?.preferred_store_id;
@@ -412,11 +479,58 @@ export default function GroceryScreen() {
     return !!linked && !linked.preferred_store_id;
   }), [allActiveItems, sourceItemMap]);
 
+  const activeStorePickedCount = activeStoreId ? storeGrabbedCount.get(activeStoreId) ?? 0 : grabbedCount;
+  const activeStoreTotalCount = activeStoreId ? activeStorePickedCount + lowItems.length : startCount;
+
   const activeStoreComplete = !viewingEmptyStoreChip && shoppingMode && (
     (!!activeStoreId && lowItems.length === 0 && (startCount > 0 || grabbedCount > 0))
     || (!activeStoreId && !!nextStop && allActiveItems.length > 0)
     || (!activeStoreId && hasUnassignedItems && allActiveItems.length > 0)
   );
+
+  const makeTripSheet = useCallback((
+    itemCount: number,
+    finalTripSpend: number,
+    finalWeeklySpend: number,
+    finalReceiptCount: number,
+    spendByStore = storeSpendByStore,
+    receiptIds = storeReceiptIds,
+  ): TripSheet => {
+    const ids = Array.from(new Set([
+      ...routeStoreIds,
+      ...completedStoreIds,
+      ...receiptCompletedStoreIds,
+      ...Array.from(storeGrabbedCount.keys()).filter((id) => id !== '__unassigned__'),
+    ]));
+    const summaries = ids
+      .map((storeId) => {
+        const store = stores.find((s) => s.id === storeId);
+        return {
+          storeId,
+          storeName: store?.name ?? 'Store',
+          itemCount: storeGrabbedCount.get(storeId) ?? 0,
+          spend: spendByStore.get(storeId) ?? 0,
+          receiptAdded: receiptIds.has(storeId),
+        };
+      })
+      .filter((summary) => summary.itemCount > 0 || summary.spend > 0 || summary.receiptAdded);
+
+    return {
+      itemCount,
+      tripSpend: finalTripSpend,
+      weeklySpend: finalWeeklySpend,
+      receiptCount: finalReceiptCount,
+      stores: summaries,
+    };
+  }, [
+    completedStoreIds,
+    receiptCompletedStoreIds,
+    routeStoreIds,
+    storeGrabbedCount,
+    storeReceiptIds,
+    storeSpendByStore,
+    stores,
+  ]);
 
   const nextStoreNameAfter = useCallback((storeId: string): string | null => {
     const sectionByStoreId = new Map(assignedRouteSections.map((section) => [section.storeId!, section]));
@@ -430,10 +544,22 @@ export default function GroceryScreen() {
     return next?.title ?? null;
   }, [assignedRouteSections, routeStoreIds]);
 
+  const nextActiveStoreIdAfter = useCallback((storeId: string): string | null => {
+    const orderedIds = (routeStoreIds.length > 0 ? routeStoreIds : assignedRouteSections.map((section) => section.storeId!))
+      .filter((id): id is string => !!id && id !== storeId && (activeShoppingCounts.byStoreId[id] ?? 0) > 0);
+    const currentRouteIdx = routeStoreIds.indexOf(storeId);
+    if (currentRouteIdx !== -1) {
+      const next = orderedIds.find((id) => routeStoreIds.indexOf(id) > currentRouteIdx);
+      if (next) return next;
+    }
+    return orderedIds[0] ?? null;
+  }, [activeShoppingCounts.byStoreId, assignedRouteSections, routeStoreIds]);
+
   /** Open the spend/receipt sheet directly — only called after user confirms "Yes, finish stop". */
   const openStoreSpendSheetDirect = useCallback((storeId: string) => {
     const store = stores.find((s) => s.id === storeId);
     if (!store) return;
+    setPendingReceiptStoreId(storeId);
     setStoreSpendAmount('');
     setStoreSpendSheet({
       storeId,
@@ -441,14 +567,13 @@ export default function GroceryScreen() {
       stopNumber: stopNumberByStoreId.get(storeId) ?? 1,
       nextStoreName: nextStoreNameAfter(storeId),
     });
-  }, [nextStoreNameAfter, stopNumberByStoreId, stores]);
+  }, [nextStoreNameAfter, setPendingReceiptStoreId, stopNumberByStoreId, stores]);
 
   /**
    * Gate the spend sheet behind a "Are you done?" confirmation.
    * If the user grabbed 0 items at this store, skip silently.
    */
   const openStoreSpendPrompt = useCallback((storeId: string) => {
-    if (activeCountForStore(activeShoppingCounts, storeId) === 0) return;
     const store = stores.find((s) => s.id === storeId);
     if (!store) return;
 
@@ -459,7 +584,7 @@ export default function GroceryScreen() {
     setPendingReceiptStoreId(storeId);
     // Show confirmation sheet first; spend sheet only opens on "Yes, finish stop"
     setDoneConfirmSheet({ storeId, storeName: store.name });
-  }, [activeShoppingCounts, setPendingReceiptStoreId, storeGrabbedCount, stores]);
+  }, [setPendingReceiptStoreId, storeGrabbedCount, stores]);
 
   const isStoreReceiptDone = useCallback(
     (storeId: string) =>
@@ -480,29 +605,24 @@ export default function GroceryScreen() {
   const storeNeedsReceiptStep = useCallback(
     (storeId: string): boolean => {
       if (!shoppingMode || !storeId || isStoreReceiptDone(storeId)) return false;
-      if (activeCountForStore(activeShoppingCounts, storeId) === 0) return false;
       if (pendingReceiptStoreId === storeId) return true;
       if (remainingItemsAtStore(storeId) > 0) return false;
 
       if (storeId === activeStoreId) {
-        return startCount > 0 || grabbedCount > 0;
+        return (storeGrabbedCount.get(storeId) ?? 0) > 0;
       }
 
       if (!routeStoreIds.includes(storeId)) return false;
-      const section = assignedRouteSections.find((s) => s.storeId === storeId);
-      return !!section;
+      return (storeGrabbedCount.get(storeId) ?? 0) > 0;
     },
     [
-      activeShoppingCounts,
       activeStoreId,
-      assignedRouteSections,
-      grabbedCount,
       isStoreReceiptDone,
       pendingReceiptStoreId,
       remainingItemsAtStore,
       routeStoreIds,
       shoppingMode,
-      startCount,
+      storeGrabbedCount,
     ],
   );
 
@@ -542,26 +662,21 @@ export default function GroceryScreen() {
   useEffect(() => {
     if (!shoppingMode || !activeStoreId) return;
     if (isStoreReceiptDone(activeStoreId)) return;
-    if (activeCountForStore(activeShoppingCounts, activeStoreId) === 0) return;
     // Only set pending receipt for stores that were actually in the planned route.
     // Stores with zero items (e.g. Afghanistan market when no items assigned) are
     // never added to routeStoreIds, so startCount/grabbedCount from other stores
     // should not trigger the spend sheet for them.
     if (!routeStoreIds.includes(activeStoreId)) return;
     if (lowItems.length === 0 && (startCount > 0 || grabbedCount > 0)) {
-      if (pendingReceiptStoreId !== activeStoreId) {
-        setPendingReceiptStoreId(activeStoreId);
-      }
+      openStoreSpendPrompt(activeStoreId);
     }
   }, [
-    activeShoppingCounts,
     activeStoreId,
     grabbedCount,
     isStoreReceiptDone,
     lowItems.length,
-    pendingReceiptStoreId,
+    openStoreSpendPrompt,
     routeStoreIds,
-    setPendingReceiptStoreId,
     shoppingMode,
     startCount,
   ]);
@@ -569,13 +684,11 @@ export default function GroceryScreen() {
   useEffect(() => {
     if (!activeStoreComplete || !activeStoreId || !activeStore) return;
     if (isStoreReceiptDone(activeStoreId)) return;
-    if (activeCountForStore(activeShoppingCounts, activeStoreId) === 0) return;
     if (pendingReceiptStoreId === activeStoreId || storeSpendSheet) return;
     // Same guard — only prompt for stores that had items in the route.
     if (!routeStoreIds.includes(activeStoreId)) return;
     openStoreSpendPrompt(activeStoreId);
   }, [
-    activeShoppingCounts,
     activeStore,
     activeStoreComplete,
     activeStoreId,
@@ -588,10 +701,6 @@ export default function GroceryScreen() {
 
   useEffect(() => {
     if (!shoppingMode || !pendingReceiptStoreId) return;
-    if (activeCountForStore(activeShoppingCounts, pendingReceiptStoreId) === 0) {
-      setPendingReceiptStoreId(null);
-      return;
-    }
     if (isStoreReceiptDone(pendingReceiptStoreId)) {
       setPendingReceiptStoreId(null);
       return;
@@ -605,23 +714,13 @@ export default function GroceryScreen() {
       setPendingReceiptStoreId(null);
       return;
     }
-    setStoreSpendAmount('');
-    setStoreSpendSheet({
-      storeId: pendingReceiptStoreId,
-      storeName: store.name,
-      stopNumber: stopNumberByStoreId.get(pendingReceiptStoreId) ?? 1,
-      nextStoreName: nextStoreNameAfter(pendingReceiptStoreId),
-    });
   }, [
-    activeShoppingCounts,
     activeStoreId,
-    nextStoreNameAfter,
     isStoreReceiptDone,
     pendingReceiptStoreId,
     setActiveStore,
     setPendingReceiptStoreId,
     shoppingMode,
-    stopNumberByStoreId,
     storeSpendSheet,
     stores,
   ]);
@@ -650,7 +749,6 @@ export default function GroceryScreen() {
     const finishedStoreId = linked?.preferred_store_id ?? null;
     const shouldOpenSpendAfterVisual = (() => {
       if (!finishedStoreId || !shoppingMode || isStoreReceiptDone(finishedStoreId) || pendingReceiptStoreId) return false;
-      if (activeCountForStore(activeShoppingCounts, finishedStoreId) === 0) return false;
       const othersAtStore = allActiveItems.filter((e) => {
         if (e.id === entry.id || purchasedIds.has(e.id)) return false;
         const l = e.source_item_id ? sourceItemMap.get(e.source_item_id) : null;
@@ -710,7 +808,6 @@ export default function GroceryScreen() {
       setTapping(null);
     }
   }, [
-    activeShoppingCounts,
     allActiveItems,
     isStoreReceiptDone,
     openStoreSpendPrompt,
@@ -815,12 +912,26 @@ export default function GroceryScreen() {
       clearReceiptTrip();
       setTripSpend(0);
       setTripReceiptCount(0);
+      setStoreSpendByStore(new Map());
+      setStoreReceiptIds(new Set());
       setSelectedStoreChipId(storeId);
       setActiveStore(storeId);
       setShoppingMode(true);
     },
     [clearReceiptTrip, setActiveStore],
   );
+
+  const startPausedStore = useCallback((storeId: string | null = selectedStoreChipId) => {
+    if (!storeId) {
+      setNextTripSheet(true);
+      return;
+    }
+    void hapticSelection();
+    setNextTripSheet(false);
+    setSelectedStoreChipId(storeId);
+    setActiveStore(storeId);
+    setShoppingMode(true);
+  }, [selectedStoreChipId, setActiveStore]);
 
   const tryAdvanceToNextStop = useCallback(() => {
     if (!nextStop) return;
@@ -830,7 +941,11 @@ export default function GroceryScreen() {
       openStoreSpendPrompt(storeId);
       return;
     }
-    setActiveStore(nextStop.storeId);
+    if (nextStop.storeId) {
+      setSelectedStoreChipId(nextStop.storeId);
+      setNextTripSheet(false);
+      setActiveStore(nextStop.storeId);
+    }
   }, [nextStop, openStoreSpendPrompt, resolveStoreNeedingReceipt, setActiveStore]);
 
   const finishShopping = useCallback(() => {
@@ -844,7 +959,7 @@ export default function GroceryScreen() {
       );
       return;
     }
-    const remaining = entries.filter((e) => !purchasedIds.has(e.id)).length;
+    const remaining = allActiveItems.filter((e) => !purchasedIds.has(e.id)).length;
     if (remaining > 0) {
       Alert.alert(
         'Done shopping?',
@@ -866,7 +981,7 @@ export default function GroceryScreen() {
               setRouteStoreIds([]);
               setStartCount(0);
               setGrabbedCount(0);
-              if (count > 0) setTripSheet({ itemCount: count, tripSpend: finishedTripSpend, weeklySpend: finishedWeeklySpend, receiptCount: finishedReceiptCount });
+              if (count > 0) setTripSheet(makeTripSheet(count, finishedTripSpend, finishedWeeklySpend, finishedReceiptCount));
             },
           },
         ],
@@ -884,11 +999,12 @@ export default function GroceryScreen() {
       setRouteStoreIds([]);
       setStartCount(0);
       setGrabbedCount(0);
-      if (count > 0) setTripSheet({ itemCount: count, tripSpend: finishedTripSpend, weeklySpend: finishedWeeklySpend, receiptCount: finishedReceiptCount });
+      if (count > 0) setTripSheet(makeTripSheet(count, finishedTripSpend, finishedWeeklySpend, finishedReceiptCount));
     }
   }, [
     clearReceiptTrip,
-    entries,
+    allActiveItems,
+    makeTripSheet,
     openStoreSpendPrompt,
     purchasedIds,
     resolveStoreNeedingReceipt,
@@ -910,8 +1026,18 @@ export default function GroceryScreen() {
     const finishedTripSpend = tripSpend + amount;
     const finishedWeeklySpend = weeklySpend + amount;
     const finishedReceiptCount = tripReceiptCount + (receiptAdded ? 1 : 0);
+    const nextSpendByStore = new Map(storeSpendByStore);
+    const nextReceiptIds = new Set(storeReceiptIds);
+    if (finishedStoreId && amount > 0) {
+      nextSpendByStore.set(finishedStoreId, (nextSpendByStore.get(finishedStoreId) ?? 0) + amount);
+    }
+    if (finishedStoreId && receiptAdded) {
+      nextReceiptIds.add(finishedStoreId);
+    }
     if (amount > 0) setTripSpend(finishedTripSpend);
     if (receiptAdded) setTripReceiptCount(finishedReceiptCount);
+    setStoreSpendByStore(nextSpendByStore);
+    setStoreReceiptIds(nextReceiptIds);
     setStoreSpendSheet(null);
     setStoreSpendAmount('');
     setPendingReceiptStoreId(null);
@@ -919,8 +1045,19 @@ export default function GroceryScreen() {
       markReceiptCompleted(finishedStoreId);
       setCompletedStoreIds((prev) => new Set(prev).add(finishedStoreId));
     }
-    if (nextStop) {
+    const nextStoreId = finishedStoreId ? nextActiveStoreIdAfter(finishedStoreId) : null;
+    if (nextStoreId) {
+      setSelectedStoreChipId(nextStoreId);
       setActiveStore(null);
+      setShoppingMode(true);
+      setNextTripSheet(true);
+      return;
+    }
+    if (allActiveItems.length > 0) {
+      setSelectedStoreChipId(null);
+      setActiveStore(null);
+      setShoppingMode(true);
+      setNextTripSheet(true);
       return;
     }
     if (allActiveItems.length === 0) {
@@ -931,17 +1068,20 @@ export default function GroceryScreen() {
       setRouteStoreIds([]);
       setStartCount(0);
       setGrabbedCount(0);
-      if (count > 0) setTripSheet({ itemCount: count, tripSpend: finishedTripSpend, weeklySpend: finishedWeeklySpend, receiptCount: finishedReceiptCount });
+      if (count > 0) setTripSheet(makeTripSheet(count, finishedTripSpend, finishedWeeklySpend, finishedReceiptCount));
     }
   }, [
     allActiveItems.length,
     clearReceiptTrip,
+    makeTripSheet,
     markReceiptCompleted,
-    nextStop,
+    nextActiveStoreIdAfter,
     setActiveStore,
     setPendingReceiptStoreId,
     startCount,
+    storeReceiptIds,
     storeSpendSheet?.storeId,
+    storeSpendByStore,
     tripSpend,
     tripReceiptCount,
     weeklySpend,
@@ -1041,12 +1181,16 @@ export default function GroceryScreen() {
     assignEntryToStore(first);
   }, [assignEntryToStore, unassignedEntries]);
 
+  const routePaused = shoppingMode && !activeStoreId;
+  const headerStore = activeStore ?? selectedPausedStore;
+  const modeButtonLabel = routePaused ? 'Start' : shoppingMode ? 'Done' : 'Start';
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Text style={styles.eyebrow}>{shoppingMode ? 'Shopping mode' : 'Shopping'}</Text>
-          <Text style={styles.headerTitle}>{activeStore ? activeStore.name : 'Shopping list'}</Text>
+          <Text style={styles.eyebrow}>{routePaused ? 'Next stop' : shoppingMode ? 'Shopping mode' : 'Shopping'}</Text>
+          <Text style={styles.headerTitle}>{headerStore ? headerStore.name : 'Shopping list'}</Text>
         </View>
         <Animated.View style={!shoppingMode && { transform: [{ scale: pulseAnim }] }}>
           <ScalePressable
@@ -1057,6 +1201,10 @@ export default function GroceryScreen() {
               // instead of blindly entering shopping mode on a stale/mixed store.
               if (!shoppingMode) {
                 setStartSheet(true);
+                return;
+              }
+              if (routePaused) {
+                startPausedStore();
                 return;
               }
               // Done path → finish the current session (after any pending receipt).
@@ -1076,12 +1224,12 @@ export default function GroceryScreen() {
             }}
           >
             <Ionicons
-              name={shoppingMode ? 'checkmark-circle' : 'cart-outline'}
+              name={routePaused ? 'cart-outline' : shoppingMode ? 'checkmark-circle' : 'cart-outline'}
               size={18}
               color={shoppingMode ? colors.surface : colors.onPrimary}
             />
             <Text style={[styles.modeBtnText, shoppingMode && styles.modeBtnTextActive]}>
-              {shoppingMode ? 'Done' : 'Start'}
+              {modeButtonLabel}
             </Text>
           </ScalePressable>
         </Animated.View>
@@ -1089,18 +1237,18 @@ export default function GroceryScreen() {
 
       <View style={[styles.statusCard, shoppingMode && styles.statusCardActive]}>
         <View>
-          {shoppingMode && startCount > 0 && lowItems.length === 0 ? (
+          {shoppingMode && activeStoreTotalCount > 0 && lowItems.length === 0 ? (
             <>
               <Text style={[styles.statusKicker, styles.statusKickerActive]}>All done</Text>
-              <Text style={[styles.statusNumber, styles.statusNumberActive]}>{startCount}</Text>
+              <Text style={[styles.statusNumber, styles.statusNumberActive]}>{activeStorePickedCount}</Text>
               <Text style={[styles.statusLabel, styles.statusLabelActive]}>items picked up</Text>
             </>
-          ) : shoppingMode && startCount > 0 ? (
+          ) : shoppingMode && activeStoreTotalCount > 0 ? (
             <>
               <Text style={[styles.statusKicker, styles.statusKickerActive]}>In progress</Text>
               <Text style={[styles.statusNumber, styles.statusNumberActive]}>
-                {grabbedCount}
-                <Text style={[styles.statusNumberDim]}> / {startCount}</Text>
+                {activeStorePickedCount}
+                <Text style={[styles.statusNumberDim]}> / {activeStoreTotalCount}</Text>
               </Text>
               <Text style={[styles.statusLabel, styles.statusLabelActive]}>items picked up</Text>
             </>
@@ -1283,7 +1431,7 @@ export default function GroceryScreen() {
           }
           subtitle={
             shoppingMode && startCount > 0
-              ? `You picked up all ${startCount} ${startCount === 1 ? 'item' : 'items'}. Tap Done when you're finished.`
+              ? `You picked up all ${activeStorePickedCount} ${activeStorePickedCount === 1 ? 'item' : 'items'} for this stop. Tap Done when you're finished here.`
               : selectedStoreChipId ?? activeStoreId
               ? 'No low items are assigned to this store. Tap All stores above to see the full list.'
               : shoppingMode
@@ -1537,6 +1685,57 @@ export default function GroceryScreen() {
       </Modal>
 
       <Modal
+        visible={nextTripSheet}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setNextTripSheet(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setNextTripSheet(false)}>
+          <View style={styles.sheetOverlay} />
+        </TouchableWithoutFeedback>
+        <View style={[styles.sheet, { backgroundColor: colors.surface }]}>
+          <View style={styles.sheetHandle} />
+          <Text style={[styles.sheetTitle, { color: colors.ink }]}>Where's your next stop?</Text>
+          <Text style={[styles.sheetSub, { color: colors.muted }]}>
+            Pick the next store. Once you get there, tap Start to resume this trip.
+          </Text>
+          <ScrollView
+            style={styles.nextChoiceScroll}
+            contentContainerStyle={styles.nextChoiceList}
+            showsVerticalScrollIndicator={false}
+          >
+            {remainingStoreSections.map((section) => {
+              const store = section.storeId ? stores.find((s) => s.id === section.storeId) : null;
+              if (!store) return null;
+              return (
+                <TouchableOpacity
+                  key={store.id}
+                  style={styles.nextChoiceRow}
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    void hapticSelection();
+                    setSelectedStoreChipId(store.id);
+                    setActiveStore(null);
+                    setNextTripSheet(false);
+                  }}
+                >
+                  <StoreLogo name={store.name} size={36} domain={store.brand_domain} logoUrl={store.logo_url} fallbackToAppIcon />
+                  <View style={styles.nextChoiceBody}>
+                    <Text style={styles.nextChoiceTitle} numberOfLines={1}>{store.name}</Text>
+                    <Text style={styles.nextChoiceSub}>{section.data.length} {section.data.length === 1 ? 'item' : 'items'} waiting</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+          <TouchableOpacity style={styles.sheetGhost} onPress={() => setNextTripSheet(false)} activeOpacity={0.7}>
+            <Text style={[styles.sheetGhostText, { color: colors.muted }]}>I'll choose from the list</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+
+      <Modal
         visible={!!tripSheet}
         transparent
         animationType="slide"
@@ -1581,10 +1780,41 @@ export default function GroceryScreen() {
             </Text>
           </View>
 
+          {tripSheet?.stores.length ? (
+            <View style={styles.tripStoreList}>
+              {tripSheet.stores.map((summary) => {
+                const store = stores.find((s) => s.id === summary.storeId);
+                return (
+                  <View key={summary.storeId} style={styles.tripStoreRow}>
+                    <StoreLogo
+                      name={summary.storeName}
+                      size={34}
+                      domain={store?.brand_domain}
+                      logoUrl={store?.logo_url}
+                      fallbackToAppIcon
+                    />
+                    <View style={styles.tripStoreBody}>
+                      <Text style={styles.tripStoreTitle} numberOfLines={1}>{summary.storeName}</Text>
+                      <Text style={styles.tripStoreSub}>
+                        {summary.itemCount} {summary.itemCount === 1 ? 'item' : 'items'} purchased
+                      </Text>
+                    </View>
+                    <View style={styles.tripStoreMeta}>
+                      <Text style={styles.tripStoreSpend}>${summary.spend.toFixed(2)}</Text>
+                      <Text style={[styles.tripStoreReceipt, !summary.receiptAdded && styles.tripStoreReceiptMissing]}>
+                        {summary.receiptAdded ? 'Receipt logged' : 'Receipt missing'}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          ) : null}
+
           <Text style={[styles.sheetHint, { color: colors.muted }]}>
             {tripSheet?.receiptCount
-              ? `${tripSheet.receiptCount} ${tripSheet.receiptCount === 1 ? 'receipt' : 'receipts'} logged this trip.`
-              : 'Add a receipt photo or log spending from each store.'}
+              ? `${tripSheet.receiptCount} ${tripSheet.receiptCount === 1 ? 'receipt' : 'receipts'} logged this trip. Add any missing receipts before closing the run.`
+              : 'No receipts logged yet. Add all receipts now or log them later.'}
           </Text>
 
           <TouchableOpacity
@@ -1594,7 +1824,7 @@ export default function GroceryScreen() {
           >
             <Ionicons name="receipt-outline" size={18} color={colors.onPrimary} />
             <Text style={[styles.sheetPrimaryText, { color: colors.onPrimary }]}>
-              {tripSheet?.receiptCount ? 'Add another receipt' : 'Add receipt'}
+              {tripSheet?.receiptCount ? 'Add missing receipts' : 'Add receipts'}
             </Text>
           </TouchableOpacity>
 
@@ -1645,8 +1875,16 @@ export default function GroceryScreen() {
             style={styles.sheetGhost}
             activeOpacity={0.7}
             onPress={() => {
+              const sheet = doneConfirmSheet;
               setDoneConfirmSheet(null);
               setPendingReceiptStoreId(null);
+              if (sheet) {
+                setSelectedStoreChipId(sheet.storeId);
+                router.push({
+                  pathname: '/(main)/pantry',
+                  params: { storeId: sheet.storeId, fromShopping: '1' },
+                });
+              }
             }}
           >
             <Text style={[styles.sheetGhostText, { color: colors.muted }]}>Keep shopping</Text>
@@ -1986,6 +2224,26 @@ function makeStyles(colors: AppColors) {
       paddingVertical: 7,
     },
     nextStopGhostText: { color: colors.muted, fontSize: 12, fontFamily: fonts.bodySemiBold },
+    nextChoiceScroll: {
+      maxHeight: 430,
+      marginTop: 6,
+      marginBottom: 8,
+    },
+    nextChoiceList: {
+      gap: 8,
+      paddingBottom: 4,
+    },
+    nextChoiceRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      borderRadius: radii.md,
+      backgroundColor: colors.faint,
+      padding: 10,
+    },
+    nextChoiceBody: { flex: 1, minWidth: 0 },
+    nextChoiceTitle: { fontSize: 15, color: colors.ink, fontFamily: fonts.bodySemiBold },
+    nextChoiceSub: { fontSize: 12, color: colors.muted, fontFamily: fonts.body, marginTop: 1 },
     chip: {
       borderRadius: 999,
       paddingHorizontal: 14,
@@ -2280,6 +2538,27 @@ function makeStyles(colors: AppColors) {
     spendDivider: { width: StyleSheet.hairlineWidth, marginVertical: 4 },
     spendLabel: { fontSize: 12, fontFamily: fonts.bodyMedium },
     spendValue: { fontSize: 26, fontFamily: fonts.mono, letterSpacing: 0 },
+    tripStoreList: {
+      width: '100%',
+      gap: 8,
+      marginTop: 4,
+      marginBottom: 8,
+    },
+    tripStoreRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      borderRadius: radii.md,
+      backgroundColor: colors.faint,
+      padding: 10,
+    },
+    tripStoreBody: { flex: 1, minWidth: 0 },
+    tripStoreTitle: { fontSize: 14, color: colors.ink, fontFamily: fonts.bodySemiBold },
+    tripStoreSub: { fontSize: 12, color: colors.muted, fontFamily: fonts.body, marginTop: 1 },
+    tripStoreMeta: { alignItems: 'flex-end', gap: 2 },
+    tripStoreSpend: { fontSize: 14, color: colors.primaryDeep, fontFamily: fonts.monoMedium },
+    tripStoreReceipt: { fontSize: 10, color: colors.success, fontFamily: fonts.bodySemiBold },
+    tripStoreReceiptMissing: { color: colors.warning },
     tripAnalyticsTab: {
       flexDirection: 'row',
       alignItems: 'center',

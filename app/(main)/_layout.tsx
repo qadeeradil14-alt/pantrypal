@@ -151,15 +151,21 @@ export default function MainLayout() {
         return;
       }
       try {
-        const stores = await fetchStores(householdId);
+        const [stores, items, shoppingEntries] = await Promise.all([
+          fetchStores(householdId),
+          fetchItems(householdId),
+          fetchActiveShoppingList(householdId),
+        ]);
         if (cancelled) return;
         setStores(stores);
+        setItems(items);
+        setShoppingEntries(shoppingEntries);
         await stopGeofencing();
         if (stores.some((s) => s.latitude != null && s.longitude != null)) {
           await startGeofencing(stores);
         }
       } catch {
-        // Keep UI usable even if stores bootstrap fails.
+        // Keep UI usable even if bootstrap fails — persisted state covers the gap.
       }
     }
 

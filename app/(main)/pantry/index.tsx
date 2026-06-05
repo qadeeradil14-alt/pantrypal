@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import {
   View, Text, SectionList, StyleSheet, ScrollView,
   ActivityIndicator, RefreshControl, TextInput, Alert,
@@ -12,7 +12,8 @@ import { useHouseholdStore } from '../../../store/household';
 import { useAuthStore } from '../../../store/auth';
 import { useItemsStore } from '../../../store/items';
 import { useStoresStore } from '../../../store/stores';
-import { addItemWithQueue, ensureDefaultItems, fetchItems, markItemOkWithQueue, updateItemDetailsWithQueue } from '../../../lib/items';
+import { useShoppingStore } from '../../../store/shopping';
+import { addItemWithQueue, ensureDefaultItems, fetchItems, markItemLowWithQueue, markItemOkWithQueue, updateItemDetailsWithQueue } from '../../../lib/items';
 import { setItemStoreWithQueue, normalizeStoreName, type Store } from '../../../lib/stores';
 import { recordLocalOverride } from '../../../lib/realtime';
 import { registerPushToken } from '../../../lib/notifications';
@@ -96,9 +97,11 @@ export default function PantryScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const params = useLocalSearchParams<{ storeId?: string; add?: string; fromShopping?: string }>();
   const { household, loaded: householdLoaded } = useHouseholdStore();
   const { session } = useAuthStore();
   const { items, setItems, updateItem, upsertItem } = useItemsStore();
+  const shoppingEntries = useShoppingStore((state) => state.entries);
   const stores = useStoresStore((state) => state.stores);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -116,8 +119,14 @@ export default function PantryScreen() {
   const [notifPromptState, setNotifPromptState] = useState<'unknown' | 'enabled' | 'declined' | 'loading'>('loading');
   const householdId = household?.id ?? null;
   const canAdd = !!householdId;
+  const addingToShoppingTrip = params.fromShopping === '1';
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const shoppingCartItemIds = useMemo(() => new Set(
+    shoppingEntries
+      .filter((entry) => entry.status === 'active' && entry.source_item_id)
+      .map((entry) => entry.source_item_id!),
+  ), [shoppingEntries]);
 
   const listRef = useRef<SectionList<Item>>(null);
   const storeTargetRefs = useRef<Record<string, any>>({});
@@ -154,6 +163,14 @@ export default function PantryScreen() {
       });
     return () => { active = false; };
   }, [householdId, householdLoaded, load]);
+
+  // Re-fetch items every time the Pantry tab is focused so store assignments and
+  // low-stock status are always current — even after returning from Shopping or
+  // after another household member made changes via realtime.
+  useFocusEffect(useCallback(() => {
+    if (!householdLoaded || !householdId) return;
+    void load().catch(() => {});
+  }, [householdLoaded, householdId, load]));
 
 
   // Check AsyncStorage to see if we've already asked about notifications.
@@ -198,6 +215,15 @@ export default function PantryScreen() {
     }
     setShowAdd(true);
   }, [canAdd]);
+
+  useEffect(() => {
+    if (params.fromShopping !== '1') return;
+    const storeId = typeof params.storeId === 'string' ? params.storeId : null;
+    if (storeId && stores.some((store) => store.id === storeId)) {
+      setSelectedStoreId(storeId);
+    }
+    if (params.add === '1') setShowAdd(true);
+  }, [params.add, params.fromShopping, params.storeId, stores]);
 
   const handleAddScannedProduct = useCallback(async (product: BarcodeProduct, expiresAt: string | null): Promise<'added' | 'updated'> => {
     if (!householdId) throw new Error('Household not ready.');
@@ -410,7 +436,24 @@ export default function PantryScreen() {
     if (selectedStoreId && item.preferred_store_id !== selectedStoreId) {
       setSelectedStoreId(item.preferred_store_id ?? null);
     }
-  }, [selectedStoreId]);
+    if (addingToShoppingTrip && item.preferred_store_id && session?.user.id) {
+      updateItem(item.id, {
+        is_low: true,
+        marked_low_by: session.user.id,
+        got_it_by: null,
+        macro_status: 'running_low',
+      });
+      void markItemLowWithQueue(item.id, session.user.id).catch(() => {
+        updateItem(item.id, {
+          is_low: item.is_low,
+          marked_low_by: item.marked_low_by,
+          got_it_by: item.got_it_by,
+          macro_status: item.macro_status,
+        });
+        void hapticError();
+      });
+    }
+  }, [addingToShoppingTrip, selectedStoreId, session?.user.id, updateItem]);
 
   // Stable component fn — created once, never changes reference.
   // VirtualizedList sees the same component type on every render,
@@ -635,10 +678,11 @@ export default function PantryScreen() {
     <SwipeableItemRow
       item={item}
       userId={session?.user.id ?? ''}
+      inShoppingCart={shoppingCartItemIds.has(item.id) || item.is_low}
       onEditPress={setEditingItem}
       onLiftPress={setLiftedItem}
     />
-  ), [session?.user.id]);
+  ), [session?.user.id, shoppingCartItemIds]);
 
   const renderPantrySectionHeader = useCallback(({ section }: { section: unknown }) => {
     const pantrySection = section as PantrySection;
@@ -749,6 +793,7 @@ export default function PantryScreen() {
           householdId={household.id}
           userId={session?.user.id ?? ''}
           initialStoreId={selectedStoreId ?? undefined}
+          addToShopping={addingToShoppingTrip}
           onAdded={handleItemAdded}
           onClose={() => setShowAdd(false)}
         />
