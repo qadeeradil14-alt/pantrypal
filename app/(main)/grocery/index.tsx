@@ -524,14 +524,18 @@ export default function GroceryScreen() {
   }), [allActiveItems, sourceItemMap]);
 
   const activeStorePickedCount = activeStoreId ? storeGrabbedCount.get(activeStoreId) ?? 0 : grabbedCount;
-  // When actively shopping a store: show per-store progress (grabbed + remaining at that store).
-  // When route-paused (between stops, activeStoreId = null): show trip progress using
-  // grabbed + currently-remaining so the denominator matches the "All stores (N)" chip.
-  // Previously used startCount here, which is a historical high-water mark and diverges
-  // from reality when items are removed mid-session (deleted, marked OK, etc.).
+  // Exclude items currently in purchasedIds from the denominator.
+  // When an item is grabbed, storeGrabbedCount increments immediately but removeEntry()
+  // fires after 520ms (grab animation). Without this filter, the grabbed item is counted
+  // in BOTH the numerator (storeGrabbedCount) AND the denominator (lowItems.length)
+  // during those 520ms — making 3 items appear as 4, etc.
+  // lowItems itself is intentionally left unchanged: it still renders the grabbed item
+  // with its purchased visual during the animation window.
+  const unpurchasedLowCount = lowItems.filter((e) => !purchasedIds.has(e.id)).length;
+  const unpurchasedAllCount = allActiveItems.filter((e) => !purchasedIds.has(e.id)).length;
   const activeStoreTotalCount = activeStoreId
-    ? activeStorePickedCount + lowItems.length
-    : grabbedCount + allActiveItems.length;
+    ? activeStorePickedCount + unpurchasedLowCount
+    : grabbedCount + unpurchasedAllCount;
 
   const activeStoreComplete = !viewingEmptyStoreChip && shoppingMode && (
     (!!activeStoreId && lowItems.length === 0 && (startCount > 0 || grabbedCount > 0))
