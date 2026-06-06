@@ -47,6 +47,10 @@ function itemNeedsShopping(item: Item): boolean {
   return item.is_low || item.macro_status === 'running_low' || item.macro_status === 'out_of_stock';
 }
 
+function normalizeShoppingName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
 function makeDerivedShoppingEntry(item: Item): ShoppingEntry {
   return {
     id: `derived:${item.id}`,
@@ -61,6 +65,24 @@ function makeDerivedShoppingEntry(item: Item): ShoppingEntry {
     created_at: item.created_at,
     updated_at: item.updated_at,
   };
+}
+
+function preferShoppingRenderEntry(current: ShoppingEntry, next: ShoppingEntry): ShoppingEntry {
+  if (next.source_item_id && !current.source_item_id) return next;
+  if (!next.id.startsWith('derived:') && current.id.startsWith('derived:')) return next;
+  return current;
+}
+
+function dedupeShoppingRenderEntries(entries: ShoppingEntry[]): ShoppingEntry[] {
+  const byName = new Map<string, ShoppingEntry>();
+
+  for (const entry of entries) {
+    const key = normalizeShoppingName(entry.name);
+    const current = byName.get(key);
+    byName.set(key, current ? preferShoppingRenderEntry(current, entry) : entry);
+  }
+
+  return Array.from(byName.values());
 }
 
 function ordinalStop(n: number): string {
@@ -215,10 +237,20 @@ export default function GroceryScreen() {
     const activeEntries = entries.filter((e) => e.status === 'active');
     const activeSourceItemIds = new Set(activeEntries.map((entry) => entry.source_item_id).filter(Boolean));
     const derivedEntries = items
-      .filter((item) => item.preferred_store_id && itemNeedsShopping(item) && !activeSourceItemIds.has(item.id))
+      .filter((item) =>
+        item.preferred_store_id
+        && itemNeedsShopping(item)
+        && !activeSourceItemIds.has(item.id))
       .map(makeDerivedShoppingEntry);
 
-    return [...activeEntries, ...derivedEntries]
+    const completedStoreIdsThisSession = new Set([...completedStoreIds, ...receiptCompletedStoreIds]);
+
+    return dedupeShoppingRenderEntries([...activeEntries, ...derivedEntries])
+      .filter((entry) => {
+        const linked = entry.source_item_id ? sourceItemMap.get(entry.source_item_id) : null;
+        const storeId = linked?.preferred_store_id;
+        return !storeId || !completedStoreIdsThisSession.has(storeId);
+      })
       .sort((a, b) => {
         const linkedA = a.source_item_id ? sourceItemMap.get(a.source_item_id) : null;
         const linkedB = b.source_item_id ? sourceItemMap.get(b.source_item_id) : null;
@@ -228,7 +260,7 @@ export default function GroceryScreen() {
         const sectionB = resolveStoreSection(b.name, normalizeShoppingCategory(b.category), b.aisle);
         return storeA.localeCompare(storeB) || sectionA.order - sectionB.order || sectionA.label.localeCompare(sectionB.label) || a.name.localeCompare(b.name);
       });
-  }, [entries, items, sourceItemMap, stores]);
+  }, [completedStoreIds, entries, items, receiptCompletedStoreIds, sourceItemMap, stores]);
 
   const activeShoppingCounts = useMemo(
     () => countActiveShoppingByStore(allActiveItems, sourceItemMap),
@@ -468,10 +500,18 @@ export default function GroceryScreen() {
     [activeShoppingCounts.byStoreId, assignedRouteSections],
   );
 
+  const firstRemainingStoreId = remainingStoreSections[0]?.storeId ?? null;
+
   const selectedPausedStore = useMemo(
     () => selectedStoreChipId ? stores.find((store) => store.id === selectedStoreChipId) ?? null : null,
     [selectedStoreChipId, stores],
   );
+
+  useEffect(() => {
+    if (!shoppingMode || activeStoreId || !selectedStoreChipId) return;
+    if (activeCountForStore(activeShoppingCounts, selectedStoreChipId) > 0) return;
+    setSelectedStoreChipId(firstRemainingStoreId);
+  }, [activeShoppingCounts, activeStoreId, firstRemainingStoreId, selectedStoreChipId, shoppingMode]);
 
   const hasUnassignedItems = allActiveItems.some((entry) => {
     const linked = entry.source_item_id ? sourceItemMap.get(entry.source_item_id) : null;
@@ -484,7 +524,14 @@ export default function GroceryScreen() {
   }), [allActiveItems, sourceItemMap]);
 
   const activeStorePickedCount = activeStoreId ? storeGrabbedCount.get(activeStoreId) ?? 0 : grabbedCount;
-  const activeStoreTotalCount = activeStoreId ? activeStorePickedCount + lowItems.length : startCount;
+  // When actively shopping a store: show per-store progress (grabbed + remaining at that store).
+  // When route-paused (between stops, activeStoreId = null): show trip progress using
+  // grabbed + currently-remaining so the denominator matches the "All stores (N)" chip.
+  // Previously used startCount here, which is a historical high-water mark and diverges
+  // from reality when items are removed mid-session (deleted, marked OK, etc.).
+  const activeStoreTotalCount = activeStoreId
+    ? activeStorePickedCount + lowItems.length
+    : grabbedCount + allActiveItems.length;
 
   const activeStoreComplete = !viewingEmptyStoreChip && shoppingMode && (
     (!!activeStoreId && lowItems.length === 0 && (startCount > 0 || grabbedCount > 0))
@@ -1049,7 +1096,7 @@ export default function GroceryScreen() {
       markReceiptCompleted(finishedStoreId);
       setCompletedStoreIds((prev) => new Set(prev).add(finishedStoreId));
     }
-    const nextStoreId = finishedStoreId ? nextActiveStoreIdAfter(finishedStoreId) : null;
+    const nextStoreId = finishedStoreId ? nextActiveStoreIdAfter(finishedStoreId) : firstRemainingStoreId;
     if (nextStoreId) {
       setSelectedStoreChipId(nextStoreId);
       setActiveStore(null);
@@ -1058,7 +1105,7 @@ export default function GroceryScreen() {
       return;
     }
     if (allActiveItems.length > 0) {
-      setSelectedStoreChipId(null);
+      setSelectedStoreChipId(firstRemainingStoreId);
       setActiveStore(null);
       setShoppingMode(true);
       setNextTripSheet(true);
@@ -1077,6 +1124,7 @@ export default function GroceryScreen() {
   }, [
     allActiveItems.length,
     clearReceiptTrip,
+    firstRemainingStoreId,
     makeTripSheet,
     markReceiptCompleted,
     nextActiveStoreIdAfter,
@@ -1951,45 +1999,47 @@ export default function GroceryScreen() {
               ? "Pick the store you're at — your trip will lock to it."
               : 'Start a shopping trip across all your items.'}
           </Text>
-          {startSheetStores.map(({ store: s, count }) => (
-            <TouchableOpacity
-              key={s.id}
-              style={[styles.disambigOption, { backgroundColor: colors.faint }]}
-              activeOpacity={0.8}
-              onPress={() => beginShopping(s.id)}
-            >
-              <StoreLogo name={s.name} size={32} domain={s.brand_domain} logoUrl={s.logo_url} fallbackToAppIcon />
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.disambigOptionText, { color: colors.ink }]}>{normalizeStoreName(s.name)}</Text>
-                <Text style={[styles.disambigSubtitle, { color: colors.muted, marginBottom: 0 }]}>
-                  {count} {count === 1 ? 'item' : 'items'}
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color={colors.muted} />
-            </TouchableOpacity>
-          ))}
-          {startSheetStores.length > 0 && (
-            <TouchableOpacity
-              style={[styles.disambigOption, { backgroundColor: colors.faint }]}
-              activeOpacity={0.8}
-              onPress={() => beginShopping(null)}
-            >
-              <Ionicons name="cart-outline" size={26} color={colors.primary} />
-              <Text style={[styles.disambigOptionText, { color: colors.ink, flex: 1 }]}>Shop all items</Text>
-              <Ionicons name="chevron-forward" size={16} color={colors.muted} />
-            </TouchableOpacity>
-          )}
-          {startSheetStores.length === 0 && (
-            <TouchableOpacity
-              style={[styles.disambigOption, { backgroundColor: colors.faint }]}
-              activeOpacity={0.8}
-              onPress={() => beginShopping(null)}
-            >
-              <Ionicons name="cart-outline" size={26} color={colors.primary} />
-              <Text style={[styles.disambigOptionText, { color: colors.ink, flex: 1 }]}>Start shopping</Text>
-              <Ionicons name="chevron-forward" size={16} color={colors.muted} />
-            </TouchableOpacity>
-          )}
+          <ScrollView style={styles.disambigScroll} contentContainerStyle={styles.disambigScrollContent} showsVerticalScrollIndicator={false}>
+            {startSheetStores.map(({ store: s, count }) => (
+              <TouchableOpacity
+                key={s.id}
+                style={[styles.disambigOption, { backgroundColor: colors.faint }]}
+                activeOpacity={0.8}
+                onPress={() => beginShopping(s.id)}
+              >
+                <StoreLogo name={s.name} size={32} domain={s.brand_domain} logoUrl={s.logo_url} fallbackToAppIcon />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.disambigOptionText, { color: colors.ink }]}>{normalizeStoreName(s.name)}</Text>
+                  <Text style={[styles.disambigSubtitle, { color: colors.muted, marginBottom: 0 }]}>
+                    {count} {count === 1 ? 'item' : 'items'}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.muted} />
+              </TouchableOpacity>
+            ))}
+            {startSheetStores.length > 0 && (
+              <TouchableOpacity
+                style={[styles.disambigOption, { backgroundColor: colors.faint }]}
+                activeOpacity={0.8}
+                onPress={() => beginShopping(null)}
+              >
+                <Ionicons name="cart-outline" size={26} color={colors.primary} />
+                <Text style={[styles.disambigOptionText, { color: colors.ink, flex: 1 }]}>Shop all items</Text>
+                <Ionicons name="chevron-forward" size={16} color={colors.muted} />
+              </TouchableOpacity>
+            )}
+            {startSheetStores.length === 0 && (
+              <TouchableOpacity
+                style={[styles.disambigOption, { backgroundColor: colors.faint }]}
+                activeOpacity={0.8}
+                onPress={() => beginShopping(null)}
+              >
+                <Ionicons name="cart-outline" size={26} color={colors.primary} />
+                <Text style={[styles.disambigOptionText, { color: colors.ink, flex: 1 }]}>Start shopping</Text>
+                <Ionicons name="chevron-forward" size={16} color={colors.muted} />
+              </TouchableOpacity>
+            )}
+          </ScrollView>
           <TouchableOpacity
             style={styles.sheetGhost}
             activeOpacity={0.7}
@@ -2644,6 +2694,7 @@ function makeStyles(colors: AppColors) {
       paddingTop: 14,
       gap: 10,
       alignItems: 'center',
+      maxHeight: '86%',
     },
     disambigTitle: {
       fontSize: 22,
@@ -2672,6 +2723,14 @@ function makeStyles(colors: AppColors) {
       flex: 1,
       fontSize: 16,
       fontFamily: fonts.bodySemiBold,
+    },
+    disambigScroll: {
+      alignSelf: 'stretch',
+      width: '100%',
+    },
+    disambigScrollContent: {
+      gap: 10,
+      paddingBottom: 2,
     },
   });
 }
