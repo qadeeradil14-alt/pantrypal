@@ -151,6 +151,12 @@ export default function MainLayout() {
         return;
       }
       try {
+        // Flush queued mutations first so Supabase reflects the latest state
+        // before we fetch. Without this, mark_got_it mutations queued during a
+        // previous session (e.g. due to network failure) stay pending across
+        // app restarts, causing grabbed items to show "In cart" again after reboot.
+        await flushMutationQueue();
+        if (cancelled) return;
         const [stores, items, shoppingEntries] = await Promise.all([
           fetchStores(householdId),
           fetchItems(householdId),

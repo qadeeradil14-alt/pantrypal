@@ -678,7 +678,7 @@ export default function PantryScreen() {
     <SwipeableItemRow
       item={item}
       userId={session?.user.id ?? ''}
-      inShoppingCart={shoppingCartItemIds.has(item.id) || item.is_low}
+      inShoppingCart={shoppingCartItemIds.has(item.id)}
       onEditPress={setEditingItem}
       onLiftPress={setLiftedItem}
     />
