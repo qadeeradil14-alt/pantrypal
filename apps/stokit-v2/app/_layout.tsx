@@ -1,0 +1,123 @@
+import React, { useEffect } from 'react';
+import { ActivityIndicator, View } from 'react-native';
+import * as Linking from 'expo-linking';
+import { Stack, usePathname, useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import {
+  useFonts,
+  PlayfairDisplay_400Regular,
+  PlayfairDisplay_700Bold,
+  PlayfairDisplay_700Bold_Italic,
+} from '@expo-google-fonts/playfair-display';
+import {
+  DMSans_400Regular,
+  DMSans_500Medium,
+  DMSans_600SemiBold,
+} from '@expo-google-fonts/dm-sans';
+import {
+  DMMono_400Regular,
+  DMMono_500Medium,
+} from '@expo-google-fonts/dm-mono';
+import { useTheme } from '../hooks/useTheme';
+import { useDurableStore } from '../store/durable-store';
+import { useHouseholdStore } from '../store/household-store';
+import { useSessionStore } from '../store/session-store';
+import { setupNotifications } from '../core/services/notifications';
+import { handleAuthLink } from '../lib/auth-links';
+import { isEmailVerified, useAuthStore } from '../store/auth-store';
+// Geofence background task must be defined at module load time (before any render).
+import { defineGeofenceTask } from '../core/services/geofencing';
+
+defineGeofenceTask(
+  () => useDurableStore.getState().items,
+  () => useDurableStore.getState().stores,
+);
+
+export default function RootLayout() {
+  const [fontsLoaded] = useFonts({
+    PlayfairDisplay_400Regular,
+    PlayfairDisplay_700Bold,
+    PlayfairDisplay_700Bold_Italic,
+    DMSans_400Regular,
+    DMSans_500Medium,
+    DMSans_600SemiBold,
+    DMMono_400Regular,
+    DMMono_500Medium,
+  });
+
+  const hydrateDurable = useDurableStore((s) => s.hydrate);
+  const hydratedDurable = useDurableStore((s) => s.hydrated);
+  const hydrateHousehold = useHouseholdStore((s) => s.hydrate);
+  const hydratedHousehold = useHouseholdStore((s) => s.hydrated);
+  const hydrateSession = useSessionStore((s) => s.hydrateSession);
+  const initializeAuth = useAuthStore((s) => s.initializeAuth);
+  const authLoading = useAuthStore((s) => s.loading);
+  const user = useAuthStore((s) => s.user);
+  const router = useRouter();
+  const pathname = usePathname();
+  const { colors, isDark } = useTheme();
+
+  useEffect(() => {
+    void hydrateDurable();
+    void hydrateHousehold();
+    void hydrateSession();
+    void initializeAuth();
+    void setupNotifications();
+    void Linking.getInitialURL().then(async (url) => {
+      if (url) await handleAuthLink(url);
+    });
+    const linkSubscription = Linking.addEventListener('url', ({ url }) => {
+      void handleAuthLink(url);
+    });
+    return () => linkSubscription.remove();
+  }, [hydrateDurable, hydrateHousehold, hydrateSession, initializeAuth]);
+
+  const verified = isEmailVerified(user);
+  const ready = fontsLoaded && hydratedDurable && hydratedHousehold && !authLoading;
+
+  useEffect(() => {
+    if (!ready) return;
+    if (user && !verified && pathname !== '/verify-email') {
+      router.replace('/(auth)/verify-email');
+    }
+  }, [pathname, ready, router, user, verified]);
+
+  if (!ready) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: colors.background,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <ActivityIndicator color={colors.primary} />
+      </View>
+    );
+  }
+
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <StatusBar style={isDark ? 'light' : 'dark'} />
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: colors.background },
+            animation: 'fade',
+          }}
+        >
+          <Stack.Protected guard={!verified}>
+            <Stack.Screen name="(auth)" />
+          </Stack.Protected>
+          <Stack.Protected guard={verified}>
+            <Stack.Screen name="(tabs)" />
+          </Stack.Protected>
+        </Stack>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
+  );
+}

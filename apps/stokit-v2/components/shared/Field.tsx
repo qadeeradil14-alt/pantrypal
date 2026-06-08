@@ -1,0 +1,183 @@
+import React, { useMemo } from 'react';
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  type KeyboardTypeOptions,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { fonts, radii, spacing, type AppColors } from '../../theme';
+import { useTheme } from '../../hooks/useTheme';
+
+export function FieldLabel({ children }: { children: string }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+  return <Text style={styles.label}>{children}</Text>;
+}
+
+export function TextField({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  keyboardType,
+  autoFocus,
+  autoCapitalize,
+  autoCorrect,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (v: string) => void;
+  placeholder?: string;
+  keyboardType?: KeyboardTypeOptions;
+  autoFocus?: boolean;
+  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+  autoCorrect?: boolean;
+}) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+  return (
+    <View style={styles.field}>
+      <FieldLabel>{label}</FieldLabel>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={colors.faintText}
+        keyboardType={keyboardType}
+        autoFocus={autoFocus}
+        autoCapitalize={autoCapitalize}
+        autoCorrect={autoCorrect}
+        style={styles.input}
+      />
+    </View>
+  );
+}
+
+export function ChipSelect<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: { value: T; label: string }[];
+  value: T | null;
+  onChange: (v: T) => void;
+}) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+  return (
+    <View style={styles.field}>
+      <FieldLabel>{label}</FieldLabel>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        <View style={styles.chipRow}>
+          {options.map((opt) => {
+            const active = opt.value === value;
+            return (
+              <Pressable
+                key={opt.value}
+                onPress={() => onChange(opt.value)}
+                style={[styles.chip, active && styles.chipActive]}
+              >
+                <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                  {opt.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+export function Stepper({
+  label,
+  value,
+  onChange,
+  min = 0,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  min?: number;
+}) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+  return (
+    <View style={styles.field}>
+      <FieldLabel>{label}</FieldLabel>
+      <View style={styles.stepper}>
+        <Pressable
+          style={styles.stepBtn}
+          onPress={() => onChange(Math.max(min, value - 1))}
+        >
+          <Ionicons name="remove" size={20} color={colors.ink} />
+        </Pressable>
+        <Text style={styles.stepValue}>{value}</Text>
+        <Pressable style={styles.stepBtn} onPress={() => onChange(value + 1)}>
+          <Ionicons name="add" size={20} color={colors.ink} />
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function makeStyles(colors: AppColors) {
+  return StyleSheet.create({
+    field: { marginBottom: spacing.lg },
+    label: {
+      fontFamily: fonts.sansSemibold,
+      fontSize: 13,
+      color: colors.muted,
+      marginBottom: spacing.sm,
+      letterSpacing: 0.3,
+    },
+    input: {
+      backgroundColor: colors.surface,
+      borderRadius: radii.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: spacing.lg,
+      height: 50,
+      fontFamily: fonts.sans,
+      fontSize: 16,
+      color: colors.ink,
+    },
+    chipRow: { flexDirection: 'row', gap: spacing.sm, paddingVertical: 2 },
+    chip: {
+      paddingHorizontal: spacing.lg,
+      height: 40,
+      borderRadius: radii.sm,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+    chipText: { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.inkSoft },
+    chipTextActive: { color: colors.onPrimary },
+    stepper: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      backgroundColor: colors.surface,
+      borderRadius: radii.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    stepBtn: { width: 50, height: 50, alignItems: 'center', justifyContent: 'center' },
+    stepValue: {
+      fontFamily: fonts.monoMedium,
+      fontSize: 18,
+      color: colors.ink,
+      minWidth: 40,
+      textAlign: 'center',
+    },
+  });
+}

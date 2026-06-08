@@ -1,0 +1,58 @@
+{
+  "name": "stokit-v2",
+  "version": "0.1.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "ios": "env LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 COPYFILE_DISABLE=1 expo run:ios",
+    "android": "expo run:android",
+    "web": "expo start --web",
+    "test:unit": "tsx --test tests/*.test.ts",
+    "tsc": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@expo-google-fonts/dm-mono": "^0.4.2",
+    "@expo-google-fonts/dm-sans": "^0.4.2",
+    "@expo-google-fonts/playfair-display": "^0.4.2",
+    "@expo/vector-icons": "^15.1.1",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@supabase/supabase-js": "^2.107.0",
+    "expo": "~56.0.8",
+    "expo-camera": "~56.0.7",
+    "expo-constants": "~56.0.15",
+    "expo-file-system": "~56.0.7",
+    "expo-font": "~56.0.5",
+    "expo-haptics": "~56.0.3",
+    "expo-image-picker": "~56.0.15",
+    "expo-linking": "~56.0.13",
+    "expo-location": "~56.0.15",
+    "expo-notifications": "~56.0.15",
+    "expo-router": "~56.2.8",
+    "expo-secure-store": "~56.0.4",
+    "expo-status-bar": "~56.0.4",
+    "expo-system-ui": "~56.0.5",
+    "expo-task-manager": "~56.0.16",
+    "expo-updates": "~56.0.18",
+    "react": "19.2.3",
+    "react-native": "0.85.3",
+    "react-native-gesture-handler": "^2.31.2",
+    "react-native-reanimated": "4.3.1",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "^4.25.2",
+    "react-native-svg": "15.15.4",
+    "react-native-worklets": "0.8.3",
+    "zustand": "^5.0.13"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.20",
+    "@types/react": "~19.2.2",
+    "babel-preset-expo": "~56.0.14",
+    "tsx": "^4.22.4",
+    "typescript": "~6.0.3"
+  },
+  "overrides": {
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  }
+}

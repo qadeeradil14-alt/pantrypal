@@ -1,0 +1,76 @@
+{
+  "expo": {
+    "name": "Stokit",
+    "slug": "PantryPal",
+    "version": "1.0.0",
+    "owner": "qadeeradil14-alt",
+    "orientation": "portrait",
+    "scheme": "pantrypal",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "icon": "./assets/icon.png",
+    "backgroundColor": "#15110C",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.hewadadil.pantrypal",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Stokit uses your location to remind you when you arrive at a store where you have items.",
+        "NSLocationWhenInUseUsageDescription": "Stokit uses your location to find nearby grocery stores.",
+        "NSLocationAlwaysUsageDescription": "Stokit uses background location to remind you when you arrive at a store."
+      }
+    },
+    "android": {
+      "package": "com.hewadadil.pantrypal",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6D6C0",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Stokit needs your location to find grocery stores near you.",
+          "locationAlwaysAndWhenInUsePermission": "Stokit uses background location to remind you when you arrive at a store where you have items.",
+          "isIosBackgroundLocationEnabled": true
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Stokit needs photo access to attach receipt images.",
+          "cameraPermission": "Stokit needs camera access to scan receipts."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#D4874E",
+          "sounds": []
+        }
+      ],
+      "expo-secure-store"
+    ],
+    "splash": {
+      "backgroundColor": "#15110C",
+      "resizeMode": "contain"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "3d19b1e1-1003-4e33-8929-2d27e7fd7f3c"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/3d19b1e1-1003-4e33-8929-2d27e7fd7f3c"
+    }
+  }
+}

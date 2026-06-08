@@ -1,0 +1,110 @@
+import type { Unit } from '../types';
+
+export const PANTRY_CATEGORIES = [
+  'All', 'Produce', 'Dairy', 'Meat', 'Seafood', 'Bakery', 'Frozen',
+  'Dry Goods', 'Canned', 'Spices', 'Drinks', 'Snacks', 'Kitchen',
+  'Cleaning', 'Paper Goods', 'Personal Care', 'Baby', 'Pet', 'Other',
+] as const;
+
+export type PantryCatalogCategory = Exclude<typeof PANTRY_CATEGORIES[number], 'All'>;
+
+export interface PantryCatalogItem {
+  id: string;
+  name: string;
+  category: PantryCatalogCategory;
+  icon: string;
+  defaultUnit: Unit;
+  keywords?: string[];
+}
+
+const item = (
+  category: PantryCatalogCategory,
+  name: string,
+  icon: string,
+  defaultUnit: Unit = 'unit',
+  keywords?: string[],
+): PantryCatalogItem => ({
+  id: `${category}-${name}`.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+  name,
+  category,
+  icon,
+  defaultUnit,
+  keywords,
+});
+
+export const PANTRY_CATALOG: PantryCatalogItem[] = [
+  item('Produce', 'Apple', '🍎'), item('Produce', 'Banana', '🍌'), item('Produce', 'Orange', '🍊'),
+  item('Produce', 'Lemon', '🍋'), item('Produce', 'Lime', '🟢'), item('Produce', 'Grapes', '🍇', 'lb'),
+  item('Produce', 'Strawberry', '🍓', 'pack'), item('Produce', 'Blueberry', '🫐', 'pack'), item('Produce', 'Watermelon', '🍉'),
+  item('Produce', 'Tomato', '🍅'), item('Produce', 'Onion', '🧅'), item('Produce', 'Garlic', '🧄'),
+  item('Produce', 'Potato', '🥔', 'lb'), item('Produce', 'Carrot', '🥕', 'lb'), item('Produce', 'Broccoli', '🥦'),
+  item('Produce', 'Lettuce', '🥬'), item('Produce', 'Spinach', '🥬', 'pack'), item('Produce', 'Cucumber', '🥒'),
+  item('Produce', 'Bell pepper', '🫑'), item('Produce', 'Avocado', '🥑'),
+
+  item('Dairy', 'Milk', '🥛', 'gal'), item('Dairy', 'Eggs', '🥚', 'dozen'), item('Dairy', 'Cheese', '🧀', 'pack'),
+  item('Dairy', 'Yogurt', '🥣'), item('Dairy', 'Butter', '🧈', 'pack'), item('Dairy', 'Cream cheese', '🧀', 'pack'),
+  item('Dairy', 'Sour cream', '🥣'), item('Dairy', 'Heavy cream', '🥛'), item('Dairy', 'Goat cheese', '🧀', 'pack'),
+
+  item('Meat', 'Chicken', '🍗', 'lb'), item('Meat', 'Ground beef', '🥩', 'lb'), item('Meat', 'Steak', '🥩', 'lb'),
+  item('Meat', 'Lamb', '🥩', 'lb'), item('Meat', 'Turkey', '🦃', 'lb'), item('Meat', 'Sausage', '🌭', 'pack'),
+  item('Meat', 'Bacon', '🥓', 'pack'),
+
+  item('Seafood', 'Salmon', '🐟', 'lb'), item('Seafood', 'Shrimp', '🦐', 'lb'),
+  item('Seafood', 'Tuna', '🐟', 'lb'), item('Seafood', 'Cod', '🐟', 'lb'),
+
+  item('Bakery', 'Bread', '🍞'), item('Bakery', 'Bagels', '🥯', 'pack'), item('Bakery', 'Tortillas', '🫓', 'pack'),
+  item('Bakery', 'Pita bread', '🫓', 'pack'), item('Bakery', 'Croissants', '🥐', 'pack'), item('Bakery', 'Buns', '🍔', 'pack'),
+
+  item('Frozen', 'Frozen vegetables', '🥦', 'pack'), item('Frozen', 'Frozen fruit', '🍓', 'pack'),
+  item('Frozen', 'Ice cream', '🍨'), item('Frozen', 'Frozen pizza', '🍕'), item('Frozen', 'Frozen chicken', '🍗', 'pack'),
+
+  item('Dry Goods', 'Rice', '🍚', 'lb'), item('Dry Goods', 'Pasta', '🍝', 'box'), item('Dry Goods', 'Flour', '🌾', 'lb'),
+  item('Dry Goods', 'Sugar', '🧂', 'lb'), item('Dry Goods', 'Oats', '🥣', 'box'), item('Dry Goods', 'Cereal', '🥣', 'box'),
+  item('Dry Goods', 'Lentils', '🫘', 'lb'), item('Dry Goods', 'Beans', '🫘', 'lb'), item('Dry Goods', 'Chickpeas', '🫘', 'lb'),
+  item('Dry Goods', 'Quinoa', '🌾', 'lb'),
+
+  item('Canned', 'Canned tomatoes', '🥫', 'can'), item('Canned', 'Tomato sauce', '🥫', 'can'),
+  item('Canned', 'Canned beans', '🥫', 'can'), item('Canned', 'Tuna can', '🥫', 'can'),
+  item('Canned', 'Soup', '🥫', 'can'), item('Canned', 'Pickles', '🫙'), item('Canned', 'Jam', '🫙'),
+  item('Canned', 'Peanut butter', '🥜'),
+
+  item('Spices', 'Salt', '🧂'), item('Spices', 'Black pepper', '🌶️'), item('Spices', 'Olive oil', '🫒'),
+  item('Spices', 'Vinegar', '🍶'), item('Spices', 'Ketchup', '🍅'), item('Spices', 'Mustard', '🌭'),
+  item('Spices', 'Mayonnaise', '🥪'), item('Spices', 'Hot sauce', '🌶️'), item('Spices', 'Honey', '🍯'),
+  item('Spices', 'Cinnamon', '🌰'), item('Spices', 'Cumin', '🧂'), item('Spices', 'Paprika', '🌶️'),
+  item('Spices', 'Turmeric', '🟡'),
+
+  item('Drinks', 'Water', '💧', 'pack'), item('Drinks', 'Juice', '🧃'), item('Drinks', 'Soda', '🥤', 'pack'),
+  item('Drinks', 'Coffee', '☕', 'pack'), item('Drinks', 'Tea', '🍵', 'box'), item('Drinks', 'Sparkling water', '🫧', 'pack'),
+
+  item('Snacks', 'Chips', '🍟', 'pack'), item('Snacks', 'Crackers', '🧂', 'box'), item('Snacks', 'Cookies', '🍪', 'pack'),
+  item('Snacks', 'Chocolate', '🍫'), item('Snacks', 'Nuts', '🥜', 'pack'), item('Snacks', 'Popcorn', '🍿', 'box'),
+  item('Snacks', 'Dates', '🌴', 'pack'), item('Snacks', 'Granola bars', '🍫', 'box'),
+
+  item('Kitchen', 'Plates', '🍽️', 'pack'), item('Kitchen', 'Bowls', '🥣', 'pack'), item('Kitchen', 'Cups', '🥤', 'pack'),
+  item('Kitchen', 'Mugs', '☕'), item('Kitchen', 'Forks', '🍴', 'pack'), item('Kitchen', 'Spoons', '🥄', 'pack'),
+  item('Kitchen', 'Knives', '🔪', 'pack'), item('Kitchen', 'Napkins', '🧻', 'pack'), item('Kitchen', 'Food containers', '📦', 'pack'),
+  item('Kitchen', 'Aluminum foil', '🧻', 'box'), item('Kitchen', 'Plastic wrap', '🧻', 'box'),
+  item('Kitchen', 'Zip bags', '🛍️', 'box'), item('Kitchen', 'Cutting board', '🔪'), item('Kitchen', 'Sponges', '🧽', 'pack'),
+
+  item('Cleaning', 'Dish soap', '🧼'), item('Cleaning', 'Hand soap', '🧴'), item('Cleaning', 'Laundry detergent', '🧺'),
+  item('Cleaning', 'Fabric softener', '🧺'), item('Cleaning', 'Bleach', '🧴'), item('Cleaning', 'All-purpose cleaner', '🧽'),
+  item('Cleaning', 'Glass cleaner', '🪟'), item('Cleaning', 'Disinfecting wipes', '🧻', 'pack'),
+  item('Cleaning', 'Trash bags', '🗑️', 'box'), item('Cleaning', 'Broom', '🧹'), item('Cleaning', 'Mop', '🧹'),
+  item('Cleaning', 'Paper towels', '🧻', 'pack'),
+
+  item('Paper Goods', 'Toilet paper', '🧻', 'pack'), item('Paper Goods', 'Paper towels', '🧻', 'pack'),
+  item('Paper Goods', 'Tissues', '🤧', 'box'), item('Paper Goods', 'Napkins', '🧻', 'pack'),
+  item('Paper Goods', 'Paper plates', '🍽️', 'pack'), item('Paper Goods', 'Paper cups', '🥤', 'pack'),
+
+  item('Personal Care', 'Toothpaste', '🪥'), item('Personal Care', 'Toothbrush', '🪥'),
+  item('Personal Care', 'Shampoo', '🧴'), item('Personal Care', 'Conditioner', '🧴'),
+  item('Personal Care', 'Body wash', '🧼'), item('Personal Care', 'Deodorant', '🧴'),
+  item('Personal Care', 'Lotion', '🧴'), item('Personal Care', 'Razors', '🪒', 'pack'),
+
+  item('Baby', 'Diapers', '🧷', 'pack'), item('Baby', 'Baby wipes', '🧻', 'pack'), item('Baby', 'Baby food', '🍼', 'pack'),
+  item('Baby', 'Formula', '🍼'), item('Baby', 'Baby lotion', '🧴'),
+
+  item('Pet', 'Dog food', '🐶', 'pack'), item('Pet', 'Cat food', '🐱', 'pack'), item('Pet', 'Pet treats', '🦴', 'pack'),
+  item('Pet', 'Litter', '🐱', 'pack'),
+];
