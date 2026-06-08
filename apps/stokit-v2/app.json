@@ -7,7 +7,6 @@
     "orientation": "portrait",
     "scheme": "pantrypal",
     "userInterfaceStyle": "dark",
-    "newArchEnabled": true,
     "icon": "./assets/icon.png",
     "backgroundColor": "#15110C",
     "ios": {
@@ -55,19 +54,19 @@
           "sounds": []
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#15110C",
+          "resizeMode": "contain"
+        }
+      ]
     ],
-    "splash": {
-      "backgroundColor": "#15110C",
-      "resizeMode": "contain"
-    },
     "extra": {
       "eas": {
         "projectId": "3d19b1e1-1003-4e33-8929-2d27e7fd7f3c"
       }
-    },
-    "runtimeVersion": {
-      "policy": "appVersion"
     },
     "updates": {
       "url": "https://u.expo.dev/3d19b1e1-1003-4e33-8929-2d27e7fd7f3c"
