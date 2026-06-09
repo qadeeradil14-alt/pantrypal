@@ -5,11 +5,13 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Logo } from '../../components/shared/Logo';
 import { AddItemSheet } from '../../components/pantry/AddItemSheet';
 import { ItemActionSheet } from '../../components/pantry/ItemActionSheet';
 import { StorePickerSheet } from '../../components/pantry/StorePickerSheet';
@@ -46,6 +48,7 @@ export default function PantryScreen() {
   const [actionItem, setActionItem] = useState<PantryItem | null>(null);
   const [pickerItem, setPickerItem] = useState<PantryItem | null>(null);
   const [recipes, setRecipes] = useState<RecipeSuggestion[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const myName = members.find((m) => m.isMe)?.displayName ?? '';
   const firstName = myName.split(' ')[0] || '';
@@ -68,6 +71,18 @@ export default function PantryScreen() {
     [items],
   );
 
+  // Filtered views based on search query
+  const query = searchQuery.trim().toLowerCase();
+  const filteredListItems = useMemo(
+    () => query ? listItems.filter((i) => i.name.toLowerCase().includes(query)) : listItems,
+    [listItems, query],
+  );
+  const filteredAtHomeItems = useMemo(
+    () => query ? atHomeItems.filter((i) => i.name.toLowerCase().includes(query)) : atHomeItems,
+    [atHomeItems, query],
+  );
+  const showSearch = items.length > 4;
+
   useEffect(() => {
     let active = true;
     if (atHomeItems.length > 0) {
@@ -79,7 +94,7 @@ export default function PantryScreen() {
     }
     return () => { active = false; };
   }, [atHomeItems]);
-  const previewItems = listItems.slice(0, 3);
+  const previewItems = filteredListItems.slice(0, 3);
   const readyStores = new Set(readyItems.map((item) => item.storeId));
   const shoppingHelper = listItems.length === 0
     ? 'Add items to build your shopping list'
@@ -95,7 +110,10 @@ export default function PantryScreen() {
         <View style={styles.header}>
           <View style={{ flex: 1 }}>
             <Text style={styles.greeting}>{greeting}</Text>
-            <Text style={styles.title}>Pantry</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 }}>
+              <Logo size={42} color={colors.ink} accent={colors.primary} />
+              <Text style={styles.title}>Pantry</Text>
+            </View>
             <Text style={styles.tagline}>What do you want to do?</Text>
           </View>
           <Pressable onPress={() => router.push('/settings')} style={styles.settings}>
@@ -142,13 +160,28 @@ export default function PantryScreen() {
 
         <RecipeSuggestionsCard recipes={recipes} />
 
+        {showSearch && (
+          <View style={styles.searchBar}>
+            <Ionicons name="search" size={16} color={colors.muted} style={{ marginRight: 8 }} />
+            <TextInput
+              style={styles.searchInput}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search items…"
+              placeholderTextColor={colors.muted}
+              returnKeyType="search"
+              clearButtonMode="while-editing"
+            />
+          </View>
+        )}
+
         <SectionTitle
           title={showAtHome ? 'Items at home' : 'On your list'}
           action={showAtHome ? 'Close' : 'View all'}
           onAction={showAtHome ? () => setShowAtHome(false) : () => router.push('/shopping')}
         />
         <View style={styles.list}>
-          {(showAtHome ? atHomeItems : previewItems).length ? (showAtHome ? atHomeItems : previewItems).map((item, index) => (
+          {(showAtHome ? filteredAtHomeItems : previewItems).length ? (showAtHome ? filteredAtHomeItems : previewItems).map((item, index) => (
             <View key={item.id}>
               {index > 0 ? <View style={styles.divider} /> : null}
               <SimpleItemRow
@@ -166,9 +199,15 @@ export default function PantryScreen() {
                 size={28}
                 color={colors.muted}
               />
-              <Text style={styles.emptyTitle}>{showAtHome ? 'Nothing at home yet' : 'Your list is empty'}</Text>
+              <Text style={styles.emptyTitle}>
+                {query
+                  ? 'No results'
+                  : showAtHome ? 'Nothing at home yet' : 'Your list is empty'}
+              </Text>
               <Text style={styles.emptyText}>
-                {showAtHome ? 'Add items you already have.' : 'Tap “Add something to buy” to get started.'}
+                {query
+                  ? `No items match "${searchQuery}"`
+                  : showAtHome ? 'Add items you already have.' : 'Tap "Add something to buy" to get started.'}
               </Text>
             </View>
           )}
@@ -299,7 +338,7 @@ function makeStyles(c: AppColors) {
     header:           { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: spacing.xl },
     greeting:         { fontFamily: fonts.sans, fontSize: 14, color: c.muted, marginBottom: 2 },
     title:            { fontFamily: fonts.serifItalic, fontSize: 49, lineHeight: 53, color: c.ink },
-    tagline:          { fontFamily: fonts.sans, fontSize: 16, color: c.muted, marginTop: 2 },
+    tagline:          { fontFamily: fonts.sans, fontSize: 16, color: c.muted, marginTop: 8 },
     settings:         { width: 48, height: 48, borderRadius: 24, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, alignItems: 'center', justifyContent: 'center', marginTop: 8, ...shadow.card },
     actionCard:       { minHeight: 128, marginBottom: spacing.md, padding: spacing.md, borderRadius: radii.lg, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, overflow: 'hidden', ...shadow.card },
     actionIcon:       { width: 70, height: 70, borderRadius: 35, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
@@ -321,6 +360,8 @@ function makeStyles(c: AppColors) {
     },
     actionImage:      { width: 60, height: 60, resizeMode: 'contain', opacity: 0.95 },
     pressed:          { opacity: 0.76 },
+    searchBar:        { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: radii.md, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.md, paddingVertical: 10, marginTop: spacing.sm, marginBottom: spacing.xs },
+    searchInput:      { flex: 1, fontFamily: fonts.sans, fontSize: 15, color: c.ink, padding: 0 },
     sectionTitleRow:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.lg, marginBottom: spacing.sm },
     sectionTitle:     { fontFamily: fonts.sansSemibold, fontSize: 22, color: c.ink },
     sectionActionButton: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingVertical: spacing.xs },

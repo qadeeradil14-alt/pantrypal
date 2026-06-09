@@ -3,7 +3,7 @@ import Svg, { Path } from 'react-native-svg';
 
 export function Logo({ size = 40, color = '#a86f3f', accent = '#c85c3a' }: { size?: number, color?: string, accent?: string }) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 1024 1024" fill="none">
+    <Svg width={size} height={size} viewBox="220 200 584 584" fill="none">
       {/* Handle */}
       <Path
         d="M336 392c38-102 90-154 176-154s138 52 176 154"
