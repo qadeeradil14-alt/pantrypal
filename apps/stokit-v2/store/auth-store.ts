@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
@@ -9,6 +10,7 @@ interface AuthStore {
   session: Session | null;
   user: User | null;
   authError: string | null;
+  guestMode: boolean;
   /**
    * The email used during the most recent sign-up attempt.
    * Persisted in-memory so the verify-email screen can display it even if
@@ -22,6 +24,8 @@ interface AuthStore {
   refreshUser: () => Promise<AuthResult>;
   signOut: () => Promise<AuthResult>;
   clearError: () => void;
+  enterGuestMode: () => void;
+  exitGuestMode: () => void;
 }
 
 function friendlyAuthError(error: unknown): string {
@@ -45,12 +49,18 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   user: null,
   authError: null,
   pendingEmail: null,
+  guestMode: false,
 
   initializeAuth: async () => {
     set({ loading: true });
     try {
       const { data } = await supabase.auth.getSession();
-      set({ session: data.session, user: data.session?.user ?? null });
+      const guestFlag = await AsyncStorage.getItem('stokit:v2:guestMode');
+      set({ 
+        session: data.session, 
+        user: data.session?.user ?? null,
+        guestMode: guestFlag === 'true',
+      });
     } finally {
       set({ loading: false });
     }
@@ -135,6 +145,14 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 
   clearError: () => set({ authError: null }),
+  enterGuestMode: () => {
+    AsyncStorage.setItem('stokit:v2:guestMode', 'true').catch(() => {});
+    set({ guestMode: true });
+  },
+  exitGuestMode: () => {
+    AsyncStorage.removeItem('stokit:v2:guestMode').catch(() => {});
+    set({ guestMode: false });
+  },
 }));
 
 supabase.auth.onAuthStateChange((event, session) => {
@@ -158,3 +176,7 @@ supabase.auth.onAuthStateChange((event, session) => {
 });
 
 export const isEmailVerified = (user: User | null) => Boolean(user?.email_confirmed_at);
+export const isAppUnlocked = () => {
+  const { guestMode, user } = useAuthStore.getState();
+  return guestMode || isEmailVerified(user);
+};
