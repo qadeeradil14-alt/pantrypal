@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { fonts, radii, spacing, type AppColors } from '../../theme';
 import { useDurableStore } from '../../store/durable-store';
 import { autocompleteGooglePlaces, getPlaceDetailsGoogle, type AutocompleteSuggestion } from '../../core/services/places';
+import { hasGoogleKey } from '../../lib/config';
 import { useTheme } from '../../hooks/useTheme';
 
 const LOGO_COLORS = ['#C0392B','#E8913E','#D8A24A','#3D7A53','#2E6DA4','#6C5CE7','#444'];
@@ -110,6 +111,12 @@ export function AddStoreSheet({ visible, onClose }: { visible: boolean; onClose:
         placeholder="e.g. Target, Aldi, Whole Foods"
       />
 
+      {!hasGoogleKey() && (
+        <View style={{ backgroundColor: 'red', padding: 8, marginTop: 8 }}>
+          <Text style={{ color: 'white' }}>DEBUG: Google API Key is MISSING on this device!</Text>
+        </View>
+      )}
+
       {/* Autocomplete dropdown */}
       {suggestions.length > 0 && (
         <View style={styles.dropdown}>
@@ -167,7 +174,12 @@ export function AddStoreSheet({ visible, onClose }: { visible: boolean; onClose:
 
       <Text style={styles.hint}>Logos are visual only — they never change how shopping works.</Text>
 
-      <Button label="Add store" onPress={submit} disabled={!name.trim()} style={{ marginTop: spacing.lg }} />
+      <Button 
+        label={address ? "Add store" : "Select a location above"} 
+        onPress={submit} 
+        disabled={!name.trim() || !address} 
+        style={{ marginTop: spacing.lg }} 
+      />
     </Sheet>
   );
 }
