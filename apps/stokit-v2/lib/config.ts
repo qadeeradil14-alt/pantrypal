@@ -15,9 +15,9 @@
  */
 
 export const config = {
-  googleApiKey:  process.env['EXPO_PUBLIC_GOOGLE_API_KEY']  ?? '',
-  geoapifyApiKey: process.env['EXPO_PUBLIC_GEOAPIFY_API_KEY'] ?? '',
-  ocrSpaceKey:   process.env['EXPO_PUBLIC_OCR_SPACE_KEY']   ?? '',
+  googleApiKey:  process.env.EXPO_PUBLIC_GOOGLE_API_KEY  ?? '',
+  geoapifyApiKey: process.env.EXPO_PUBLIC_GEOAPIFY_API_KEY ?? '',
+  ocrSpaceKey:   process.env.EXPO_PUBLIC_OCR_SPACE_KEY   ?? '',
 } as const;
 
 /** True if the Google premium upgrade is configured. */

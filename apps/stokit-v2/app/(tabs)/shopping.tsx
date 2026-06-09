@@ -12,6 +12,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   Alert,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -284,10 +285,18 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
   const [saving, setSaving] = useState(false);
   const parsed = Math.round((parseFloat(amount.replace(/[^0-9.]/g, '')) || 0) * 100) / 100;
 
+  const [imageUri, setImageUri] = useState<string | null>(null);
+
   const save = () => {
     if (parsed <= 0) return;
     setSaving(true);
-    dispatch({ type: 'SAVE_RECEIPT', amount: parsed, status: 'logged', now: Date.now() });
+    dispatch({
+      type: 'SAVE_RECEIPT',
+      amount: parsed,
+      status: imageUri ? 'logged' : 'photo_pending',
+      imageUri,
+      now: Date.now()
+    });
   };
 
   const skip = () => dispatch({ type: 'SKIP_RECEIPT', now: Date.now() });
@@ -307,15 +316,25 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
       ? await ImagePicker.launchCameraAsync({ quality: 0.85 })
       : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.85 });
     if (result.canceled || !result.assets[0]) return;
+
+    const pickedUri = result.assets[0].uri;
+    setImageUri(pickedUri);
+
     if (hasOcrCapability()) {
       setSaving(true);
       try {
-        const total = await extractReceiptTotal(result.assets[0].uri);
-        if (total != null) setAmount(total.toFixed(2));
-        else Alert.alert('Could not read total', 'Please type the amount manually.');
-      } finally { setSaving(false); }
-    } else {
-      dispatch({ type: 'SAVE_RECEIPT', amount: parsed, status: 'photo_pending', now: Date.now() });
+        const total = await extractReceiptTotal(pickedUri);
+        if (total != null) {
+          setAmount(total.toFixed(2));
+        } else {
+          Alert.alert('Could not read total', 'Please type the amount manually.');
+        }
+      } catch (e) {
+        console.warn('[OCR] Error extracting total:', e);
+        Alert.alert('Could not read total', 'Please type the amount manually.');
+      } finally {
+        setSaving(false);
+      }
     }
   };
 
@@ -347,13 +366,26 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
       </View>
       <Text style={rStyles.hint}>How much did you spend here? Save to continue — receipt photo is optional.</Text>
 
+      {imageUri && (
+        <View style={rStyles.previewContainer}>
+          <Image source={{ uri: imageUri }} style={rStyles.previewImage} />
+          <View style={rStyles.previewInfo}>
+            <Text style={rStyles.previewTitle}>Receipt Photo</Text>
+            <Text style={rStyles.previewMeta}>Ready to save with receipt</Text>
+          </View>
+          <Pressable onPress={() => setImageUri(null)} style={rStyles.removeBtn}>
+            <Ionicons name="close-circle" size={24} color={colors.primary} />
+          </Pressable>
+        </View>
+      )}
+
       <Pressable
         onPress={save}
         disabled={parsed <= 0 || saving}
         style={({ pressed }) => [rStyles.saveBtn, (parsed <= 0 || saving) && { opacity: 0.45 }, pressed && { opacity: 0.85 }]}
       >
         <Text style={rStyles.saveBtnText}>
-          {saving ? 'Saving…' : parsed > 0 ? `Save  ·  $${parsed.toFixed(2)}` : 'Save amount'}
+          {saving ? (imageUri && parsed === 0 ? 'Reading receipt…' : 'Saving…') : parsed > 0 ? `Save  ·  $${parsed.toFixed(2)}` : 'Save amount'}
         </Text>
       </Pressable>
 
@@ -847,6 +879,41 @@ function makeStyles(colors: AppColors) {
     chipText:  { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.muted },
     skipBtn:   { alignItems: 'center', paddingVertical: spacing.xl, marginTop: spacing.sm },
     skipText:  { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.muted },
+    previewContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.surfaceRaised,
+      borderRadius: radii.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: spacing.sm,
+      marginHorizontal: spacing.sm,
+      marginBottom: spacing.lg,
+    },
+    previewImage: {
+      width: 50,
+      height: 50,
+      borderRadius: radii.sm,
+      backgroundColor: colors.border,
+    },
+    previewInfo: {
+      flex: 1,
+      marginLeft: spacing.md,
+    },
+    previewTitle: {
+      fontFamily: fonts.sansSemibold,
+      fontSize: 14,
+      color: colors.ink,
+    },
+    previewMeta: {
+      fontFamily: fonts.sans,
+      fontSize: 12,
+      color: colors.muted,
+      marginTop: 2,
+    },
+    removeBtn: {
+      padding: spacing.xs,
+    },
   });
 
   const ssStyles = StyleSheet.create({
