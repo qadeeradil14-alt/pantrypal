@@ -8,7 +8,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { fonts, radii, spacing, type AppColors } from '../../theme';
 import { useDurableStore } from '../../store/durable-store';
 import { autocompleteGooglePlaces, getPlaceDetailsGoogle, type AutocompleteSuggestion } from '../../core/services/places';
-import { hasGoogleKey } from '../../lib/config';
 import { useTheme } from '../../hooks/useTheme';
 
 const LOGO_COLORS = ['#C0392B','#E8913E','#D8A24A','#3D7A53','#2E6DA4','#6C5CE7','#444'];
@@ -132,13 +131,6 @@ export function AddStoreSheet({ visible, onClose }: { visible: boolean; onClose:
         onChangeText={handleNameChange}
         placeholder="Type to search (e.g. Lidl, Target…)"
       />
-
-      {/* API key debug banner */}
-      {!hasGoogleKey() && (
-        <View style={styles.debugBanner}>
-          <Text style={styles.debugText}>⚠️ Google API Key missing — search unavailable</Text>
-        </View>
-      )}
 
       {/* Autocomplete suggestions */}
       {suggestions.length > 0 && (
