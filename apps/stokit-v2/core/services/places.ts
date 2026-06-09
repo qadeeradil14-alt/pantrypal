@@ -349,9 +349,12 @@ async function searchByNameGoogle(
   try {
     const res = await fetchWithTimeout(
       `https://maps.googleapis.com/maps/api/place/textsearch/json?${params.toString()}`,
-      {}
+      { headers: { 'X-Ios-Bundle-Identifier': 'com.hewadadil.pantrypal' } }
     );
-    if (!res.ok) return [];
+    if (!res.ok) {
+      console.log('[Places] Google textsearch failed:', res.status, await res.text());
+      return [];
+    }
     const data = (await res.json()) as GooglePlacesResponse;
     return (data.results ?? []).map((p) => ({
       placeId: p.place_id,
@@ -387,8 +390,13 @@ export async function autocompleteGooglePlaces(query: string, lat?: number, lng?
   }
 
   try {
-    const res = await fetchWithTimeout(`https://maps.googleapis.com/maps/api/place/autocomplete/json?${params.toString()}`, {});
-    if (!res.ok) return [];
+    const res = await fetchWithTimeout(`https://maps.googleapis.com/maps/api/place/autocomplete/json?${params.toString()}`, {
+      headers: { 'X-Ios-Bundle-Identifier': 'com.hewadadil.pantrypal' }
+    });
+    if (!res.ok) {
+      console.log('[Places] Google autocomplete failed:', res.status, await res.text());
+      return [];
+    }
     const data = await res.json();
     return (data.predictions || []).map((p: any) => ({
       placeId: p.place_id,
@@ -410,8 +418,13 @@ export async function getPlaceDetailsGoogle(placeId: string): Promise<NearbyStor
   });
 
   try {
-    const res = await fetchWithTimeout(`https://maps.googleapis.com/maps/api/place/details/json?${params.toString()}`, {});
-    if (!res.ok) return null;
+    const res = await fetchWithTimeout(`https://maps.googleapis.com/maps/api/place/details/json?${params.toString()}`, {
+      headers: { 'X-Ios-Bundle-Identifier': 'com.hewadadil.pantrypal' }
+    });
+    if (!res.ok) {
+      console.log('[Places] Google details failed:', res.status, await res.text());
+      return null;
+    }
     const data = await res.json();
     const p = data.result;
     if (!p) return null;
@@ -450,8 +463,13 @@ async function findNearbyStoresGoogle(
 
   let data: GooglePlacesResponse;
   try {
-    const res = await fetchWithTimeout(`${GOOGLE_PLACES_URL}?${params.toString()}`, {});
-    if (!res.ok) return [];
+    const res = await fetchWithTimeout(`${GOOGLE_PLACES_URL}?${params.toString()}`, {
+      headers: { 'X-Ios-Bundle-Identifier': 'com.hewadadil.pantrypal' }
+    });
+    if (!res.ok) {
+      console.log('[Places] Google nearbysearch failed:', res.status, await res.text());
+      return [];
+    }
     data = (await res.json()) as GooglePlacesResponse;
   } catch {
     return [];
