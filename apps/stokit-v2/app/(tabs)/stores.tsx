@@ -203,7 +203,7 @@ export default function StoresScreen() {
               >
                 <Image
                   source={{
-                    uri: `https://maps.googleapis.com/maps/api/staticmap?center=${store.lat},${store.lng}&zoom=15&size=600x200&scale=2&markers=color:red%7C${store.lat},${store.lng}&key=${process.env.EXPO_PUBLIC_GOOGLE_API_KEY || ''}`
+                    uri: `https://maps.googleapis.com/maps/api/staticmap?center=${store.lat},${store.lng}&zoom=15&size=600x120&scale=2&markers=color:red%7C${store.lat},${store.lng}&key=${process.env.EXPO_PUBLIC_GOOGLE_API_KEY || ''}`
                   }}
                   style={styles.mapImage}
                 />
@@ -242,38 +242,38 @@ function makeStyles(colors: AppColors) {
       borderColor: (colors as any).dangerSoft ?? colors.border,
     },
     mapContainer: {
-      height: 100,
-      width: '100%',
+      height: 60,
+      marginHorizontal: spacing.lg,
+      marginBottom: spacing.lg,
+      borderRadius: radii.md,
+      overflow: 'hidden',
       backgroundColor: colors.surfaceRaised,
       position: 'relative',
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
+      borderWidth: 1,
+      borderColor: colors.border,
     },
     mapImage: {
       width: '100%',
       height: '100%',
+      opacity: 0.85,
     },
     directionsOverlay: {
       position: 'absolute',
-      bottom: 8,
-      right: 8,
-      backgroundColor: colors.primary,
+      right: 6,
+      top: 6,
+      bottom: 6,
+      backgroundColor: 'rgba(0, 0, 0, 0.65)',
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 16,
-      gap: 4,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.15,
-      shadowRadius: 4,
-      elevation: 2,
+      paddingHorizontal: 14,
+      borderRadius: radii.sm,
+      gap: 6,
     },
     directionsText: {
       color: '#FFF',
       fontFamily: fonts.sansSemibold,
       fontSize: 12,
+      letterSpacing: 0.3,
     },
   });
 }
