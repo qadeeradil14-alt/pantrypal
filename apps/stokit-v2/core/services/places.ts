@@ -28,6 +28,13 @@ export interface NearbyStore {
   isOpen?: boolean;
 }
 
+export interface AutocompleteSuggestion {
+  placeId: string;
+  description: string;
+  mainText: string;
+  secondaryText: string;
+}
+
 // ─── Public entry point ───────────────────────────────────────────────────────
 
 export async function findNearbyStores(
@@ -41,7 +48,9 @@ export async function findNearbyStores(
   }
   if (hasGeoapifyKey()) {
     console.log('[Places] Using Geoapify');
-    return findNearbyStoresGeoapify(lat, lng, radiusMetres);
+    const results = await findNearbyStoresGeoapify(lat, lng, radiusMetres);
+    if (results.length > 0) return results;
+    console.log('[Places] Geoapify returned 0 results, falling back to OSM');
   }
   console.log('[Places] Using OSM fallback');
   return findNearbyStoresOSM(lat, lng, radiusMetres);
@@ -62,7 +71,9 @@ export async function searchNearbyStoresByName(
   if (hasGoogleKey()) return searchByNameGoogle(lat, lng, name, radiusMetres);
   if (hasGeoapifyKey()) {
     console.log('[Places] Using Geoapify search');
-    return searchByNameGeoapify(lat, lng, name, radiusMetres);
+    const results = await searchByNameGeoapify(lat, lng, name, radiusMetres);
+    if (results.length > 0) return results;
+    console.log('[Places] Geoapify returned 0 results, falling back to OSM');
   }
   console.log('[Places] Using OSM fallback search');
   return searchByNameOSM(lat, lng, name, radiusMetres);
@@ -157,15 +168,18 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number): numb
 
 // ─── Fetch with Timeout Helper ────────────────────────────────────────────────
 
-async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 15000): Promise<Response> {
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 20000): Promise<Response> {
   const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeoutMs);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(url, { ...options, signal: controller.signal as any });
-    clearTimeout(id);
+    const res = await Promise.race([
+      fetch(url, { ...options, signal: controller.signal as any }),
+      new Promise<Response>((_, reject) => setTimeout(() => reject(new Error('Timeout')), timeoutMs))
+    ]);
+    clearTimeout(timeoutId);
     return res;
   } catch (err) {
-    clearTimeout(id);
+    clearTimeout(timeoutId);
     throw err;
   }
 }
@@ -230,14 +244,25 @@ async function findNearbyStoresOSM(
 ): Promise<NearbyStore[]> {
   let data: OverpassResponse;
   try {
+    const params = new URLSearchParams();
+    params.append('data', overpassQuery(lat, lng, radiusMetres));
+
     const res = await fetchWithTimeout(OVERPASS_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `data=${encodeURIComponent(overpassQuery(lat, lng, radiusMetres))}`,
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'Stokit/2.0',
+      },
+      body: params.toString(),
     });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error('[Places] OSM findNearbyStores failed with status:', res.status, errText);
+      return [];
+    }
     data = (await res.json()) as OverpassResponse;
-  } catch {
+  } catch (err) {
+    console.error('[Places] OSM findNearbyStores exception:', err);
     return [];
   }
 
@@ -268,14 +293,25 @@ async function searchByNameOSM(
 ): Promise<NearbyStore[]> {
   let data: OverpassResponse;
   try {
+    const params = new URLSearchParams();
+    params.append('data', overpassNameQuery(lat, lng, name, radiusMetres));
+
     const res = await fetchWithTimeout(OVERPASS_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `data=${encodeURIComponent(overpassNameQuery(lat, lng, name, radiusMetres))}`,
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'Stokit/2.0',
+      },
+      body: params.toString(),
     });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error('[Places] OSM searchByName failed with status:', res.status, errText);
+      return [];
+    }
     data = (await res.json()) as OverpassResponse;
-  } catch {
+  } catch (err) {
+    console.error('[Places] OSM searchByName exception:', err);
     return [];
   }
 
@@ -331,6 +367,67 @@ async function searchByNameGoogle(
     })).sort((a, b) => a.distanceMetres - b.distanceMetres);
   } catch {
     return [];
+  }
+}
+
+// ─── Google Places Autocomplete & Details ──────────────────────────────────────
+
+export async function autocompleteGooglePlaces(query: string, lat?: number, lng?: number): Promise<AutocompleteSuggestion[]> {
+  if (!hasGoogleKey() || !query.trim()) return [];
+  
+  const params = new URLSearchParams({
+    input: query,
+    key: config.googleApiKey,
+    types: 'establishment',
+  });
+  
+  if (lat !== undefined && lng !== undefined) {
+    params.append('location', `${lat},${lng}`);
+    params.append('radius', '50000'); // 50km bias
+  }
+
+  try {
+    const res = await fetchWithTimeout(`https://maps.googleapis.com/maps/api/place/autocomplete/json?${params.toString()}`, {});
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.predictions || []).map((p: any) => ({
+      placeId: p.place_id,
+      description: p.description,
+      mainText: p.structured_formatting?.main_text ?? p.description,
+      secondaryText: p.structured_formatting?.secondary_text ?? '',
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export async function getPlaceDetailsGoogle(placeId: string): Promise<NearbyStore | null> {
+  if (!hasGoogleKey()) return null;
+  const params = new URLSearchParams({
+    place_id: placeId,
+    fields: 'place_id,name,vicinity,geometry,types,rating,opening_hours',
+    key: config.googleApiKey,
+  });
+
+  try {
+    const res = await fetchWithTimeout(`https://maps.googleapis.com/maps/api/place/details/json?${params.toString()}`, {});
+    if (!res.ok) return null;
+    const data = await res.json();
+    const p = data.result;
+    if (!p) return null;
+    return {
+      placeId: p.place_id,
+      name: p.name,
+      address: p.vicinity ?? '',
+      distanceMetres: 0,
+      lat: p.geometry?.location?.lat ?? 0,
+      lng: p.geometry?.location?.lng ?? 0,
+      types: p.types ?? [],
+      rating: p.rating,
+      isOpen: p.opening_hours?.open_now,
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -436,12 +533,12 @@ async function searchByNameGeoapify(
   name: string,
   radiusMetres: number,
 ): Promise<NearbyStore[]> {
+  const cats = 'commercial.supermarket,commercial.department_store';
   const url =
-    `${GEO_BASE}/v1/geocode/search` +
-    `?text=${encodeURIComponent(name)}` +
-    `&bias=proximity:${lng},${lat}` +
+    `${GEO_BASE}/v2/places` +
+    `?categories=${cats}` +
     `&filter=circle:${lng},${lat},${radiusMetres}` +
-    `&format=json&limit=10&countrycodes=us` +
+    `&limit=500` +
     `&apiKey=${config.geoapifyApiKey}`;
 
   try {
@@ -452,27 +549,33 @@ async function searchByNameGeoapify(
       return [];
     }
     const data = await res.json();
-    console.log('[Geoapify] Results count:', data.results?.length);
-    const mapped = ((data.results ?? []) as any[])
-      .map((r) => {
-        const rLat = r.lat as number;
-        const rLng = r.lon as number;
+    const targetName = name.toLowerCase();
+    const mapped: NearbyStore[] = (data.features || [])
+      .filter((f: any) => {
+        const storeName = f.properties?.name?.toLowerCase() || '';
+        return storeName.includes(targetName);
+      })
+      .map((f: any) => {
+        const rLat = f.geometry.coordinates[1];
+        const rLng = f.geometry.coordinates[0];
         return {
-          placeId: `geoapify:${r.place_id}`,
-          name: r.name ?? name.trim(),
-          address: (r.formatted ?? '') as string,
-          distanceMetres: Math.round(haversine(lat, lng, rLat, rLng)),
+          placeId: `geoapify-${f.properties.place_id}`,
+          name: f.properties.name,
           lat: rLat,
           lng: rLng,
+          address: [f.properties.street, f.properties.city, f.properties.state_code || f.properties.state]
+            .filter(Boolean)
+            .join(', '),
+          distanceMetres: Math.round(haversine(lat, lng, rLat, rLng)),
           types: ['store'],
         };
       })
-      .filter((s) => s.name.trim().length > 0)
-      .sort((a, b) => a.distanceMetres - b.distanceMetres);
+      .sort((a: NearbyStore, b: NearbyStore) => (a.distanceMetres || 0) - (b.distanceMetres || 0));
+
     console.log('[Geoapify] Mapped results count:', mapped.length);
     return mapped;
   } catch (err) {
-    console.error('[Geoapify] Exception:', err);
+    console.error('[Geoapify] searchByName exception:', err);
     return [];
   }
 }
