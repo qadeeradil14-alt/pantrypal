@@ -29,6 +29,7 @@ import { Button, Card, PageTitle, Pill, SectionHeader, StoreChip } from '../../c
 import { EmptyState } from '../../components/shared/EmptyState';
 import { StorePickerSheet } from '../../components/pantry/StorePickerSheet';
 import { AddItemSheet } from '../../components/pantry/AddItemSheet';
+import { Sheet } from '../../components/shared/Sheet';
 import { ItemAvatar } from '../../components/shared/ItemAvatar';
 import { fonts, radii, spacing, type AppColors } from '../../theme';
 import { useDurableStore } from '../../store/durable-store';
@@ -332,6 +333,8 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
   const parsed = Math.round((parseFloat(amount.replace(/[^0-9.]/g, '')) || 0) * 100) / 100;
 
   const [imageUri, setImageUri] = useState<string | null>(null);
+  const [scanResult, setScanResult] = useState<any>(null);
+  const addItem = useDurableStore((s) => s.addItem);
 
   // Budget tracking
   const allTrips = useDurableStore((s) => s.trips);
@@ -372,7 +375,6 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
 
   const pickImage = async (source: 'camera' | 'library') => {
     const ImagePicker = await import('expo-image-picker');
-    const { extractReceiptTotal, hasOcrCapability } = await import('../../core/services/ocr');
     const permFn = source === 'camera'
       ? ImagePicker.requestCameraPermissionsAsync
       : ImagePicker.requestMediaLibraryPermissionsAsync;
@@ -389,7 +391,26 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
     const pickedUri = result.assets[0].uri;
     setImageUri(pickedUri);
 
-    if (hasOcrCapability()) {
+    const { extractReceiptTotal, hasOcrCapability } = await import('../../core/services/ocr');
+    const { extractReceiptItems } = await import('../../core/services/aiReceipts');
+    const { hasGeminiKey } = await import('../../lib/config');
+
+    if (hasGeminiKey()) {
+      setSaving(true);
+      try {
+        const aiResult = await extractReceiptItems(pickedUri);
+        if (aiResult && aiResult.items && aiResult.items.length > 0) {
+          setScanResult(aiResult);
+          if (aiResult.total != null) setAmount(aiResult.total.toFixed(2));
+        } else {
+          Alert.alert('Scan failed', 'Could not extract items from receipt.');
+        }
+      } catch (e) {
+        console.warn('[AI] Error extracting items:', e);
+      } finally {
+        setSaving(false);
+      }
+    } else if (hasOcrCapability()) {
       setSaving(true);
       try {
         const total = await extractReceiptTotal(pickedUri);
@@ -500,6 +521,34 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
       <Pressable onPress={skip} style={rStyles.skipBtn}>
         <Text style={rStyles.skipText}>Skip for now</Text>
       </Pressable>
+
+      <Sheet visible={!!scanResult} title="Receipt Scanned!" onClose={() => setScanResult(null)}>
+        <Text style={{ fontFamily: fonts.sans, fontSize: 15, color: colors.ink, marginBottom: spacing.md }}>
+          Found {scanResult?.items?.length} items. Add them to your pantry?
+        </Text>
+        <ScrollView style={{ maxHeight: 300, marginBottom: spacing.lg }}>
+          {scanResult?.items?.map((item: any, i: number) => (
+            <View key={i} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm, padding: spacing.sm, backgroundColor: colors.surfaceRaised, borderRadius: radii.md }}>
+              <ItemAvatar name={item.name} size={36} />
+              <View style={{ marginLeft: spacing.sm, flex: 1 }}>
+                <Text style={{ fontFamily: fonts.sansMedium, fontSize: 15, color: colors.ink }}>{item.name}</Text>
+                <Text style={{ fontFamily: fonts.mono, fontSize: 13, color: colors.muted }}>
+                  {item.quantity} {item.unit || ''} {item.price ? ` · $${item.price.toFixed(2)}` : ''}
+                </Text>
+              </View>
+            </View>
+          ))}
+        </ScrollView>
+        <Button 
+          label={`Add ${scanResult?.items?.length} items to pantry`} 
+          onPress={() => {
+            scanResult?.items?.forEach((item: any) => {
+              addItem({ name: item.name, quantity: item.quantity, unit: item.unit || 'unit', storeId: storeId, status: 'stocked' });
+            });
+            setScanResult(null);
+          }} 
+        />
+      </Sheet>
     </Screen>
   );
 }
