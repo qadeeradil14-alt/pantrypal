@@ -387,7 +387,8 @@ export async function autocompleteGooglePlaces(query: string, lat?: number, lng?
   
   if (lat !== undefined && lng !== undefined) {
     params.append('location', `${lat},${lng}`);
-    params.append('radius', '50000'); // 50km bias
+    params.append('radius', '25000'); // 25km (15 miles) search radius
+    params.append('strictbounds', 'true'); // Strictly restrict to this radius
   }
 
   try {

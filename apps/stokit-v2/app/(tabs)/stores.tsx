@@ -125,10 +125,9 @@ export default function StoresScreen() {
     if (!store.lat || !store.lng) return;
     const latLng = `${store.lat},${store.lng}`;
     const label = encodeURIComponent(store.name);
-    const scheme = Platform.select({ ios: 'maps:0,0?q=', android: 'geo:0,0?q=' });
     const url = Platform.select({
-      ios: `${scheme}${label}@${latLng}`,
-      android: `${scheme}${latLng}(${label})`
+      ios: `maps://?daddr=${latLng}`,
+      android: `google.navigation:q=${latLng}`
     });
     
     if (url) {

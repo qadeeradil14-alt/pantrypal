@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
-import { Animated, Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Dimensions, Pressable, StyleSheet, Text, View, Alert } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -330,7 +330,13 @@ export default function WelcomeScreen() {
   indexRef.current = index;
   const last = index === SCENES.length - 1;
 
-  const goSignUp = useCallback(() => router.push('/(auth)/sign-up'), [router]);
+  const goSignUp = useCallback(() => {
+    try {
+      router.push('/sign-up');
+    } catch (err: any) {
+      // ignore
+    }
+  }, [router]);
   const advance = useCallback(() => {
     if (indexRef.current >= SCENES.length - 1) {
       Animated.timing(opacity, { toValue: 0, duration: 550, useNativeDriver: true }).start(goSignUp);
@@ -349,11 +355,18 @@ export default function WelcomeScreen() {
     if (navigationLocked.current) return;
     navigationLocked.current = true;
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
+    if (indexRef.current >= SCENES.length - 1) {
+      advance();
+      navigationLocked.current = false;
+      return;
+    }
+
     triggerRef.current();
     setTimeout(() => {
       advance();
       navigationLocked.current = false;
-    }, 1100);
+    }, 150);
   };
 
   const skip = () => {
@@ -420,7 +433,13 @@ export default function WelcomeScreen() {
           )}
           <Text style={styles.signInRow}>
             Already have an account?{'  '}
-            <Text onPress={() => router.push('/(auth)/sign-in')} style={styles.signInLink}>Sign in</Text>
+            <Text onPress={() => {
+              try {
+                router.push('/sign-in');
+              } catch (err: any) {
+                // ignore
+              }
+            }} style={styles.signInLink}>Sign in</Text>
           </Text>
           <Pressable
             onPress={() => {
@@ -433,6 +452,7 @@ export default function WelcomeScreen() {
           </Pressable>
         </Animated.View>
       </SafeAreaView>
+      <Text style={{ position: 'absolute', top: 50, right: 15, fontSize: 10, color: colors.faintText, fontFamily: fonts.sans, zIndex: 10 }}>v1.0.0 (OTA 6)</Text>
     </View>
   );
 }

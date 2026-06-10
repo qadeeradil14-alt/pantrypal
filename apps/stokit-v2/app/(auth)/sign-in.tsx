@@ -9,7 +9,6 @@ import {
   View,
 } from 'react-native';
 import { Link, useRouter } from 'expo-router';
-import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { Button, Card } from '../../components/shared/ui';
 import { Logo } from '../../components/shared/Logo';
@@ -44,7 +43,7 @@ export default function SignInScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Animated.View entering={FadeInDown.duration(600).delay(100).springify().damping(18)} style={styles.content}>
+      <View style={styles.content}>
         <View style={{ marginBottom: spacing.md }}>
           <Logo size={64} color={colors.ink} accent={colors.primary} />
         </View>
@@ -79,8 +78,8 @@ export default function SignInScreen() {
           </View>
           <Button label={loading ? 'Signing in…' : 'Sign in'} onPress={() => void submit()} disabled={loading} />
         </Card>
-        <Link href="/(auth)/sign-up" style={styles.link}>Create an account</Link>
-      </Animated.View>
+        <Link href="/(auth)/sign-up" style={styles.link}>Don’t have an account? Sign up</Link>
+      </View>
     </KeyboardAvoidingView>
   );
 }

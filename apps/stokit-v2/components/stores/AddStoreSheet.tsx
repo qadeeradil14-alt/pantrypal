@@ -7,7 +7,7 @@ import { Button } from '../shared/ui';
 import { Ionicons } from '@expo/vector-icons';
 import { fonts, radii, spacing, type AppColors } from '../../theme';
 import { useDurableStore } from '../../store/durable-store';
-import { autocompleteGooglePlaces, getPlaceDetailsGoogle, type AutocompleteSuggestion } from '../../core/services/places';
+import { autocompleteGooglePlaces, getPlaceDetailsGoogle, geocodeLocation, type AutocompleteSuggestion } from '../../core/services/places';
 import { useTheme } from '../../hooks/useTheme';
 
 const LOGO_COLORS = ['#C0392B','#E8913E','#D8A24A','#3D7A53','#2E6DA4','#6C5CE7','#444'];
@@ -18,6 +18,7 @@ export function AddStoreSheet({ visible, onClose }: { visible: boolean; onClose:
   const addStore = useDurableStore((s) => s.addStore);
 
   const [name, setName]   = useState('');
+  const [zip, setZip]     = useState('');
   const [color, setColor] = useState(LOGO_COLORS[1]);
   const [emoji, setEmoji] = useState<string | undefined>(undefined);
 
@@ -40,10 +41,10 @@ export function AddStoreSheet({ visible, onClose }: { visible: boolean; onClose:
   // Grab location once when sheet opens, store in ref (doesn't trigger re-renders)
   useEffect(() => {
     if (!visible) return;
-    Location.getForegroundPermissionsAsync()
+    Location.requestForegroundPermissionsAsync()
       .then(({ status }) => {
         if (status === 'granted') {
-          return Location.getLastKnownPositionAsync();
+          return Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
         }
         return null;
       })
@@ -56,15 +57,26 @@ export function AddStoreSheet({ visible, onClose }: { visible: boolean; onClose:
   }, [visible]);
 
   // Debounced autocomplete — runs 400ms after user stops typing
-  const runAutocomplete = useCallback((query: string) => {
+  const runAutocomplete = useCallback((currentName: string, currentZip: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (query.trim().length < 2) {
+    if (currentName.trim().length < 2) {
       setSuggestions([]);
       return;
     }
     debounceRef.current = setTimeout(async () => {
       try {
-        const res = await autocompleteGooglePlaces(query, userLocRef.current?.lat, userLocRef.current?.lng);
+        let searchLat = userLocRef.current?.lat;
+        let searchLng = userLocRef.current?.lng;
+        
+        if (currentZip.trim().length >= 3) {
+          const geo = await geocodeLocation(currentZip.trim());
+          if (geo) {
+            searchLat = geo.lat;
+            searchLng = geo.lng;
+          }
+        }
+        
+        const res = await autocompleteGooglePlaces(currentName, searchLat, searchLng);
         setSuggestions(res);
         setSearchError('');
       } catch (e) {
@@ -77,7 +89,7 @@ export function AddStoreSheet({ visible, onClose }: { visible: boolean; onClose:
 
   const reset = () => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    setName(''); setColor(LOGO_COLORS[1]); setEmoji(undefined);
+    setName(''); setZip(''); setColor(LOGO_COLORS[1]); setEmoji(undefined);
     setPlaceId(undefined); setAddress(undefined); setLat(undefined); setLng(undefined); setOpeningHours(undefined); setIsOpen(undefined);
     setSuggestions([]); setLoadingSuggestion(false); setSearchError('');
   };
@@ -89,7 +101,15 @@ export function AddStoreSheet({ visible, onClose }: { visible: boolean; onClose:
     if (placeId) {
       setPlaceId(undefined); setAddress(undefined); setLat(undefined); setLng(undefined); setOpeningHours(undefined); setIsOpen(undefined);
     }
-    runAutocomplete(v);
+    runAutocomplete(v, zip);
+  };
+
+  const handleZipChange = (v: string) => {
+    setZip(v);
+    if (placeId) {
+      setPlaceId(undefined); setAddress(undefined); setLat(undefined); setLng(undefined); setOpeningHours(undefined); setIsOpen(undefined);
+    }
+    runAutocomplete(name, v);
   };
 
   const selectSuggestion = async (s: AutocompleteSuggestion) => {
@@ -151,6 +171,17 @@ export function AddStoreSheet({ visible, onClose }: { visible: boolean; onClose:
         onChangeText={handleNameChange}
         placeholder="Type to search (e.g. Lidl, Target…)"
       />
+
+      <View style={{ height: spacing.sm }} />
+
+      <TextField
+        label="City or Zip Code (optional)"
+        value={zip}
+        onChangeText={handleZipChange}
+        placeholder="Search in a different area..."
+      />
+
+      <View style={{ height: spacing.sm }} />
 
       {/* Autocomplete suggestions */}
       {suggestions.length > 0 && (
