@@ -269,18 +269,31 @@ export function StoreChip({
     );
   }
 
+  if (isEmoji) {
+    return (
+      <View style={{ ...chipStyle, backgroundColor: bg }}>
+        <Text
+          style={{
+            fontSize: size * 0.46,
+            fontFamily: fonts.serif,
+            color: themeColors.ink,
+            letterSpacing: 0.3,
+          }}
+        >
+          {glyph}
+        </Text>
+      </View>
+    );
+  }
+
+  // Fallback to app logo
   return (
-    <View style={{ ...chipStyle, backgroundColor: bg }}>
-      <Text
-        style={{
-          fontSize: isEmoji ? size * 0.46 : size * 0.34,
-          fontFamily: isEmoji ? fonts.serif : fonts.sansSemibold,
-          color: isEmoji ? themeColors.ink : '#FFFFFF',
-          letterSpacing: 0.3,
-        }}
-      >
-        {glyph}
-      </Text>
+    <View style={{ ...chipStyle, backgroundColor: themeColors.surfaceRaised, borderWidth: 1, borderColor: themeColors.borderSoft }}>
+      <Image
+        source={require('../../assets/icon.png')}
+        style={{ width: size * 0.72, height: size * 0.72 }}
+        resizeMode="contain"
+      />
     </View>
   );
 }

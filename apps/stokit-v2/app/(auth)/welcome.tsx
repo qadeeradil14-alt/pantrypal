@@ -420,7 +420,11 @@ export default function WelcomeScreen() {
               <View style={styles.nextWrap}>
                 <ProgressRing progress={(index + 1) / SCENES.length} />
                 <Pressable
-                  onPress={next}
+                  onPress={() => {
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    next();
+                  }}
+                  hitSlop={24}
                   style={({ pressed }) => [
                     styles.nextButton,
                     pressed && { opacity: 0.82, transform: [{ scale: 0.92 }] },
@@ -452,7 +456,7 @@ export default function WelcomeScreen() {
           </Pressable>
         </Animated.View>
       </SafeAreaView>
-      <Text style={{ position: 'absolute', top: 50, right: 15, fontSize: 10, color: colors.faintText, fontFamily: fonts.sans, zIndex: 10 }}>v1.0.0 (OTA 6)</Text>
+      <Text style={{ position: 'absolute', top: 50, right: 15, fontSize: 10, color: colors.faintText, fontFamily: fonts.sans, zIndex: 10 }}>v1.0.0 (OTA 18)</Text>
     </View>
   );
 }

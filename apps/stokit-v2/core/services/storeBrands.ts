@@ -34,10 +34,9 @@ function wm(filename: string, width = 200): string {
   return `https://commons.wikimedia.org/w/index.php?title=Special:Redirect/file/${encodeURIComponent(filename)}&width=${width}`;
 }
 
-/** Logo.dev — good for chains where Wikimedia has no canonical file. */
-const LOGODEV_TOKEN = process.env.EXPO_PUBLIC_LOGODEV_TOKEN ?? 'pk_free';
+/** Google Favicon API — Guaranteed raster PNG, zero rate limits, no SVGs to crash RN */
 function ld(domain: string): string {
-  return `https://img.logo.dev/${domain}?token=${LOGODEV_TOKEN}&size=128&format=png`;
+  return `https://s2.googleusercontent.com/s2/favicons?domain=${domain}&sz=128`;
 }
 
 // ── Registry ─────────────────────────────────────────────────────────────────

@@ -121,20 +121,37 @@ export default function StoresScreen() {
   const countFor = (storeId: string) =>
     items.filter((i) => i.storeId === storeId).length;
 
-  const handleDirections = (store: Store) => {
-    if (!store.lat || !store.lng) return;
+  const handleDirections = async (store: Store) => {
+    if (!store.lat || !store.lng) {
+      Alert.alert('Location Missing', 'This store does not have precise GPS coordinates saved.');
+      return;
+    }
     const latLng = `${store.lat},${store.lng}`;
     const label = encodeURIComponent(store.name);
-    const url = Platform.select({
-      ios: `maps://?daddr=${latLng}`,
-      android: `google.navigation:q=${latLng}`
-    });
     
-    if (url) {
-      Linking.openURL(url).catch(() => {
-        Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${latLng}`);
-      });
+    // Platform-specific native map schemes
+    const nativeUrl = Platform.select({
+      ios: `maps:0,0?q=${label}@${latLng}`,
+      android: `geo:0,0?q=${latLng}(${label})`
+    });
+    const browserUrl = `https://www.google.com/maps/search/?api=1&query=${latLng}`;
+
+    if (nativeUrl) {
+      try {
+        const supported = await Linking.canOpenURL(nativeUrl);
+        if (supported) {
+          await Linking.openURL(nativeUrl);
+          return;
+        }
+      } catch (err) {
+        console.log('Failed to open native map app:', err);
+      }
     }
+    
+    // Fallback to browser
+    Linking.openURL(browserUrl).catch(() => {
+      Alert.alert('Error', 'Could not open maps.');
+    });
   };
 
   const handleDelete = (store: Store) => {
@@ -183,48 +200,52 @@ export default function StoresScreen() {
         <View style={{ gap: spacing.md }}>
           {stores.map((store) => (
           <Card key={store.id} style={styles.cardContainer}>
-            <Pressable 
-              style={({ pressed }) => [styles.cardPressable, pressed && { backgroundColor: colors.surfaceRaised }]}
-              onPress={() => handleDirections(store)}
-            >
+            <View style={styles.cardPressable}>
               <View style={styles.storeHeader}>
-                <StoreChip name={store.name} emoji={store.logoEmoji} color={store.logoColor} size={48} />
-                <View style={styles.storeHeaderText}>
-                  <Text style={styles.name}>{store.name}</Text>
-                  {store.address ? (
-                    <Text style={styles.address} numberOfLines={1}>
-                      {store.address}
-                    </Text>
-                  ) : null}
-                  
-                  <View style={styles.statsAndStatusRow}>
-                    <View style={styles.statsBadge}>
-                      <Ionicons name="basket-outline" size={14} color={colors.muted} />
-                      <Text style={styles.meta}>
-                        {countFor(store.id)} item{countFor(store.id) === 1 ? '' : 's'}
+                <Pressable 
+                  style={({ pressed }) => [{ flex: 1, flexDirection: 'row', gap: spacing.md }, pressed && { opacity: 0.7 }]}
+                  onPress={() => handleDirections(store)}
+                >
+                  <StoreChip name={store.name} emoji={store.logoEmoji} color={store.logoColor} size={48} />
+                  <View style={styles.storeHeaderText}>
+                    <Text style={styles.name}>{store.name}</Text>
+                    {store.address ? (
+                      <Text style={styles.address} numberOfLines={1}>
+                        {store.address}
                       </Text>
-                    </View>
+                    ) : null}
+                    
+                    <View style={styles.statsAndStatusRow}>
+                      <View style={styles.statsBadge}>
+                        <Ionicons name="basket-outline" size={14} color={colors.muted} />
+                        <Text style={styles.meta}>
+                          {countFor(store.id)} item{countFor(store.id) === 1 ? '' : 's'}
+                        </Text>
+                      </View>
 
-                    {(() => {
-                      let openStatus = store.openingHours ? isCurrentlyOpen(store.openingHours) : null;
-                      if (openStatus === null && store.isOpen !== undefined) {
-                        openStatus = store.isOpen;
-                      }
-                      if (openStatus === null) return null;
-                      return (
-                        <View style={[styles.hoursBadge, openStatus ? styles.hoursBadgeOpen : styles.hoursBadgeClosed]}>
-                          <View style={[styles.statusDot, openStatus ? styles.statusDotOpen : styles.statusDotClosed]} />
-                          <Text style={[styles.hoursText, openStatus ? styles.hoursTextOpen : styles.hoursTextClosed]}>
-                            {openStatus ? 'Open' : 'Closed'}
-                          </Text>
-                        </View>
-                      );
-                    })()}
+                      {(() => {
+                        let openStatus = store.openingHours ? isCurrentlyOpen(store.openingHours) : null;
+                        if (openStatus === null && store.isOpen !== undefined) {
+                          openStatus = store.isOpen;
+                        }
+                        if (openStatus === null) return null;
+                        return (
+                          <View style={[styles.hoursBadge, openStatus ? styles.hoursBadgeOpen : styles.hoursBadgeClosed]}>
+                            <View style={[styles.statusDot, openStatus ? styles.statusDotOpen : styles.statusDotClosed]} />
+                            <Text style={[styles.hoursText, openStatus ? styles.hoursTextOpen : styles.hoursTextClosed]}>
+                              {openStatus ? 'Open' : 'Closed'}
+                            </Text>
+                          </View>
+                        );
+                      })()}
+                    </View>
                   </View>
-                </View>
+                </Pressable>
                 
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-                  <Ionicons name="navigate" size={18} color={colors.primary} style={{ opacity: 0.8 }} />
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingLeft: spacing.sm }}>
+                  <Pressable hitSlop={12} onPress={() => handleDirections(store)}>
+                    <Ionicons name="navigate" size={18} color={colors.primary} style={{ opacity: 0.8 }} />
+                  </Pressable>
                   <Pressable
                     hitSlop={12}
                     style={styles.moreButton}
@@ -244,7 +265,7 @@ export default function StoresScreen() {
                       } else {
                          Alert.alert(
                            store.name,
-                           'Store Options',
+                           'Manage this store',
                            [
                              { text: 'Cancel', style: 'cancel' },
                              { text: 'Edit', onPress: () => setEditStore(store) },
@@ -254,11 +275,11 @@ export default function StoresScreen() {
                       }
                     }}
                   >
-                    <Ionicons name="ellipsis-horizontal" size={20} color={colors.muted} />
+                    <Ionicons name="ellipsis-horizontal" size={18} color={colors.muted} />
                   </Pressable>
                 </View>
               </View>
-            </Pressable>
+            </View>
           </Card>
         ))}
         </View>
