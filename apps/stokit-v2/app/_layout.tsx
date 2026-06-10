@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import * as Linking from 'expo-linking';
-import { Stack, usePathname, useRouter } from 'expo-router';
+import { Stack, usePathname, useRouter, useRootNavigationState } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as Updates from 'expo-updates';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -76,30 +76,16 @@ export default function RootLayout() {
     return () => linkSubscription.remove();
   }, [hydrateDurable, hydrateHousehold, hydrateSession, initializeAuth]);
 
-  // Aggressively check for OTA updates on every launch and reload immediately.
-  useEffect(() => {
-    if (__DEV__) return; // Skip in development
-    async function checkForUpdate() {
-      try {
-        const result = await Updates.checkForUpdateAsync();
-        if (result.isAvailable) {
-          await Updates.fetchUpdateAsync();
-          await Updates.reloadAsync();
-        }
-      } catch (e) {
-        // Silently fail — app still works with the current bundle
-        console.log('[OTA] Update check failed:', e);
-      }
-    }
-    void checkForUpdate();
-  }, []);
+
 
   const verified = isEmailVerified(user);
   const unlocked = verified || guestMode;
   const ready = fontsLoaded && hydratedDurable && hydratedHousehold && !authLoading;
 
+  const rootNavigationState = useRootNavigationState();
+
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || !rootNavigationState?.key) return;
     
     // Email verification check
     if (user && !verified && !guestMode && pathname !== '/verify-email') {
