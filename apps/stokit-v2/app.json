@@ -69,6 +69,12 @@
           "backgroundColor": "#15110C",
           "resizeMode": "contain"
         }
+      ],
+      [
+        "@bacons/apple-targets",
+        {
+          "appleTeamId": "YOUR_TEAM_ID"
+        }
       ]
     ],
     "extra": {

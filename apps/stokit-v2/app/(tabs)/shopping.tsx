@@ -21,7 +21,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Animated } from 'react-native';
 import { Screen } from '../../components/shared/Screen';
@@ -65,6 +65,37 @@ export default function ShoppingScreen() {
   const session = useSessionStore((s) => s.session);
   const dispatch = useSessionStore((s) => s.dispatch);
   const [pickerItem, setPickerItem] = useState<PantryItem | null>(null);
+
+  const { action } = useLocalSearchParams<{ action?: string }>();
+  const [quickScanStorePicker, setQuickScanStorePicker] = useState(false);
+
+  React.useEffect(() => {
+    if (action === 'scan' && session.status === 'idle') {
+      setQuickScanStorePicker(true);
+    }
+  }, [action, session.status]);
+
+  const handleQuickScanStoreSelect = (storeId: string) => {
+    setQuickScanStorePicker(false);
+    
+    // 1. Create a dummy entry just to satisfy the shopping state machine
+    const dummyEntry: ShoppingEntry = {
+      itemId: 'dummy',
+      name: 'Quick Scan',
+      quantity: 1,
+      unit: 'unit',
+      storeId: storeId,
+      picked: false
+    };
+
+    // 2. Start the trip with this single item
+    dispatch({ type: 'START_TRIP', entries: [dummyEntry], now: Date.now() });
+
+    // 3. Instantly skip the store to jump directly to the ReceiptPrompt screen
+    setTimeout(() => {
+      dispatch({ type: 'SKIP_STORE', storeId: storeId, now: Date.now() });
+    }, 100);
+  };
 
   const storeById = (id: string) => stores.find((s) => s.id === id);
 
@@ -123,7 +154,7 @@ export default function ShoppingScreen() {
             <UnassignedList items={unassigned} onAssign={setPickerItem} styles={styles} />
           </>
         ) : (
-          <EmptyState
+            <EmptyState
             icon="cart-outline"
             title="No trip planned"
             body="Mark pantry items low and assign them to a store. They'll show up here grouped by store, ready to shop."
@@ -131,6 +162,11 @@ export default function ShoppingScreen() {
           />
         )}
         <StorePickerSheet item={pickerItem} onClose={() => setPickerItem(null)} />
+        <StorePickerSheet 
+          visible={quickScanStorePicker} 
+          onClose={() => setQuickScanStorePicker(false)}
+          onSelect={(storeId) => handleQuickScanStoreSelect(storeId)}
+        />
       </Screen>
     );
   }
@@ -145,6 +181,12 @@ export default function ShoppingScreen() {
         </Text>
         <Button label="Start shopping" onPress={startTrip} style={{ marginTop: spacing.lg }} />
       </Card>
+
+      <StorePickerSheet 
+        visible={quickScanStorePicker} 
+        onClose={() => setQuickScanStorePicker(false)}
+        onSelect={(storeId) => handleQuickScanStoreSelect(storeId)}
+      />
 
       {planEntries.map(([storeId, list]) => {
         const store = storeById(storeId);

@@ -21,11 +21,17 @@ import { useTheme } from '../../hooks/useTheme';
 
 export function StorePickerSheet({
   item,
+  visible,
   onClose,
+  onSelect,
 }: {
-  /** The item to assign. `null` keeps the sheet closed. */
-  item: PantryItem | null;
+  /** The item to assign. If omitted, uses visible prop. */
+  item?: PantryItem | null;
+  /** Force the sheet open regardless of item. */
+  visible?: boolean;
   onClose: () => void;
+  /** Optional callback to bypass default assignment behavior */
+  onSelect?: (storeId: string) => void;
 }) {
   const { colors } = useTheme();
   const stores = useDurableStore((s) => s.stores);
@@ -42,15 +48,24 @@ export function StorePickerSheet({
     items.filter((i) => i.storeId === storeId).length;
 
   const assign = (storeId: string | null) => {
+    if (onSelect && storeId) {
+      onSelect(storeId);
+      close();
+      return;
+    }
     if (!item) return;
     updateItem(item.id, { storeId });
     close();
   };
 
   const createAndAssign = () => {
-    if (!item || !newName.trim()) return;
+    if (!newName.trim()) return;
     const store = addStore({ name: newName.trim() });
-    updateItem(item.id, { storeId: store.id });
+    if (onSelect) {
+      onSelect(store.id);
+    } else if (item) {
+      updateItem(item.id, { storeId: store.id });
+    }
     close();
   };
 
@@ -60,8 +75,10 @@ export function StorePickerSheet({
     onClose();
   };
 
+  const isOpen = visible !== undefined ? visible : !!item;
+
   return (
-    <Sheet visible={!!item} title="Assign a store" onClose={close}>
+    <Sheet visible={isOpen} title="Assign a store" onClose={close}>
       {item ? (
         <Text style={styles.subtitle} numberOfLines={1}>
           Where do you buy {item.name}?
