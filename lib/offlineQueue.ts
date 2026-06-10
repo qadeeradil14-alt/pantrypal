@@ -136,7 +136,7 @@ async function runMutation(m: QueuedMutation): Promise<void> {
       const payload = m.payload as MutationPayloadMap['mark_low'];
       const { error } = await supabase
         .from('items')
-        .update({ is_low: true, marked_low_by: payload.userId, got_it_by: null })
+        .update({ is_low: true, macro_status: 'running_low', marked_low_by: payload.userId, got_it_by: null })
         .eq('id', payload.itemId);
       if (error) throw error;
       return;
@@ -145,7 +145,7 @@ async function runMutation(m: QueuedMutation): Promise<void> {
       const payload = m.payload as MutationPayloadMap['mark_ok'];
       const { error } = await supabase
         .from('items')
-        .update({ is_low: false, marked_low_by: null, got_it_by: null })
+        .update({ is_low: false, macro_status: 'in_stock', marked_low_by: null, got_it_by: null })
         .eq('id', payload.itemId);
       if (error) throw error;
       return;
@@ -154,7 +154,7 @@ async function runMutation(m: QueuedMutation): Promise<void> {
       const payload = m.payload as MutationPayloadMap['mark_got_it'];
       const { error } = await supabase
         .from('items')
-        .update({ is_low: false, got_it_by: payload.userId })
+        .update({ is_low: false, macro_status: 'in_stock', got_it_by: payload.userId })
         .eq('id', payload.itemId);
       if (error) throw error;
       return;

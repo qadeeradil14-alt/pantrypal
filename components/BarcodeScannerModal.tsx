@@ -288,6 +288,8 @@ export default function BarcodeScannerModal({ visible, onClose, onAddProduct, on
               ref={cameraRef}
               style={styles.camera}
               facing="back"
+              mode="picture"
+              mute={true}
               active={visible && !product && !busy}
               barcodeScannerSettings={{ barcodeTypes: BARCODE_TYPES }}
               onBarcodeScanned={busy || product ? undefined : handleBarcodeScanned}

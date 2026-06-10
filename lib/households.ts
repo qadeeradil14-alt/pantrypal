@@ -1,5 +1,4 @@
 import { supabase } from './supabase';
-import { ensureDefaultItems } from './items';
 import { normalizeInviteCode } from './invites';
 
 function generateInviteCode(): string {
@@ -127,8 +126,8 @@ export async function createHousehold(name: string, userId: string): Promise<Hou
     throw new Error('Household created without an invite code. Please try again.');
   }
 
-  // Seed standard grocery defaults for a brand-new household.
-  await ensureDefaultItems(household.id, userId);
+  // New users start with an empty pantry — they build it themselves.
+  // (ensureDefaultItems removed: seeding demo items confused real users.)
 
   return {
     id: household.id,

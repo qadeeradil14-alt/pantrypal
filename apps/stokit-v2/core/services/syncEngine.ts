@@ -1,7 +1,9 @@
 import { supabase } from '../../lib/supabase';
 import { useDurableStore } from '../../store/durable-store';
 import { useHouseholdStore } from '../../store/household-store';
-import type { DurableState, PantryItem } from '../../types';
+import type { DurableState, PantryItem, Receipt } from '../../types';
+import * as FileSystem from 'expo-file-system';
+import { decode } from 'base64-arraybuffer';
 
 let syncChannel: ReturnType<typeof supabase.channel> | null = null;
 let isStarted = false;
@@ -56,6 +58,37 @@ export function startSyncEngine() {
         }
       }
     )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'receipts' },
+      (payload) => {
+        const state = useDurableStore.getState();
+        const receipts = [...state.receipts];
+
+        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+          const remote = payload.new as any;
+          const incoming: Receipt = {
+            id: remote.id,
+            tripId: remote.trip_id,
+            storeId: remote.store_id,
+            amount: Number(remote.amount),
+            status: remote.status,
+            imageUri: remote.image_uri,
+            createdAt: Number(remote.created_at),
+          };
+          const existingIdx = receipts.findIndex(r => r.id === incoming.id);
+          if (existingIdx >= 0) {
+            receipts[existingIdx] = incoming;
+          } else {
+            receipts.unshift(incoming);
+          }
+          state.applyRemotePatch({ receipts });
+        } else if (payload.eventType === 'DELETE') {
+          const deletedId = payload.old.id;
+          state.applyRemotePatch({ receipts: receipts.filter(r => r.id !== deletedId) });
+        }
+      }
+    )
     .subscribe((status) => {
       console.log('[Sync Engine] Subscription status:', status);
     });
@@ -101,6 +134,55 @@ export async function pushLocalState(state: DurableState) {
       if (error) {
         console.warn('[Sync Engine] Failed to push to Supabase:', error.message);
       }
+    }
+
+    // Sync Receipts
+    const receiptRecords = await Promise.all(state.receipts.map(async (receipt) => {
+      let finalUri = receipt.imageUri;
+
+      // If it's a local file URI, upload to Supabase Storage first
+      if (finalUri?.startsWith('file://')) {
+        try {
+          const base64 = await FileSystem.readAsStringAsync(finalUri, { encoding: FileSystem.EncodingType.Base64 });
+          const fileExt = finalUri.split('.').pop()?.toLowerCase() || 'jpeg';
+          const fileName = `${receipt.id}.${fileExt}`;
+          const filePath = `${householdId ?? 'guest'}/${fileName}`;
+          
+          const { error: uploadError } = await supabase.storage.from('receipts').upload(filePath, decode(base64), {
+            contentType: `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`,
+            upsert: true
+          });
+
+          if (!uploadError) {
+            const { data } = supabase.storage.from('receipts').getPublicUrl(filePath);
+            finalUri = data.publicUrl;
+            
+            // Update durable store with the remote URI silently
+            setTimeout(() => {
+               const s = useDurableStore.getState();
+               s.applyRemotePatch({ receipts: s.receipts.map(r => r.id === receipt.id ? { ...r, imageUri: finalUri, status: 'logged' } : r) });
+            }, 0);
+          }
+        } catch (e) {
+          console.warn('[Sync Engine] Failed to upload receipt image', e);
+        }
+      }
+
+      return {
+        id: receipt.id,
+        trip_id: receipt.tripId,
+        store_id: receipt.storeId,
+        amount: receipt.amount,
+        status: (finalUri && !finalUri.startsWith('file://')) ? 'logged' : receipt.status,
+        image_uri: finalUri,
+        household_id: householdId,
+        created_at: receipt.createdAt,
+      };
+    }));
+
+    if (receiptRecords.length > 0) {
+      const { error } = await supabase.from('receipts').upsert(receiptRecords, { onConflict: 'id' });
+      if (error) console.warn('[Sync Engine] Failed to push receipts:', error.message);
     }
   } catch (err) {
     console.warn('[Sync Engine] Offline or push failed.', err);

@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Link, useRouter } from 'expo-router';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Button, Card } from '../../components/shared/ui';
+import { Logo } from '../../components/shared/Logo';
 import { fonts, radii, spacing, type AppColors } from '../../theme';
 import { useTheme } from '../../hooks/useTheme';
 import { useAuthStore } from '../../store/auth-store';
@@ -42,7 +44,10 @@ export default function SignUpScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={styles.content}>
+      <Animated.View entering={FadeInDown.duration(600).delay(100).springify().damping(18)} style={styles.content}>
+        <View style={{ marginBottom: spacing.md }}>
+          <Logo size={64} color={colors.ink} accent={colors.primary} />
+        </View>
         <Text style={styles.eyebrow}>NEW ACCOUNT</Text>
         <Text style={styles.title}>Create your Stokit</Text>
         <Text style={styles.body}>You’ll verify your email before entering the app.</Text>
@@ -54,7 +59,7 @@ export default function SignUpScreen() {
           <Button label={loading ? 'Creating account…' : 'Create account'} onPress={() => void submit()} disabled={loading} />
         </Card>
         <Link href="/(auth)/sign-in" style={styles.link}>Already have an account? Sign in</Link>
-      </View>
+      </Animated.View>
     </KeyboardAvoidingView>
   );
 }

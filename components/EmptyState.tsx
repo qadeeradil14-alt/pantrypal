@@ -1,25 +1,33 @@
 import { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../hooks/useTheme';
 import { fonts, type AppColors } from '../constants/theme';
 import ScalePressable from './ScalePressable';
 
 interface Props {
-  emoji: string;
+  emoji?: string;
+  icon?: React.ComponentProps<typeof Ionicons>['name'];
   title: string;
   subtitle: string;
   action?: { label: string; onPress: () => void };
 }
 
-export default function EmptyState({ emoji, title, subtitle, action }: Props) {
+export default function EmptyState({ emoji, icon, title, subtitle, action }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   return (
     <View style={styles.wrap}>
-      <View style={styles.emojiWrap}>
-        <Text style={styles.emoji}>{emoji}</Text>
-      </View>
+      {icon ? (
+        <View style={styles.iconWrap}>
+          <Ionicons name={icon} size={32} color={colors.primaryDeep} />
+        </View>
+      ) : (
+        <View style={styles.emojiWrap}>
+          <Text style={styles.emoji}>{emoji}</Text>
+        </View>
+      )}
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.subtitle}>{subtitle}</Text>
       {action && (
@@ -47,6 +55,17 @@ function makeStyles(colors: AppColors) {
       marginBottom: 4,
     },
     emoji: { fontSize: 56 },
+    iconWrap: {
+      width: 72,
+      height: 72,
+      borderRadius: 24,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 4,
+      backgroundColor: colors.primarySoft,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+    },
     title: {
       fontSize: 20,
       fontFamily: fonts.display,

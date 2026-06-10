@@ -25,6 +25,8 @@ export function AddStoreSheet({ visible, onClose }: { visible: boolean; onClose:
   const [address, setAddress]  = useState<string | undefined>(undefined);
   const [lat, setLat]          = useState<number | undefined>(undefined);
   const [lng, setLng]          = useState<number | undefined>(undefined);
+  const [openingHours, setOpeningHours] = useState<string | undefined>(undefined);
+  const [isOpen, setIsOpen]    = useState<boolean | undefined>(undefined);
 
   const [suggestions, setSuggestions] = useState<AutocompleteSuggestion[]>([]);
   const [loadingSuggestion, setLoadingSuggestion] = useState(false);
@@ -76,7 +78,7 @@ export function AddStoreSheet({ visible, onClose }: { visible: boolean; onClose:
   const reset = () => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setName(''); setColor(LOGO_COLORS[1]); setEmoji(undefined);
-    setPlaceId(undefined); setAddress(undefined); setLat(undefined); setLng(undefined);
+    setPlaceId(undefined); setAddress(undefined); setLat(undefined); setLng(undefined); setOpeningHours(undefined); setIsOpen(undefined);
     setSuggestions([]); setLoadingSuggestion(false); setSearchError('');
   };
 
@@ -85,7 +87,7 @@ export function AddStoreSheet({ visible, onClose }: { visible: boolean; onClose:
   const handleNameChange = (v: string) => {
     setName(v);
     if (placeId) {
-      setPlaceId(undefined); setAddress(undefined); setLat(undefined); setLng(undefined);
+      setPlaceId(undefined); setAddress(undefined); setLat(undefined); setLng(undefined); setOpeningHours(undefined); setIsOpen(undefined);
     }
     runAutocomplete(v);
   };
@@ -102,6 +104,8 @@ export function AddStoreSheet({ visible, onClose }: { visible: boolean; onClose:
         setAddress(details.address || s.secondaryText);
         setLat(details.lat);
         setLng(details.lng);
+        setOpeningHours(details.openingHours);
+        setIsOpen(details.isOpen);
       } else {
         setPlaceId(s.placeId);
         setAddress(s.secondaryText);
@@ -117,7 +121,23 @@ export function AddStoreSheet({ visible, onClose }: { visible: boolean; onClose:
 
   const submit = () => {
     if (!name.trim()) return;
-    addStore({ name: name.trim(), logoColor: color, logoEmoji: emoji, placeId, address, lat, lng });
+    
+    // Infer a Clearbit logo URL
+    const cleanDomain = name.trim().toLowerCase().replace(/[^a-z0-9]/g, '') + '.com';
+    const inferredLogoUrl = `https://logo.clearbit.com/${cleanDomain}`;
+
+    addStore({ 
+      name: name.trim(), 
+      logoColor: color, 
+      logoEmoji: emoji, 
+      logoUrl: inferredLogoUrl,
+      placeId, 
+      address, 
+      lat, 
+      lng, 
+      openingHours, 
+      isOpen 
+    });
     reset();
     onClose();
   };

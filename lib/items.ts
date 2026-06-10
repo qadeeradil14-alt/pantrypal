@@ -85,7 +85,7 @@ export async function fetchItems(householdId: string): Promise<Item[]> {
 export async function markItemLow(itemId: string, userId: string) {
   const { error } = await supabase
     .from('items')
-    .update({ is_low: true, marked_low_by: userId, got_it_by: null })
+    .update({ is_low: true, macro_status: 'running_low', marked_low_by: userId, got_it_by: null })
     .eq('id', itemId);
 
   if (error) throw error;
@@ -102,7 +102,7 @@ export async function markItemLowWithQueue(itemId: string, userId: string): Prom
 export async function markItemOk(itemId: string) {
   const { error } = await supabase
     .from('items')
-    .update({ is_low: false, marked_low_by: null, got_it_by: null })
+    .update({ is_low: false, macro_status: 'in_stock', marked_low_by: null, got_it_by: null })
     .eq('id', itemId);
 
   if (error) throw error;
@@ -119,7 +119,7 @@ export async function markItemOkWithQueue(itemId: string): Promise<{ queued: boo
 export async function markItemGotIt(itemId: string, userId: string) {
   const { error } = await supabase
     .from('items')
-    .update({ is_low: false, got_it_by: userId })
+    .update({ is_low: false, macro_status: 'in_stock', got_it_by: userId })
     .eq('id', itemId);
 
   if (error) throw error;

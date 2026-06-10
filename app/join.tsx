@@ -14,7 +14,7 @@ export default function JoinDeepLink() {
   const { code } = useLocalSearchParams<{ code: string }>();
   const inviteCode = normalizeInviteCode(code);
   const { session } = useAuthStore();
-  const { setHousehold } = useHouseholdStore();
+  const { confirm: confirmHousehold } = useHouseholdStore();
 
   useEffect(() => {
     if (!inviteCode) {
@@ -29,7 +29,7 @@ export default function JoinDeepLink() {
 
     joinHousehold(inviteCode, session.user.id)
       .then((household) => {
-        setHousehold({ id: household.id, name: household.name, inviteCode, role: 'member', plan: household.plan ?? 'free' });
+        confirmHousehold({ id: household.id, name: household.name, inviteCode, role: 'member', plan: household.plan ?? 'free' });
         router.replace('/(main)/pantry');
       })
       .catch((e: any) => {
@@ -38,7 +38,7 @@ export default function JoinDeepLink() {
           params: { code: inviteCode, error: e?.message ?? 'Could not join. Check the code and try again.' },
         });
       });
-  }, [inviteCode, session, router, setHousehold]);
+  }, [inviteCode, session, router, confirmHousehold]);
 
   return (
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>

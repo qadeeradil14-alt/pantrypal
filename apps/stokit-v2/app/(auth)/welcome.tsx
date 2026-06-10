@@ -7,6 +7,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
 import { fonts, type AppColors } from '../../theme';
 import { useTheme } from '../../hooks/useTheme';
+import { useAuthStore } from '../../store/auth-store';
+import { Logo } from '../../components/shared/Logo';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const S = SCREEN_W / 1080;
@@ -318,6 +320,7 @@ export default function WelcomeScreen() {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
+  const enterGuestMode = useAuthStore((s) => s.enterGuestMode);
   const [index, setIndex] = useState(0);
   const indexRef = useRef(0);
   const triggerRef = useRef<() => void>(() => {});
@@ -365,8 +368,8 @@ export default function WelcomeScreen() {
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <Animated.View style={[styles.safe, { opacity }]}>
           <View style={styles.wordmark}>
+            <Logo size={u(64)} color={colors.ink} accent={colors.primary} />
             <Text style={styles.brand}>Stokit</Text>
-            <Text style={styles.brandIcon}>🛒</Text>
           </View>
           <View style={styles.carousel}>
             <Animated.View style={{ flexDirection: 'row', width: SCREEN_W * SCENES.length, transform: [{ translateX: slideX }] }}>
@@ -419,6 +422,15 @@ export default function WelcomeScreen() {
             Already have an account?{'  '}
             <Text onPress={() => router.push('/(auth)/sign-in')} style={styles.signInLink}>Sign in</Text>
           </Text>
+          <Pressable
+            onPress={() => {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              enterGuestMode();
+            }}
+            style={({ pressed }) => [styles.guestBtn, pressed && { opacity: 0.6 }]}
+          >
+            <Text style={styles.guestBtnText}>Continue without an account</Text>
+          </Pressable>
         </Animated.View>
       </SafeAreaView>
     </View>
@@ -460,5 +472,7 @@ function makeStyles(colors: AppColors) {
     getStartedText: { fontFamily: fonts.sansSemibold, fontSize: u(46), color: colors.background },
     signInRow: { textAlign: 'center', marginTop: u(36), fontFamily: fonts.sansSemibold, fontSize: u(39), color: colors.muted },
     signInLink: { color: colors.primary },
+    guestBtn: { alignSelf: 'center', marginTop: u(20), paddingVertical: u(16), paddingHorizontal: u(40) },
+    guestBtnText: { fontFamily: fonts.sans, fontSize: u(34), color: colors.faintText, textDecorationLine: 'underline' },
   });
 }

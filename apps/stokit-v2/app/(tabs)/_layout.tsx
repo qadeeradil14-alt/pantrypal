@@ -47,11 +47,11 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="activity"
+        name="stores"
         options={{
-          title: 'Activity',
+          title: 'Stores',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="pulse" size={size} color={color} />
+            <Ionicons name="storefront" size={size} color={color} />
           ),
         }}
       />
@@ -65,21 +65,19 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="stores"
+        name="activity"
         options={{
-          title: 'Stores',
+          title: 'Activity',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="storefront" size={size} color={color} />
+            <Ionicons name="pulse" size={size} color={color} />
           ),
         }}
       />
+      {/* Settings hidden from tab bar — accessible via the ⚙️ icon on the Pantry screen */}
       <Tabs.Screen
         name="settings"
         options={{
-          title: 'Settings',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="settings-sharp" size={size} color={color} />
-          ),
+          href: null,
         }}
       />
     </Tabs>

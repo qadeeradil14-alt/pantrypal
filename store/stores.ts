@@ -90,6 +90,14 @@ export const useStoresStore = create<StoresState>()(
     {
       name: 'pantrypal:stores-store:v1',
       storage: createJSONStorage(() => AsyncStorage),
+      version: 2,
+      migrate: (persistedState) => {
+        const state = persistedState as Partial<StoresState> | undefined;
+        return {
+          stores: Array.isArray(state?.stores) ? state.stores : [],
+          pinnedStoreIds: Array.isArray(state?.pinnedStoreIds) ? state.pinnedStoreIds : [],
+        };
+      },
       // Only persist static store data and UI preferences.
       // Shopping session state (activeStoreId, pendingReceiptStoreId, receiptCompletedStoreIds)
       // must NOT be persisted — stale values on app reopen cause shopping mode to auto-start,

@@ -1,11 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, Image } from 'react-native';
 import { Screen } from '../../components/shared/Screen';
 import { Card, PageTitle, Pill, StoreChip } from '../../components/shared/ui';
 import { EmptyState } from '../../components/shared/EmptyState';
 import { TripDetailSheet } from '../../components/receipts/TripDetailSheet';
-import { fonts, spacing, type AppColors } from '../../theme';
+import { fonts, radii, spacing, type AppColors } from '../../theme';
 import { useDurableStore } from '../../store/durable-store';
 import type { Receipt, Trip } from '../../types';
 import { useTheme } from '../../hooks/useTheme';
@@ -120,8 +120,11 @@ export default function ReceiptsScreen() {
                       />
                       <View style={{ flex: 1 }}>
                         <Text style={styles.storeName}>{store?.name ?? 'Store'}</Text>
-                        <ReceiptStatusPill status={r.status} />
+                        <ReceiptStatusPill status={r.status} hasPhoto={!!r.imageUri} />
                       </View>
+                      {r.imageUri && (
+                        <Image source={{ uri: r.imageUri }} style={{ width: 32, height: 40, borderRadius: radii.sm, backgroundColor: colors.surfaceRaised }} />
+                      )}
                       <Text style={styles.amount}>
                         {r.status === 'skipped' ? '—' : `$${r.amount.toFixed(2)}`}
                       </Text>
@@ -139,9 +142,12 @@ export default function ReceiptsScreen() {
   );
 }
 
-function ReceiptStatusPill({ status }: { status: Receipt['status'] }) {
-  if (status === 'logged') return <Pill label="Logged" tone="stocked" />;
-  if (status === 'photo_pending') return <Pill label="Photo later" tone="low" />;
+function ReceiptStatusPill({ status, hasPhoto }: { status: Receipt['status']; hasPhoto?: boolean }) {
+  if (status === 'logged') return <Pill label="Complete" tone="stocked" />;
+  if (status === 'photo_pending') {
+    if (hasPhoto) return <Pill label="Processed" tone="low" />;
+    return <Pill label="Photo later" tone="muted" />;
+  }
   return <Pill label="Skipped" tone="muted" />;
 }
 

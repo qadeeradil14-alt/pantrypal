@@ -213,23 +213,33 @@ export function StatTile({
  * Unknown/local stores never make a network request.
  */
 export function StoreChip({
-  name,
-  emoji,
-  color,
+  store,
+  name: propName,
+  emoji: propEmoji,
+  color: propColor,
+  logoUrl: propLogoUrl,
   size = 44,
 }: {
-  name: string;
+  store?: any; // To avoid circular imports, just use any or a loose type, or we can just expect the properties
+  name?: string;
   emoji?: string;
   color?: string;
+  logoUrl?: string;
   size?: number;
 }) {
   const { colors: themeColors } = useTheme();
+  
+  const name = store?.name ?? propName ?? '?';
+  const color = store?.logoColor ?? propColor;
+  const emoji = store?.logoEmoji ?? propEmoji;
+  const logoUrlParam = store?.logoUrl ?? propLogoUrl;
+
   const brand = getStoreBrand(name, color);
   const [imgError, setImgError] = useState(false);
 
-  // Brand logo always wins for known chains (brand.logoUrl defined).
+  // Brand logo always wins for known chains (brand.logoUrl defined), OR if logoUrlParam is provided
   // User-set emoji is only shown for local/custom stores with no brand logo.
-  const logoUrl = brand.logoUrl;
+  const logoUrl = logoUrlParam || brand.logoUrl;
   const showImage = !!logoUrl && !imgError;
 
   const bg = color ?? brand.color;

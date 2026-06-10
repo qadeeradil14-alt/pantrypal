@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View, Image, Linking, Platform } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View, Image, Linking, Platform, ActionSheetIOS } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../../components/shared/Screen';
 import { Card, PageTitle, StoreChip } from '../../components/shared/ui';
@@ -12,6 +12,7 @@ import { Button } from '../../components/shared/ui';
 import { fonts, radii, spacing, type AppColors } from '../../theme';
 import { useDurableStore } from '../../store/durable-store';
 import { useTheme } from '../../hooks/useTheme';
+import { isCurrentlyOpen } from '../../lib/openingHours';
 import type { Store } from '../../types';
 
 const LOGO_COLORS = ['#C0392B', '#E8913E', '#D8A24A', '#3D7A53', '#2E6DA4', '#6C5CE7', '#444'];
@@ -92,8 +93,28 @@ export default function StoresScreen() {
   const stores = useDurableStore((s) => s.stores);
   const items = useDurableStore((s) => s.items);
   const deleteStore = useDurableStore((s) => s.deleteStore);
+  const updateStore = useDurableStore((s) => s.updateStore);
   const [addOpen, setAddOpen] = useState(false);
   const [editStore, setEditStore] = useState<Store | null>(null);
+
+  React.useEffect(() => {
+    stores.forEach((store) => {
+      if (store.isOpen === undefined && store.openingHours === undefined && store.lat && store.lng) {
+        const apiKey = process.env.EXPO_PUBLIC_GEOAPIFY_API_KEY;
+        if (!apiKey) return;
+        const url = `https://api.geoapify.com/v2/places?categories=commercial&filter=circle:${store.lng},${store.lat},100&limit=1&apiKey=${apiKey}`;
+        fetch(url).then(r => r.json()).then(data => {
+          const f = data.features?.[0];
+          if (f && f.properties?.opening_hours) {
+            updateStore(store.id, { openingHours: f.properties.opening_hours });
+          } else {
+             // Mark as checked to prevent infinite re-fetching if missing
+             updateStore(store.id, { isOpen: false }); 
+          }
+        }).catch(err => console.log('Failed to patch store hours', err));
+      }
+    });
+  }, [stores, updateStore]);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -138,143 +159,184 @@ export default function StoresScreen() {
 
   if (stores.length === 0) {
     return (
-      <Screen>
-        <PageTitle eyebrow="Where you shop" title="Stores" />
-        <EmptyState
-          icon="storefront-outline"
-          title="No stores yet"
-          body="Add the stores you shop at. You'll assign pantry items to them so shopping trips group everything by store."
-          ctaLabel="Add your first store"
-          onCta={() => setAddOpen(true)}
-          steps={['Name your store', 'Pick a color or icon', 'Assign items when you add them']}
-        />
-        <AddStoreSheet visible={addOpen} onClose={() => setAddOpen(false)} />
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
+        <Screen>
+          <PageTitle eyebrow="Where you shop" title="Stores" />
+          <EmptyState
+            icon="storefront-outline"
+            title="No stores yet"
+            body="Add the stores you shop at. You'll assign pantry items to them so shopping trips group everything by store."
+            ctaLabel="Add your first store"
+            onCta={() => setAddOpen(true)}
+            steps={['Name your store', 'Pick a color or icon', 'Assign items when you add them']}
+          />
+          <AddStoreSheet visible={addOpen} onClose={() => setAddOpen(false)} />
+        </Screen>
         <Fab onPress={() => setAddOpen(true)} />
-      </Screen>
+      </View>
     );
   }
 
   return (
-    <Screen>
-      <PageTitle eyebrow="Where you shop" title="Stores" />
-      <View style={{ gap: spacing.md }}>
-        {stores.map((store) => (
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <Screen>
+        <PageTitle eyebrow="Where you shop" title="Stores" />
+        <View style={{ gap: spacing.md }}>
+          {stores.map((store) => (
           <Card key={store.id} style={styles.cardContainer}>
-            <View style={styles.row}>
-              <StoreChip name={store.name} emoji={store.logoEmoji} color={store.logoColor} size={48} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.name}>{store.name}</Text>
-                <Text style={styles.meta}>
-                  {countFor(store.id)} item{countFor(store.id) === 1 ? '' : 's'} assigned
-                </Text>
-                {store.address ? (
-                  <Text style={styles.address} numberOfLines={1}>
-                    📍 {store.address}
-                  </Text>
-                ) : null}
-              </View>
+            <Pressable 
+              style={({ pressed }) => [styles.cardPressable, pressed && { backgroundColor: colors.surfaceRaised }]}
+              onPress={() => handleDirections(store)}
+            >
+              <View style={styles.storeHeader}>
+                <StoreChip name={store.name} emoji={store.logoEmoji} color={store.logoColor} size={48} />
+                <View style={styles.storeHeaderText}>
+                  <Text style={styles.name}>{store.name}</Text>
+                  {store.address ? (
+                    <Text style={styles.address} numberOfLines={1}>
+                      {store.address}
+                    </Text>
+                  ) : null}
+                  
+                  <View style={styles.statsAndStatusRow}>
+                    <View style={styles.statsBadge}>
+                      <Ionicons name="basket-outline" size={14} color={colors.muted} />
+                      <Text style={styles.meta}>
+                        {countFor(store.id)} item{countFor(store.id) === 1 ? '' : 's'}
+                      </Text>
+                    </View>
 
-              {/* Action buttons */}
-              <View style={styles.actions}>
-                <Pressable
-                  hitSlop={8}
-                  onPress={() => setEditStore(store)}
-                  style={styles.actionBtn}
-                  accessibilityLabel={`Edit ${store.name}`}
-                >
-                  <Ionicons name="pencil-outline" size={17} color={colors.primary} />
-                </Pressable>
-                <Pressable
-                  hitSlop={8}
-                  onPress={() => handleDelete(store)}
-                  style={[styles.actionBtn, styles.deleteBtn]}
-                  accessibilityLabel={`Delete ${store.name}`}
-                >
-                  <Ionicons name="trash-outline" size={17} color={colors.danger ?? '#C0392B'} />
-                </Pressable>
-              </View>
-            </View>
-
-            {/* Static Map & Directions */}
-            {store.lat && store.lng ? (
-              <Pressable
-                style={styles.mapContainer}
-                onPress={() => handleDirections(store)}
-              >
-                <Image
-                  source={{
-                    uri: `https://maps.googleapis.com/maps/api/staticmap?center=${store.lat},${store.lng}&zoom=15&size=600x120&scale=2&markers=color:red%7C${store.lat},${store.lng}&key=${process.env.EXPO_PUBLIC_GOOGLE_API_KEY || ''}`
-                  }}
-                  style={styles.mapImage}
-                />
-                <View style={styles.directionsOverlay}>
-                  <Ionicons name="navigate" size={14} color="#FFF" />
-                  <Text style={styles.directionsText}>Directions</Text>
+                    {(() => {
+                      let openStatus = store.openingHours ? isCurrentlyOpen(store.openingHours) : null;
+                      if (openStatus === null && store.isOpen !== undefined) {
+                        openStatus = store.isOpen;
+                      }
+                      if (openStatus === null) return null;
+                      return (
+                        <View style={[styles.hoursBadge, openStatus ? styles.hoursBadgeOpen : styles.hoursBadgeClosed]}>
+                          <View style={[styles.statusDot, openStatus ? styles.statusDotOpen : styles.statusDotClosed]} />
+                          <Text style={[styles.hoursText, openStatus ? styles.hoursTextOpen : styles.hoursTextClosed]}>
+                            {openStatus ? 'Open' : 'Closed'}
+                          </Text>
+                        </View>
+                      );
+                    })()}
+                  </View>
                 </View>
-              </Pressable>
-            ) : null}
+                
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+                  <Ionicons name="navigate" size={18} color={colors.primary} style={{ opacity: 0.8 }} />
+                  <Pressable
+                    hitSlop={12}
+                    style={styles.moreButton}
+                    onPress={() => {
+                      if (Platform.OS === 'ios') {
+                         ActionSheetIOS.showActionSheetWithOptions(
+                           {
+                             options: ['Cancel', 'Edit Store', 'Remove Store'],
+                             cancelButtonIndex: 0,
+                             destructiveButtonIndex: 2,
+                           },
+                           (buttonIndex) => {
+                             if (buttonIndex === 1) setEditStore(store);
+                             if (buttonIndex === 2) handleDelete(store);
+                           }
+                         );
+                      } else {
+                         Alert.alert(
+                           store.name,
+                           'Store Options',
+                           [
+                             { text: 'Cancel', style: 'cancel' },
+                             { text: 'Edit', onPress: () => setEditStore(store) },
+                             { text: 'Remove', style: 'destructive', onPress: () => handleDelete(store) },
+                           ]
+                         );
+                      }
+                    }}
+                  >
+                    <Ionicons name="ellipsis-horizontal" size={20} color={colors.muted} />
+                  </Pressable>
+                </View>
+              </View>
+            </Pressable>
           </Card>
         ))}
-      </View>
+        </View>
 
-      <AddStoreSheet visible={addOpen} onClose={() => setAddOpen(false)} />
-      <EditStoreSheet store={editStore} onClose={() => setEditStore(null)} />
+        <AddStoreSheet visible={addOpen} onClose={() => setAddOpen(false)} />
+        <EditStoreSheet store={editStore} onClose={() => setEditStore(null)} />
+      </Screen>
       <Fab onPress={() => setAddOpen(true)} />
-    </Screen>
+    </View>
   );
 }
 
 function makeStyles(colors: AppColors) {
   return StyleSheet.create({
-    cardContainer: { padding: 0, overflow: 'hidden' },
-    row:       { flexDirection: 'row', alignItems: 'center', gap: spacing.lg, padding: spacing.lg },
-    name:      { fontFamily: fonts.sansSemibold, fontSize: 17, color: colors.ink },
-    meta:      { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: 3 },
-    address:   { fontFamily: fonts.sans, fontSize: 11, color: colors.faintText, marginTop: 2 },
-    actions:   { flexDirection: 'row', gap: spacing.sm },
-    actionBtn: {
-      width: 36, height: 36, borderRadius: 18,
-      alignItems: 'center', justifyContent: 'center',
-      backgroundColor: colors.surfaceRaised,
-      borderWidth: 1, borderColor: colors.border,
-    },
-    deleteBtn: {
-      borderColor: (colors as any).dangerSoft ?? colors.border,
-    },
-    mapContainer: {
-      height: 60,
-      marginHorizontal: spacing.lg,
-      marginBottom: spacing.lg,
-      borderRadius: radii.md,
+    cardContainer: { 
+      padding: 0, 
       overflow: 'hidden',
-      backgroundColor: colors.surfaceRaised,
-      position: 'relative',
+      borderRadius: radii.xl,
       borderWidth: 1,
-      borderColor: colors.border,
+      borderColor: colors.borderSoft,
     },
-    mapImage: {
-      width: '100%',
-      height: '100%',
-      opacity: 0.85,
+    cardPressable: {
+      padding: spacing.lg,
     },
-    directionsOverlay: {
-      position: 'absolute',
-      right: 6,
-      top: 6,
-      bottom: 6,
-      backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    storeHeader: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: spacing.md,
+    },
+    storeHeaderText: {
+      flex: 1,
+    },
+    moreButton: {
+      padding: 4,
+    },
+    name: { 
+      fontFamily: fonts.sansSemibold, 
+      fontSize: 18, 
+      color: colors.ink,
+      letterSpacing: -0.3,
+    },
+    address: { 
+      fontFamily: fonts.sans, 
+      fontSize: 13, 
+      color: colors.muted, 
+      marginTop: 2,
+      marginBottom: spacing.sm,
+    },
+    statsAndStatusRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: 14,
-      borderRadius: radii.sm,
-      gap: 6,
+      gap: spacing.sm,
+      flexWrap: 'wrap',
     },
-    directionsText: {
-      color: '#FFF',
-      fontFamily: fonts.sansSemibold,
-      fontSize: 12,
-      letterSpacing: 0.3,
+    statsBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
     },
+    meta: { 
+      fontFamily: fonts.monoMedium, 
+      fontSize: 13, 
+      color: colors.muted 
+    },
+    hoursBadge: { 
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+    },
+    hoursBadgeOpen: {},
+    hoursBadgeClosed: {},
+    statusDot: { width: 6, height: 6, borderRadius: 3 },
+    statusDotOpen: { backgroundColor: '#16A34A' },
+    statusDotClosed: { backgroundColor: '#DC2626' },
+    hoursText: { fontSize: 13, fontFamily: fonts.sansMedium },
+    hoursTextOpen: { color: '#16A34A' },
+    hoursTextClosed: { color: '#DC2626' },
   });
 }
 

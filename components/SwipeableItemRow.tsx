@@ -13,11 +13,12 @@ import type { Item } from '../lib/items';
 interface Props {
   item: Item;
   userId: string;
+  inShoppingCart?: boolean;
   onEditPress?: (item: Item) => void;
   onLiftPress?: (item: Item) => void;
 }
 
-export default function SwipeableItemRow({ item, userId, onEditPress, onLiftPress }: Props) {
+export default function SwipeableItemRow({ item, userId, inShoppingCart = false, onEditPress, onLiftPress }: Props) {
   const { colors } = useTheme();
   const { removeItem, restoreItem, updateItem } = useItemsStore();
   const swipeRef = useRef<Swipeable>(null);
@@ -60,7 +61,7 @@ export default function SwipeableItemRow({ item, userId, onEditPress, onLiftPres
     _progress: Animated.AnimatedInterpolation<number>,
     dragX: Animated.AnimatedInterpolation<number>,
   ) {
-    if (!item.is_low) return null;
+    if (!item.is_low || inShoppingCart) return null;
     const scale = dragX.interpolate({ inputRange: [0, 72], outputRange: [0.85, 1], extrapolate: 'clamp' });
     return (
       <TouchableOpacity style={styles.gotItAction} onPress={handleSwipeGotIt} activeOpacity={0.85}>
@@ -105,7 +106,7 @@ export default function SwipeableItemRow({ item, userId, onEditPress, onLiftPres
       friction={2}
       enableTrackpadTwoFingerGesture
     >
-      <ItemRow item={item} userId={userId} onEditPress={onEditPress} onLiftPress={onLiftPress} />
+      <ItemRow item={item} userId={userId} inShoppingCart={inShoppingCart} onEditPress={onEditPress} onLiftPress={onLiftPress} />
     </Swipeable>
   );
 }

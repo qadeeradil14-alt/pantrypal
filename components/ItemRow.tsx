@@ -1,5 +1,6 @@
 import { memo, useMemo, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useItemsStore } from '../store/items';
 import { useStoresStore } from '../store/stores';
 import { deleteItemWithQueue, markItemLowWithQueue, markItemOkWithQueue } from '../lib/items';
@@ -16,11 +17,12 @@ import ItemActionSheet from './ItemActionSheet';
 interface Props {
   item: Item;
   userId: string;
+  inShoppingCart?: boolean;
   onEditPress?: (item: Item) => void;
   onLiftPress?: (item: Item) => void;
 }
 
-function ItemRowComponent({ item, userId, onEditPress, onLiftPress }: Props) {
+function ItemRowComponent({ item, userId, inShoppingCart = false, onEditPress, onLiftPress }: Props) {
   const { colors } = useTheme();
   const { removeItem, restoreItem, updateItem } = useItemsStore();
   const assignedStoreName = useStoresStore((state) =>
@@ -31,10 +33,15 @@ function ItemRowComponent({ item, userId, onEditPress, onLiftPress }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   async function handleTap() {
+    if (inShoppingCart) {
+      void hapticWarning();
+      return;
+    }
     const nextLow = !item.is_low;
     void hapticSelection();
     updateItem(item.id, {
       is_low: nextLow,
+      macro_status: nextLow ? 'running_low' : 'in_stock',
       marked_low_by: nextLow ? userId : null,
       got_it_by: null,
     });
@@ -50,6 +57,7 @@ function ItemRowComponent({ item, userId, onEditPress, onLiftPress }: Props) {
       void hapticError();
       updateItem(item.id, {
         is_low: item.is_low,
+        macro_status: item.macro_status,
         marked_low_by: item.marked_low_by,
         got_it_by: item.got_it_by,
       });
@@ -124,7 +132,12 @@ function ItemRowComponent({ item, userId, onEditPress, onLiftPress }: Props) {
               </Text>
             </View>
           )}
-          {item.is_low ? (
+          {inShoppingCart ? (
+            <View style={styles.cartBadge}>
+              <Ionicons name="cart-outline" size={11} color={colors.primary} />
+              <Text style={styles.cartBadgeText}>In cart</Text>
+            </View>
+          ) : item.is_low ? (
             <View style={styles.lowBadge}>
               <View style={styles.lowDot} />
               <Text style={styles.lowBadgeText}>Low</Text>
@@ -211,6 +224,16 @@ function makeStyles(colors: AppColors) {
       backgroundColor: colors.warning,
     },
     lowBadgeText: { fontSize: 11, fontFamily: fonts.bodySemiBold, color: colors.warning, letterSpacing: 0.3 },
+    cartBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      backgroundColor: colors.primarySoft,
+      borderRadius: 999,
+      paddingHorizontal: 9,
+      paddingVertical: 4,
+    },
+    cartBadgeText: { fontSize: 11, fontFamily: fonts.bodySemiBold, color: colors.primary, letterSpacing: 0.2 },
     stockDot: {
       width: 7,
       height: 7,

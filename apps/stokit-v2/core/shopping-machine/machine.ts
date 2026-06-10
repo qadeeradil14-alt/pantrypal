@@ -98,7 +98,8 @@ export type ShoppingEvent =
   | { type: 'FINISH_TRIP_EARLY'; now: number }
   /** Legacy — picks first pending store. Kept for test backward-compat. */
   | { type: 'ADVANCE_STORE' }
-  | { type: 'END_TRIP' };
+  | { type: 'END_TRIP' }
+  | { type: 'ADD_ENTRY'; entry: ShoppingEntry };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -251,6 +252,13 @@ export function reduce(
         return { ...e, picked };
       });
       return { ...session, entries };
+    }
+
+    case 'ADD_ENTRY': {
+      if (session.status !== 'shopping_store') return session;
+      // Prevent duplicates
+      if (session.entries.some(e => e.itemId === event.entry.itemId)) return session;
+      return { ...session, entries: [...session.entries, { ...event.entry, picked: false }] };
     }
 
     case 'FINISH_STORE': {

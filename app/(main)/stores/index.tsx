@@ -48,7 +48,7 @@ export default function StoresScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const params = useLocalSearchParams<{ add?: string }>();
-  const { household } = useHouseholdStore();
+  const { household, status: householdStatus } = useHouseholdStore();
   const { stores, pinnedStoreIds, setStores, addStore: addToStore, removeStore, togglePin } = useStoresStore();
   const { items } = useItemsStore();
   const [loading, setLoading] = useState(true);
@@ -95,12 +95,16 @@ export default function StoresScreen() {
 
   const load = useCallback(async () => {
     if (!householdId) {
-      setStores([]);
+      // Only clear stores once household is confirmed absent (loaded = true, household = null).
+      // Without this guard, the Stores tab fires setStores([]) on every cold start because
+      // useHouseholdStore is not persisted and always starts with household = null —
+      // wiping the AsyncStorage-persisted store list before the household fetch completes.
+      if (householdStatus === 'none') setStores([]);
       return;
     }
     const data = await fetchStores(householdId);
     setStores(data);
-  }, [householdId, setStores]);
+  }, [householdId, householdStatus, setStores]);
 
   useEffect(() => {
     load()

@@ -1,12 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Sheet } from '../shared/Sheet';
 import { ChipSelect, Stepper } from '../shared/Field';
 import { Button } from '../shared/ui';
 import { fonts, radii, spacing, type AppColors } from '../../theme';
 import { useDurableStore } from '../../store/durable-store';
-import type { PantryStatus, Unit } from '../../types';
+import type { PantryItem, PantryStatus, Unit } from '../../types';
 import { useTheme } from '../../hooks/useTheme';
 import {
   PANTRY_CATALOG,
@@ -46,38 +46,47 @@ export function AddItemSheet({
   visible,
   onClose,
   defaultStatus = 'stocked',
+  defaultStoreId = null,
   title = 'Add to pantry',
   subtitle = 'Select multiple items and add them all at once.',
+  hideStorePicker = false,
+  onItemsAdded,
 }: {
   visible: boolean;
   onClose: () => void;
   defaultStatus?: PantryStatus;
+  defaultStoreId?: string | null;
   title?: string;
   subtitle?: string;
+  hideStorePicker?: boolean;
+  onItemsAdded?: (items: PantryItem[]) => void;
 }) {
   const { colors } = useTheme();
   const stores = useDurableStore((s) => s.stores);
   const addItem = useDurableStore((s) => s.addItem);
   const [query, setQuery] = useState('');
-  const [category, setCategory] = useState<typeof PANTRY_CATEGORIES[number]>('All');
+  const [category, setCategory] = useState<typeof PANTRY_CATEGORIES[number]>('Produce');
   const [selected, setSelected] = useState<Record<string, SelectedItem>>({});
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const reset = () => {
     setQuery('');
-    setCategory('All');
+    setCategory('Produce');
     setSelected({});
   };
 
   const submit = () => {
     const chosen = Object.values(selected);
     if (!chosen.length) return;
+    const addedItems: PantryItem[] = [];
     chosen.forEach(({ catalog, quantity, unit, status, storeId }) => {
-      addItem({ name: catalog.name, quantity, unit, status, storeId });
+      const item = addItem({ name: catalog.name, quantity, unit, status, storeId });
+      addedItems.push(item);
     });
     reset();
     onClose();
+    if (onItemsAdded) onItemsAdded(addedItems);
   };
 
   const close = () => {
@@ -89,13 +98,14 @@ export function AddItemSheet({
   const selectedItems = Object.values(selected);
   const normalizedQuery = query.trim().toLowerCase();
   const filteredCatalog = useMemo(() => PANTRY_CATALOG.filter((catalogItem) => {
-    if (category !== 'All' && catalogItem.category !== category) return false;
-    if (!normalizedQuery) return true;
-    return [
-      catalogItem.name,
-      catalogItem.category,
-      ...(catalogItem.keywords ?? []),
-    ].some((value) => value.toLowerCase().includes(normalizedQuery));
+    if (normalizedQuery) {
+      return [
+        catalogItem.name,
+        catalogItem.category,
+        ...(catalogItem.keywords ?? []),
+      ].some((value) => value.toLowerCase().includes(normalizedQuery));
+    }
+    return catalogItem.category === category;
   }), [category, normalizedQuery]);
 
   const exactMatch = useMemo(
@@ -117,7 +127,7 @@ export function AddItemSheet({
           quantity: 1,
           unit: catalogItem.defaultUnit ?? 'unit',
           status: defaultStatus,
-          storeId: null,
+          storeId: defaultStoreId,
         },
       };
     });
@@ -203,8 +213,8 @@ export function AddItemSheet({
                   <Text style={styles.catalogName} numberOfLines={1}>{catalogItem.name}</Text>
                   <Text style={styles.catalogCategory} numberOfLines={1}>{catalogItem.category}</Text>
                 </View>
-                <Ionicons
-                  name={active ? 'checkmark-circle' : 'add-circle-outline'}
+                <MaterialCommunityIcons
+                  name={active ? 'check-circle' : 'plus-circle-outline'}
                   size={20}
                   color={active ? colors.primary : colors.muted}
                 />
@@ -265,7 +275,7 @@ export function AddItemSheet({
                 value={status}
                 onChange={(value) => updateSelected(catalog.id, { status: value })}
               />
-              {storeOptions.length ? (
+              {!hideStorePicker && storeOptions.length ? (
                 <ChipSelect
                   label="Buy at store"
                   options={storeOptions}

@@ -3,6 +3,7 @@ import { ActivityIndicator, View } from 'react-native';
 import * as Linking from 'expo-linking';
 import { Stack, usePathname, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import * as Updates from 'expo-updates';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import {
@@ -55,6 +56,7 @@ export default function RootLayout() {
   const initializeAuth = useAuthStore((s) => s.initializeAuth);
   const authLoading = useAuthStore((s) => s.loading);
   const user = useAuthStore((s) => s.user);
+  const guestMode = useAuthStore((s) => s.guestMode);
   const router = useRouter();
   const pathname = usePathname();
   const { colors, isDark } = useTheme();
@@ -74,15 +76,45 @@ export default function RootLayout() {
     return () => linkSubscription.remove();
   }, [hydrateDurable, hydrateHousehold, hydrateSession, initializeAuth]);
 
+  // Aggressively check for OTA updates on every launch and reload immediately.
+  useEffect(() => {
+    if (__DEV__) return; // Skip in development
+    async function checkForUpdate() {
+      try {
+        const result = await Updates.checkForUpdateAsync();
+        if (result.isAvailable) {
+          await Updates.fetchUpdateAsync();
+          await Updates.reloadAsync();
+        }
+      } catch (e) {
+        // Silently fail — app still works with the current bundle
+        console.log('[OTA] Update check failed:', e);
+      }
+    }
+    void checkForUpdate();
+  }, []);
+
   const verified = isEmailVerified(user);
+  const unlocked = verified || guestMode;
   const ready = fontsLoaded && hydratedDurable && hydratedHousehold && !authLoading;
 
   useEffect(() => {
     if (!ready) return;
-    if (user && !verified && pathname !== '/verify-email') {
+    
+    // Email verification check
+    if (user && !verified && !guestMode && pathname !== '/verify-email') {
       router.replace('/(auth)/verify-email');
+      return;
     }
-  }, [pathname, ready, router, user, verified]);
+
+    // Main auth routing
+    const inAuthGroup = pathname.startsWith('/(auth)');
+    if (unlocked && inAuthGroup) {
+      router.replace('/(tabs)');
+    } else if (!unlocked && !inAuthGroup) {
+      router.replace('/(auth)/welcome');
+    }
+  }, [pathname, ready, router, user, verified, guestMode, unlocked]);
 
   if (!ready) {
     return (
@@ -110,12 +142,8 @@ export default function RootLayout() {
             animation: 'fade',
           }}
         >
-          <Stack.Protected guard={!verified}>
-            <Stack.Screen name="(auth)" />
-          </Stack.Protected>
-          <Stack.Protected guard={verified}>
-            <Stack.Screen name="(tabs)" />
-          </Stack.Protected>
+          <Stack.Screen name="(auth)" />
+          <Stack.Screen name="(tabs)" />
         </Stack>
       </SafeAreaProvider>
     </GestureHandlerRootView>

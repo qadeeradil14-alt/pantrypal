@@ -46,11 +46,14 @@ export interface Store {
   /** Visual only. Must never control business logic. */
   logoColor?: string;
   logoEmoji?: string;
+  logoUrl?: string;
   /** Populated when the store was discovered via Google Places. */
   placeId?: string;
   address?: string;
   lat?: number;
   lng?: number;
+  openingHours?: string;
+  isOpen?: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -161,6 +164,7 @@ export interface HouseholdPrefs {
   defaultUnit: Unit;
   expiringWindowDays: number;
   weeklyBudget: number;
+  dismissedBudgetWarningWeekOf?: number;
 }
 
 /** Everything persisted to disk. */

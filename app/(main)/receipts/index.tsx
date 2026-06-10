@@ -24,6 +24,7 @@ import StoreLogo from '../../../components/StoreLogo';
 import type { AppColors } from '../../../constants/theme';
 import { useTheme } from '../../../hooks/useTheme';
 import EmptyState from '../../../components/EmptyState';
+import { inferCategory } from '../../../lib/barcodes';
 
 interface ReceiptSection {
   title: string;
@@ -287,7 +288,8 @@ export default function ReceiptsScreen() {
       const toAdd = (selectedReceipt?.receipt_items ?? []).filter((i) => selectedPantryIds.has(i.id));
       await Promise.all(
         toAdd.map(async (ri) => {
-          const { item } = await addItemWithQueue(householdId, ri.name, 'pantry', userId);
+          const category = inferCategory(ri.name);
+          const { item } = await addItemWithQueue(householdId, ri.name, category, userId);
           upsertItem(item);
         }),
       );
@@ -479,7 +481,7 @@ export default function ReceiptsScreen() {
         SectionSeparatorComponent={() => <View style={{ height: 4 }} />}
         ListEmptyComponent={
           <EmptyState
-            emoji="🧾"
+            icon="receipt-outline"
             title="No receipts yet"
             subtitle="Tap Scan after a grocery trip to automatically track your spending."
             action={{ label: 'Scan a receipt', onPress: handleAdd }}

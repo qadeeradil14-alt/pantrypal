@@ -41,7 +41,9 @@ export const useShoppingStore = create<ShoppingState>()(
     {
       name: 'pantrypal:shopping-store:v1',
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (state) => ({ entries: state.entries }),
+      version: 2,
+      migrate: () => ({ entries: [] }),
+      partialize: () => ({ entries: [] }),
     },
   ),
 );

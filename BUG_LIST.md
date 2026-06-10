@@ -8,7 +8,7 @@
 
 | # | Bug | Priority | Status |
 |---|-----|----------|--------|
-| 1 | Barcode scanner doesn't recognize products | 🔴 High | 🔍 Not yet investigated |
+| - | No pending bugs right now | - | - |
 
 ---
 
@@ -16,6 +16,7 @@
 
 | # | Fix | Notes |
 |---|-----|-------|
+| 1 | Barcode scanner doesn't recognize products | Cleaned up dead API endpoints, padded US UPCs for OpenFoodFacts |
 | 2 | Kmart MapView crash (longitudeDelta overflow) | Fixed in build #7 — already live |
 | 3 | Receipts: delete button | Confirmation alert → removes instantly |
 | 4 | Budget bar doesn't refresh after receipt | Now refreshes on tab focus |

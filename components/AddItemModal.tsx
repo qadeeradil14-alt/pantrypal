@@ -17,6 +17,7 @@ import ScalePressable from './ScalePressable';
 import ThemedPopup from './ThemedPopup';
 import AddStoreModal from './AddStoreModal';
 import type { Item } from '../lib/items';
+import { inferCategory } from '../lib/barcodes';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -49,11 +50,12 @@ interface Props {
   householdId: string;
   userId: string;
   initialStoreId?: string | null;
+  addToShopping?: boolean;
   onAdded?: (item: Item) => void;
   onClose: () => void;
 }
 
-export default function AddItemModal({ householdId, userId, initialStoreId, onAdded, onClose }: Props) {
+export default function AddItemModal({ householdId, userId, initialStoreId, addToShopping = false, onAdded, onClose }: Props) {
   const { colors } = useTheme();
   const { items, upsertItem } = useItemsStore();
   const stores = useStoresStore((state) => state.stores);
@@ -114,7 +116,8 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
     setError('');
     setLoading(true);
     try {
-      const { item, queued } = await addItemWithQueue(householdId, normalized, 'pantry', userId, storeId);
+      const category = inferCategory(normalized);
+      const { item, queued } = await addItemWithQueue(householdId, normalized, category, userId, storeId);
       upsertItem(item);
       onAdded?.(item);
       void hapticSuccess();
@@ -195,7 +198,9 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
               <Ionicons name="alert-circle-outline" size={15} color={colors.warning} />
               <Text style={styles.duplicateText}>
                 {duplicateItem.name} is already saved.{' '}
-                {storeId && storeId !== duplicateItem.preferred_store_id
+                {addToShopping
+                  ? 'Tap Add to include it in this shopping trip.'
+                  : storeId && storeId !== duplicateItem.preferred_store_id
                   ? 'Tap Add to move it to this store.'
                   : 'Select a different store to move it, or mark it low from the Pantry tab.'}
               </Text>
@@ -245,7 +250,7 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
           >
             {loading
               ? <ActivityIndicator color={colors.onPrimary} />
-              : <Text style={styles.addBtnText}>{storeId ? 'Add to store' : 'Add unassigned'}</Text>}
+              : <Text style={styles.addBtnText}>{addToShopping ? 'Add to trip' : storeId ? 'Add to store' : 'Add unassigned'}</Text>}
           </ScalePressable>
 
           <ScalePressable style={styles.cancelBtn} profile="chip" onPress={() => { void hapticSelection(); onClose(); }}>
@@ -258,20 +263,28 @@ export default function AddItemModal({ householdId, userId, initialStoreId, onAd
         emoji="🛒"
         title="Already in your inventory"
         message={
-          duplicateStoreItem && storeId && storeId !== duplicateStoreItem.preferred_store_id
+          duplicateStoreItem && addToShopping
+            ? `"${duplicateStoreItem.name}" is already saved. Add it to this shopping trip?`
+            : duplicateStoreItem && storeId && storeId !== duplicateStoreItem.preferred_store_id
             ? `"${duplicateStoreItem.name}" is already saved. Move it to the selected store?`
             : duplicateStoreItem
               ? `"${duplicateStoreItem.name}" is already in your pantry. Mark it as low from the Pantry tab to add it to your shopping list.`
               : ''
         }
         primaryLabel={
-          duplicateStoreItem && storeId && storeId !== duplicateStoreItem.preferred_store_id
+          addToShopping
+            ? 'Add to trip'
+            : duplicateStoreItem && storeId && storeId !== duplicateStoreItem.preferred_store_id
             ? 'Move to store'
             : 'Got it'
         }
         onPrimary={() => {
           if (duplicateStoreItem && storeId && storeId !== duplicateStoreItem.preferred_store_id) {
             void handleUpdateDuplicateStore();
+          } else if (duplicateStoreItem && addToShopping) {
+            onAdded?.(duplicateStoreItem);
+            setDuplicateStoreItem(null);
+            onClose();
           } else {
             setDuplicateStoreItem(null);
           }

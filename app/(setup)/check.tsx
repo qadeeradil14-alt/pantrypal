@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { View, ActivityIndicator, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
-import { getMyHousehold } from '../../lib/households';
 import { useAuthStore } from '../../store/auth';
 import { useHouseholdStore } from '../../store/household';
 import { useTheme } from '../../hooks/useTheme';
@@ -10,73 +9,54 @@ import { fonts } from '../../constants/theme';
 export default function CheckScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  const { session } = useAuthStore();
-  const { setHousehold, setLoading } = useHouseholdStore();
-  const [error, setError] = useState<string | null>(null);
+  const userId = useAuthStore((s) => s.session?.user.id ?? null);
+  const { status, load } = useHouseholdStore();
 
-  const restoreHousehold = useCallback(() => {
-    if (!session?.user) {
-      router.replace('/(auth)/welcome');
-      return;
+  // Belt-and-suspenders: useHouseholdLoader in app/_layout.tsx normally triggers
+  // the load, but if this screen is reached before that hook fires (cold start
+  // race or deeplink), kick off the load here as well.
+  useEffect(() => {
+    if (userId && status === 'idle') {
+      void load(userId);
     }
+  }, [userId, status, load]);
 
-    let cancelled = false;
-    setError(null);
-    setLoading(true);
-    getMyHousehold(session.user.id)
-      .then((data) => {
-        if (cancelled) return;
-        const raw = data?.households;
-        const h = Array.isArray(raw) ? raw[0] : raw;
-        if (h && data?.role) {
-          setHousehold({
-            id: h.id,
-            name: h.name,
-            inviteCode: h.invite_code ?? '',
-            role: data.role,
-            plan: h.plan ?? 'free',
-          });
-          router.replace('/(main)/pantry');
-        } else {
-          setHousehold(null);
-          router.replace('/(setup)/create-or-join');
-        }
-      })
-      .catch((e: any) => {
-        if (!cancelled) {
-          setError(e?.message ?? 'Could not restore your household.');
-          setLoading(false);
-        }
-      });
+  // Route once the fetch settles.
+  useEffect(() => {
+    if (status === 'ready') {
+      router.replace('/(main)/pantry');
+    } else if (status === 'none') {
+      router.replace('/(setup)/create-or-join');
+    }
+  }, [status, router]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [session, router, setHousehold, setLoading]);
-
-  useEffect(restoreHousehold, [restoreHousehold]);
+  if (status === 'error') {
+    return (
+      <View style={[styles.center, { backgroundColor: colors.background }]}>
+        <Text style={[styles.message, { color: colors.muted }]}>
+          Could not load your household.{'\n'}Check your connection and try again.
+        </Text>
+        <TouchableOpacity
+          style={[styles.retryBtn, { backgroundColor: colors.primary }]}
+          onPress={() => userId && void load(userId)}
+        >
+          <Text style={[styles.retryText, { color: colors.onPrimary }]}>Try again</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
-      {error ? (
-        <>
-          <Text style={[styles.text, { color: colors.muted }]}>{error}</Text>
-          <TouchableOpacity style={[styles.button, { backgroundColor: colors.primary }]} onPress={restoreHousehold}>
-            <Text style={[styles.buttonText, { color: colors.onPrimary }]}>Try again</Text>
-          </TouchableOpacity>
-        </>
-      ) : (
-        <>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={[styles.text, { color: colors.muted }]}>Restoring your household...</Text>
-        </>
-      )}
+    <View style={[styles.center, { backgroundColor: colors.background }]}>
+      <ActivityIndicator size="large" color={colors.primary} />
+      <Text style={[styles.message, { color: colors.muted }]}>Restoring your household…</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  text: { marginTop: 14, fontSize: 14, fontFamily: fonts.bodyMedium },
-  button: { marginTop: 18, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 14 },
-  buttonText: { fontSize: 15, fontFamily: fonts.bodySemiBold },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  message: { marginTop: 14, fontSize: 14, fontFamily: fonts.bodyMedium, textAlign: 'center', paddingHorizontal: 32 },
+  retryBtn: { marginTop: 18, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 14 },
+  retryText: { fontSize: 15, fontFamily: fonts.bodySemiBold },
 });

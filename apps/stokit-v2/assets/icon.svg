@@ -1,0 +1,15 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+        <rect width="512" height="512" rx="120" fill="#0A0A1A" />
+        <defs>
+          <linearGradient id="bagGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#FF3B30" />
+            <stop offset="100%" stop-color="#FF2D55" />
+          </linearGradient>
+        </defs>
+        <!-- Bag Handle -->
+        <path d="M 200 200 V 160 C 200 128, 224 104, 256 104 C 288 104, 312 128, 312 160 V 200" stroke="#FFFFFF" stroke-width="24" stroke-linecap="round" fill="none" />
+        <!-- Bag Body -->
+        <path d="M 144 200 C 128 200, 120 216, 128 232 L 160 408 C 160 424, 176 432, 192 432 H 320 C 336 432, 352 424, 352 408 L 384 232 C 392 216, 384 200, 368 200 Z" fill="url(#bagGrad)" />
+        <!-- S Initial on Bag -->
+        <path d="M 280 272 C 280 256, 232 256, 232 288 C 232 320, 280 320, 280 352 C 280 384, 232 384, 232 368" stroke="#FFFFFF" stroke-width="20" stroke-linecap="round" fill="none" />
+      </svg>

@@ -11,6 +11,7 @@ import {
   PRESET_STORES, type Store, type StoreBrand, type StorePlace,
 } from '../lib/stores';
 import { geocodeLocation, haversineDistanceMiles, MAX_STORE_SEARCH_DISTANCE_MILES, type GeoAnchor } from '../lib/storeSearch';
+import { isCurrentlyOpen } from '../lib/openingHours';
 import { hapticError, hapticSelection, hapticSuccess } from '../lib/haptics';
 import { useTheme } from '../hooks/useTheme';
 import { fonts, radii } from '../constants/theme';
@@ -349,7 +350,11 @@ export default function AddStoreModal({ householdId, existingStores, onAdd, onCl
                       key={`${place.latitude}-${place.longitude}-${place.address}`}
                       coordinate={{ latitude: place.latitude, longitude: place.longitude }}
                       title={place.name}
-                      description={place.address}
+                      description={(() => {
+                        const openStatus = isCurrentlyOpen(place.opening_hours);
+                        if (openStatus === null) return place.address;
+                        return `${openStatus ? '🟢 Open now' : '🔴 Closed'} • ${place.address}`;
+                      })()}
                       pinColor={selectedPlace === place ? colors.primary : colors.muted}
                       onPress={() => setSelectedPlace(place)}
                     />
@@ -368,6 +373,18 @@ export default function AddStoreModal({ householdId, existingStores, onAdd, onCl
                       >
                         <Text style={[styles.placeName, active && styles.placeNameActive]} numberOfLines={1}>{place.name}</Text>
                         <Text style={styles.placeAddress} numberOfLines={2}>{place.address}</Text>
+                        
+                        {(() => {
+                          const openStatus = isCurrentlyOpen(place.opening_hours);
+                          if (openStatus === null) return null;
+                          return (
+                            <View style={[styles.hoursBadge, openStatus ? styles.hoursBadgeOpen : styles.hoursBadgeClosed]}>
+                              <Text style={[styles.hoursText, openStatus ? styles.hoursTextOpen : styles.hoursTextClosed]}>
+                                {openStatus ? 'Open now' : 'Closed'}
+                              </Text>
+                            </View>
+                          );
+                        })()}
                       </ScalePressable>
                     );
                   })}
@@ -540,6 +557,12 @@ function makeStyles(colors: AppColors, placeCardWidth = 210) {
     placeName: { color: colors.ink, fontSize: 14, fontFamily: fonts.bodySemiBold },
     placeNameActive: { color: colors.primary },
     placeAddress: { color: colors.muted, fontSize: 12, fontFamily: fonts.bodyMedium, lineHeight: 17 },
+    hoursBadge: { alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginTop: 2 },
+    hoursBadgeOpen: { backgroundColor: colors.successSoft },
+    hoursBadgeClosed: { backgroundColor: colors.dangerSoft },
+    hoursText: { fontSize: 11, fontFamily: fonts.bodySemiBold },
+    hoursTextOpen: { color: colors.success },
+    hoursTextClosed: { color: colors.danger },
     errorBox: { backgroundColor: colors.dangerSoft, borderRadius: radii.sm, padding: 12, marginBottom: 12 },
     error: { color: colors.dangerText, fontSize: 14 },
     label: { fontSize: 12, fontFamily: fonts.bodySemiBold, color: colors.muted, textTransform: 'uppercase', marginBottom: 8 },

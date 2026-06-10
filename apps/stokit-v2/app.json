@@ -26,7 +26,15 @@
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
-      }
+      },
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "plugins": [
       "expo-router",
@@ -69,7 +77,13 @@
       }
     },
     "updates": {
-      "url": "https://u.expo.dev/3d19b1e1-1003-4e33-8929-2d27e7fd7f3c"
+      "enabled": true,
+      "url": "https://u.expo.dev/3d19b1e1-1003-4e33-8929-2d27e7fd7f3c",
+      "fallbackToCacheTimeout": 10000,
+      "checkAutomatically": "ON_LOAD"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
     }
   }
 }

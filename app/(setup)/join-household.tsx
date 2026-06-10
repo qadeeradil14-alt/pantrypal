@@ -20,7 +20,7 @@ export default function JoinHouseholdScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ code?: string; error?: string }>();
   const { session } = useAuthStore();
-  const { setHousehold } = useHouseholdStore();
+  const { confirm: confirmHousehold } = useHouseholdStore();
   const { setItems } = useItemsStore();
   const setStores = useStoresStore((s) => s.setStores);
   const setShoppingEntries = useShoppingStore((s) => s.setEntries);
@@ -49,7 +49,7 @@ export default function JoinHouseholdScreen() {
       setItems([]);
       setStores([]);
       setShoppingEntries([]);
-      setHousehold({ id: household.id, name: household.name, inviteCode, role: 'member', plan: household.plan ?? 'free' });
+      confirmHousehold({ id: household.id, name: household.name, inviteCode, role: 'member', plan: household.plan ?? 'free' });
       router.replace('/(main)/pantry');
     } catch (e: any) {
       setError(e.message ?? 'Invalid code. Check and try again.');

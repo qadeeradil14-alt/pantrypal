@@ -13,8 +13,8 @@ import { useAuthStore } from '../../../store/auth';
 import { useItemsStore } from '../../../store/items';
 import { useStoresStore } from '../../../store/stores';
 import { useShoppingStore } from '../../../store/shopping';
-import { addItemWithQueue, ensureDefaultItems, fetchItems, markItemLowWithQueue, markItemOkWithQueue, updateItemDetailsWithQueue } from '../../../lib/items';
-import { setItemStoreWithQueue, normalizeStoreName, type Store } from '../../../lib/stores';
+import { addItemWithQueue, fetchItems, markItemLowWithQueue, markItemOkWithQueue, updateItemDetailsWithQueue } from '../../../lib/items';
+import { fetchStores, setItemStoreWithQueue, normalizeStoreName, type Store } from '../../../lib/stores';
 import { recordLocalOverride } from '../../../lib/realtime';
 import { registerPushToken } from '../../../lib/notifications';
 import { hapticError, hapticSelection, hapticSuccess } from '../../../lib/haptics';
@@ -94,15 +94,16 @@ async function computeStreak(allStocked: boolean): Promise<number> {
 }
 
 export default function PantryScreen() {
-  const { colors } = useTheme();
+  const { colors, isDark, toggleTheme } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<{ storeId?: string; add?: string; fromShopping?: string }>();
-  const { household, loaded: householdLoaded } = useHouseholdStore();
+  const { household, status: householdStatus } = useHouseholdStore();
   const { session } = useAuthStore();
   const { items, setItems, updateItem, upsertItem } = useItemsStore();
   const shoppingEntries = useShoppingStore((state) => state.entries);
   const stores = useStoresStore((state) => state.stores);
+  const setStores = useStoresStore((state) => state.setStores);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
@@ -137,20 +138,16 @@ export default function PantryScreen() {
     // While household is still being fetched, don't touch items — they may be
     // correctly hydrated from AsyncStorage. Only clear when confirmed no household.
     if (!householdId) {
-      if (householdLoaded) setItems([]);
+      if (householdStatus === 'none') setItems([]);
       return;
     }
-    let data = await fetchItems(householdId);
-    if (data.length === 0) {
-      const inserted = await ensureDefaultItems(householdId, session?.user.id);
-      if (inserted > 0) data = await fetchItems(householdId);
-    }
+    const data = await fetchItems(householdId);
     setItems(data);
-  }, [householdId, householdLoaded, session?.user.id, setItems]);
+  }, [householdId, householdStatus, session?.user.id, setItems]);
 
   useEffect(() => {
     // Don't run until household loading is resolved — prevents premature empty state.
-    if (!householdLoaded) return;
+    if (householdStatus !== 'ready') return;
     let active = true;
     load()
       .catch(() => {
@@ -162,15 +159,19 @@ export default function PantryScreen() {
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, [householdId, householdLoaded, load]);
+  }, [householdId, householdStatus, load]);
 
-  // Re-fetch items every time the Pantry tab is focused so store assignments and
-  // low-stock status are always current — even after returning from Shopping or
-  // after another household member made changes via realtime.
+  // Re-fetch items AND stores every time the Pantry tab is focused so the store
+  // carousel and item list are always current — even after returning from Shopping,
+  // after a household member added/removed a store, or if the Zustand stores list
+  // became stale (e.g. due to the cold-start race between tab mount and household load).
+  // Stores are never refetched anywhere else on tab navigation, so this is the only
+  // reliable recovery path short of an app foreground event.
   useFocusEffect(useCallback(() => {
-    if (!householdLoaded || !householdId) return;
+    if (householdStatus !== 'ready' || !householdId) return;
     void load().catch(() => {});
-  }, [householdLoaded, householdId, load]));
+    void fetchStores(householdId).then(setStores).catch(() => {});
+  }, [householdStatus, householdId, load, setStores]));
 
 
   // Check AsyncStorage to see if we've already asked about notifications.
@@ -383,6 +384,13 @@ export default function PantryScreen() {
       .sort((a, b) => new Date(a.expires_at!).getTime() - new Date(b.expires_at!).getTime());
   }, [items]);
 
+  const frequentBuys = useMemo(() => {
+    return items
+      .filter((i) => !i.is_low)
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+      .slice(0, 10);
+  }, [items]);
+
   // Guard: don't call computeStreak while items is still empty (initial load).
   // Without this guard, the pre-load empty-items state sets allStocked=false
   // and computeStreak zeroes the streak + stamps today's date, so the real
@@ -393,7 +401,11 @@ export default function PantryScreen() {
   }, [allStocked, loading]);
 
   useEffect(() => {
-    if (selectedStoreId && !stores.some((store) => store.id === selectedStoreId)) {
+    if (!selectedStoreId) return;
+    // Reset to "All stores" if the selected store no longer exists in the household list.
+    // This fires after a stores refetch removes a deleted store, preventing the item
+    // list from showing a permanently empty filtered view with no way to escape.
+    if (!stores.some((store) => store.id === selectedStoreId)) {
       setSelectedStoreId(null);
     }
   }, [selectedStoreId, stores]);
@@ -544,6 +556,15 @@ export default function PantryScreen() {
         </View>
         <View style={styles.headerStats}>
           <SyncStatusPill />
+          <ScalePressable
+            profile="chip"
+            style={styles.themePill}
+            onPress={() => { void hapticSelection(); toggleTheme(); }}
+            accessibilityRole="button"
+            accessibilityLabel={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            <Ionicons name={isDark ? 'sunny-outline' : 'moon-outline'} size={15} color={colors.primary} />
+          </ScalePressable>
           {streak > 0 && (
             <View style={styles.statsRow}>
               <ScalePressable
@@ -648,6 +669,33 @@ export default function PantryScreen() {
         </Pressable>
       </View>
 
+      {frequentBuys.length > 0 && !query && (
+        <View style={styles.frequentSection}>
+          <Text style={styles.frequentTitle}>Frequent Buys</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.frequentScroll} nestedScrollEnabled>
+            {frequentBuys.map((item) => (
+              <ScalePressable
+                key={`freq-${item.id}`}
+                profile="chip"
+                style={styles.frequentChip}
+                onPress={() => {
+                  void hapticSelection();
+                  updateItem(item.id, { is_low: true, marked_low_by: session?.user.id ?? null, got_it_by: null, macro_status: 'running_low' });
+                  void markItemLowWithQueue(item.id, session?.user.id ?? '').catch(() => {
+                    updateItem(item.id, { is_low: item.is_low, marked_low_by: item.marked_low_by, got_it_by: item.got_it_by, macro_status: item.macro_status });
+                    void hapticError();
+                  });
+                }}
+              >
+                <Text style={styles.frequentChipEmoji}>{getCategoryEmoji(item.category)}</Text>
+                <Text style={styles.frequentChipText} numberOfLines={1}>{item.name}</Text>
+                <Ionicons name="add" size={14} color={colors.primary} />
+              </ScalePressable>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
       <View style={styles.masterHeader}>
         <Text style={styles.masterTitle} numberOfLines={1}>
           {selectedStore ? selectedStore.name : 'My Items'}
@@ -671,14 +719,14 @@ export default function PantryScreen() {
       </View>
     </>
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ), [firstName, household?.name, styles, colors, query, streak, notifPromptState, handleEnableNotifs, handleDismissNotifPrompt, selectedStore, canAdd, openScanner, storePicker, sortMode, expiringItems, showExpiryOnly]);
+  ), [firstName, household?.name, styles, colors, query, streak, notifPromptState, handleEnableNotifs, handleDismissNotifPrompt, selectedStore, canAdd, openScanner, storePicker, sortMode, expiringItems, showExpiryOnly, frequentBuys, session?.user.id, updateItem]);
   listHeaderRef.current = listHeader;
 
   const renderPantryItem = useCallback(({ item }: { item: Item }) => (
     <SwipeableItemRow
       item={item}
       userId={session?.user.id ?? ''}
-      inShoppingCart={shoppingCartItemIds.has(item.id)}
+      inShoppingCart={item.is_low && shoppingCartItemIds.has(item.id)}
       onEditPress={setEditingItem}
       onLiftPress={setLiftedItem}
     />
@@ -886,6 +934,14 @@ function makeStyles(colors: AppColors) {
     headerLeft: { flex: 1, gap: 2, paddingRight: 12 },
     headerStats: { flexDirection: 'column', alignItems: 'flex-end', gap: 6 },
     statsRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    themePill: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      backgroundColor: colors.primarySoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
     streakPill: {
       borderRadius: 999,
       paddingHorizontal: 10,
@@ -1272,6 +1328,12 @@ function makeStyles(colors: AppColors) {
       paddingHorizontal: 14,
       paddingVertical: 8,
     },
+    frequentSection: { marginBottom: 16 },
+    frequentTitle: { fontSize: 13, fontFamily: fonts.bodySemiBold, color: colors.primary, marginBottom: 8, paddingHorizontal: 16 },
+    frequentScroll: { paddingHorizontal: 16, gap: 8 },
+    frequentChip: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.faint, borderRadius: 16, padding: 8, paddingRight: 12, gap: 6 },
+    frequentChipEmoji: { fontSize: 16 },
+    frequentChipText: { fontSize: 13, fontFamily: fonts.bodyMedium, color: colors.ink, maxWidth: 100 },
     gotItText: { color: colors.onPrimary, fontSize: 13, fontFamily: fonts.bodySemiBold },
 
     listSectionHeader: {

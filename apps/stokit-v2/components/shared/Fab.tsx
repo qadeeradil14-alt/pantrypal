@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { shadow, type AppColors } from '../../theme';
 import { useTheme } from '../../hooks/useTheme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export function Fab({
   onPress,
@@ -13,7 +14,8 @@ export function Fab({
   icon?: keyof typeof Ionicons.glyphMap;
 }) {
   const { colors } = useTheme();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
+  const styles = useMemo(() => makeStyles(colors, insets.top), [colors, insets.top]);
 
   return (
     <Pressable
@@ -27,21 +29,22 @@ export function Fab({
         { transform: [{ scale: pressed ? 0.94 : 1 }] },
       ]}
     >
-      <Ionicons name={icon} size={28} color={colors.onPrimary} />
+      <Ionicons name={icon} size={24} color={colors.onPrimary} />
     </Pressable>
   );
 }
 
-function makeStyles(colors: AppColors) {
+function makeStyles(colors: AppColors, topInset: number) {
   return StyleSheet.create({
     fab: {
       position: 'absolute',
       right: 20,
-      bottom: 24,
-      width: 60,
-      height: 60,
-      borderRadius: 30,
+      top: Math.max(16, topInset + 8),
+      width: 48,
+      height: 48,
+      borderRadius: 24,
       backgroundColor: colors.primary,
+      opacity: 0.85,
       alignItems: 'center',
       justifyContent: 'center',
     },

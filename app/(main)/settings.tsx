@@ -24,6 +24,7 @@ import { TESTFLIGHT_URL, buildInviteDeepLink, buildInviteMessage, normalizeInvit
 import { GEOFENCE_TASK, stopGeofencing } from '../../lib/geofencing';
 import { hapticError, hapticSelection, hapticSuccess, hapticWarning } from '../../lib/haptics';
 import { useTheme } from '../../hooks/useTheme';
+import { useThemeStore } from '../../store/theme';
 import { fonts } from '../../constants/theme';
 import type { AppColors } from '../../constants/theme';
 import ScalePressable from '../../components/ScalePressable';
@@ -43,10 +44,10 @@ function userInitials(name?: string | null, email?: string | null): string {
 }
 
 export default function SettingsScreen() {
-  const { colors } = useTheme();
+  const { colors, isDark, toggleTheme } = useTheme();
   const router = useRouter();
   const { session, setSession } = useAuthStore();
-  const { household, setHousehold, clearHousehold } = useHouseholdStore();
+  const { household, update: updateHousehold, clear: clearHousehold } = useHouseholdStore();
   const { setItems } = useItemsStore();
   const setShoppingEntries = useShoppingStore((s) => s.setEntries);
   const {
@@ -128,11 +129,7 @@ export default function SettingsScreen() {
       const fresh = await fetchHouseholdById(household.id);
       const freshCode = normalizeInviteCode(fresh?.invite_code);
       if (fresh && freshCode) {
-        setHousehold({
-          ...household,
-          name: fresh.name,
-          inviteCode: freshCode,
-        });
+        updateHousehold({ name: fresh.name, inviteCode: freshCode });
         return freshCode;
       }
       Alert.alert('Invite unavailable', 'No invite code was found for this household.');
@@ -267,7 +264,7 @@ export default function SettingsScreen() {
         setSavingHouseholdName(true);
         try {
           await updateHouseholdName(household.id, name.trim());
-          setHousehold({ ...household, name: name.trim() });
+          updateHousehold({ name: name.trim() });
           void hapticSuccess();
         } catch (e: any) {
           Alert.alert('Could not rename', e?.message ?? 'Try again.');
@@ -579,6 +576,32 @@ export default function SettingsScreen() {
                 <Ionicons name="pencil-outline" size={15} color={colors.primary} />
               </View>
             </ScalePressable>
+          </View>
+        </View>
+
+        {/* Appearance */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Appearance</Text>
+          <View style={styles.card}>
+            <View style={[styles.row, styles.notificationRow]}>
+              <View style={[styles.rowLabelWrap, styles.notificationLabelWrap]}>
+                <Ionicons name="moon-outline" size={17} color={colors.muted} />
+                <View style={styles.notificationTextWrap}>
+                  <Text style={styles.rowLabel}>Dark mode</Text>
+                  <Text style={styles.rowSubLabel}>Switch between light and dark theme</Text>
+                </View>
+              </View>
+              <View style={styles.switchSlot}>
+                <Switch
+                  value={isDark}
+                  onValueChange={() => { void hapticSelection(); toggleTheme(); }}
+                  trackColor={{ false: colors.faint, true: colors.primarySoft }}
+                  thumbColor={isDark ? colors.primary : colors.surface}
+                  ios_backgroundColor={colors.faint}
+                  style={styles.notificationSwitch}
+                />
+              </View>
+            </View>
           </View>
         </View>
 

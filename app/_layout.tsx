@@ -13,6 +13,7 @@ import { useAuthStore } from '../store/auth';
 import { useStoresStore } from '../store/stores';
 import { defineGeofenceTask } from '../lib/geofencing';
 import { startMutationQueueWorker, flushMutationQueue } from '../lib/offlineQueue';
+import { useHouseholdLoader } from '../hooks/useHouseholdLoader';
 import { lightColors } from '../constants/theme';
 
 // Register geofence background task at module load time (before any async code)
@@ -83,6 +84,10 @@ export default function RootLayout() {
   const setActiveStore = useStoresStore((s) => s.setActiveStore);
   const router = useRouter();
   const segments = useSegments();
+
+  // Owns household fetch for the entire app — handles cold start, deep links,
+  // and notification taps that bypass check.tsx.
+  useHouseholdLoader();
 
   useEffect(() => {
     const stopWorker = startMutationQueueWorker();

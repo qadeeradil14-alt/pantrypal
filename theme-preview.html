@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stokit Theme Preview</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,700&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #111;
+    font-family: 'DM Sans', sans-serif;
+    padding: 32px 24px;
+    color: #fff;
+  }
+  h1 {
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+    font-size: 28px;
+    color: #fff;
+    margin-bottom: 8px;
+    text-align: center;
+  }
+  .subtitle {
+    text-align: center;
+    color: #888;
+    font-size: 14px;
+    margin-bottom: 40px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 24px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  .phone {
+    border-radius: 40px;
+    overflow: hidden;
+    border: 2px solid #333;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.6);
+    position: relative;
+  }
+  .phone-inner {
+    height: 720px;
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .label {
+    text-align: center;
+    margin-top: 16px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #ccc;
+    letter-spacing: 0.5px;
+  }
+  .label span {
+    display: block;
+    font-size: 11px;
+    font-weight: 400;
+    color: #666;
+    margin-top: 4px;
+  }
+
+  /* ---- Status bar ---- */
+  .status-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 20px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  /* ---- Tab bar ---- */
+  .tab-bar {
+    display: flex;
+    justify-content: space-around;
+    padding: 12px 0 18px;
+    flex-shrink: 0;
+  }
+  .tab-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    opacity: 0.45;
+  }
+  .tab-item.active { opacity: 1; }
+  .tab-icon { font-size: 18px; }
+
+  /* ---- Scroll area ---- */
+  .scroll {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding: 0 16px;
+    gap: 0;
+  }
+
+  /* ---- Page header ---- */
+  .page-header {
+    padding: 20px 0 16px;
+    flex-shrink: 0;
+  }
+  .page-header .eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .page-header h2 {
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+    font-size: 32px;
+    line-height: 1.1;
+  }
+  .page-header .meta {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    margin-top: 6px;
+  }
+
+  /* ---- Search bar ---- */
+  .search {
+    border-radius: 14px;
+    padding: 10px 14px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .search-icon { font-size: 14px; opacity: 0.5; }
+
+  /* ---- Store chips ---- */
+  .chips {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    flex-shrink: 0;
+  }
+  .chip {
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  /* ---- Section header ---- */
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 12px 0 8px;
+    border-bottom-width: 1px;
+    border-bottom-style: solid;
+    margin-bottom: 2px;
+    flex-shrink: 0;
+  }
+  .section-header h3 {
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+    font-size: 18px;
+  }
+  .section-header .count {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+  }
+
+  /* ---- Item row ---- */
+  .item-row {
+    display: flex;
+    align-items: center;
+    padding: 13px 0;
+    border-bottom-width: 1px;
+    border-bottom-style: solid;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+  .item-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .item-info { flex: 1; }
+  .item-name { font-size: 14px; font-weight: 500; }
+  .item-meta { font-family: 'DM Mono', monospace; font-size: 11px; margin-top: 2px; }
+  .item-badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* ---- FAB ---- */
+  .fab {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    position: absolute;
+    bottom: 88px;
+    right: 20px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.35);
+    z-index: 10;
+  }
+
+  /* ========== THEME A — Market Fresh ========== */
+  .a .phone-inner { background: #F7F8FC; }
+  .a .status-bar { background: #F7F8FC; color: #111827; }
+  .a .tab-bar { background: #fff; border-top: 1px solid #E5E7EB; }
+  .a .tab-item.active { color: #E8432D; }
+  .a .tab-item:not(.active) { color: #9CA3AF; }
+  .a .page-header .eyebrow { color: #E8432D; }
+  .a .page-header h2 { color: #111827; }
+  .a .page-header .meta { color: #6B7280; }
+  .a .search { background: #ECEEF4; color: #111827; }
+  .a .chip { background: #FEE2E2; color: #E8432D; }
+  .a .chip.active { background: #E8432D; color: #fff; }
+  .a .section-header { border-color: #E5E7EB; }
+  .a .section-header h3 { color: #111827; }
+  .a .section-header .count { color: #9CA3AF; }
+  .a .item-row { border-color: #F3F4F6; }
+  .a .item-name { color: #111827; }
+  .a .item-meta { color: #9CA3AF; }
+  .a .item-dot.ok { background: #2DBE6C; }
+  .a .item-dot.low { background: #F59E0B; }
+  .a .item-badge.low { background: #FEF3C7; color: #B45309; }
+  .a .item-badge.cart { background: #DCFCE7; color: #166534; }
+  .a .fab { background: #E8432D; color: #fff; }
+
+  /* ========== THEME B — Neon Larder ========== */
+  .b .phone-inner { background: #0D0E14; }
+  .b .status-bar { background: #0D0E14; color: #F1F5F9; }
+  .b .tab-bar { background: #161820; border-top: 1px solid #1F2235; }
+  .b .tab-item.active { color: #7C3AED; }
+  .b .tab-item:not(.active) { color: #4B5563; }
+  .b .page-header .eyebrow { color: #10B981; }
+  .b .page-header h2 { color: #F1F5F9; }
+  .b .page-header .meta { color: #6B7280; }
+  .b .search { background: #161820; color: #F1F5F9; border: 1px solid #1F2235; }
+  .b .chip { background: #1F2235; color: #9CA3AF; }
+  .b .chip.active { background: #7C3AED; color: #fff; }
+  .b .section-header { border-color: #1F2235; }
+  .b .section-header h3 { color: #F1F5F9; }
+  .b .section-header .count { color: #4B5563; }
+  .b .item-row { border-color: #1A1C28; }
+  .b .item-name { color: #F1F5F9; }
+  .b .item-meta { color: #6B7280; }
+  .b .item-dot.ok { background: #10B981; }
+  .b .item-dot.low { background: #F59E0B; }
+  .b .item-badge.low { background: #292218; color: #F59E0B; }
+  .b .item-badge.cart { background: #1A2B22; color: #10B981; }
+  .b .fab { background: #7C3AED; color: #fff; }
+
+  /* ========== THEME C — Saffron Table ========== */
+  .c .phone-inner { background: #16100C; }
+  .c .status-bar { background: #16100C; color: #FDF4E7; }
+  .c .tab-bar { background: #1E1510; border-top: 1px solid #2A1E14; }
+  .c .tab-item.active { color: #F5A623; }
+  .c .tab-item:not(.active) { color: #5C4030; }
+  .c .page-header .eyebrow { color: #A78BFA; }
+  .c .page-header h2 { color: #FDF4E7; }
+  .c .page-header .meta { color: #7A5C40; }
+  .c .search { background: #1E1510; color: #FDF4E7; border: 1px solid #2A1E14; }
+  .c .chip { background: #2A1E14; color: #7A5C40; }
+  .c .chip.active { background: #F5A623; color: #16100C; }
+  .c .section-header { border-color: #2A1E14; }
+  .c .section-header h3 { color: #FDF4E7; }
+  .c .section-header .count { color: #5C4030; }
+  .c .item-row { border-color: #221710; }
+  .c .item-name { color: #FDF4E7; }
+  .c .item-meta { color: #7A5C40; }
+  .c .item-dot.ok { background: #22C55E; }
+  .c .item-dot.low { background: #F5A623; }
+  .c .item-badge.low { background: #2A1E08; color: #F5A623; }
+  .c .item-badge.cart { background: #0D2416; color: #22C55E; }
+  .c .fab { background: #F5A623; color: #16100C; }
+
+  /* ========== THEME D — Garden Pantry ========== */
+  .d .phone-inner { background: #0F1F16; }
+  .d .status-bar { background: #0F1F16; color: #F0FDF4; }
+  .d .tab-bar { background: #152A1D; border-top: 1px solid #1E3828; }
+  .d .tab-item.active { color: #F97316; }
+  .d .tab-item:not(.active) { color: #2D5040; }
+  .d .page-header .eyebrow { color: #FACC15; }
+  .d .page-header h2 { color: #F0FDF4; }
+  .d .page-header .meta { color: #4A7A60; }
+  .d .search { background: #152A1D; color: #F0FDF4; border: 1px solid #1E3828; }
+  .d .chip { background: #1E3828; color: #4A7A60; }
+  .d .chip.active { background: #F97316; color: #0F1F16; }
+  .d .section-header { border-color: #1E3828; }
+  .d .section-header h3 { color: #F0FDF4; }
+  .d .section-header .count { color: #2D5040; }
+  .d .item-row { border-color: #152A1D; }
+  .d .item-name { color: #F0FDF4; }
+  .d .item-meta { color: #4A7A60; }
+  .d .item-dot.ok { background: #4ADE80; }
+  .d .item-dot.low { background: #FACC15; }
+  .d .item-badge.low { background: #28240A; color: #FACC15; }
+  .d .item-badge.cart { background: #0D2A16; color: #4ADE80; }
+  .d .fab { background: #F97316; color: #0F1F16; }
+</style>
+</head>
+<body>
+
+<h1>Stokit — Theme Preview</h1>
+<p class="subtitle">4 colorful directions · same layout · choose your vibe</p>
+
+<div class="grid">
+
+  <!-- ===== A: Market Fresh ===== -->
+  <div class="a">
+    <div class="phone">
+      <div class="phone-inner">
+        <div class="status-bar">
+          <span>9:41</span>
+          <span>●●●</span>
+        </div>
+
+        <div class="scroll">
+          <div class="page-header">
+            <div class="eyebrow">Household · 3 members</div>
+            <h2>Pantry</h2>
+            <div class="meta">24 items · 4 running low</div>
+          </div>
+
+          <div class="search" style="margin-bottom:12px;">
+            <span class="search-icon">🔍</span>
+            <span style="color:#9CA3AF;font-size:13px;">Search items…</span>
+          </div>
+
+          <div class="chips">
+            <div class="chip active">All stores</div>
+            <div class="chip">Whole Foods</div>
+            <div class="chip">Costco</div>
+          </div>
+
+          <div class="section-header">
+            <h3>Fridge</h3>
+            <span class="count">8 items</span>
+          </div>
+
+          <div class="item-row">
+            <div class="item-dot ok"></div>
+            <div class="item-info">
+              <div class="item-name">Organic Whole Milk</div>
+              <div class="item-meta">Whole Foods · 1 gal</div>
+            </div>
+          </div>
+          <div class="item-row">
+            <div class="item-dot low"></div>
+            <div class="item-info">
+              <div class="item-name">Greek Yogurt</div>
+              <div class="item-meta">Whole Foods · 32 oz</div>
+            </div>
+            <div class="item-badge low">Low</div>
+          </div>
+          <div class="item-row">
+            <div class="item-dot ok"></div>
+            <div class="item-info">
+              <div class="item-name">Cheddar Cheese</div>
+              <div class="item-meta">Costco · 2 lb block</div>
+            </div>
+            <div class="item-badge cart">✓ Cart</div>
+          </div>
+
+          <div class="section-header">
+            <h3>Pantry</h3>
+            <span class="count">11 items</span>
+          </div>
+
+          <div class="item-row">
+            <div class="item-dot low"></div>
+            <div class="item-info">
+              <div class="item-name">Arborio Rice</div>
+              <div class="item-meta">Whole Foods · 2 lb</div>
+            </div>
+            <div class="item-badge low">Low</div>
+          </div>
+          <div class="item-row">
+            <div class="item-dot ok"></div>
+            <div class="item-info">
+              <div class="item-name">Extra Virgin Olive Oil</div>
+              <div class="item-meta">Costco · 2 L</div>
+            </div>
+          </div>
+          <div class="item-row">
+            <div class="item-dot ok"></div>
+            <div class="item-info">
+              <div class="item-name">Pasta — Rigatoni</div>
+              <div class="item-meta">Whole Foods · 500 g</div>
+            </div>
+          </div>
+
+          <div class="section-header">
+            <h3>Freezer</h3>
+            <span class="count">5 items</span>
+          </div>
+          <div class="item-row">
+            <div class="item-dot ok"></div>
+            <div class="item-info">
+              <div class="item-name">Chicken Thighs</div>
+              <div class="item-meta">Costco · 3 lb</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="fab">+</div>
+
+        <div class="tab-bar">
+          <div class="tab-item"><span class="tab-icon">🏠</span>Home</div>
+          <div class="tab-item active"><span class="tab-icon">🧺</span>Pantry</div>
+          <div class="tab-item"><span class="tab-icon">🛒</span>Shop</div>
+          <div class="tab-item"><span class="tab-icon">🏪</span>Stores</div>
+          <div class="tab-item"><span class="tab-icon">⚙️</span>Settings</div>
+        </div>
+      </div>
+    </div>
+    <div class="label">A — Market Fresh<span>Light · Tomato red · Vivid</span></div>
+  </div>
+
+  <!-- ===== B: Neon Larder ===== -->
+  <div class="b">
+    <div class="phone">
+      <div class="phone-inner">
+        <div class="status-bar">
+          <span>9:41</span>
+          <span>●●●</span>
+        </div>
+
+        <div class="scroll">
+          <div class="page-header">
+            <div class="eyebrow">Household · 3 members</div>
+            <h2>Pantry</h2>
+            <div class="meta">24 items · 4 running low</div>
+          </div>
+
+          <div class="search" style="margin-bottom:12px;">
+            <span class="search-icon">🔍</span>
+            <span style="color:#4B5563;font-size:13px;">Search items…</span>
+          </div>
+
+          <div class="chips">
+            <div class="chip active">All stores</div>
+            <div class="chip">Whole Foods</div>
+            <div class="chip">Costco</div>
+          </div>
+
+          <div class="section-header">
+            <h3>Fridge</h3>
+            <span class="count">8 items</span>
+          </div>
+
+          <div class="item-row">
+            <div class="item-dot ok"></div>
+            <div class="item-info">
+              <div class="item-name">Organic Whole Milk</div>
+              <div class="item-meta">Whole Foods · 1 gal</div>
+            </div>
+          </div>
+          <div class="item-row">
+            <div class="item-dot low"></div>
+            <div class="item-info">
+              <div class="item-name">Greek Yogurt</div>
+              <div class="item-meta">Whole Foods · 32 oz</div>
+            </div>
+            <div class="item-badge low">Low</div>
+          </div>
+          <div class="item-row">
+            <div class="item-dot ok"></div>
+            <div class="item-info">
+              <div class="item-name">Cheddar Cheese</div>
+              <div class="item-meta">Costco · 2 lb block</div>
+            </div>
+            <div class="item-badge cart">✓ Cart</div>
+          </div>
+
+          <div class="section-header">
+            <h3>Pantry</h3>
+            <span class="count">11 items</span>
+          </div>
+
+          <div class="item-row">
+            <div class="item-dot low"></div>
+            <div class="item-info">
+              <div class="item-name">Arborio Rice</div>
+              <div class="item-meta">Whole Foods · 2 lb</div>
+            </div>
+            <div class="item-badge low">Low</div>
+          </div>
+          <div class="item-row">
+            <div class="item-dot ok"></div>
+            <div class="item-info">
+              <div class="item-name">Extra Virgin Olive Oil</div>
+              <div class="item-meta">Costco · 2 L</div>
+            </div>
+          </div>
+          <div class="item-row">
+            <div class="item-dot ok"></div>
+            <div class="item-info">
+              <div class="item-name">Pasta — Rigatoni</div>
+              <div class="item-meta">Whole Foods · 500 g</div>
+            </div>
+          </div>
+
+          <div class="section-header">
+            <h3>Freezer</h3>
+            <span class="count">5 items</span>
+          </div>
+          <div class="item-row">
+            <div class="item-dot ok"></div>
+            <div class="item-info">
+              <div class="item-name">Chicken Thighs</div>
+              <div class="item-meta">Costco · 3 lb</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="fab">+</div>
+
+        <div class="tab-bar">
+          <div class="tab-item"><span class="tab-icon">🏠</span>Home</div>
+          <div class="tab-item active"><span class="tab-icon">🧺</span>Pantry</div>
+          <div class="tab-item"><span class="tab-icon">🛒</span>Shop</div>
+          <div class="tab-item"><span class="tab-icon">🏪</span>Stores</div>
+          <div class="tab-item"><span class="tab-icon">⚙️</span>Settings</div>
+        </div>
+      </div>
+    </div>
+    <div class="label">B — Neon Larder<span>Dark · Violet + Emerald · Electric</span></div>
+  </div>
+
+  <!-- ===== C: Saffron Table ===== -->
+  <div class="c">
+    <div class="phone">
+      <div class="phone-inner">
+        <div class="status-bar">
+          <span>9:41</span>
+          <span>●●●</span>
+        </div>
+
+        <div class="scroll">
+          <div class="page-header">
+            <div class="eyebrow">Household · 3 members</div>
+            <h2>Pantry</h2>
+            <div class="meta">24 items · 4 running low</div>
+          </div>
+
+          <div class="search" style="margin-bottom:12px;">
+            <span class="search-icon">🔍</span>
+            <span style="color:#5C4030;font-size:13px;">Search items…</span>
+          </div>
+
+          <div class="chips">
+            <div class="chip active">All stores</div>
+            <div class="chip">Whole Foods</div>
+            <div class="chip">Costco</div>
+          </div>
+
+          <div class="section-header">
+            <h3>Fridge</h3>
+            <span class="count">8 items</span>
+          </div>
+
+          <div class="item-row">
+            <div class="item-dot ok"></div>
+            <div class="item-info">
+              <div class="item-name">Organic Whole Milk</div>
+              <div class="item-meta">Whole Foods · 1 gal</div>
+            </div>
+          </div>
+          <div class="item-row">
+            <div class="item-dot low"></div>
+            <div class="item-info">
+              <div class="item-name">Greek Yogurt</div>
+              <div class="item-meta">Whole Foods · 32 oz</div>
+            </div>
+            <div class="item-badge low">Low</div>
+          </div>
+          <div class="item-row">
+            <div class="item-dot ok"></div>
+            <div class="item-info">
+              <div class="item-name">Cheddar Cheese</div>
+              <div class="item-meta">Costco · 2 lb block</div>
+            </div>
+            <div class="item-badge cart">✓ Cart</div>
+          </div>
+
+          <div class="section-header">
+            <h3>Pantry</h3>
+            <span class="count">11 items</span>
+          </div>
+
+          <div class="item-row">
+            <div class="item-dot low"></div>
+            <div class="item-info">
+              <div class="item-name">Arborio Rice</div>
+              <div class="item-meta">Whole Foods · 2 lb</div>
+            </div>
+            <div class="item-badge low">Low</div>
+          </div>
+          <div class="item-row">
+            <div class="item-dot ok"></div>
+            <div class="item-info">
+              <div class="item-name">Extra Virgin Olive Oil</div>
+              <div class="item-meta">Costco · 2 L</div>
+            </div>
+          </div>
+          <div class="item-row">
+            <div class="item-dot ok"></div>
+            <div class="item-info">
+              <div class="item-name">Pasta — Rigatoni</div>
+              <div class="item-meta">Whole Foods · 500 g</div>
+            </div>
+          </div>
+
+          <div class="section-header">
+            <h3>Freezer</h3>
+            <span class="count">5 items</span>
+          </div>
+          <div class="item-row">
+            <div class="item-dot ok"></div>
+            <div class="item-info">
+              <div class="item-name">Chicken Thighs</div>
+              <div class="item-meta">Costco · 3 lb</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="fab">+</div>
+
+        <div class="tab-bar">
+          <div class="tab-item"><span class="tab-icon">🏠</span>Home</div>
+          <div class="tab-item active"><span class="tab-icon">🧺</span>Pantry</div>
+          <div class="tab-item"><span class="tab-icon">🛒</span>Shop</div>
+          <div class="tab-item"><span class="tab-icon">🏪</span>Stores</div>
+          <div class="tab-item"><span class="tab-icon">⚙️</span>Settings</div>
+        </div>
+      </div>
+    </div>
+    <div class="label">C — Saffron Table<span>Dark · Saffron + Jade · Rich editorial</span></div>
+  </div>
+
+  <!-- ===== D: Garden Pantry ===== -->
+  <div class="d">
+    <div class="phone">
+      <div class="phone-inner">
+        <div class="status-bar">
+          <span>9:41</span>
+          <span>●●●</span>
+        </div>
+
+        <div class="scroll">
+          <div class="page-header">
+            <div class="eyebrow">Household · 3 members</div>
+            <h2>Pantry</h2>
+            <div class="meta">24 items · 4 running low</div>
+          </div>
+
+          <div class="search" style="margin-bottom:12px;">
+            <span class="search-icon">🔍</span>
+            <span style="color:#4A7A60;font-size:13px;">Search items…</span>
+          </div>
+
+          <div class="chips">
+            <div class="chip active">All stores</div>
+            <div class="chip">Whole Foods</div>
+            <div class="chip">Costco</div>
+          </div>
+
+          <div class="section-header">
+            <h3>Fridge</h3>
+            <span class="count">8 items</span>
+          </div>
+
+          <div class="item-row">
+            <div class="item-dot ok"></div>
+            <div class="item-info">
+              <div class="item-name">Organic Whole Milk</div>
+              <div class="item-meta">Whole Foods · 1 gal</div>
+            </div>
+          </div>
+          <div class="item-row">
+            <div class="item-dot low"></div>
+            <div class="item-info">
+              <div class="item-name">Greek Yogurt</div>
+              <div class="item-meta">Whole Foods · 32 oz</div>
+            </div>
+            <div class="item-badge low">Low</div>
+          </div>
+          <div class="item-row">
+            <div class="item-dot ok"></div>
+            <div class="item-info">
+              <div class="item-name">Cheddar Cheese</div>
+              <div class="item-meta">Costco · 2 lb block</div>
+            </div>
+            <div class="item-badge cart">✓ Cart</div>
+          </div>
+
+          <div class="section-header">
+            <h3>Pantry</h3>
+            <span class="count">11 items</span>
+          </div>
+
+          <div class="item-row">
+            <div class="item-dot low"></div>
+            <div class="item-info">
+              <div class="item-name">Arborio Rice</div>
+              <div class="item-meta">Whole Foods · 2 lb</div>
+            </div>
+            <div class="item-badge low">Low</div>
+          </div>
+          <div class="item-row">
+            <div class="item-dot ok"></div>
+            <div class="item-info">
+              <div class="item-name">Extra Virgin Olive Oil</div>
+              <div class="item-meta">Costco · 2 L</div>
+            </div>
+          </div>
+          <div class="item-row">
+            <div class="item-dot ok"></div>
+            <div class="item-info">
+              <div class="item-name">Pasta — Rigatoni</div>
+              <div class="item-meta">Whole Foods · 500 g</div>
+            </div>
+          </div>
+
+          <div class="section-header">
+            <h3>Freezer</h3>
+            <span class="count">5 items</span>
+          </div>
+          <div class="item-row">
+            <div class="item-dot ok"></div>
+            <div class="item-info">
+              <div class="item-name">Chicken Thighs</div>
+              <div class="item-meta">Costco · 3 lb</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="fab">+</div>
+
+        <div class="tab-bar">
+          <div class="tab-item"><span class="tab-icon">🏠</span>Home</div>
+          <div class="tab-item active"><span class="tab-icon">🧺</span>Pantry</div>
+          <div class="tab-item"><span class="tab-icon">🛒</span>Shop</div>
+          <div class="tab-item"><span class="tab-icon">🏪</span>Stores</div>
+          <div class="tab-item"><span class="tab-icon">⚙️</span>Settings</div>
+        </div>
+      </div>
+    </div>
+    <div class="label">D — Garden Pantry<span>Dark green · Orange + Lime · Botanical</span></div>
+  </div>
+
+</div>
+
+</body>
+</html>

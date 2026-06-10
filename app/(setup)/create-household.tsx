@@ -18,7 +18,7 @@ export default function CreateHouseholdScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const { session } = useAuthStore();
-  const { setHousehold } = useHouseholdStore();
+  const { confirm: confirmHousehold } = useHouseholdStore();
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -38,7 +38,7 @@ export default function CreateHouseholdScreen() {
     setLoading(true);
     try {
       const household = await createHousehold(name.trim(), session.user.id);
-      setHousehold({ id: household.id, name: household.name, inviteCode: household.invite_code, role: 'owner', plan: household.plan ?? 'free' });
+      confirmHousehold({ id: household.id, name: household.name, inviteCode: household.invite_code, role: 'owner', plan: household.plan ?? 'free' });
       setInviteCode(household.invite_code);
     } catch (e: any) {
       setError(e.message ?? 'Something went wrong. Try again.');

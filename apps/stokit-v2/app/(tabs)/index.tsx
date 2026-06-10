@@ -7,7 +7,9 @@ import {
   Text,
   TextInput,
   View,
+  Animated,
 } from 'react-native';
+import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -42,6 +44,7 @@ export default function PantryScreen() {
   const items = useDurableStore((state) => state.items);
   const stores = useDurableStore((state) => state.stores);
   const setItemStatus = useDurableStore((state) => state.setItemStatus);
+  const deleteItem = useDurableStore((state) => state.deleteItem);
   const members = useHouseholdStore((s) => s.members);
   const [addVisible, setAddVisible] = useState(false);
   const [showAtHome, setShowAtHome] = useState(false);
@@ -83,6 +86,13 @@ export default function PantryScreen() {
   );
   const showSearch = items.length > 4;
 
+  const frequentBuys = useMemo(() => {
+    if (query) return [];
+    return [...atHomeItems]
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, 10);
+  }, [atHomeItems, query]);
+
   useEffect(() => {
     let active = true;
     if (atHomeItems.length > 0) {
@@ -120,6 +130,10 @@ export default function PantryScreen() {
             <Ionicons name="settings-outline" size={25} color={colors.primary} />
           </Pressable>
         </View>
+
+        <LivePartnerBanner />
+        
+        {atHomeItems.length > 0 && <UseItOrLoseItWidget items={atHomeItems} onAction={(item) => setItemStatus(item.id, 'low')} />}
 
         <ActionCard
           title="Add something to buy"
@@ -175,6 +189,30 @@ export default function PantryScreen() {
           </View>
         )}
 
+        {frequentBuys.length > 0 && !showAtHome && (
+          <View style={styles.frequentSection}>
+            <Text style={styles.frequentTitle}>Frequent buys</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.frequentScroll}>
+              {frequentBuys.map((fb) => {
+                const isActioned = listItems.some(i => i.id === fb.id);
+                return (
+                  <Pressable
+                    key={fb.id}
+                    style={({ pressed }) => [styles.frequentItem, pressed && { opacity: 0.7 }]}
+                    onPress={() => setItemStatus(fb.id, 'low')}
+                  >
+                    <ItemAvatar name={fb.name} size={48} />
+                    <Text style={styles.frequentName} numberOfLines={1}>{fb.name}</Text>
+                    <View style={styles.frequentAddBtn}>
+                      <Ionicons name="add" size={14} color={colors.primary} />
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+
         <SectionTitle
           title={showAtHome ? 'Items at home' : 'On your list'}
           action={showAtHome ? 'Close' : 'View all'}
@@ -190,6 +228,8 @@ export default function PantryScreen() {
                 onPress={() => setActionItem(item)}
                 action={showAtHome ? 'Add to list' : 'cart'}
                 onAction={showAtHome ? () => setItemStatus(item.id, 'low') : undefined}
+                onSwipeLeft={() => deleteItem(item.id)}
+                onSwipeRight={showAtHome ? () => setItemStatus(item.id, 'low') : undefined}
               />
             </View>
           )) : (
@@ -225,6 +265,58 @@ export default function PantryScreen() {
       <ItemActionSheet item={actionItem} store={storeById(actionItem?.storeId ?? null)} onClose={() => setActionItem(null)} onAssignStore={setPickerItem} />
       <StorePickerSheet item={pickerItem} onClose={() => setPickerItem(null)} />
     </SafeAreaView>
+  );
+}
+
+function LivePartnerBanner() {
+  const { colors, isDark } = useTheme();
+  
+  // Simulated pulsing animation
+  const pulseAnim = React.useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 0.5, duration: 1000, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true })
+      ])
+    ).start();
+  }, []);
+
+  return (
+    <Pressable style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#1A2B20' : '#E8F5E9', padding: spacing.md, borderRadius: radii.md, marginBottom: spacing.md, borderWidth: 1, borderColor: isDark ? '#2E4C38' : '#C8E6C9' }}>
+      <Animated.View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.success, marginRight: 10, opacity: pulseAnim }} />
+      <Text style={{ flex: 1, fontFamily: fonts.sansMedium, color: isDark ? '#A5D6A7' : '#2E7D32', fontSize: 14 }}>Sarah is shopping at Aldi right now</Text>
+      <Ionicons name="chevron-forward" color={isDark ? '#A5D6A7' : '#2E7D32'} size={16} />
+    </Pressable>
+  );
+}
+
+function UseItOrLoseItWidget({ items, onAction }: { items: PantryItem[], onAction: (item: PantryItem) => void }) {
+  const { isDark } = useTheme();
+  
+  // Find oldest item
+  const oldest = useMemo(() => {
+    if (items.length === 0) return null;
+    return [...items].sort((a, b) => a.createdAt - b.createdAt)[0];
+  }, [items]);
+
+  if (!oldest) return null;
+
+  const daysOld = Math.floor((Date.now() - oldest.createdAt) / (1000 * 60 * 60 * 24));
+  
+  return (
+    <View style={{ backgroundColor: isDark ? '#3D2A1D' : '#FFF3E0', borderRadius: radii.lg, padding: spacing.md, marginBottom: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderWidth: 1, borderColor: isDark ? '#5A3D2B' : '#FFE0B2' }}>
+      <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: isDark ? '#5A3D2B' : '#FFE0B2', alignItems: 'center', justifyContent: 'center' }}>
+         <Ionicons name="alert-circle-outline" size={24} color={isDark ? '#FFB74D' : '#F57C00'} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontFamily: fonts.sansSemibold, color: isDark ? '#FFE0B2' : '#E65100', fontSize: 15 }}>Use it or lose it!</Text>
+        <Text style={{ fontFamily: fonts.sans, color: isDark ? '#FFCC80' : '#EF6C00', fontSize: 13, marginTop: 2 }}>You've had {oldest.name} for {daysOld === 0 ? 'a little while' : `${daysOld} days`}. Use it tonight?</Text>
+      </View>
+      <Pressable onPress={() => onAction(oldest)} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: isDark ? '#5A3D2B' : '#FFE0B2', alignItems: 'center', justifyContent: 'center' }}>
+        <Ionicons name="add" size={20} color={isDark ? '#FFB74D' : '#F57C00'} />
+      </Pressable>
+    </View>
   );
 }
 
@@ -300,34 +392,66 @@ function SimpleItemRow({
   action,
   onPress,
   onAction,
+  onSwipeLeft,
+  onSwipeRight,
 }: {
   item: PantryItem;
   store?: { name: string };
   action?: string;
   onPress: () => void;
   onAction?: () => void;
+  onSwipeLeft?: () => void;
+  onSwipeRight?: () => void;
 }) {
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
-  const classification = classifyItem(item.name);
-  return (
-    <Pressable onPress={onPress} style={s.itemRow}>
-      <ItemAvatar name={item.name} size={44} />
-      <View style={s.itemCopy}>
-        <Text style={s.itemName}>{item.name}</Text>
-        <Text style={s.itemMeta}>
-          {item.quantity} {item.unit}{store ? ` · ${store.name}` : ''}
-        </Text>
+
+  const renderLeftActions = () => {
+    if (!onSwipeRight) return null;
+    return (
+      <View style={s.swipeActionLeft}>
+        <Ionicons name="cart-outline" size={24} color="#FFF" />
       </View>
-      {action ? (
-        <Pressable onPress={onAction ?? onPress} style={[s.itemAction, action === 'cart' && s.itemCartAction]}>
-          <Ionicons name={action === 'cart' ? 'cart-outline' : 'add'} size={action === 'cart' ? 23 : 17} color={colors.primary} />
-          {action === 'cart' ? null : <Text style={s.itemActionText}>{action}</Text>}
-        </Pressable>
-      ) : (
-        <Ionicons name="chevron-forward" size={20} color={colors.muted} />
-      )}
-    </Pressable>
+    );
+  };
+
+  const renderRightActions = () => {
+    if (!onSwipeLeft) return null;
+    return (
+      <View style={s.swipeActionRight}>
+        <Ionicons name="trash-outline" size={24} color="#FFF" />
+      </View>
+    );
+  };
+
+  return (
+    <Swipeable
+      renderLeftActions={renderLeftActions}
+      renderRightActions={renderRightActions}
+      onSwipeableWillOpen={(dir) => {
+        if (dir === 'left' && onSwipeRight) onSwipeRight();
+        if (dir === 'right' && onSwipeLeft) onSwipeLeft();
+      }}
+      containerStyle={{ overflow: 'hidden' }}
+    >
+      <Pressable onPress={onPress} style={s.itemRow}>
+        <ItemAvatar name={item.name} size={44} />
+        <View style={s.itemCopy}>
+          <Text style={s.itemName}>{item.name}</Text>
+          <Text style={s.itemMeta}>
+            {item.quantity} {item.unit}{store ? ` · ${store.name}` : ''}
+          </Text>
+        </View>
+        {action ? (
+          <Pressable onPress={onAction ?? onPress} style={[s.itemAction, action === 'cart' && s.itemCartAction]}>
+            <Ionicons name={action === 'cart' ? 'cart-outline' : 'add'} size={action === 'cart' ? 23 : 17} color={colors.primary} />
+            {action === 'cart' ? null : <Text style={s.itemActionText}>{action}</Text>}
+          </Pressable>
+        ) : (
+          <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+        )}
+      </Pressable>
+    </Swipeable>
   );
 }
 
@@ -380,5 +504,13 @@ function makeStyles(c: AppColors) {
     empty:            { minHeight: 150, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.lg },
     emptyTitle:       { fontFamily: fonts.sansSemibold, fontSize: 17, color: c.ink, marginTop: spacing.sm },
     emptyText:        { fontFamily: fonts.sans, fontSize: 13, lineHeight: 19, color: c.muted, textAlign: 'center', marginTop: spacing.xs },
+    frequentSection:  { marginTop: spacing.md, marginBottom: spacing.sm },
+    frequentTitle:    { fontFamily: fonts.sansSemibold, fontSize: 15, color: c.muted, marginBottom: spacing.sm, paddingHorizontal: 4 },
+    frequentScroll:   { gap: spacing.md, paddingRight: spacing.xl },
+    frequentItem:     { width: 70, alignItems: 'center', gap: 6 },
+    frequentName:     { fontFamily: fonts.sansMedium, fontSize: 12, color: c.ink, textAlign: 'center' },
+    frequentAddBtn:   { position: 'absolute', top: 0, right: 2, width: 20, height: 20, borderRadius: 10, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, alignItems: 'center', justifyContent: 'center' },
+    swipeActionLeft:  { backgroundColor: c.success, justifyContent: 'center', alignItems: 'flex-start', paddingLeft: 20, flex: 1 },
+    swipeActionRight: { backgroundColor: c.danger, justifyContent: 'center', alignItems: 'flex-end', paddingRight: 20, flex: 1 },
   });
 }

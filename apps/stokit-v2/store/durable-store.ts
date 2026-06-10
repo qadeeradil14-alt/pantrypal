@@ -54,11 +54,15 @@ interface DurableStore extends DurableState {
     name: string;
     logoColor?: string;
     logoEmoji?: string;
+    logoUrl?: string;
     placeId?: string;
     address?: string;
     lat?: number;
     lng?: number;
+    openingHours?: string;
+    isOpen?: boolean;
   }) => Store;
+  updateStore: (id: string, patch: { name?: string; logoColor?: string; logoEmoji?: string; logoUrl?: string; openingHours?: string; isOpen?: boolean }) => void;
   deleteStore: (id: string) => void;
 
   // Trips / receipts (committed from the shopping session)
@@ -180,17 +184,21 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     },
 
     addStore: (input) => {
+      const ts = now();
       const store: Store = {
         id: uid('store'),
         name: input.name.trim(),
         logoColor: input.logoColor,
         logoEmoji: input.logoEmoji,
+        logoUrl: input.logoUrl,
         placeId: input.placeId,
         address: input.address,
         lat: input.lat,
         lng: input.lng,
-        createdAt: now(),
-        updatedAt: now(),
+        openingHours: input.openingHours,
+        isOpen: input.isOpen,
+        createdAt: ts,
+        updatedAt: ts,
       };
       set((s) => ({ stores: [...s.stores, store] }));
       pushActivity('store_added', `Added store ${store.name}`, {
@@ -198,6 +206,15 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       });
       persist();
       return store;
+    },
+
+    updateStore: (id, patch) => {
+      set((s) => ({
+        stores: s.stores.map((st) =>
+          st.id === id ? { ...st, ...patch, updatedAt: now() } : st
+        ),
+      }));
+      persist();
     },
 
     deleteStore: (id) => {

@@ -26,6 +26,7 @@ export interface NearbyStore {
   types: string[];
   rating?: number;
   isOpen?: boolean;
+  openingHours?: string;
 }
 
 export interface AutocompleteSuggestion {
@@ -438,6 +439,9 @@ export async function getPlaceDetailsGoogle(placeId: string): Promise<NearbyStor
       types: p.types ?? [],
       rating: p.rating,
       isOpen: p.opening_hours?.open_now,
+      // Google's weekday_text is an array, we could map it to OSM format but it's complex.
+      // We will leave openingHours blank for Google for now and rely on isOpen if needed,
+      // but the UI expects an OSM opening_hours string.
     };
   } catch {
     return null;
@@ -536,6 +540,7 @@ async function findNearbyStoresGeoapify(
           lat: fLat,
           lng: fLng,
           types: f.properties.categories ?? [],
+          openingHours: f.properties.opening_hours,
         };
       })
       .filter((s) => s.name.trim().length > 0)
@@ -586,6 +591,7 @@ async function searchByNameGeoapify(
             .join(', '),
           distanceMetres: Math.round(haversine(lat, lng, rLat, rLng)),
           types: ['store'],
+          openingHours: f.properties.opening_hours,
         };
       })
       .sort((a: NearbyStore, b: NearbyStore) => (a.distanceMetres || 0) - (b.distanceMetres || 0));

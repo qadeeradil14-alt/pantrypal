@@ -53,6 +53,7 @@ export interface StoreSearchResult {
   address: string;
   latitude: number;
   longitude: number;
+  opening_hours?: string;
 }
 
 // ─── String helpers ───────────────────────────────────────────────────────────
@@ -379,6 +380,7 @@ export async function searchStoreLocations({
             address: (f.properties.formatted ?? f.properties.address_line1 ?? '') as string,
             latitude: lat,
             longitude: lon,
+            opening_hours: f.properties.opening_hours as string | undefined,
           });
         }
         if (rankAndSlice(collected, storeName, anchor).length >= MIN_USEFUL_RESULTS) break;
@@ -414,6 +416,7 @@ export async function searchStoreLocations({
               address: (r.formatted ?? '') as string,
               latitude: r.lat as number,
               longitude: r.lon as number,
+              opening_hours: r.opening_hours as string | undefined,
             }));
         } catch {
           return [];

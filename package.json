@@ -44,6 +44,7 @@
   "devDependencies": {
     "@types/react": "~19.2.2",
     "patch-package": "^8.0.1",
+    "tsx": "^4.22.4",
     "typescript": "~6.0.3"
   },
   "overrides": {
@@ -56,6 +57,7 @@
     "web": "expo start --web",
     "postinstall": "patch-package",
     "verify:item-icons": "node scripts/verify-item-icons.mjs",
+    "test:unit": "tsx --test lib/__tests__/*.test.ts",
     "test:e2e": "bash scripts/maestro-test.sh",
     "test:e2e:smoke": "bash scripts/maestro-test.sh .maestro/flows/smoke-core.yaml"
   },

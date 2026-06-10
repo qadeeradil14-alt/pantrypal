@@ -23,20 +23,19 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Animated } from 'react-native';
 import { Screen } from '../../components/shared/Screen';
 import { Button, Card, PageTitle, Pill, SectionHeader, StoreChip } from '../../components/shared/ui';
 import { EmptyState } from '../../components/shared/EmptyState';
 import { StorePickerSheet } from '../../components/pantry/StorePickerSheet';
+import { AddItemSheet } from '../../components/pantry/AddItemSheet';
 import { ItemAvatar } from '../../components/shared/ItemAvatar';
 import { fonts, radii, spacing, type AppColors } from '../../theme';
 import { useDurableStore } from '../../store/durable-store';
 import { useSessionStore } from '../../store/session-store';
-import {
-  currentStoreEntries,
-  currentStoreId,
-  pendingStoreIds,
-} from '../../core/shopping-machine';
+import { currentStoreEntries, currentStoreId, pendingStoreIds } from '../../core/shopping-machine';
 import { ROUTE_COLORS } from '../../core/services/storeBrands';
+import { classifyItem, categoryLabel } from '../../core/services/itemClassifier';
 import type { PantryItem, ShoppingEntry, Store } from '../../types';
 import { useTheme } from '../../hooks/useTheme';
 
@@ -232,6 +231,18 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
   const picked  = entries.filter((e) => e.picked).length;
   const stepNo  = session.currentIndex + 1;
   const total   = session.storeQueue.length;
+  const [addSheetVisible, setAddSheetVisible] = useState(false);
+
+  const groupedEntries = useMemo(() => {
+    const groups = new Map<string, typeof entries>();
+    for (const e of entries) {
+      const cat = categoryLabel(classifyItem(e.name).category);
+      const list = groups.get(cat) ?? [];
+      list.push(e);
+      groups.set(cat, list);
+    }
+    return Array.from(groups.entries()).map(([title, data]) => ({ title, data })).sort((a, b) => a.title.localeCompare(b.title));
+  }, [entries]);
 
   return (
     <Screen>
@@ -246,31 +257,66 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
         </View>
       </Card>
 
-      <SectionHeader title="In this store" />
-      <Card style={{ paddingVertical: spacing.xs }}>
-        {entries.map((e, idx) => (
-          <View key={e.itemId}>
-            {idx > 0 && <View style={styles.rowDivider} />}
-            <Pressable
-              style={styles.pickRow}
-              onPress={() => dispatch({ type: 'TOGGLE_PICK', itemId: e.itemId })}
-            >
-              <Ionicons
-                name={e.picked ? 'checkmark-circle' : 'ellipse-outline'}
-                size={26}
-                color={e.picked ? colors.success : colors.faintText}
-              />
-              <Text style={[styles.pickName, e.picked && styles.pickNameDone]}>{e.name}</Text>
-              <Text style={styles.planMeta}>{e.quantity} {e.unit}</Text>
-            </Pressable>
-          </View>
-        ))}
-      </Card>
+      {groupedEntries.map((group) => (
+        <View key={group.title}>
+          <SectionHeader title={group.title} />
+          <Card style={{ paddingVertical: spacing.xs, marginBottom: spacing.md }}>
+            {group.data.map((e, idx) => (
+              <View key={e.itemId}>
+                {idx > 0 && <View style={styles.rowDivider} />}
+                <Pressable
+                  style={styles.pickRow}
+                  onPress={() => dispatch({ type: 'TOGGLE_PICK', itemId: e.itemId })}
+                >
+                  <Ionicons
+                    name={e.picked ? 'checkmark-circle' : 'ellipse-outline'}
+                    size={26}
+                    color={e.picked ? colors.success : colors.faintText}
+                  />
+                  <Text style={[styles.pickName, e.picked && styles.pickNameDone]}>{e.name}</Text>
+                  <Text style={styles.planMeta}>{e.quantity} {e.unit}</Text>
+                </Pressable>
+              </View>
+            ))}
+          </Card>
+        </View>
+      ))}
+      
+      {groupedEntries.length === 0 && (
+         <Card style={{ paddingVertical: spacing.lg, alignItems: 'center' }}>
+            <Text style={{ fontFamily: fonts.sans, fontSize: 14, color: colors.muted, textAlign: 'center', marginBottom: spacing.md }}>
+               No items planned for this store.
+            </Text>
+            <Button label="+ Add more" variant="ghost" onPress={() => setAddSheetVisible(true)} />
+         </Card>
+      )}
+
+      {groupedEntries.length > 0 && (
+          <Button label="+ Add more" variant="subtle" onPress={() => setAddSheetVisible(true)} style={{ marginTop: spacing.md }} />
+      )}
 
       <Button
         label="Done at this store"
         onPress={() => dispatch({ type: 'FINISH_STORE', now: Date.now() })}
         style={{ marginTop: spacing.xl }}
+      />
+      
+      <AddItemSheet 
+        visible={addSheetVisible} 
+        onClose={() => setAddSheetVisible(false)} 
+        defaultStatus="low"
+        defaultStoreId={storeId}
+        hideStorePicker={true}
+        title={`Add to ${storeById(storeId)?.name ?? 'trip'}`}
+        subtitle="Add items you need to buy here right now."
+        onItemsAdded={(addedItems) => {
+           addedItems.forEach(i => {
+              dispatch({ 
+                type: 'ADD_ENTRY', 
+                entry: { itemId: i.id, name: i.name, quantity: i.quantity, unit: i.unit, storeId: storeId, picked: false } 
+              });
+           });
+        }}
       />
     </Screen>
   );
@@ -286,6 +332,29 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
   const parsed = Math.round((parseFloat(amount.replace(/[^0-9.]/g, '')) || 0) * 100) / 100;
 
   const [imageUri, setImageUri] = useState<string | null>(null);
+
+  // Budget tracking
+  const allTrips = useDurableStore((s) => s.trips);
+  const prefs = useDurableStore((s) => s.prefs);
+  const updatePrefs = useDurableStore((s) => s.updatePrefs);
+  const weeklyBudget = prefs.weeklyBudget ?? 200;
+  const weekStart = getMondayMs();
+  const prevWeekSpend = allTrips
+    .filter((t) => t.completedAt >= weekStart)
+    .reduce((sum, t) => sum + t.totalSpent, 0);
+  const currentTripSpend = session.receipts.reduce((sum, r) => sum + r.amount, 0);
+  const totalPriorSpend = prevWeekSpend + currentTripSpend;
+  const isOverBudget = (totalPriorSpend + parsed > weeklyBudget) && (prefs.dismissedBudgetWarningWeekOf !== weekStart);
+
+  const slideAnim = React.useRef(new Animated.Value(0)).current;
+  React.useEffect(() => {
+    Animated.spring(slideAnim, {
+      toValue: isOverBudget ? 1 : 0,
+      useNativeDriver: true,
+      friction: 8,
+      tension: 50,
+    }).start();
+  }, [isOverBudget, slideAnim]);
 
   const save = () => {
     if (parsed <= 0) return;
@@ -365,6 +434,34 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
         />
       </View>
       <Text style={rStyles.hint}>How much did you spend here? Save to continue — receipt photo is optional.</Text>
+
+      <Animated.View
+        style={[
+          rStyles.budgetWarning,
+          {
+            opacity: slideAnim,
+            transform: [
+              {
+                translateY: slideAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [-10, 0],
+                }),
+              },
+            ],
+          },
+        ]}
+      >
+        <Ionicons name="warning" size={20} color="#fff" />
+        <Text style={rStyles.budgetWarningText}>
+          This pushes you ${((totalPriorSpend + parsed) - weeklyBudget).toFixed(2)} over your ${weeklyBudget} weekly budget!
+        </Text>
+        <Pressable 
+          onPress={() => updatePrefs({ dismissedBudgetWarningWeekOf: weekStart })}
+          style={{ padding: spacing.xs, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 12 }}
+        >
+          <Ionicons name="close" size={18} color="#fff" />
+        </Pressable>
+      </Animated.View>
 
       {imageUri && (
         <View style={rStyles.previewContainer}>
@@ -508,40 +605,17 @@ function ContinuePrompt({ session, dispatch, storeById, styles, colors }: SubPro
           />
         )}
 
-        {/* Case B: no planned stops, but saved stores available — show inline */}
-        {pending.length === 0 && manualStores.length > 0 && (
-          <>
-            <Text style={styles.continueBody}>
-              Your planned route is done. Pick another store to keep going.
-            </Text>
-            <View style={{ gap: spacing.sm, marginTop: spacing.lg }}>
-              {manualStores.map((candidate) => (
-                <Card
-                  key={candidate.id}
-                  onPress={() => dispatch({ type: 'START_MANUAL_STORE', storeId: candidate.id })}
-                  style={styles.manualStoreRow}
-                >
-                  <StoreChip
-                    name={candidate.name}
-                    emoji={candidate.logoEmoji}
-                    color={candidate.logoColor}
-                    size={44}
-                  />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.manualStoreName}>{candidate.name}</Text>
-                    <Text style={styles.manualStoreMeta}>Tap to start shopping here</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={18} color={colors.primary} />
-                </Card>
-              ))}
-            </View>
-          </>
-        )}
-
         {/* Case C: no planned stops, no saved stores — nothing to choose */}
         {pending.length === 0 && manualStores.length === 0 && (
           <Text style={styles.continueBody}>
             Your route is complete. Finish the trip to save your receipts and update your pantry.
+          </Text>
+        )}
+        
+        {/* Case B Header: Show inline instruction */}
+        {pending.length === 0 && manualStores.length > 0 && (
+          <Text style={styles.continueBody}>
+            Your planned route is done. Pick another store below to keep going, or finish your trip.
           </Text>
         )}
 
@@ -563,6 +637,52 @@ function ContinuePrompt({ session, dispatch, storeById, styles, colors }: SubPro
           />
         )}
       </Card>
+      
+      {/* ── Control Center Grid (Case B) ── */}
+      {pending.length === 0 && manualStores.length > 0 && (
+        <View style={{ marginTop: spacing.xl, flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, justifyContent: 'space-between' }}>
+          {manualStores.map((candidate) => (
+            <Pressable
+              key={candidate.id}
+              onPress={() => dispatch({ type: 'START_MANUAL_STORE', storeId: candidate.id })}
+              style={({ pressed }) => [
+                { 
+                  width: '48%', 
+                  height: 100, 
+                  backgroundColor: colors.surfaceRaised, 
+                  borderRadius: radii.lg, 
+                  padding: spacing.md, 
+                  borderWidth: 1, 
+                  borderColor: colors.border,
+                  flexDirection: 'row',
+                  alignItems: 'center', 
+                  gap: spacing.sm,
+                },
+                pressed && { opacity: 0.7 }
+              ]}
+            >
+              <StoreChip
+                name={candidate.name}
+                emoji={candidate.logoEmoji}
+                color={candidate.logoColor}
+                size={40}
+              />
+              <View style={{ flex: 1 }}>
+                <Text 
+                  style={{ 
+                    fontFamily: fonts.sansSemibold, 
+                    fontSize: 14, 
+                    color: colors.ink, 
+                  }} 
+                  numberOfLines={2}
+                >
+                  {candidate.name}
+                </Text>
+              </View>
+            </Pressable>
+          ))}
+        </View>
+      )}
     </Screen>
   );
 }
@@ -684,10 +804,15 @@ function TripSummary({ session, dispatch, storeById, tsStyles, colors }: SubProp
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.xl, paddingTop: spacing.xl, paddingBottom: spacing.sm }}>
+        <Text style={tsStyles.eyebrow}>TRIP COMPLETE</Text>
+        <Pressable onPress={() => dispatch({ type: 'END_TRIP' })} style={{ backgroundColor: colors.surfaceRaised, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 }}>
+          <Text style={{ fontFamily: fonts.sansMedium, fontSize: 14, color: colors.primary }}>Done</Text>
+        </Pressable>
+      </View>
       <ScrollView contentContainerStyle={tsStyles.scroll}>
         {/* Header */}
         <View style={tsStyles.header}>
-          <Text style={tsStyles.eyebrow}>TRIP COMPLETE</Text>
           <Text style={tsStyles.total}>${trip.totalSpent.toFixed(2)}</Text>
           <Text style={tsStyles.totalLabel}>total spent this trip</Text>
         </View>
@@ -834,7 +959,7 @@ function makeStyles(colors: AppColors) {
     summaryBig:   { fontFamily: fonts.mono, fontSize: 48, color: colors.primary },
     summarySub:   { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.muted, marginTop: 2 },
     rowDivider:   { height: 1, backgroundColor: colors.borderSoft, marginLeft: spacing.lg },
-    planRow:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing.md },
+    planRow:      { flexDirection: 'row', alignItems: 'center', gap: spacing.md, justifyContent: 'space-between', paddingVertical: spacing.md },
     planName:     { fontFamily: fonts.sansMedium, fontSize: 16, color: colors.ink },
     planMeta:     { fontFamily: fonts.mono, fontSize: 12, color: colors.muted },
     warnText:     { fontFamily: fonts.sans, fontSize: 13, color: colors.warning, lineHeight: 19 },
@@ -879,6 +1004,22 @@ function makeStyles(colors: AppColors) {
     chipText:  { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.muted },
     skipBtn:   { alignItems: 'center', paddingVertical: spacing.xl, marginTop: spacing.sm },
     skipText:  { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.muted },
+    budgetWarning: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.warning,
+      marginHorizontal: spacing.sm,
+      padding: spacing.md,
+      borderRadius: radii.md,
+      marginBottom: spacing.lg,
+      gap: spacing.sm,
+    },
+    budgetWarningText: {
+      fontFamily: fonts.sansMedium,
+      fontSize: 14,
+      color: '#fff',
+      flex: 1,
+    },
     previewContainer: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -946,10 +1087,10 @@ function makeStyles(colors: AppColors) {
   });
 
   const tsStyles = StyleSheet.create({
-    scroll:      { paddingHorizontal: spacing.lg, paddingTop: spacing.xl },
-    header:      { alignItems: 'center', paddingVertical: spacing.xl },
-    eyebrow:     { fontFamily: fonts.mono, fontSize: 11, color: colors.muted, letterSpacing: 1.5, marginBottom: spacing.md },
-    total:       { fontFamily: fonts.mono, fontSize: 56, color: colors.primary, lineHeight: 60 },
+    scroll:       { padding: spacing.xl, gap: spacing.xl },
+    header:       { alignItems: 'center', marginBottom: spacing.md },
+    eyebrow:      { fontFamily: fonts.monoMedium, fontSize: 12, color: colors.muted, letterSpacing: 1, marginBottom: spacing.sm },
+    total:        { fontFamily: fonts.mono, fontSize: 48, color: colors.primary, lineHeight: 60 },
     totalLabel:  { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.muted, marginTop: 4 },
     statsRow:    { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.xl },
     statBox:     { flex: 1, backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, alignItems: 'center', paddingVertical: spacing.lg, gap: 4 },

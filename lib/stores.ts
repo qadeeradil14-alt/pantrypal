@@ -144,6 +144,7 @@ export interface StorePlace {
   address: string;
   latitude: number;
   longitude: number;
+  opening_hours?: string;
 }
 
 export const PRESET_STORES = [
@@ -564,6 +565,7 @@ async function searchNominatimStores(storeName: string, suffix = '', limit = 12)
     address: formatNominatimAddress(result) ?? result?.display_name ?? storeName,
     latitude: parseFloat(result.lat),
     longitude: parseFloat(result.lon),
+    opening_hours: result.extratags?.opening_hours,
   })).filter((place) => Number.isFinite(place.latitude) && Number.isFinite(place.longitude));
 
   // If results span > 30° in any direction (i.e. multiple continents), keep only
