@@ -285,7 +285,7 @@ function LivePartnerBanner() {
   return (
     <Pressable style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#1A2B20' : '#E8F5E9', padding: spacing.md, borderRadius: radii.md, marginBottom: spacing.md, borderWidth: 1, borderColor: isDark ? '#2E4C38' : '#C8E6C9' }}>
       <Animated.View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.success, marginRight: 10, opacity: pulseAnim }} />
-      <Text style={{ flex: 1, fontFamily: fonts.sansMedium, color: isDark ? '#A5D6A7' : '#2E7D32', fontSize: 14 }}>Sarah is shopping at Aldi right now</Text>
+      <Text style={{ flex: 1, fontFamily: fonts.sansMedium, color: isDark ? '#A5D6A7' : '#2E7D32', fontSize: 14 }}>Sana is shopping at Aldi right now</Text>
       <Ionicons name="chevron-forward" color={isDark ? '#A5D6A7' : '#2E7D32'} size={16} />
     </Pressable>
   );
