@@ -368,7 +368,7 @@ export default function WelcomeScreen() {
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <Animated.View style={[styles.safe, { opacity }]}>
           <View style={styles.wordmark}>
-            <Logo size={u(90)} color={colors.ink} accent={colors.primary} />
+            <Logo size={u(110)} color={colors.ink} accent={colors.primary} />
             <Text style={styles.brand}>Stokit</Text>
           </View>
           <View style={styles.carousel}>
@@ -443,7 +443,7 @@ function makeStyles(colors: AppColors) {
     root: { flex: 1, backgroundColor: colors.background },
     safe: { flex: 1 },
     wordmark: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: u(18), marginTop: u(20) },
-    brand: { fontFamily: fonts.serifItalic, fontSize: u(96), color: colors.ink },
+    brand: { fontFamily: fonts.serifItalic, fontSize: u(120), color: colors.ink },
     brandIcon: { fontSize: u(56) },
     carousel: { marginTop: u(48), height: u(1448), overflow: 'hidden' },
     orbitFrame: { marginHorizontal: u(56), height: u(968), width: u(968), overflow: 'visible' },
