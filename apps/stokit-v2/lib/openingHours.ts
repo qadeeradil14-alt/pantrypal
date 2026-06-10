@@ -27,70 +27,76 @@ export function isCurrentlyOpen(openingHoursStr?: string): boolean | null {
   let isOpenRightNow = false;
 
   for (const rule of rules) {
-    // Look for times like "08:00-22:00"
-    const timeMatch = rule.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
-    if (!timeMatch) continue;
-
-    const parseTime = (t: string) => {
-      const [h, m] = t.split(':').map(Number);
-      return h * 60 + m;
-    };
+    const trimmedRule = rule.trim();
+    if (!trimmedRule) continue;
     
-    const startMins = parseTime(timeMatch[1]);
-    let endMins = parseTime(timeMatch[2]);
-    // Handle overnight ranges like "10:00-02:00" mapping end to next day
-    if (endMins < startMins) {
-      endMins += 24 * 60; 
+    // Find all time ranges like "08:00-12:00", "13:00-22:00"
+    const timeMatches = [...trimmedRule.matchAll(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/g)];
+    
+    let daysPart = '';
+    if (timeMatches.length > 0) {
+       daysPart = trimmedRule.substring(0, timeMatches[0].index).trim();
+    } else if (trimmedRule.includes('off') || trimmedRule.includes('closed')) {
+       daysPart = trimmedRule.replace(/off|closed/g, '').trim();
+    } else {
+       // Cannot parse
+       continue;
     }
 
-    // Is current time within range? Handle overnight shifts.
-    let withinTime = false;
-    if (currentMinutes >= startMins && currentMinutes <= endMins) {
-      withinTime = true;
-    } else if (endMins > 24 * 60) {
-      // If it's overnight and we're currently in the morning (e.g. 01:00 <= 02:00)
-      if (currentMinutes + 24 * 60 <= endMins) {
-        withinTime = true;
-      }
-    }
-
-    const daysPart = rule.substring(0, timeMatch.index).trim();
     let appliesToToday = false;
-
     if (!daysPart) {
       // No days specified usually means "every day"
       appliesToToday = true;
     } else {
-      // "Mo-Fr"
-      const rangeMatch = daysPart.match(/(Mo|Tu|We|Th|Fr|Sa|Su)\s*-\s*(Mo|Tu|We|Th|Fr|Sa|Su)/);
-      if (rangeMatch) {
-        const startDay = dayIndex[rangeMatch[1]];
-        const endDay = dayIndex[rangeMatch[2]];
-        if (startDay <= endDay) {
-          appliesToToday = todayIndex >= startDay && todayIndex <= endDay;
-        } else {
-          // Wrap around like Sa-Mo
-          appliesToToday = todayIndex >= startDay || todayIndex <= endDay;
+      // Split by comma for things like "Mo-Fr, Su"
+      const dayGroups = daysPart.split(',');
+      for (const group of dayGroups) {
+        const g = group.trim();
+        const rangeMatch = g.match(/(Mo|Tu|We|Th|Fr|Sa|Su)\s*-\s*(Mo|Tu|We|Th|Fr|Sa|Su)/);
+        if (rangeMatch) {
+          const startDay = dayIndex[rangeMatch[1]];
+          const endDay = dayIndex[rangeMatch[2]];
+          if (startDay <= endDay) {
+            if (todayIndex >= startDay && todayIndex <= endDay) appliesToToday = true;
+          } else {
+            // Wrap around like Sa-Mo
+            if (todayIndex >= startDay || todayIndex <= endDay) appliesToToday = true;
+          }
+        } else if (g.includes(todayStr)) {
+          appliesToToday = true;
         }
-      } else if (daysPart.includes(todayStr)) {
-        // "Mo,We,Fr"
-        appliesToToday = true;
-      } else if (daysPart === 'off') {
-         // Some strings end with "off", meaning closed, which doesn't match our regex well.
-         continue;
       }
     }
 
     if (appliesToToday) {
       ruleMatchedForToday = true;
-      if (withinTime) {
-        isOpenRightNow = true;
+      if (timeMatches.length > 0) {
+        let withinTime = false;
+        for (const match of timeMatches) {
+          const parseTime = (t: string) => {
+            const [h, m] = t.split(':').map(Number);
+            return h * 60 + m;
+          };
+          const startMins = parseTime(match[1]);
+          let endMins = parseTime(match[2]);
+          // Handle overnight ranges like "10:00-02:00" mapping end to next day
+          if (endMins < startMins) endMins += 24 * 60;
+
+          if (currentMinutes >= startMins && currentMinutes <= endMins) {
+            withinTime = true;
+            break;
+          } else if (endMins > 24 * 60 && currentMinutes + 24 * 60 <= endMins) {
+            withinTime = true;
+            break;
+          }
+        }
+        isOpenRightNow = withinTime;
+      } else if (trimmedRule.includes('off') || trimmedRule.includes('closed')) {
+        isOpenRightNow = false;
       }
     }
   }
 
-  // If a rule matched today, return whether the time fell within that rule.
-  // Otherwise, fallback to null (couldn't confidently parse)
   if (ruleMatchedForToday) {
     return isOpenRightNow;
   }
