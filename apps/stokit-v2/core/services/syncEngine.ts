@@ -60,7 +60,7 @@ export function startSyncEngine() {
     )
     .on(
       'postgres_changes',
-      { event: '*', schema: 'public', table: 'receipts' },
+      { event: '*', schema: 'public', table: 'pantry_receipts' },
       (payload) => {
         const state = useDurableStore.getState();
         const receipts = [...state.receipts];
@@ -142,7 +142,7 @@ export async function pullFromSupabase(): Promise<void> {
     }
 
     const { data: remoteReceipts, error: receiptsError } = await supabase
-      .from('receipts')
+      .from('pantry_receipts')
       .select('*')
       .eq('household_id', userId)
       .order('created_at', { ascending: false });
@@ -242,7 +242,7 @@ export async function pushLocalState(state: DurableState) {
     }));
 
     if (receiptRecords.length > 0) {
-      const { error } = await supabase.from('receipts').upsert(receiptRecords, { onConflict: 'id' });
+      const { error } = await supabase.from('pantry_receipts').upsert(receiptRecords, { onConflict: 'id' });
       if (error) console.warn('[Sync Engine] Failed to push receipts:', error.message);
     }
   } catch (err) {
