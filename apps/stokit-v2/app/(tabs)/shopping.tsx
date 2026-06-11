@@ -420,8 +420,9 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
     // Request base64 directly from the picker.
     // This avoids expo-file-system URI issues on iOS (HEIC, ph:// URIs, etc.)
     // that caused "Could not read the image file" errors.
+    // Higher quality preserves thin thermal-print text for GPT-4o Vision.
     const pickerOptions = {
-      quality: 0.85 as const,
+      quality: 0.95 as const,
       allowsEditing: false as const,
       exif: false as const,
       base64: true as const,
@@ -449,8 +450,8 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
 
     if (!hasOpenAiKey()) {
       Alert.alert(
-        'Gemini API Key Required',
-        'Stokit uses Google Gemini to parse receipts.\n\nGet your free API key at aistudio.google.com/app/apikey and add EXPO_PUBLIC_GEMINI_API_KEY to your .env file.',
+        'Receipt Scan Unavailable',
+        'AI receipt scanning is not configured for this build. You can still enter the total manually.',
         [{ text: 'Got it' }]
       );
       return;
@@ -575,27 +576,47 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
           Found {scanResult?.items?.length} items. Add them to your pantry?
         </Text>
         <ScrollView style={{ maxHeight: 300, marginBottom: spacing.lg }}>
-          {scanResult?.items?.map((item: any, i: number) => (
-            <View key={i} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm, padding: spacing.sm, backgroundColor: colors.surfaceRaised, borderRadius: radii.md }}>
-              <ItemAvatar name={item.name} size={36} />
-              <View style={{ marginLeft: spacing.sm, flex: 1 }}>
-                <Text style={{ fontFamily: fonts.sansMedium, fontSize: 15, color: colors.ink }}>{item.name}</Text>
-                <Text style={{ fontFamily: fonts.mono, fontSize: 13, color: colors.muted }}>
-                  {item.quantity} {item.unit || ''} {item.price ? ` · $${item.price.toFixed(2)}` : ''}
-                </Text>
+          {scanResult?.items?.map((item: any, i: number) => {
+            const cat = item.item_category ?? 'food';
+            const iconName =
+              cat === 'household'    ? 'home-outline' :
+              cat === 'personal_care'? 'person-outline' :
+              cat === 'non_grocery'  ? 'bag-outline' :
+                                       'nutrition-outline';
+            return (
+              <View key={i} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm, padding: spacing.sm, backgroundColor: colors.surfaceRaised, borderRadius: radii.md }}>
+                <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name={iconName as any} size={20} color={colors.primary} />
+                </View>
+                <View style={{ marginLeft: spacing.sm, flex: 1 }}>
+                  <Text style={{ fontFamily: fonts.sansMedium, fontSize: 15, color: colors.ink }}>{item.name}</Text>
+                  <Text style={{ fontFamily: fonts.mono, fontSize: 13, color: colors.muted }}>
+                    {item.quantity} {item.unit || ''}{item.price ? ` · $${item.price.toFixed(2)}` : ''}
+                  </Text>
+                </View>
               </View>
-            </View>
-          ))}
+            );
+          })}
         </ScrollView>
-        <Button 
-          label={`Add ${scanResult?.items?.length} items to pantry`} 
-          onPress={() => {
-            scanResult?.items?.forEach((item: any) => {
-              addItem({ name: item.name, quantity: item.quantity, unit: item.unit || 'unit', storeId: storeId, status: 'stocked' });
-            });
-            setScanResult(null);
-          }} 
-        />
+        <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+          <Pressable
+            onPress={() => setScanResult(null)}
+            style={{ flex: 1, paddingVertical: 14, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Text style={{ fontFamily: fonts.sansMedium, fontSize: 15, color: colors.muted }}>Skip</Text>
+          </Pressable>
+          <View style={{ flex: 2 }}>
+            <Button
+              label={`Add ${scanResult?.items?.length} to Pantry`}
+              onPress={() => {
+                scanResult?.items?.forEach((item: any) => {
+                  addItem({ name: item.name, quantity: item.quantity, unit: item.unit || 'unit', storeId: storeId, status: 'stocked' });
+                });
+                setScanResult(null);
+              }}
+            />
+          </View>
+        </View>
       </Sheet>
     </Screen>
   );
