@@ -9,7 +9,6 @@ import { fonts, type AppColors } from '../../theme';
 import { useTheme } from '../../hooks/useTheme';
 import { useAuthStore } from '../../store/auth-store';
 import { Logo } from '../../components/shared/Logo';
-
 const { width: SCREEN_W } = Dimensions.get('window');
 const S = SCREEN_W / 1080;
 const u = (value: number) => value * S;
@@ -456,7 +455,7 @@ export default function WelcomeScreen() {
           </Pressable>
         </Animated.View>
       </SafeAreaView>
-      <Text style={{ position: 'absolute', top: 50, right: 15, fontSize: 10, color: colors.faintText, fontFamily: fonts.sans, zIndex: 10 }}>v1.0.0 (OTA 18)</Text>
+      <Text style={{ position: 'absolute', top: 50, right: 15, fontSize: 10, color: colors.faintText, fontFamily: fonts.sans, zIndex: 10 }}>v1.0.0 (OTA 44)</Text>
     </View>
   );
 }

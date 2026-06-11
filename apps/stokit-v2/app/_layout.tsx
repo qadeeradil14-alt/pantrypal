@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import * as Linking from 'expo-linking';
-import { Stack, usePathname, useRouter, useRootNavigationState } from 'expo-router';
+import { Stack, usePathname, useRouter, useRootNavigationState, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as Updates from 'expo-updates';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -53,7 +53,6 @@ export default function RootLayout() {
   const hydrateHousehold = useHouseholdStore((s) => s.hydrate);
   const hydratedHousehold = useHouseholdStore((s) => s.hydrated);
   const hydrateSession = useSessionStore((s) => s.hydrateSession);
-  const initializeAuth = useAuthStore((s) => s.initializeAuth);
   const authLoading = useAuthStore((s) => s.loading);
   const user = useAuthStore((s) => s.user);
   const guestMode = useAuthStore((s) => s.guestMode);
@@ -65,7 +64,6 @@ export default function RootLayout() {
     void hydrateDurable();
     void hydrateHousehold();
     void hydrateSession();
-    void initializeAuth();
     void setupNotifications();
     void Linking.getInitialURL().then(async (url) => {
       if (url) await handleAuthLink(url);
@@ -74,7 +72,7 @@ export default function RootLayout() {
       void handleAuthLink(url);
     });
     return () => linkSubscription.remove();
-  }, [hydrateDurable, hydrateHousehold, hydrateSession, initializeAuth]);
+  }, [hydrateDurable, hydrateHousehold, hydrateSession]);
 
 
 
@@ -83,24 +81,30 @@ export default function RootLayout() {
   const ready = fontsLoaded && hydratedDurable && hydratedHousehold && !authLoading;
 
   const rootNavigationState = useRootNavigationState();
+  const segments = useSegments();
 
   useEffect(() => {
     if (!ready || !rootNavigationState?.key) return;
     
-    // Email verification check
-    if (user && !verified && !guestMode && pathname !== '/verify-email') {
-      router.replace('/(auth)/verify-email');
-      return;
-    }
+    // Add microtask delay to allow React state to settle before routing
+    setTimeout(() => {
+      // Email verification check
+      if (user && !verified && !guestMode && pathname !== '/verify-email') {
+        router.replace('/(auth)/verify-email');
+        return;
+      }
 
-    // Main auth routing
-    const inAuthGroup = pathname.startsWith('/(auth)');
-    if (unlocked && inAuthGroup) {
-      router.replace('/(tabs)');
-    } else if (!unlocked && !inAuthGroup) {
-      router.replace('/(auth)/welcome');
-    }
-  }, [pathname, ready, router, user, verified, guestMode, unlocked]);
+      // Main auth routing
+      const authPaths = ['/welcome', '/sign-in', '/sign-up', '/verify-email'];
+      const inAuthGroup = authPaths.includes(pathname);
+      
+      if (unlocked && inAuthGroup) {
+        router.replace('/(tabs)');
+      } else if (!unlocked && !inAuthGroup) {
+        router.replace('/(auth)/welcome');
+      }
+    }, 0);
+  }, [pathname, segments, ready, router, user, verified, guestMode, unlocked]);
 
   if (!ready) {
     return (

@@ -13,7 +13,31 @@ import { useTheme } from '../../hooks/useTheme';
 const LOGO_COLORS = ['#C0392B','#E8913E','#D8A24A','#3D7A53','#2E6DA4','#6C5CE7','#444'];
 const EMOJIS      = ['🛒','🏬','🥕','🧀','🍞','🐟','🍎','🛍️'];
 
-export function AddStoreSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+export function AddStoreSheet({
+  visible,
+  onClose,
+  onStoreAdded,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onStoreAdded?: (storeId: string) => void;
+}) {
+  return (
+    <Sheet visible={visible} title="Add a store" onClose={onClose}>
+      <AddStoreContent onClose={onClose} onStoreAdded={onStoreAdded} isActive={visible} />
+    </Sheet>
+  );
+}
+
+export function AddStoreContent({
+  onClose,
+  onStoreAdded,
+  isActive = true,
+}: {
+  onClose: () => void;
+  onStoreAdded?: (storeId: string) => void;
+  isActive?: boolean;
+}) {
   const { colors } = useTheme();
   const addStore = useDurableStore((s) => s.addStore);
 
@@ -38,9 +62,9 @@ export function AddStoreSheet({ visible, onClose }: { visible: boolean; onClose:
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  // Grab location once when sheet opens, store in ref (doesn't trigger re-renders)
+  // Grab location once when active, store in ref (doesn't trigger re-renders)
   useEffect(() => {
-    if (!visible) return;
+    if (!isActive) return;
     Location.requestForegroundPermissionsAsync()
       .then(({ status }) => {
         if (status === 'granted') {
@@ -54,7 +78,7 @@ export function AddStoreSheet({ visible, onClose }: { visible: boolean; onClose:
         }
       })
       .catch(() => { /* silently ignore */ });
-  }, [visible]);
+  }, [isActive]);
 
   // Debounced autocomplete — runs 400ms after user stops typing
   const runAutocomplete = useCallback((currentName: string, currentZip: string) => {
@@ -142,11 +166,11 @@ export function AddStoreSheet({ visible, onClose }: { visible: boolean; onClose:
   const submit = () => {
     if (!name.trim()) return;
     
-    // Infer a Clearbit logo URL
+    // Infer a Google Favicon logo URL
     const cleanDomain = name.trim().toLowerCase().replace(/[^a-z0-9]/g, '') + '.com';
-    const inferredLogoUrl = `https://logo.clearbit.com/${cleanDomain}`;
+    const inferredLogoUrl = `https://s2.googleusercontent.com/s2/favicons?domain=${cleanDomain}&sz=128`;
 
-    addStore({ 
+    const store = addStore({ 
       name: name.trim(), 
       logoColor: color, 
       logoEmoji: emoji, 
@@ -160,11 +184,13 @@ export function AddStoreSheet({ visible, onClose }: { visible: boolean; onClose:
     });
     reset();
     onClose();
+    if (onStoreAdded) {
+      onStoreAdded(store.id);
+    }
   };
 
   return (
-    <Sheet visible={visible} title="Add a store" onClose={handleClose}>
-
+    <>
       <TextField
         label="Store name"
         value={name}
@@ -260,7 +286,7 @@ export function AddStoreSheet({ visible, onClose }: { visible: boolean; onClose:
         disabled={!name.trim() || loadingSuggestion}
         style={{ marginTop: spacing.lg }}
       />
-    </Sheet>
+    </>
   );
 }
 

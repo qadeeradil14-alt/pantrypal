@@ -38,7 +38,7 @@ export default function SignUpScreen() {
       setError(result.message);
       return;
     }
-    router.replace('/(auth)/verify-email');
+    // _layout.tsx will automatically redirect unverified users to /verify-email
   };
 
   return (

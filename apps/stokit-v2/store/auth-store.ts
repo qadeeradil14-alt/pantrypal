@@ -1,9 +1,43 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Session, User } from '@supabase/supabase-js';
-import { supabase } from '../lib/supabase';
+import { supabase, SESSION_BACKUP_KEY } from '../lib/supabase';
 
 type AuthResult = { ok: true } | { ok: false; message: string };
+
+// Only a deliberate user sign-out should navigate to the welcome screen.
+let _explicitSignOut = false;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function saveBackup(session: Session) {
+  if (!session?.refresh_token) return;
+  AsyncStorage.setItem(
+    SESSION_BACKUP_KEY,
+    JSON.stringify({
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+      user: session.user,
+    })
+  ).catch(() => {});
+}
+
+function friendlyAuthError(error: unknown): string {
+  const message = error instanceof Error ? error.message.toLowerCase() : '';
+  if (message.includes('invalid login credentials')) return 'Email or password is incorrect.';
+  if (message.includes('already registered') || message.includes('already been registered')) {
+    return 'An account with this email may already exist. Try logging in or reset your password.';
+  }
+  if (message.includes('network') || message.includes('fetch') || message.includes('connect')) {
+    return 'Couldn\u2019t connect. Check your internet and try again.';
+  }
+  if (message.includes('rate') || message.includes('too many')) {
+    return 'Too many attempts. Wait a moment and try again.';
+  }
+  return 'Something went wrong. Please try again.';
+}
+
+// ── Store ─────────────────────────────────────────────────────────────────────
 
 interface AuthStore {
   loading: boolean;
@@ -11,13 +45,7 @@ interface AuthStore {
   user: User | null;
   authError: string | null;
   guestMode: boolean;
-  /**
-   * The email used during the most recent sign-up attempt.
-   * Persisted in-memory so the verify-email screen can display it even if
-   * the Supabase user object is not yet available (e.g. race with onAuthStateChange).
-   */
   pendingEmail: string | null;
-  initializeAuth: () => Promise<void>;
   signUp: (email: string, password: string) => Promise<AuthResult>;
   signIn: (email: string, password: string) => Promise<AuthResult>;
   resendVerificationEmail: (email: string) => Promise<AuthResult>;
@@ -28,21 +56,6 @@ interface AuthStore {
   exitGuestMode: () => void;
 }
 
-function friendlyAuthError(error: unknown): string {
-  const message = error instanceof Error ? error.message.toLowerCase() : '';
-  if (message.includes('invalid login credentials')) return 'Email or password is incorrect.';
-  if (message.includes('already registered') || message.includes('already been registered')) {
-    return 'An account with this email may already exist. Try logging in or reset your password.';
-  }
-  if (message.includes('network') || message.includes('fetch') || message.includes('connect')) {
-    return 'Couldn’t connect. Check your internet and try again.';
-  }
-  if (message.includes('rate') || message.includes('too many')) {
-    return 'Too many attempts. Wait a moment and try again.';
-  }
-  return 'Something went wrong. Please try again.';
-}
-
 export const useAuthStore = create<AuthStore>((set, get) => ({
   loading: true,
   session: null,
@@ -50,21 +63,6 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   authError: null,
   pendingEmail: null,
   guestMode: false,
-
-  initializeAuth: async () => {
-    set({ loading: true });
-    try {
-      const { data } = await supabase.auth.getSession();
-      const guestFlag = await AsyncStorage.getItem('stokit:v2:guestMode');
-      set({ 
-        session: data.session, 
-        user: data.session?.user ?? null,
-        guestMode: guestFlag === 'true',
-      });
-    } finally {
-      set({ loading: false });
-    }
-  },
 
   signUp: async (email, password) => {
     const trimmedEmail = email.trim();
@@ -79,8 +77,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       set({ loading: false, authError: message });
       return { ok: false, message };
     }
-    // Store user/session but keep pendingEmail so verify-email screen can
-    // display the address even if onAuthStateChange fires with a null user.
+    if (data.session) saveBackup(data.session);
     set({ session: data.session, user: data.user, loading: false });
     return { ok: true };
   },
@@ -96,6 +93,9 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       set({ loading: false, authError: message });
       return { ok: false, message };
     }
+    // Save backup immediately in the action — belt-and-suspenders alongside
+    // the onAuthStateChange listener saving it on SIGNED_IN.
+    if (data.session) saveBackup(data.session);
     set({ session: data.session, user: data.user, loading: false, pendingEmail: null });
     return { ok: true };
   },
@@ -134,11 +134,16 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
   signOut: async () => {
     set({ loading: true, authError: null });
+    _explicitSignOut = true;
+    // Delete our backup so the user is truly signed out on next cold start.
+    AsyncStorage.removeItem(SESSION_BACKUP_KEY).catch(() => {});
+    AsyncStorage.removeItem('stokit:v2:guestMode').catch(() => {});
     const { error } = await supabase.auth.signOut({ scope: 'local' });
-    set({ session: null, user: null, loading: false });
+    set({ session: null, user: null, loading: false, guestMode: false });
     if (error) {
       const message = friendlyAuthError(error);
       set({ authError: message });
+      _explicitSignOut = false;
       return { ok: false, message };
     }
     return { ok: true };
@@ -155,19 +160,131 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 }));
 
-supabase.auth.onAuthStateChange((event, session) => {
-  // Preserve pendingEmail across all auth events — it is only cleared on
-  // successful sign-in (verified) or explicit sign-out.
+// ── Auth state listener ───────────────────────────────────────────────────────
+
+supabase.auth.onAuthStateChange(async (event, session) => {
   const { pendingEmail } = useAuthStore.getState();
 
-  if (event === 'SIGNED_OUT') {
-    useAuthStore.setState({ session: null, user: null, loading: false, pendingEmail: null });
+  // Always refresh our backup on any successful session event.
+  if (session && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED')) {
+    saveBackup(session);
+  }
+
+  // ── INITIAL_SESSION ─────────────────────────────────────────────────────────
+  if (event === 'INITIAL_SESSION') {
+    const guestFlag = await AsyncStorage.getItem('stokit:v2:guestMode');
+
+    if (session) {
+      // Happy path: Supabase loaded a valid session from storage.
+      console.log('[Auth] INITIAL_SESSION: valid session loaded.');
+      // Also refresh the backup here so it always has the latest data.
+      saveBackup(session);
+      useAuthStore.setState({
+        session,
+        user: session.user,
+        loading: false,
+        pendingEmail,
+        guestMode: guestFlag === 'true',
+      });
+      return;
+    }
+
+    // ── RECOVERY PATH ──────────────────────────────────────────────────────
+    // Supabase fired INITIAL_SESSION with null. This happens when the stored
+    // access token was expired and the refresh network call failed at startup.
+    // Supabase will have already deleted its own key from AsyncStorage.
+    //
+    // Our session backup (seeded at module load time in lib/supabase.ts)
+    // survives this deletion. Use it to recover the session.
+    console.warn('[Auth] INITIAL_SESSION: null session — attempting recovery from backup...');
+
+    try {
+      const backupRaw = await AsyncStorage.getItem(SESSION_BACKUP_KEY);
+
+      if (backupRaw) {
+        const backup = JSON.parse(backupRaw) as {
+          access_token: string;
+          refresh_token: string;
+          user: User;
+        };
+
+        if (backup?.refresh_token) {
+          console.log('[Auth] Backup found. Attempting token refresh...');
+
+          // Attempt a fresh session via the stored refresh token.
+          const { data, error } = await supabase.auth.refreshSession({
+            refresh_token: backup.refresh_token,
+          });
+
+          if (!error && data.session) {
+            console.log('[Auth] Recovery via refresh succeeded.');
+            saveBackup(data.session);
+            useAuthStore.setState({
+              session: data.session,
+              user: data.session.user,
+              loading: false,
+              pendingEmail,
+              guestMode: guestFlag === 'true',
+            });
+            return;
+          }
+
+          // Refresh failed (offline, or refresh token revoked/expired).
+          // Keep the user logged in with the cached user object so they can
+          // use the app. Supabase will auto-refresh when connectivity returns.
+          if (backup.user) {
+            console.warn('[Auth] Offline recovery: keeping user logged in with cached profile.');
+            useAuthStore.setState({
+              session: null,
+              user: backup.user,
+              loading: false,
+              pendingEmail,
+              guestMode: guestFlag === 'true',
+            });
+            return;
+          }
+        }
+
+        // Backup was malformed — clear it so it's not stale forever.
+        AsyncStorage.removeItem(SESSION_BACKUP_KEY).catch(() => {});
+      }
+    } catch (restoreError) {
+      console.warn('[Auth] Recovery failed:', restoreError);
+    }
+
+    // Truly no session (first-ever launch, or backup unavailable).
+    console.log('[Auth] No session found. Directing to welcome screen.');
+    useAuthStore.setState({
+      session: null,
+      user: null,
+      loading: false,
+      pendingEmail,
+      guestMode: guestFlag === 'true',
+    });
     return;
   }
 
-  // For SIGNED_IN / TOKEN_REFRESHED / USER_UPDATED:
-  // Only update if the incoming user is non-null OR we currently have no user.
-  // This prevents an intermediate Supabase event from erasing a user we just set.
+  // ── SIGNED_OUT ──────────────────────────────────────────────────────────────
+  if (event === 'SIGNED_OUT') {
+    if (!_explicitSignOut) {
+      // Supabase fires SIGNED_OUT for internal reasons (failed refresh, etc.).
+      // We handle recovery above, so silently ignore these.
+      console.warn('[Auth] Ignoring non-user-initiated SIGNED_OUT.');
+      return;
+    }
+    _explicitSignOut = false;
+    useAuthStore.setState({
+      session: null,
+      user: null,
+      loading: false,
+      pendingEmail: null,
+      guestMode: false,
+    });
+    return;
+  }
+
+  // ── SIGNED_IN / TOKEN_REFRESHED / USER_UPDATED ──────────────────────────────
+  // Don't erase an existing user if the incoming session's user is null.
   const incomingUser = session?.user ?? null;
   const currentUser = useAuthStore.getState().user;
   const nextUser = incomingUser ?? currentUser;

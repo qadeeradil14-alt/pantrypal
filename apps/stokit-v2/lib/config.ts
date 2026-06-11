@@ -19,6 +19,7 @@ export const config = {
   geoapifyApiKey: process.env.EXPO_PUBLIC_GEOAPIFY_API_KEY ?? '',
   ocrSpaceKey:    process.env.EXPO_PUBLIC_OCR_SPACE_KEY    ?? '',
   geminiApiKey:   process.env.EXPO_PUBLIC_GEMINI_API_KEY   ?? '',
+  openAiKey:      process.env.EXPO_PUBLIC_OPENAI_API_KEY   ?? '',
 } as const;
 
 /** True if the Google premium upgrade is configured. */
@@ -32,6 +33,9 @@ export const hasOcrSpaceKey = () => Boolean(config.ocrSpaceKey);
 
 /** True if Gemini API key is configured. */
 export const hasGeminiKey = () => Boolean(config.geminiApiKey);
+
+/** True if OpenAI API key is configured. */
+export const hasOpenAiKey = () => Boolean(config.openAiKey);
 
 /** True if any OCR provider is available. */
 export const hasOcr = () => hasGoogleKey() || hasOcrSpaceKey() || hasGeminiKey();

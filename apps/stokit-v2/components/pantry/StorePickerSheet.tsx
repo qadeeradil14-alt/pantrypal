@@ -12,12 +12,12 @@ import React, { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Sheet } from '../shared/Sheet';
-import { TextField } from '../shared/Field';
-import { Button, StoreChip } from '../shared/ui';
+import { StoreChip } from '../shared/ui';
 import { fonts, radii, spacing, type AppColors } from '../../theme';
 import { useDurableStore } from '../../store/durable-store';
 import type { PantryItem } from '../../types';
 import { useTheme } from '../../hooks/useTheme';
+import { AddStoreContent } from '../stores/AddStoreSheet';
 
 export function StorePickerSheet({
   item,
@@ -37,10 +37,8 @@ export function StorePickerSheet({
   const stores = useDurableStore((s) => s.stores);
   const items = useDurableStore((s) => s.items);
   const updateItem = useDurableStore((s) => s.updateItem);
-  const addStore = useDurableStore((s) => s.addStore);
 
-  const [addingNew, setAddingNew] = useState(false);
-  const [newName, setNewName] = useState('');
+  const [addOpen, setAddOpen] = useState(false);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -58,99 +56,78 @@ export function StorePickerSheet({
     close();
   };
 
-  const createAndAssign = () => {
-    if (!newName.trim()) return;
-    const store = addStore({ name: newName.trim() });
-    if (onSelect) {
-      onSelect(store.id);
-    } else if (item) {
-      updateItem(item.id, { storeId: store.id });
-    }
-    close();
-  };
-
   const close = () => {
-    setAddingNew(false);
-    setNewName('');
+    setAddOpen(false);
     onClose();
   };
 
   const isOpen = visible !== undefined ? visible : !!item;
 
   return (
-    <Sheet visible={isOpen} title="Assign a store" onClose={close}>
-      {item ? (
-        <Text style={styles.subtitle} numberOfLines={1}>
-          Where do you buy {item.name}?
-        </Text>
-      ) : null}
-
-      {stores.map((store) => {
-        const active = item?.storeId === store.id;
-        return (
-          <Pressable
-            key={store.id}
-            onPress={() => assign(store.id)}
-            style={({ pressed }) => [
-              styles.row,
-              active && styles.rowActive,
-              pressed && { opacity: 0.8 },
-            ]}
-          >
-            <StoreChip name={store.name} emoji={store.logoEmoji} color={store.logoColor} size={44} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.name}>{store.name}</Text>
-              <Text style={styles.meta}>
-                {countFor(store.id)} item{countFor(store.id) === 1 ? '' : 's'} assigned
-              </Text>
-            </View>
-            {active ? (
-              <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
-            ) : (
-              <Ionicons name="chevron-forward" size={18} color={colors.muted} />
-            )}
-          </Pressable>
-        );
-      })}
-
-      {/* Unassign — only when the item currently has a store */}
-      {item?.storeId ? (
-        <Pressable
-          onPress={() => assign(null)}
-          style={({ pressed }) => [styles.row, pressed && { opacity: 0.8 }]}
-        >
-          <View style={[styles.iconChip, { backgroundColor: colors.surfaceRaised }]}>
-            <Ionicons name="close" size={20} color={colors.muted} />
-          </View>
-          <Text style={[styles.name, { flex: 1, color: colors.muted }]}>Remove from store</Text>
-        </Pressable>
-      ) : null}
-
-      {/* Add a new store inline */}
-      {addingNew ? (
-        <View style={styles.addBox}>
-          <TextField
-            label="New store name"
-            value={newName}
-            onChangeText={setNewName}
-            placeholder="e.g. Trader Joe's"
-            autoFocus
-            autoCapitalize="words"
-          />
-          <Button
-            label="Add & assign"
-            onPress={createAndAssign}
-            disabled={!newName.trim()}
-          />
-        </View>
+    <Sheet visible={isOpen} title={addOpen ? "Add a store" : "Assign a store"} onClose={addOpen ? () => setAddOpen(false) : close}>
+      {addOpen ? (
+        <AddStoreContent
+          onClose={() => setAddOpen(false)}
+          onStoreAdded={(storeId) => assign(storeId)}
+          isActive={isOpen && addOpen}
+        />
       ) : (
-        <Pressable
-          onPress={() => setAddingNew(true)}
-          style={({ pressed }) => [styles.addNew, pressed && { opacity: 0.8 }]}
-        >
-          <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
-          <Text style={styles.addNewText}>Add a new store</Text>
-        </Pressable>
+        <>
+          {item ? (
+            <Text style={styles.subtitle} numberOfLines={1}>
+              Where do you buy {item.name}?
+            </Text>
+          ) : null}
+
+          {stores.map((store) => {
+            const active = item?.storeId === store.id;
+            return (
+              <Pressable
+                key={store.id}
+                onPress={() => assign(store.id)}
+                style={({ pressed }) => [
+                  styles.row,
+                  active && styles.rowActive,
+                  pressed && { opacity: 0.8 },
+                ]}
+              >
+                <StoreChip name={store.name} emoji={store.logoEmoji} color={store.logoColor} size={44} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.name}>{store.name}</Text>
+                  <Text style={styles.meta}>
+                    {countFor(store.id)} item{countFor(store.id) === 1 ? '' : 's'} assigned
+                  </Text>
+                </View>
+                {active ? (
+                  <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
+                ) : (
+                  <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+                )}
+              </Pressable>
+            );
+          })}
+
+          {/* Unassign — only when the item currently has a store */}
+          {item?.storeId ? (
+            <Pressable
+              onPress={() => assign(null)}
+              style={({ pressed }) => [styles.row, pressed && { opacity: 0.8 }]}
+            >
+              <View style={[styles.iconChip, { backgroundColor: colors.surfaceRaised }]}>
+                <Ionicons name="close" size={20} color={colors.muted} />
+              </View>
+              <Text style={[styles.name, { flex: 1, color: colors.muted }]}>Remove from store</Text>
+            </Pressable>
+          ) : null}
+
+          <Pressable
+            onPress={() => setAddOpen(true)}
+            style={({ pressed }) => [styles.addNew, pressed && { opacity: 0.8 }]}
+          >
+            <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
+            <Text style={styles.addNewText}>Add a new store</Text>
+          </Pressable>
+        </>
       )}
     </Sheet>
   );

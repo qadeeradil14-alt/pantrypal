@@ -136,11 +136,11 @@ export default function ShoppingScreen() {
   const planEntries = Array.from(plan.entries());
   const totalItems  = planEntries.reduce((n, [, list]) => n + list.length, 0);
 
-  if (totalItems === 0) {
-    return (
-      <Screen>
-        <PageTitle eyebrow="Plan your trip" title="Shopping" />
-        {unassignedCount > 0 ? (
+  return (
+    <Screen>
+      <PageTitle eyebrow="Plan your trip" title="Shopping" />
+      {totalItems === 0 ? (
+        unassignedCount > 0 ? (
           <>
             <Card style={styles.routeNotReady}>
               <View style={styles.routeNotReadyHead}>
@@ -154,70 +154,61 @@ export default function ShoppingScreen() {
             <UnassignedList items={unassigned} onAssign={setPickerItem} styles={styles} />
           </>
         ) : (
-            <EmptyState
+          <EmptyState
             icon="cart-outline"
             title="No trip planned"
             body="Mark pantry items low and assign them to a store. They'll show up here grouped by store, ready to shop."
             steps={['Mark items low in Pantry', 'Make sure each has a store', 'Come back to start your route']}
           />
-        )}
-        <StorePickerSheet item={pickerItem} onClose={() => setPickerItem(null)} />
-        <StorePickerSheet 
-          visible={quickScanStorePicker} 
-          onClose={() => setQuickScanStorePicker(false)}
-          onSelect={(storeId) => handleQuickScanStoreSelect(storeId)}
-        />
-      </Screen>
-    );
-  }
+        )
+      ) : (
+        <>
+          <Card style={styles.summaryCard}>
+            <Text style={styles.summaryBig}>{totalItems}</Text>
+            <Text style={styles.summarySub}>
+              items across {planEntries.length} store{planEntries.length > 1 ? 's' : ''}
+            </Text>
+            <Button label="Start shopping" onPress={startTrip} style={{ marginTop: spacing.lg }} />
+          </Card>
 
-  return (
-    <Screen>
-      <PageTitle eyebrow="Plan your trip" title="Shopping" />
-      <Card style={styles.summaryCard}>
-        <Text style={styles.summaryBig}>{totalItems}</Text>
-        <Text style={styles.summarySub}>
-          items across {planEntries.length} store{planEntries.length > 1 ? 's' : ''}
-        </Text>
-        <Button label="Start shopping" onPress={startTrip} style={{ marginTop: spacing.lg }} />
-      </Card>
+          {planEntries.map(([storeId, list]) => {
+            const store = storeById(storeId);
+            return (
+              <View key={storeId}>
+                <SectionHeader title={store?.name ?? 'Store'} action={`${list.length}`} />
+                <Card style={{ paddingVertical: spacing.xs }}>
+                  {list.map((e, idx) => (
+                    <View key={e.itemId}>
+                      {idx > 0 && <View style={styles.rowDivider} />}
+                      <View style={styles.planRow}>
+                        <ItemAvatar name={e.name} size={32} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.planName}>{e.name}</Text>
+                          <Text style={styles.planMeta}>{e.quantity} {e.unit}</Text>
+                        </View>
+                      </View>
+                    </View>
+                  ))}
+                </Card>
+              </View>
+            );
+          })}
 
+          {unassignedCount > 0 && (
+            <>
+              <SectionHeader title="Needs a store" action={`${unassignedCount}`} />
+              <UnassignedList items={unassigned} onAssign={setPickerItem} styles={styles} />
+            </>
+          )}
+        </>
+      )}
+
+      <StorePickerSheet item={pickerItem} onClose={() => setPickerItem(null)} />
       <StorePickerSheet 
         visible={quickScanStorePicker} 
         onClose={() => setQuickScanStorePicker(false)}
         onSelect={(storeId) => handleQuickScanStoreSelect(storeId)}
       />
-
-      {planEntries.map(([storeId, list]) => {
-        const store = storeById(storeId);
-        return (
-          <View key={storeId}>
-            <SectionHeader title={store?.name ?? 'Store'} action={`${list.length}`} />
-            <Card style={{ paddingVertical: spacing.xs }}>
-              {list.map((e, idx) => (
-                <View key={e.itemId}>
-                  {idx > 0 && <View style={styles.rowDivider} />}
-                  <View style={styles.planRow}>
-                    <ItemAvatar name={e.name} size={32} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.planName}>{e.name}</Text>
-                      <Text style={styles.planMeta}>{e.quantity} {e.unit}</Text>
-                    </View>
-                  </View>
-                </View>
-              ))}
-            </Card>
-          </View>
-        );
-      })}
-
-      {unassignedCount > 0 && (
-        <>
-          <SectionHeader title="Needs a store" action={`${unassignedCount}`} />
-          <UnassignedList items={unassigned} onAssign={setPickerItem} styles={styles} />
-        </>
-      )}
-      <StorePickerSheet item={pickerItem} onClose={() => setPickerItem(null)} />
     </Screen>
   );
 }
@@ -425,48 +416,63 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
       Alert.alert('Permission needed', `Allow ${source === 'camera' ? 'camera' : 'photo library'} access in Settings.`);
       return;
     }
+
+    // Request base64 directly from the picker.
+    // This avoids expo-file-system URI issues on iOS (HEIC, ph:// URIs, etc.)
+    // that caused "Could not read the image file" errors.
+    const pickerOptions = {
+      quality: 0.85 as const,
+      allowsEditing: false as const,
+      exif: false as const,
+      base64: true as const,
+    };
+
     const result = source === 'camera'
-      ? await ImagePicker.launchCameraAsync({ quality: 0.85 })
-      : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.85 });
+      ? await ImagePicker.launchCameraAsync(pickerOptions)
+      : await ImagePicker.launchImageLibraryAsync({
+          ...pickerOptions,
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        });
+
     if (result.canceled || !result.assets[0]) return;
 
-    const pickedUri = result.assets[0].uri;
-    setImageUri(pickedUri);
+    const asset = result.assets[0];
+    setImageUri(asset.uri);
 
-    const { extractReceiptTotal, hasOcrCapability } = await import('../../core/services/ocr');
+    if (!asset.base64) {
+      Alert.alert('Scan failed', 'Could not read image data. Please try again.');
+      return;
+    }
+
     const { extractReceiptItems } = await import('../../core/services/aiReceipts');
-    const { hasGeminiKey } = await import('../../lib/config');
+    const { hasOpenAiKey } = await import('../../lib/config');
 
-    if (hasGeminiKey()) {
-      setSaving(true);
-      try {
-        const aiResult = await extractReceiptItems(pickedUri);
-        if (aiResult && aiResult.items && aiResult.items.length > 0) {
-          setScanResult(aiResult);
-          if (aiResult.total != null) setAmount(aiResult.total.toFixed(2));
-        } else {
-          Alert.alert('Scan failed', 'Could not extract items from receipt.');
-        }
-      } catch (e) {
-        console.warn('[AI] Error extracting items:', e);
-      } finally {
-        setSaving(false);
+    if (!hasOpenAiKey()) {
+      Alert.alert(
+        'Gemini API Key Required',
+        'Stokit uses Google Gemini to parse receipts.\n\nGet your free API key at aistudio.google.com/app/apikey and add EXPO_PUBLIC_GEMINI_API_KEY to your .env file.',
+        [{ text: 'Got it' }]
+      );
+      return;
+    }
+
+    // Determine MIME type from the asset
+    const mimeType = asset.mimeType ?? (asset.uri.toLowerCase().includes('.png') ? 'image/png' : 'image/jpeg');
+
+    setSaving(true);
+    try {
+      const aiResult = await extractReceiptItems(asset.base64, mimeType);
+      if (aiResult && aiResult.items && aiResult.items.length > 0) {
+        setScanResult(aiResult);
+        if (aiResult.total_amount != null) setAmount(aiResult.total_amount.toFixed(2));
+      } else {
+        Alert.alert('Nothing found', 'Could not find any items on the receipt. Please try a clearer, well-lit photo.');
       }
-    } else if (hasOcrCapability()) {
-      setSaving(true);
-      try {
-        const total = await extractReceiptTotal(pickedUri);
-        if (total != null) {
-          setAmount(total.toFixed(2));
-        } else {
-          Alert.alert('Could not read total', 'Please type the amount manually.');
-        }
-      } catch (e) {
-        console.warn('[OCR] Error extracting total:', e);
-        Alert.alert('Could not read total', 'Please type the amount manually.');
-      } finally {
-        setSaving(false);
-      }
+    } catch (e: any) {
+      console.warn('[AI] Error extracting items:', e);
+      Alert.alert('Scan failed', e?.message ?? 'An unexpected error occurred while parsing the receipt.');
+    } finally {
+      setSaving(false);
     }
   };
 

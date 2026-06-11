@@ -37,8 +37,7 @@ export default function SignInScreen() {
       setError(result.message);
       return;
     }
-    const user = useAuthStore.getState().user;
-    router.replace(isEmailVerified(user) ? '/(tabs)' : '/(auth)/verify-email');
+    // Let _layout.tsx handle the routing based on auth state change
   };
 
   return (

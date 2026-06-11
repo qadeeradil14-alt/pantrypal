@@ -27,8 +27,18 @@ import { config, hasGoogleKey, hasOcrSpaceKey } from '../../lib/config';
  * Returns the amount in dollars, or null if extraction fails.
  */
 export async function extractReceiptTotal(imageUri: string): Promise<number | null> {
+  console.log('[OCR] Extracting from URI:', imageUri);
+  try {
+    const info = await FileSystem.getInfoAsync(imageUri);
+    console.log('[OCR] Image file info:', info);
+  } catch (e) {
+    console.log('[OCR] Error getting file info:', e);
+  }
+
   if (hasGoogleKey())     return extractWithGoogleVision(imageUri);
   if (hasOcrSpaceKey())   return extractWithOCRSpace(imageUri);
+  
+  console.log('[OCR] No API keys available');
   return null; // No keys — user types manually
 }
 
@@ -44,10 +54,12 @@ export function hasOcrCapability(): boolean {
  * Strategy: look for total-keyword lines → largest dollar amount fallback.
  */
 export function parseTotal(text: string): number | null {
-  if (!text) return null;
+  if (!text) {
+    console.log('[OCR] parseTotal: text is empty');
+    return null;
+  }
 
   const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
-  const AMOUNT_RE = /\$?\s*([\d,]+\.?\d*)/g;
 
   const TOTAL_KEYWORDS = [
     ['grand total', 'amount due', 'amount owed', 'balance due', 'total due', 'total amount'],
@@ -57,28 +69,54 @@ export function parseTotal(text: string): number | null {
   ];
 
   for (const keywords of TOTAL_KEYWORDS) {
-    for (const line of lines) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
       const lower = line.toLowerCase();
       if (keywords.some((kw) => lower.includes(kw))) {
-        const amounts = extractAmounts(line, AMOUNT_RE);
-        if (amounts.length) return amounts[amounts.length - 1];
+        let amounts = extractAmounts(line);
+        // If no amount on this line, check the next line (OCR often splits them)
+        if (amounts.length === 0 && i + 1 < lines.length) {
+          amounts = extractAmounts(lines[i + 1]);
+        }
+        if (amounts.length) {
+          const matched = amounts[amounts.length - 1];
+          console.log('[OCR] parseTotal: Found by keyword', keywords[0], '->', matched);
+          return matched;
+        }
       }
     }
   }
 
   // Fallback: largest dollar amount on the receipt
   const all: number[] = [];
-  for (const line of lines) all.push(...extractAmounts(line, AMOUNT_RE));
-  return all.length ? Math.max(...all) : null;
+  for (const line of lines) all.push(...extractAmounts(line));
+  if (all.length) {
+    const matched = Math.max(...all);
+    console.log('[OCR] parseTotal: Found by fallback max value ->', matched);
+    return matched;
+  }
+  
+  console.log('[OCR] parseTotal: No amounts found in text');
+  return null;
 }
 
-function extractAmounts(line: string, re: RegExp): number[] {
+function extractAmounts(line: string): number[] {
+  // Strictly match currency format with 2 decimal places to avoid store numbers/zip codes
+  // Matches: 12.34, $12.34, 1,234.56, 12,34 (european comma)
+  const AMOUNT_RE = /\$?\s*([\d,]+[.,]\d{2})(?!\d)/g;
   const amounts: number[] = [];
-  re.lastIndex = 0;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(line)) !== null) {
-    const n = parseFloat(m[1].replace(/,/g, ''));
-    if (!isNaN(n) && n > 0 && n < 10_000) amounts.push(n);
+  while ((m = AMOUNT_RE.exec(line)) !== null) {
+    let valStr = m[1];
+    // Handle European comma decimals (e.g. 12,34 -> 12.34)
+    if (valStr.match(/,\d{2}$/)) {
+      valStr = valStr.replace(/,(\d{2})$/, '.$1');
+    }
+    // Remove thousand separators
+    valStr = valStr.replace(/,/g, '');
+    const n = parseFloat(valStr);
+    // Ignore absurd amounts > $5000 to filter out potential misreads
+    if (!isNaN(n) && n > 0 && n < 5000) amounts.push(n);
   }
   return amounts;
 }
@@ -88,36 +126,46 @@ function extractAmounts(line: string, re: RegExp): number[] {
 const OCR_SPACE_URL = 'https://api.ocr.space/parse/image';
 
 async function extractWithOCRSpace(imageUri: string): Promise<number | null> {
-  let base64: string;
-  try {
-    base64 = await FileSystem.readAsStringAsync(imageUri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-  } catch {
-    return null;
-  }
-
-  // ocr.space accepts base64 with a data-URI prefix
   const ext = imageUri.split('.').pop()?.toLowerCase() ?? 'jpg';
   const mimeType = ext === 'png' ? 'image/png' : 'image/jpeg';
-  const base64DataUri = `data:${mimeType};base64,${base64}`;
 
   const formData = new FormData();
   formData.append('apikey', config.ocrSpaceKey);
-  formData.append('base64Image', base64DataUri);
+  
+  // Use proper file object for React Native FormData instead of base64 to avoid memory crashes
+  formData.append('file', {
+    uri: imageUri,
+    type: mimeType,
+    name: `receipt.${ext}`,
+  } as any);
+  
   formData.append('language', 'eng');
   formData.append('isOverlayRequired', 'false');
   formData.append('detectOrientation', 'true');
   formData.append('scale', 'true');
   formData.append('OCREngine', '2'); // Engine 2 is better for receipts
 
+  console.log('[OCR] Uploading to OCR.space...');
   try {
     const res = await fetch(OCR_SPACE_URL, { method: 'POST', body: formData });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.log('[OCR] Upload failed with status:', res.status, res.statusText);
+      return null;
+    }
     const data = (await res.json()) as OcrSpaceResponse;
+    console.log('[OCR] OCR Space raw response snippet:', JSON.stringify(data).substring(0, 300));
+    
+    if (data.IsErroredOnProcessing) {
+      console.log('[OCR] Parser error reason:', data.ErrorMessage);
+      return null;
+    }
+    
     const text = data.ParsedResults?.[0]?.ParsedText ?? '';
-    return parseTotal(text);
-  } catch {
+    const total = parseTotal(text);
+    console.log('[OCR] Final parsed total:', total);
+    return total;
+  } catch (err) {
+    console.log('[OCR] Upload/Network error:', err);
     return null;
   }
 }
@@ -132,7 +180,8 @@ async function extractWithGoogleVision(imageUri: string): Promise<number | null>
     base64 = await FileSystem.readAsStringAsync(imageUri, {
       encoding: FileSystem.EncodingType.Base64,
     });
-  } catch {
+  } catch (err) {
+    console.log('[OCR] File read error (Google Vision):', err);
     return null;
   }
 
@@ -143,17 +192,26 @@ async function extractWithGoogleVision(imageUri: string): Promise<number | null>
     }],
   };
 
+  console.log('[OCR] Uploading to Google Vision...');
   try {
     const res = await fetch(`${VISION_URL}?key=${config.googleApiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.log('[OCR] Google Vision Upload failed:', res.status, res.statusText);
+      return null;
+    }
     const data = (await res.json()) as GoogleVisionResponse;
+    console.log('[OCR] Google Vision raw response snippet:', JSON.stringify(data).substring(0, 300));
+    
     const text = data.responses?.[0]?.fullTextAnnotation?.text ?? '';
-    return parseTotal(text);
-  } catch {
+    const total = parseTotal(text);
+    console.log('[OCR] Final parsed total (Google):', total);
+    return total;
+  } catch (err) {
+    console.log('[OCR] Google Vision Upload/Network error:', err);
     return null;
   }
 }
