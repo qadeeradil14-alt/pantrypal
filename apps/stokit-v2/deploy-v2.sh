@@ -53,6 +53,37 @@ case "$CMD" in
     ;;
 
   build)
+    echo "════════════════════════════════════════════════════════════════════"
+    echo "  ⚠️  PRE-BUILD CHECKLIST — read before spending an EAS build slot"
+    echo "════════════════════════════════════════════════════════════════════"
+    echo ""
+    echo "  This consumes one EAS build slot. Before continuing, RE-ADD the"
+    echo "  runtime separation that we deferred (it only activates on a build):"
+    echo ""
+    echo "    In app.json, change:"
+    echo '      "runtimeVersion": { "policy": "appVersion" }'
+    echo "    to:"
+    echo '      "runtimeVersion": "stokit-v2-1.0.0"'
+    echo ""
+    echo "  Why: this is what permanently stops V1 from ever leaking into V2"
+    echo "  over the air. It MUST be bundled into the build (not pushed as an"
+    echo "  OTA), otherwise OTAs to the old runtime stop reaching the device."
+    echo ""
+    echo "  Also confirm: all V2 changes are committed (EAS builds from git)."
+    echo "════════════════════════════════════════════════════════════════════"
+    echo ""
+    if ! grep -q '"stokit-v2-1.0.0"' app.json; then
+      echo "✗ STOP: app.json still uses the appVersion policy."
+      echo "  Re-add \"runtimeVersion\": \"stokit-v2-1.0.0\" first, then re-run."
+      echo "  (Ask Claude: 're-add the runtime separation for the build'.)"
+      exit 1
+    fi
+    printf "  Runtime separation is in place. Continue with the build? [y/N] "
+    read -r REPLY
+    case "$REPLY" in
+      y|Y) ;;
+      *) echo "Aborted — no build slot used."; exit 1 ;;
+    esac
     echo "→ Typechecking…"
     npx tsc --noEmit
     echo "✓ Types clean."
