@@ -92,7 +92,9 @@ Deno.serve(async (req) => {
     console.log('[parse-receipt] openai key present=' + !!openaiKey + ' length=' + (openaiKey?.length ?? 0));
     if (!openaiKey) throw new Error('OPENAI_API_KEY not set');
 
-    const prompt = `Analyze this receipt image and extract the data as JSON. Return ONLY valid JSON with this exact structure:
+    const prompt = `Analyze this receipt image and extract the data as JSON. Return ONLY pure, valid JSON — no markdown, no \`\`\`json blocks, no prose before or after.
+
+Exact output structure:
 {
   "store_name": "store name or null",
   "transaction_date": "YYYY-MM-DD or null",
@@ -109,17 +111,27 @@ DATE EXTRACTION — critical:
 - If you see "5/27/26" that is May 27 2026 → "2026-05-27". Do NOT subtract one day.
 - If no date is visible, return null.
 
-For each item, set "item_category" to one of these values:
-- "food" — groceries, produce, meat, dairy, snacks, beverages, frozen food, canned goods, bread, condiments
-- "household" — cleaning supplies, paper towels, toilet paper, laundry detergent, dish soap, trash bags
-- "personal_care" — shampoo, soap, toothpaste, deodorant, vitamins, medicine
-- "non_grocery" — toys, clothing, electronics, tools, sporting goods, furniture, caps, balls, utensils, anything NOT food or household/personal consumable
+ITEMS — include every purchasable line item. Rules:
+- Skip tax lines, subtotals, totals, discounts/coupons, and loyalty-card savings lines — these are NOT items.
+- If a line shows a discount for an item (e.g. "MEMBER SAVINGS -1.00"), skip it — do not list it as a separate item.
+- Strip store PLU codes, item numbers, and UPC digits from item names. Return only the human-readable product name.
+- If the receipt is multi-column, read left column first, then right column for the same row.
+- If an item quantity is blank or unclear, default to 1.
+- If a price is negative (refund/coupon), omit that line.
 
-Be precise with prices. Include every line item on the receipt.`;
+For each item, set "item_category" to one of these values:
+- "food" — groceries, produce, meat, dairy, snacks, beverages, frozen food, canned goods, bread, condiments, spices
+- "household" — cleaning supplies, paper towels, toilet paper, laundry detergent, dish soap, trash bags, batteries
+- "personal_care" — shampoo, soap, toothpaste, deodorant, vitamins, medicine, skincare
+- "non_grocery" — toys, clothing, electronics, tools, sporting goods, furniture, gift cards, or anything NOT a consumable grocery/household/personal care product
+
+total_amount: use the final "Grand Total" or "Amount Due" line — NOT the subtotal and NOT a pre-discount total.
+
+Be precise with prices. Include every purchasable line item on the receipt.`;
 
     const openaiBody = JSON.stringify({
-      model: 'gpt-4o-mini',
-      max_tokens: 2000,
+      model: 'gpt-4o',
+      max_tokens: 4096,
       messages: [{
         role: 'user',
         content: [
@@ -154,7 +166,10 @@ Be precise with prices. Include every line item on the receipt.`;
     }
 
     const aiResult = await response!.json();
-    const parsed: ParsedReceipt = JSON.parse(aiResult.choices[0].message.content);
+    const rawContent: string = aiResult.choices[0].message.content ?? '';
+    const cleanContent = rawContent.replace(/```json/gi, '').replace(/```/g, '').trim();
+    if (!cleanContent) throw new Error('OpenAI returned empty content');
+    const parsed: ParsedReceipt = JSON.parse(cleanContent);
 
     const { data: receiptRow } = await supabase
       .from('receipts')

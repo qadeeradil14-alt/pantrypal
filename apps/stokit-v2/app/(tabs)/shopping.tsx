@@ -420,8 +420,9 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
     // Request base64 directly from the picker.
     // This avoids expo-file-system URI issues on iOS (HEIC, ph:// URIs, etc.)
     // that caused "Could not read the image file" errors.
+    // Higher quality preserves thin thermal-print text for GPT-4o Vision.
     const pickerOptions = {
-      quality: 0.85 as const,
+      quality: 0.95 as const,
       allowsEditing: false as const,
       exif: false as const,
       base64: true as const,
@@ -449,8 +450,8 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
 
     if (!hasOpenAiKey()) {
       Alert.alert(
-        'Gemini API Key Required',
-        'Stokit uses Google Gemini to parse receipts.\n\nGet your free API key at aistudio.google.com/app/apikey and add EXPO_PUBLIC_GEMINI_API_KEY to your .env file.',
+        'Receipt Scan Unavailable',
+        'AI receipt scanning is not configured for this build. You can still enter the total manually.',
         [{ text: 'Got it' }]
       );
       return;
