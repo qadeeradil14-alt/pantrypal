@@ -105,13 +105,74 @@ export function stopSyncEngine() {
 /**
  * Called automatically by durable-store persist()
  */
+/**
+ * Pull pantry_items and receipts from Supabase and restore them to local store.
+ * Called on sign-in when local AsyncStorage is empty (e.g. after reinstall).
+ * Uses auth.user.id as the stable household identifier — survives reinstalls.
+ */
+export async function pullFromSupabase(): Promise<void> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user?.id;
+    if (!userId) return;
+
+    console.log('[Sync Engine] Pulling cloud data for user:', userId);
+
+    const { data: remoteItems, error: itemsError } = await supabase
+      .from('pantry_items')
+      .select('*')
+      .eq('household_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (!itemsError && remoteItems && remoteItems.length > 0) {
+      const items: PantryItem[] = remoteItems.map((row: any) => ({
+        id: row.id,
+        name: row.name,
+        quantity: Number(row.quantity),
+        unit: row.unit,
+        status: row.status,
+        storageLocation: row.storage_location,
+        storeId: row.store_id,
+        expiryDate: row.expiry_date,
+        createdAt: Number(row.created_at),
+        updatedAt: Number(row.updated_at),
+      }));
+      console.log('[Sync Engine] Restored', items.length, 'items from cloud.');
+      useDurableStore.getState().applyRemotePatch({ items });
+    }
+
+    const { data: remoteReceipts, error: receiptsError } = await supabase
+      .from('receipts')
+      .select('*')
+      .eq('household_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (!receiptsError && remoteReceipts && remoteReceipts.length > 0) {
+      const receipts: Receipt[] = remoteReceipts.map((row: any) => ({
+        id: row.id,
+        tripId: row.trip_id,
+        storeId: row.store_id,
+        amount: Number(row.amount),
+        status: row.status,
+        imageUri: row.image_uri,
+        createdAt: Number(row.created_at),
+      }));
+      console.log('[Sync Engine] Restored', receipts.length, 'receipts from cloud.');
+      useDurableStore.getState().applyRemotePatch({ receipts });
+    }
+  } catch (err) {
+    console.warn('[Sync Engine] Cloud pull failed:', err);
+  }
+}
+
 export async function pushLocalState(state: DurableState) {
   // Push all items to Supabase
   // In a real app we'd only push items that changed (dirty tracking)
   // For the prototype, we push the whole pantry if we have an active household.
-  
-  const household = useHouseholdStore.getState().household;
-  const householdId = household ? household.id : null;
+
+  // Use auth user.id as the stable cloud household key — survives reinstalls.
+  const { data: { session } } = await supabase.auth.getSession();
+  const householdId = session?.user?.id ?? useHouseholdStore.getState().household?.id ?? null;
 
   try {
     const records = state.items.map(item => ({

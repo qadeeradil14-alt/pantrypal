@@ -28,6 +28,7 @@ import { useSessionStore } from '../store/session-store';
 import { setupNotifications } from '../core/services/notifications';
 import { handleAuthLink } from '../lib/auth-links';
 import { isEmailVerified, useAuthStore } from '../store/auth-store';
+import { pullFromSupabase } from '../core/services/syncEngine';
 // Geofence background task must be defined at module load time (before any render).
 import { defineGeofenceTask } from '../core/services/geofencing';
 
@@ -73,6 +74,16 @@ export default function RootLayout() {
     });
     return () => linkSubscription.remove();
   }, [hydrateDurable, hydrateHousehold, hydrateSession]);
+
+  // Cloud recovery: if the user is authenticated but local store is empty
+  // (e.g. after app reinstall), pull their data back from Supabase.
+  useEffect(() => {
+    if (!user || !hydratedDurable) return;
+    const { items } = useDurableStore.getState();
+    if (items.length === 0) {
+      void pullFromSupabase();
+    }
+  }, [user, hydratedDurable]);
 
 
 
