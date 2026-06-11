@@ -558,12 +558,12 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
 
       <View style={rStyles.chipRow}>
         <Pressable style={({ pressed }) => [rStyles.chip, pressed && { opacity: 0.7 }]} onPress={() => void pickImage('camera')}>
-          <Ionicons name="camera-outline" size={16} color={colors.muted} />
-          <Text style={rStyles.chipText}>Camera</Text>
+          <Ionicons name="camera-outline" size={16} color={colors.ink} />
+          <Text style={rStyles.chipText}>Scan Receipt</Text>
         </Pressable>
         <Pressable style={({ pressed }) => [rStyles.chip, pressed && { opacity: 0.7 }]} onPress={() => void pickImage('library')}>
-          <Ionicons name="image-outline" size={16} color={colors.muted} />
-          <Text style={rStyles.chipText}>Library</Text>
+          <Ionicons name="image-outline" size={16} color={colors.ink} />
+          <Text style={rStyles.chipText}>Upload Photo</Text>
         </Pressable>
       </View>
 
@@ -1118,8 +1118,8 @@ function makeStyles(colors: AppColors) {
     saveBtn:   { backgroundColor: colors.primary, borderRadius: radii.lg, paddingVertical: 16, alignItems: 'center', marginHorizontal: spacing.sm },
     saveBtnText:{ fontFamily: fonts.sansSemibold, fontSize: 17, color: colors.onPrimary },
     chipRow:   { flexDirection: 'row', gap: spacing.md, marginTop: spacing.lg, marginHorizontal: spacing.sm },
-    chip:      { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, backgroundColor: colors.surfaceRaised, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, paddingVertical: 12 },
-    chipText:  { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.muted },
+    chip:      { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, backgroundColor: colors.surfaceRaised, borderRadius: radii.md, borderWidth: 1.5, borderColor: colors.primary, paddingVertical: 12 },
+    chipText:  { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.ink },
     skipBtn:   { alignItems: 'center', paddingVertical: spacing.xl, marginTop: spacing.sm },
     skipText:  { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.muted },
     budgetWarning: {
