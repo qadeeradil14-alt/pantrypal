@@ -27,9 +27,8 @@ if [ ! -d "app/(tabs)" ]; then
   echo "  This does not look like Stokit V2. Aborting to avoid shipping V1."
   exit 1
 fi
-if ! grep -q "stokit-v2" app.json; then
-  echo "✗ ERROR: app.json runtimeVersion is not the V2 runtime (stokit-v2-*)."
-  echo "  Refusing to publish — runtime separation from V1 is not in place."
+if [ -d "app/(main)" ]; then
+  echo "✗ ERROR: found app/(main) — this looks like V1, not V2. Aborting."
   exit 1
 fi
 

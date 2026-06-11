@@ -89,6 +89,8 @@
       "fallbackToCacheTimeout": 10000,
       "checkAutomatically": "ON_LOAD"
     },
-    "runtimeVersion": "stokit-v2-1.0.0"
+    "runtimeVersion": {
+      "policy": "appVersion"
+    }
   }
 }
