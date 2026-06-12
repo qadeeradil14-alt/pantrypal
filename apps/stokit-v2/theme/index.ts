@@ -116,6 +116,9 @@ export const type = {
   bigStat: { fontFamily: fonts.mono, fontSize: 30 },
 } as const;
 
+// Canonical icon sizes — prefer these over inline numbers in new code
+export const iconSizes = { xs: 14, sm: 16, md: 20, lg: 24, xl: 32 } as const;
+
 export const shadow = {
   card: {
     shadowColor: '#221A12',
@@ -126,5 +129,5 @@ export const shadow = {
   },
 } as const;
 
-export const theme = { colors, fonts, spacing, radii, type, shadow };
+export const theme = { colors, fonts, spacing, radii, type, iconSizes, shadow };
 export default theme;

@@ -246,7 +246,7 @@ export function AddStoreContent({
       {/* Selected location confirmation */}
       {address && !loadingSuggestion && (
         <View style={styles.selectedLocation}>
-          <Ionicons name="checkmark-circle" size={16} color="#16A34A" />
+          <Ionicons name="checkmark-circle" size={16} color={colors.success} />
           <Text style={styles.selectedText} numberOfLines={1}>{address}</Text>
         </View>
       )}
@@ -293,9 +293,9 @@ export function AddStoreContent({
 function makeStyles(colors: AppColors) {
   return StyleSheet.create({
     debugBanner: {
-      backgroundColor: '#7F1D1D', borderRadius: radii.sm, padding: 10, marginTop: 6,
+      backgroundColor: colors.dangerSoft, borderRadius: radii.sm, padding: 10, marginTop: 6,
     },
-    debugText: { fontFamily: fonts.sans, fontSize: 12, color: '#FEE2E2' },
+    debugText: { fontFamily: fonts.sans, fontSize: 12, color: colors.danger },
     dropdown: {
       backgroundColor: colors.surfaceRaised,
       borderRadius: radii.md,
@@ -319,7 +319,7 @@ function makeStyles(colors: AppColors) {
     selectedLocation: {
       flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8,
     },
-    selectedText: { fontFamily: fonts.sans, fontSize: 13, color: '#16A34A', flex: 1 },
+    selectedText: { fontFamily: fonts.sans, fontSize: 13, color: colors.success, flex: 1 },
     errorText: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 6 },
     swatchRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
     swatch:         { width: 40, height: 40, borderRadius: 20, borderWidth: 2, borderColor: 'transparent' },

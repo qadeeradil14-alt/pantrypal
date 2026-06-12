@@ -367,11 +367,11 @@ function makeStyles(colors: AppColors) {
     hoursBadgeOpen: {},
     hoursBadgeClosed: {},
     statusDot: { width: 6, height: 6, borderRadius: 3 },
-    statusDotOpen: { backgroundColor: '#16A34A' },
-    statusDotClosed: { backgroundColor: '#DC2626' },
+    statusDotOpen: { backgroundColor: colors.success },
+    statusDotClosed: { backgroundColor: colors.danger },
     hoursText: { fontSize: 13, fontFamily: fonts.sansMedium },
-    hoursTextOpen: { color: '#16A34A' },
-    hoursTextClosed: { color: '#DC2626' },
+    hoursTextOpen: { color: colors.success },
+    hoursTextClosed: { color: colors.danger },
   });
 }
 

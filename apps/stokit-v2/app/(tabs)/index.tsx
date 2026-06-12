@@ -269,7 +269,7 @@ export default function PantryScreen() {
 }
 
 function LivePartnerBanner() {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   
   // Simulated pulsing animation
   const pulseAnim = React.useRef(new Animated.Value(1)).current;
@@ -283,16 +283,16 @@ function LivePartnerBanner() {
   }, []);
 
   return (
-    <Pressable style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#1A2B20' : '#E8F5E9', padding: spacing.md, borderRadius: radii.md, marginBottom: spacing.md, borderWidth: 1, borderColor: isDark ? '#2E4C38' : '#C8E6C9' }}>
+    <Pressable style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.successSoft, padding: spacing.md, borderRadius: radii.md, marginBottom: spacing.md, borderWidth: 1, borderColor: colors.successSoft }}>
       <Animated.View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.success, marginRight: 10, opacity: pulseAnim }} />
-      <Text style={{ flex: 1, fontFamily: fonts.sansMedium, color: isDark ? '#A5D6A7' : '#2E7D32', fontSize: 14 }}>Sana is shopping at Aldi right now</Text>
-      <Ionicons name="chevron-forward" color={isDark ? '#A5D6A7' : '#2E7D32'} size={16} />
+      <Text style={{ flex: 1, fontFamily: fonts.sansMedium, color: colors.success, fontSize: 14 }}>Sana is shopping at Aldi right now</Text>
+      <Ionicons name="chevron-forward" color={colors.success} size={16} />
     </Pressable>
   );
 }
 
 function UseItOrLoseItWidget({ items, onAction }: { items: PantryItem[], onAction: (item: PantryItem) => void }) {
-  const { isDark } = useTheme();
+  const { colors } = useTheme();
   
   // Find oldest item
   const oldest = useMemo(() => {
@@ -305,16 +305,16 @@ function UseItOrLoseItWidget({ items, onAction }: { items: PantryItem[], onActio
   const daysOld = Math.floor((Date.now() - oldest.createdAt) / (1000 * 60 * 60 * 24));
   
   return (
-    <View style={{ backgroundColor: isDark ? '#3D2A1D' : '#FFF3E0', borderRadius: radii.lg, padding: spacing.md, marginBottom: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderWidth: 1, borderColor: isDark ? '#5A3D2B' : '#FFE0B2' }}>
-      <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: isDark ? '#5A3D2B' : '#FFE0B2', alignItems: 'center', justifyContent: 'center' }}>
-         <Ionicons name="alert-circle-outline" size={24} color={isDark ? '#FFB74D' : '#F57C00'} />
+    <View style={{ backgroundColor: colors.warningSoft, borderRadius: radii.lg, padding: spacing.md, marginBottom: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderWidth: 1, borderColor: colors.warningSoft }}>
+      <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.warning + '2E', alignItems: 'center', justifyContent: 'center' }}>
+         <Ionicons name="alert-circle-outline" size={24} color={colors.warning} />
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={{ fontFamily: fonts.sansSemibold, color: isDark ? '#FFE0B2' : '#E65100', fontSize: 15 }}>Use it or lose it!</Text>
-        <Text style={{ fontFamily: fonts.sans, color: isDark ? '#FFCC80' : '#EF6C00', fontSize: 13, marginTop: 2 }}>You've had {oldest.name} for {daysOld === 0 ? 'a little while' : `${daysOld} days`}. Use it tonight?</Text>
+        <Text style={{ fontFamily: fonts.sansSemibold, color: colors.warning, fontSize: 15 }}>Use it or lose it!</Text>
+        <Text style={{ fontFamily: fonts.sans, color: colors.warning, fontSize: 13, marginTop: 2 }}>You've had {oldest.name} for {daysOld === 0 ? 'a little while' : `${daysOld} days`}. Use it tonight?</Text>
       </View>
-      <Pressable onPress={() => onAction(oldest)} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: isDark ? '#5A3D2B' : '#FFE0B2', alignItems: 'center', justifyContent: 'center' }}>
-        <Ionicons name="add" size={20} color={isDark ? '#FFB74D' : '#F57C00'} />
+      <Pressable onPress={() => onAction(oldest)} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.warning + '2E', alignItems: 'center', justifyContent: 'center' }}>
+        <Ionicons name="add" size={20} color={colors.warning} />
       </Pressable>
     </View>
   );

@@ -376,6 +376,7 @@ const RULES: Rule[] = [
   { keywords: ['toilet paper', 'bath tissue', 'charmin', 'cottonelle', 'scott tissue'], emoji: '🧻', category: 'paper', color: '#F4F6F7' },
   { keywords: ['tissue', 'kleenex', 'facial tissue', 'puffs'], emoji: '🧻', category: 'paper', color: '#F4F6F7' },
   { keywords: ['napkins', 'paper napkins'], emoji: '🧻', category: 'paper', color: '#F4F6F7' },
+  { keywords: ['towel', 'bath towel', 'hand towel', 'beach towel', 'dish towel', 'kitchen towel', 'washcloth', 'towel set'], emoji: '🧺', category: 'household', color: '#5DADE2' },
   { keywords: ['aluminum foil', 'tin foil', 'reynolds wrap'], emoji: '✨', category: 'paper', color: '#839192' },
   { keywords: ['plastic wrap', 'saran wrap', 'cling wrap'], emoji: '🫙', category: 'paper', color: '#2E86C1' },
   { keywords: ['parchment paper', 'wax paper', 'butcher paper'], emoji: '📄', category: 'paper', color: '#F4F6F7' },
@@ -453,24 +454,60 @@ const DEFAULT: ItemClassification = {
   storageLocation: 'pantry' as StorageLocation,
 };
 
+// Singularize so "towels" matches keyword "towel" and vice versa. Both the
+// input and the keywords pass through this, so imperfect stems (glass→glas)
+// still match each other consistently.
+function normalizeWords(s: string): string[] {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => (w.length > 3 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w));
+}
+
 /**
  * Returns emoji + category for any pantry item name.
- * Matching is case-insensitive substring. First rule wins.
+ *
+ * Matching is whole-word phrase matching (never substring — "pineapple" must
+ * not match "apple", and "towel" must not match "paper towels"). When several
+ * rules match, the most specific wins: more matched words beats fewer, then a
+ * keyword covering the item's last word (the head noun: "apple pie" is a pie)
+ * beats one that doesn't, then longer keyword text.
  */
 export function classifyItem(name: string): ItemClassification {
   if (!name?.trim()) return DEFAULT;
-  const lower = name.toLowerCase().trim();
+  const words = normalizeWords(name);
+  if (words.length === 0) return DEFAULT;
+  const text = ` ${words.join(' ')} `;
+  const lastWord = words[words.length - 1];
+
+  let bestRule: (typeof RULES)[number] | null = null;
+  let bestScore = 0;
   for (const rule of RULES) {
     for (const kw of rule.keywords) {
-      if (lower.includes(kw) || kw.includes(lower)) {
-        return {
-          emoji: rule.emoji,
-          category: rule.category,
-          color: rule.color,
-          storageLocation: CATEGORY_LOCATION[rule.category],
-        };
+      const kwWords = normalizeWords(kw);
+      if (kwWords.length === 0) continue;
+      const phrase = ` ${kwWords.join(' ')} `;
+      if (!text.includes(phrase)) continue;
+      const score =
+        kwWords.length * 1000 +
+        (kwWords[kwWords.length - 1] === lastWord ? 100 : 0) +
+        Math.min(phrase.length, 99);
+      if (score > bestScore) {
+        bestScore = score;
+        bestRule = rule;
       }
     }
+  }
+
+  if (bestRule) {
+    return {
+      emoji: bestRule.emoji,
+      category: bestRule.category,
+      color: bestRule.color,
+      storageLocation: CATEGORY_LOCATION[bestRule.category],
+    };
   }
   return DEFAULT;
 }
