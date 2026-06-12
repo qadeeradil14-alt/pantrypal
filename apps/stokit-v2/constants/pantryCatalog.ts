@@ -99,7 +99,7 @@ export const PANTRY_CATALOG: PantryCatalogItem[] = [
   item('Cleaning', 'Paper towels', '🧻', 'pack'),
 
   item('Paper Goods', 'Toilet paper', '🧻', 'pack'), item('Paper Goods', 'Paper towels', '🧻', 'pack'),
-  item('Paper Goods', 'Tissues', '📦', 'box'), item('Paper Goods', 'Napkins', '🧻', 'pack'),
+  item('Paper Goods', 'Tissues', '🧻', 'box'), item('Paper Goods', 'Napkins', '🧻', 'pack'),
   item('Paper Goods', 'Paper plates', '🍽️', 'pack'), item('Paper Goods', 'Paper cups', '🥤', 'pack'),
 
   item('Personal Care', 'Toothpaste', 'custom:toothpaste'), item('Personal Care', 'Toothbrush', '🪥'),

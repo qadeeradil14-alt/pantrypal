@@ -18,6 +18,30 @@ const cases: Array<[input: string, emoji: string]> = [
   ['cream cheese', '🧀'],
   ['peanut butter', '🥜'],
 
+  // legumes — dry variants must not fall through to 📦
+  ['lentils', '🫘'],
+  ['red lentils', '🫘'],
+  ['green lentils', '🫘'],
+  ['french lentils', '🫘'],
+  ['chickpeas', '🫘'],
+  ['garbanzo beans', '🫘'],
+
+  // plant proteins
+  ['tofu', '🍱'],
+  ['tempeh', '🍱'],
+
+  // mixed greens
+  ['mixed greens', '🥗'],
+  ['spring mix', '🥗'],
+
+  // dried fruit
+  ['raisins', '🍇'],
+  ['dried cranberries', '🍇'],
+
+  // yogurt must not show sake jug
+  ['yogurt', '🥛'],
+  ['greek yogurt', '🥛'],
+
   // plain matches must keep working
   ['apple', '🍎'],
   ['apples', '🍎'],

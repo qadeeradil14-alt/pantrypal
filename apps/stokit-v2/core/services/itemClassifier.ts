@@ -121,6 +121,7 @@ const RULES: Rule[] = [
   { keywords: ['grapefruit'], emoji: '🍊', category: 'produce_fruit', color: '#E74C3C' },
   { keywords: ['apricot', 'apricots'], emoji: '🍑', category: 'produce_fruit', color: '#F39C12' },
   { keywords: ['date', 'dates', 'medjool'], emoji: '🫚', category: 'produce_fruit', color: '#7D6608' },
+  { keywords: ['raisins', 'golden raisins', 'dried cranberries', 'craisins', 'dried mango', 'dried apricots', 'dried figs', 'dried cherries', 'dried blueberries', 'dried fruit', 'sultanas', 'currants'], emoji: '🍇', category: 'snack', color: '#7D3C98' },
   { keywords: ['lychee', 'lychees'], emoji: '🍡', category: 'produce_fruit', color: '#F1948A' },
 
   // ── PRODUCE: VEGETABLES ────────────────────────────────────────────────────
@@ -134,6 +135,7 @@ const RULES: Rule[] = [
   { keywords: ['lettuce', 'romaine', 'iceberg', 'butter lettuce'], emoji: '🥬', category: 'produce_veg', color: '#27AE60' },
   { keywords: ['spinach', 'baby spinach'], emoji: '🥬', category: 'produce_veg', color: '#1E8449' },
   { keywords: ['kale', 'arugula', 'chard', 'collard'], emoji: '🥬', category: 'produce_veg', color: '#145A32' },
+  { keywords: ['mixed greens', 'spring mix', 'mesclun', 'salad mix', 'baby greens', 'salad greens'], emoji: '🥗', category: 'produce_veg', color: '#27AE60' },
   { keywords: ['cabbage', 'napa cabbage', 'bok choy'], emoji: '🥬', category: 'produce_veg', color: '#27AE60' },
   { keywords: ['cucumber', 'cucumbers'], emoji: '🥒', category: 'produce_veg', color: '#1E8449' },
   { keywords: ['zucchini', 'courgette'], emoji: '🥒', category: 'produce_veg', color: '#27AE60' },
@@ -191,7 +193,7 @@ const RULES: Rule[] = [
   { keywords: ['butter', 'unsalted butter', 'salted butter', 'margarine', 'ghee'], emoji: '🧈', category: 'dairy', color: '#F4D03F' },
   { keywords: ['cheese', 'cheddar', 'mozzarella', 'parmesan', 'feta', 'gouda', 'brie', 'swiss', 'provolone', 'monterey jack', 'colby', 'ricotta', 'gruyere', 'gorgonzola', 'blue cheese', 'american cheese', 'pepper jack'], emoji: '🧀', category: 'dairy', color: '#F0A500' },
   { keywords: ['cream cheese', 'cottage cheese', 'mascarpone'], emoji: '🧀', category: 'dairy', color: '#FDFEFE' },
-  { keywords: ['yogurt', 'greek yogurt', 'plain yogurt', 'kefir'], emoji: '🍶', category: 'dairy', color: '#F4F6F7' },
+  { keywords: ['yogurt', 'greek yogurt', 'plain yogurt', 'kefir'], emoji: '🥛', category: 'dairy', color: '#F4F6F7' },
   { keywords: ['sour cream', 'crème fraîche'], emoji: '🥛', category: 'dairy', color: '#FDFEFE' },
   { keywords: ['ice cream', 'gelato', 'sorbet', 'frozen yogurt', 'frozen custard'], emoji: '🍦', category: 'dairy', color: '#F9E4B7' },
   { keywords: ['whipped cream', 'cool whip', 'whipped topping'], emoji: '🥛', category: 'dairy', color: '#FDFEFE' },
@@ -225,6 +227,10 @@ const RULES: Rule[] = [
   { keywords: ['flour', 'all purpose flour', 'bread flour', 'cake flour', 'almond flour', 'coconut flour'], emoji: '🌾', category: 'baking', color: '#F4F6F7' },
   { keywords: ['cornmeal', 'grits', 'polenta'], emoji: '🌾', category: 'grains', color: '#F4D03F' },
   { keywords: ['barley', 'farro', 'wheat berries', 'spelt', 'bulgur', 'couscous'], emoji: '🌾', category: 'grains', color: '#D4AC0D' },
+  { keywords: ['lentils', 'red lentils', 'green lentils', 'brown lentils', 'french lentils', 'beluga lentils', 'split peas', 'yellow lentils'], emoji: '🫘', category: 'grains', color: '#784212' },
+  { keywords: ['chickpeas', 'garbanzo', 'garbanzo beans', 'dried chickpeas'], emoji: '🫘', category: 'grains', color: '#D4AC0D' },
+  { keywords: ['tofu', 'firm tofu', 'silken tofu', 'extra firm tofu'], emoji: '🍱', category: 'grains', color: '#F4F6F7' },
+  { keywords: ['tempeh', 'seitan', 'miso paste'], emoji: '🍱', category: 'grains', color: '#D4AC0D' },
 
   // ── PASTA & NOODLES ───────────────────────────────────────────────────────
   { keywords: ['pasta', 'penne', 'rigatoni', 'fusilli', 'farfalle', 'orzo', 'lasagna noodles', 'macaroni'], emoji: '🍝', category: 'pasta', color: '#F4D03F' },
@@ -233,7 +239,7 @@ const RULES: Rule[] = [
 
   // ── CANNED & JARRED ───────────────────────────────────────────────────────
   { keywords: ['canned tomatoes', 'diced tomatoes', 'crushed tomatoes', 'tomato paste', 'tomato puree'], emoji: '🥫', category: 'canned', color: '#C0392B' },
-  { keywords: ['canned beans', 'canned chickpeas', 'canned lentils', 'canned peas', 'black beans', 'kidney beans', 'cannellini', 'pinto beans'], emoji: '🫘', category: 'canned', color: '#784212' },
+  { keywords: ['canned beans', 'canned chickpeas', 'canned lentils', 'canned peas', 'black beans', 'kidney beans', 'cannellini', 'pinto beans', 'navy beans', 'great northern beans', 'adzuki beans'], emoji: '🫘', category: 'canned', color: '#784212' },
   { keywords: ['canned tuna', 'canned salmon', 'canned sardines', 'canned anchovies'], emoji: '🥫', category: 'canned', color: '#1A5276' },
   { keywords: ['coconut milk', 'coconut cream'], emoji: '🥛', category: 'canned', color: '#F4F6F7' },
   { keywords: ['soup', 'chicken soup', 'tomato soup', 'clam chowder', 'minestrone'], emoji: '🍲', category: 'canned', color: '#E67E22' },
