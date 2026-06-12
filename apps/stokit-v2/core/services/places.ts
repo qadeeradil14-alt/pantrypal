@@ -562,6 +562,7 @@ async function searchByNameGeoapify(
     `${GEO_BASE}/v2/places` +
     `?categories=${cats}` +
     `&filter=circle:${lng},${lat},${radiusMetres}` +
+    `&bias=proximity:${lng},${lat}` +
     `&limit=500` +
     `&apiKey=${config.geoapifyApiKey}`;
 

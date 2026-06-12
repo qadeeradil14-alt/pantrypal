@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View, Image, Linking, Platform, ActionSheetIOS } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../../components/shared/Screen';
@@ -96,25 +96,40 @@ export default function StoresScreen() {
   const updateStore = useDurableStore((s) => s.updateStore);
   const [addOpen, setAddOpen] = useState(false);
   const [editStore, setEditStore] = useState<Store | null>(null);
+  const fetchedHoursRef = useRef<Set<string>>(new Set());
 
   React.useEffect(() => {
+    const apiKey = process.env.EXPO_PUBLIC_GEOAPIFY_API_KEY;
+    if (!apiKey) return;
+
     stores.forEach((store) => {
-      if (store.isOpen === undefined && store.openingHours === undefined && store.lat && store.lng) {
-        const apiKey = process.env.EXPO_PUBLIC_GEOAPIFY_API_KEY;
-        if (!apiKey) return;
-        const url = `https://api.geoapify.com/v2/places?categories=commercial&filter=circle:${store.lng},${store.lat},100&limit=1&apiKey=${apiKey}`;
-        fetch(url).then(r => r.json()).then(data => {
+      if (
+        fetchedHoursRef.current.has(store.id) ||
+        store.openingHours !== undefined ||
+        !store.lat ||
+        !store.lng
+      ) return;
+
+      fetchedHoursRef.current.add(store.id);
+
+      const url = `https://api.geoapify.com/v2/places?categories=commercial&filter=circle:${store.lng},${store.lat},100&limit=1&apiKey=${apiKey}`;
+      fetch(url)
+        .then((r) => r.json())
+        .then((data) => {
           const f = data.features?.[0];
-          if (f && f.properties?.opening_hours) {
+          if (f?.properties?.opening_hours) {
             updateStore(store.id, { openingHours: f.properties.opening_hours });
           } else {
-             // Mark as checked to prevent infinite re-fetching if missing
-             updateStore(store.id, { isOpen: false }); 
+            // Empty string = checked but no data; badge stays hidden (not "Closed")
+            updateStore(store.id, { openingHours: '' });
           }
-        }).catch(err => console.log('Failed to patch store hours', err));
-      }
+        })
+        .catch(() => {
+          fetchedHoursRef.current.delete(store.id);
+        });
     });
-  }, [stores, updateStore]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stores.length]);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
