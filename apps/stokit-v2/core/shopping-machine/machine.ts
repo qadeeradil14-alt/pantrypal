@@ -296,7 +296,7 @@ export function reduce(
     }
 
     case 'START_MANUAL_STORE': {
-      if (session.status !== 'continue_prompt') return session;
+      if (session.status !== 'continue_prompt' && session.status !== 'next_store_ready') return session;
       if (session.storeQueue.includes(event.storeId)) return session;
       return {
         ...session,

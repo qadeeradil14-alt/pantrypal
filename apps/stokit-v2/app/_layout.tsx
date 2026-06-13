@@ -37,7 +37,25 @@ defineGeofenceTask(
   () => useDurableStore.getState().stores,
 );
 
+// Eager OTA catch-up: runs while the loading spinner is visible.
+// If the native loader missed a new update (timeout or no network at boot),
+// this grabs it now and reloads before the user sees the app.
+async function applyPendingUpdate() {
+  if (!Updates.isEnabled) return;
+  try {
+    const { isAvailable } = await Updates.checkForUpdateAsync();
+    if (isAvailable) {
+      await Updates.fetchUpdateAsync();
+      await Updates.reloadAsync();
+    }
+  } catch {
+    // Non-fatal — continue on current bundle
+  }
+}
+
 export default function RootLayout() {
+  useEffect(() => { void applyPendingUpdate(); }, []);
+
   const [fontsLoaded] = useFonts({
     PlayfairDisplay_400Regular,
     PlayfairDisplay_700Bold,
@@ -96,7 +114,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (!ready || !rootNavigationState?.key) return;
-    
+
     // Add microtask delay to allow React state to settle before routing
     setTimeout(() => {
       // Email verification check
@@ -108,7 +126,7 @@ export default function RootLayout() {
       // Main auth routing
       const authPaths = ['/welcome', '/sign-in', '/sign-up', '/verify-email'];
       const inAuthGroup = authPaths.includes(pathname);
-      
+
       if (unlocked && inAuthGroup) {
         router.replace('/(tabs)');
       } else if (!unlocked && !inAuthGroup) {

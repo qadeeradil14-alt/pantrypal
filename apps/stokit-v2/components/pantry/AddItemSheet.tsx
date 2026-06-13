@@ -230,7 +230,7 @@ export function AddItemSheet({
         </View>
       )}
 
-      {query.trim() && !exactMatch ? (
+      {query.trim().length >= 3 && !exactMatch ? (
         <Button
           label={`Add “${query.trim()}” as custom item`}
           variant="subtle"

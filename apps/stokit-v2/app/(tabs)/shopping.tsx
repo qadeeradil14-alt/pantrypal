@@ -65,6 +65,7 @@ export default function ShoppingScreen() {
   const session = useSessionStore((s) => s.session);
   const dispatch = useSessionStore((s) => s.dispatch);
   const [pickerItem, setPickerItem] = useState<PantryItem | null>(null);
+  const [showFirstStorePicker, setShowFirstStorePicker] = useState(false);
 
   const { action } = useLocalSearchParams<{ action?: string }>();
   const [quickScanStorePicker, setQuickScanStorePicker] = useState(false);
@@ -118,10 +119,27 @@ export default function ShoppingScreen() {
   );
   const unassignedCount = unassigned.length;
 
-  const startTrip = () => {
+  const startTripAt = (firstStoreId: string) => {
+    setShowFirstStorePicker(false);
     const entries: ShoppingEntry[] = [];
-    plan.forEach((list) => entries.push(...list));
+    // Chosen store's entries go first so its items appear at stop 1
+    const firstList = plan.get(firstStoreId) ?? [];
+    entries.push(...firstList);
+    plan.forEach((list, storeId) => {
+      if (storeId !== firstStoreId) entries.push(...list);
+    });
     dispatch({ type: 'START_TRIP', entries, now: Date.now() });
+  };
+
+  const handleStartShopping = () => {
+    if (planEntries.length <= 1) {
+      // Single store — no need to ask
+      const entries: ShoppingEntry[] = [];
+      plan.forEach((list) => entries.push(...list));
+      dispatch({ type: 'START_TRIP', entries, now: Date.now() });
+    } else {
+      setShowFirstStorePicker(true);
+    }
   };
 
   // ── Active states ──────────────────────────────────────────────────────────
@@ -168,7 +186,7 @@ export default function ShoppingScreen() {
             <Text style={styles.summarySub}>
               items across {planEntries.length} store{planEntries.length > 1 ? 's' : ''}
             </Text>
-            <Button label="Start shopping" onPress={startTrip} style={{ marginTop: spacing.lg }} />
+            <Button label="Start shopping" onPress={handleStartShopping} style={{ marginTop: spacing.lg }} />
           </Card>
 
           {planEntries.map(([storeId, list]) => {
@@ -204,11 +222,38 @@ export default function ShoppingScreen() {
       )}
 
       <StorePickerSheet item={pickerItem} onClose={() => setPickerItem(null)} />
-      <StorePickerSheet 
-        visible={quickScanStorePicker} 
+      <StorePickerSheet
+        visible={quickScanStorePicker}
         onClose={() => setQuickScanStorePicker(false)}
         onSelect={(storeId) => handleQuickScanStoreSelect(storeId)}
       />
+
+      {/* First-store picker — only shown when starting a multi-store trip */}
+      <Sheet visible={showFirstStorePicker} title="Where are you shopping first?" onClose={() => setShowFirstStorePicker(false)}>
+        <Text style={{ fontFamily: fonts.sans, fontSize: 13, color: colors.muted, marginBottom: spacing.lg }}>
+          Choose which store you're heading to first. You'll pick up the others after.
+        </Text>
+        {planEntries.map(([storeId, list], idx) => {
+          const store = storeById(storeId);
+          const barColor = ROUTE_COLORS[idx % ROUTE_COLORS.length];
+          return (
+            <Pressable
+              key={storeId}
+              onPress={() => startTripAt(storeId)}
+              style={({ pressed }) => [styles.firstStoreRow, pressed && { opacity: 0.7 }]}
+            >
+              <StoreChip name={store?.name ?? '?'} emoji={store?.logoEmoji} color={store?.logoColor} size={44} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.firstStoreName}>{store?.name ?? storeId}</Text>
+                <Text style={styles.firstStoreMeta}>{list.length} item{list.length !== 1 ? 's' : ''}</Text>
+              </View>
+              <View style={[styles.firstStoreGoBtn, { borderColor: barColor }]}>
+                <Text style={[styles.firstStoreGoBtnText, { color: barColor }]}>Go here first</Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </Sheet>
     </Screen>
   );
 }
@@ -809,7 +854,12 @@ function ContinuePrompt({ session, dispatch, storeById, styles, colors }: SubPro
 
 function NextStoreSelector({ session, dispatch, storeById, styles, nsStyles, colors }: SubProps) {
   const pending = pendingStoreIds(session);
+  const allStores = useDurableStore((s) => s.stores);
   const [skipping, setSkipping] = useState<string | null>(null);
+  const [showAddStore, setShowAddStore] = useState(false);
+
+  // Saved stores the user hasn't planned into this trip yet
+  const unplannedStores = allStores.filter((s) => !session.storeQueue.includes(s.id));
 
   return (
     <Screen>
@@ -863,23 +913,58 @@ function NextStoreSelector({ session, dispatch, storeById, styles, nsStyles, col
             );
           })}
 
-          <Pressable
-            onPress={() => {
-              Alert.alert(
-                'Finish entire trip?',
-                `${pending.length} store${pending.length > 1 ? 's' : ''} will be marked as skipped.`,
-                [
-                  { text: 'Cancel', style: 'cancel' },
-                  { text: 'Finish trip', style: 'destructive', onPress: () => dispatch({ type: 'FINISH_TRIP_EARLY', now: Date.now() }) },
-                ],
-              );
-            }}
-            style={nsStyles.finishBtn}
-          >
-            <Text style={nsStyles.finishBtnText}>Finish entire shopping trip</Text>
+          {/* Add an unplanned store mid-trip */}
+          <Pressable onPress={() => setShowAddStore(true)} style={nsStyles.addStoreBtn}>
+            <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
+            <Text style={nsStyles.addStoreBtnText}>Add another stop</Text>
           </Pressable>
         </>
       )}
+
+      <Pressable
+        onPress={() => {
+          Alert.alert(
+            'Finish entire trip?',
+            `${pending.length} store${pending.length > 1 ? 's' : ''} will be marked as skipped.`,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Finish trip', style: 'destructive', onPress: () => dispatch({ type: 'FINISH_TRIP_EARLY', now: Date.now() }) },
+            ],
+          );
+        }}
+        style={nsStyles.finishBtn}
+      >
+        <Text style={nsStyles.finishBtnText}>Finish entire shopping trip</Text>
+      </Pressable>
+
+      {/* Sheet: pick an unplanned store to add mid-trip */}
+      <Sheet visible={showAddStore} title="Add another stop" onClose={() => setShowAddStore(false)}>
+        {unplannedStores.length === 0 ? (
+          <Text style={{ fontFamily: fonts.sans, fontSize: 14, color: colors.muted, textAlign: 'center', paddingVertical: spacing.xl }}>
+            All your saved stores are already on this trip.
+          </Text>
+        ) : (
+          <>
+            <Text style={{ fontFamily: fonts.sans, fontSize: 13, color: colors.muted, marginBottom: spacing.lg }}>
+              Pick a store to add to your current trip. You can add items once you're there.
+            </Text>
+            {unplannedStores.map((store) => (
+              <Pressable
+                key={store.id}
+                onPress={() => {
+                  dispatch({ type: 'START_MANUAL_STORE', storeId: store.id });
+                  setShowAddStore(false);
+                }}
+                style={({ pressed }) => [nsStyles.addStoreRow, pressed && { opacity: 0.7 }]}
+              >
+                <StoreChip name={store.name} emoji={store.logoEmoji} color={store.logoColor} size={44} />
+                <Text style={nsStyles.addStoreRowName}>{store.name}</Text>
+                <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+              </Pressable>
+            ))}
+          </>
+        )}
+      </Sheet>
     </Screen>
   );
 }
@@ -1104,6 +1189,11 @@ function makeStyles(colors: AppColors) {
     manualStoreRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
     manualStoreName: { fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink },
     manualStoreMeta: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 2 },
+    firstStoreRow:  { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
+    firstStoreName: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
+    firstStoreMeta: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: 2 },
+    firstStoreGoBtn:{ borderWidth: 1.5, borderRadius: radii.md, paddingHorizontal: 12, paddingVertical: 6 },
+    firstStoreGoBtnText: { fontFamily: fonts.sansSemibold, fontSize: 13 },
   });
 
   const rStyles = StyleSheet.create({
@@ -1202,6 +1292,10 @@ function makeStyles(colors: AppColors) {
     skipStoreText:{ fontFamily: fonts.sans, fontSize: 13, color: colors.muted },
     finishBtn:   { alignItems: 'center', paddingVertical: spacing.xl, marginTop: spacing.sm },
     finishBtnText:{ fontFamily: fonts.sansMedium, fontSize: 14, color: colors.muted },
+    addStoreBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, paddingVertical: spacing.lg, marginTop: spacing.sm, borderWidth: 1.5, borderColor: colors.primary, borderStyle: 'dashed', borderRadius: radii.lg },
+    addStoreBtnText: { fontFamily: fonts.sansMedium, fontSize: 15, color: colors.primary },
+    addStoreRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
+    addStoreRowName: { flex: 1, fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
   });
 
   const tsStyles = StyleSheet.create({
