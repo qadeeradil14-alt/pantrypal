@@ -389,7 +389,7 @@ async function searchByNameGoogle(
     return (data.results ?? []).map((p) => ({
       placeId: p.place_id,
       name: p.name,
-      address: p.vicinity ?? '',
+      address: p.formatted_address ?? p.vicinity ?? '',
       distanceMetres: Math.round(
         haversine(lat, lng, p.geometry.location.lat, p.geometry.location.lng),
       ),
@@ -655,6 +655,7 @@ interface GooglePlacesResponse {
     place_id: string;
     name: string;
     vicinity?: string;
+    formatted_address?: string;
     business_status?: string;
     geometry: { location: { lat: number; lng: number } };
     types?: string[];
