@@ -93,7 +93,11 @@ export function AddStoreContent({
         let searchLng = userLocRef.current?.lng;
         
         if (currentZip.trim().length >= 3) {
-          const geo = await geocodeLocation(currentZip.trim());
+          // Append country context so bare ZIP codes geocode precisely
+          const zipQuery = /^\d{5}$/.test(currentZip.trim())
+            ? `${currentZip.trim()}, USA`
+            : currentZip.trim();
+          const geo = await geocodeLocation(zipQuery);
           if (geo) {
             searchLat = geo.lat;
             searchLng = geo.lng;
