@@ -455,7 +455,7 @@ export default function WelcomeScreen() {
           </Pressable>
         </Animated.View>
       </SafeAreaView>
-      <Text style={{ position: 'absolute', top: 50, right: 15, fontSize: 10, color: colors.faintText, fontFamily: fonts.sans, zIndex: 10 }}>v1.0.0 (OTA 70)</Text>
+      <Text style={{ position: 'absolute', top: 50, right: 15, fontSize: 10, color: colors.faintText, fontFamily: fonts.sans, zIndex: 10 }}>v1.0.0 (OTA 71)</Text>
     </View>
   );
 }
