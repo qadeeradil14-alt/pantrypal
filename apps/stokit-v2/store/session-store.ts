@@ -90,6 +90,13 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       next.entries
         .filter((e) => e.picked)
         .forEach((e) => durable.setItemStatus(e.itemId, 'stocked'));
+      // Unassign items from skipped stores so they don't immediately re-appear
+      // in the shopping plan as a full store row after the trip ends.
+      // The user can re-assign them before the next trip.
+      const skippedSet = new Set(next.skippedStoreIds);
+      next.entries
+        .filter((e) => !e.picked && skippedSet.has(e.storeId))
+        .forEach((e) => durable.updateItem(e.itemId, { storeId: null }));
     }
 
     set({ session: next });
