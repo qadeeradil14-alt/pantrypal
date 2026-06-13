@@ -14,6 +14,7 @@ import { fonts, radii, spacing, type AppColors } from '../../theme';
 import { useTheme } from '../../hooks/useTheme';
 import { useDurableStore } from '../../store/durable-store';
 import type { Trip } from '../../types';
+import { UNASSIGNED_STORE_ID, UNASSIGNED_STORE_NAME } from '../../constants/shopping';
 
 export function TripDetailSheet({
   trip,
@@ -25,7 +26,9 @@ export function TripDetailSheet({
   const { colors } = useTheme();
   const styles = React.useMemo(() => makeStyles(colors), [colors]);
   const stores = useDurableStore((s) => s.stores);
-  const storeById = (id: string) => stores.find((s) => s.id === id);
+  const storeById = (id: string) => id === UNASSIGNED_STORE_ID
+    ? { id, name: UNASSIGNED_STORE_NAME, logoEmoji: '🛒', logoColor: colors.primary, createdAt: 0, updatedAt: 0 }
+    : stores.find((s) => s.id === id);
 
   if (!trip) return <Sheet visible={false} title="" onClose={onClose}>{null}</Sheet>;
 
@@ -43,7 +46,7 @@ export function TripDetailSheet({
 
       {/* Stat grid */}
       <View style={styles.statRow}>
-        <Stat value={trip.storeIdsVisited.length} label="Stores" />
+        <Stat value={trip.storeIdsVisited.length} label="Stops" />
         <Stat value={trip.itemsBought} label="Items bought" />
         {trip.itemsRemaining > 0 && <Stat value={trip.itemsRemaining} label="Remaining" />}
         <Stat value={durationStr} label="Duration" />

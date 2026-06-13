@@ -9,6 +9,7 @@ import { fonts, radii, spacing, type AppColors } from '../../theme';
 import { useDurableStore } from '../../store/durable-store';
 import type { Receipt, Trip } from '../../types';
 import { useTheme } from '../../hooks/useTheme';
+import { UNASSIGNED_STORE_ID, UNASSIGNED_STORE_NAME } from '../../constants/shopping';
 
 function fmtDate(ts: number) {
   return new Date(ts).toLocaleDateString(undefined, {
@@ -22,7 +23,9 @@ export default function ReceiptsScreen() {
   const receipts = useDurableStore((s) => s.receipts);
   const stores = useDurableStore((s) => s.stores);
   const trips = useDurableStore((s) => s.trips);
-  const storeById = (id: string) => stores.find((s) => s.id === id);
+  const storeById = (id: string) => id === UNASSIGNED_STORE_ID
+    ? { id, name: UNASSIGNED_STORE_NAME, logoEmoji: '🛒', logoColor: colors.primary, createdAt: 0, updatedAt: 0 }
+    : stores.find((s) => s.id === id);
   const tripById = (id: string) => trips.find((t) => t.id === id);
   const [detailTrip, setDetailTrip] = useState<Trip | null>(null);
 
@@ -92,7 +95,7 @@ export default function ReceiptsScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.tripTitle}>Shopping Trip</Text>
                 <Text style={styles.tripMeta}>
-                  {fmtDate(list[0]?.createdAt ?? Date.now())} · {storeCount} store{storeCount === 1 ? '' : 's'}
+                  {fmtDate(list[0]?.createdAt ?? Date.now())} · {storeCount} stop{storeCount === 1 ? '' : 's'}
                   {itemCount > 0 ? ` · ${itemCount} item${itemCount === 1 ? '' : 's'}` : ''}
                 </Text>
               </View>

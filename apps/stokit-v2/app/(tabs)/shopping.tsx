@@ -43,6 +43,7 @@ import { ROUTE_COLORS } from '../../core/services/storeBrands';
 import { classifyItem, categoryLabel } from '../../core/services/itemClassifier';
 import type { PantryItem, ShoppingEntry, Store } from '../../types';
 import { useTheme } from '../../hooks/useTheme';
+import { UNASSIGNED_STORE_ID, UNASSIGNED_STORE_NAME } from '../../constants/shopping';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -106,7 +107,9 @@ export default function ShoppingScreen() {
     setPendingQuickScanStore(storeId);
   };
 
-  const storeById = (id: string) => stores.find((s) => s.id === id);
+  const storeById = (id: string): Store | undefined => id === UNASSIGNED_STORE_ID
+    ? { id, name: UNASSIGNED_STORE_NAME, logoEmoji: '🛒', logoColor: colors.primary, createdAt: 0, updatedAt: 0 }
+    : stores.find((s) => s.id === id);
 
   const plan = useMemo(() => {
     const eligible = items.filter(
@@ -175,6 +178,33 @@ export default function ShoppingScreen() {
   };
 
   const handleStartShopping = () => {
+    if (unassignedCount > 0) {
+      Alert.alert(
+        `${unassignedCount} item${unassignedCount === 1 ? '' : 's'} need a store`,
+        'Assign stores for an organized route, or keep every item in this trip.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Assign stores', onPress: () => setPickerItem(unassigned[0]) },
+          {
+            text: 'Shop everything',
+            onPress: () => {
+              const entries: ShoppingEntry[] = [];
+              plan.forEach((list) => entries.push(...list));
+              unassigned.forEach((item) => entries.push({
+                itemId: item.id,
+                name: item.name,
+                quantity: item.quantity,
+                unit: item.unit,
+                storeId: UNASSIGNED_STORE_ID,
+                picked: false,
+              }));
+              dispatch({ type: 'START_TRIP', entries, now: Date.now() });
+            },
+          },
+        ],
+      );
+      return;
+    }
     if (planEntries.length <= 1) {
       // Single store — no need to ask
       const entries: ShoppingEntry[] = [];
@@ -208,9 +238,10 @@ export default function ShoppingScreen() {
                 <Text style={styles.routeNotReadyTitle}>Route not ready</Text>
               </View>
               <Text style={styles.warnText}>
-                {unassignedCount} low item{unassignedCount > 1 ? 's' : ''} need a store before shopping can start. Assign one to each.
+                Assign stores for an organized route, or shop everything together.
               </Text>
             </Card>
+            <Button label="Start shopping" onPress={handleStartShopping} style={{ marginBottom: spacing.lg }} />
             <UnassignedList items={unassigned} onAssign={setPickerItem} styles={styles} />
           </>
         ) : (
@@ -1184,7 +1215,7 @@ function TripSummary({ session, dispatch, storeById, tsStyles, colors }: SubProp
 
         {/* Stats row */}
         <View style={tsStyles.statsRow}>
-          <StatBox value={visitedCount} label="Stores" tsStyles={tsStyles} colors={colors} />
+          <StatBox value={visitedCount} label="Stops" tsStyles={tsStyles} colors={colors} />
           <StatBox value={trip.itemsBought} label="Items bought" tsStyles={tsStyles} colors={colors} />
           {trip.itemsRemaining > 0 && <StatBox value={trip.itemsRemaining} label="Remaining" dim tsStyles={tsStyles} colors={colors} />}
           <StatBox value={durationStr} label="Duration" mono={false} tsStyles={tsStyles} colors={colors} />
@@ -1227,7 +1258,7 @@ function TripSummary({ session, dispatch, storeById, tsStyles, colors }: SubProp
         {/* Completed stores */}
         {visitedCount > 0 && (
           <>
-            <Text style={tsStyles.sectionTitle}>Stores visited</Text>
+            <Text style={tsStyles.sectionTitle}>Stops completed</Text>
             {trip.breakdown
               .filter((b) => !b.skipped)
               .map((b, idx) => {

@@ -32,6 +32,7 @@ export function AddItemSheet({
   title = 'Add to pantry',
   subtitle = 'Select multiple items and add them all at once.',
   hideStorePicker = false,
+  quickAdd = false,
   onItemsAdded,
 }: {
   visible: boolean;
@@ -41,11 +42,14 @@ export function AddItemSheet({
   title?: string;
   subtitle?: string;
   hideStorePicker?: boolean;
+  quickAdd?: boolean;
   onItemsAdded?: (items: PantryItem[]) => void;
 }) {
   const { colors } = useTheme();
   const stores = useDurableStore((s) => s.stores);
+  const items = useDurableStore((s) => s.items);
   const addItem = useDurableStore((s) => s.addItem);
+  const updateItem = useDurableStore((s) => s.updateItem);
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<typeof PANTRY_CATEGORIES[number]>('Produce');
   const [selected, setSelected] = useState<Record<string, SelectedItem>>({});
@@ -96,6 +100,28 @@ export function AddItemSheet({
   );
 
   const toggle = (catalogItem: PantryCatalogItem) => {
+    if (quickAdd) {
+      const existing = items.find((item) => item.name.trim().toLowerCase() === catalogItem.name.trim().toLowerCase());
+      const item = existing
+        ? {
+            ...existing,
+            status: defaultStatus,
+            storeId: defaultStoreId ?? existing.storeId,
+            updatedAt: Date.now(),
+          }
+        : addItem({
+            name: catalogItem.name,
+            quantity: 1,
+            unit: catalogItem.defaultUnit ?? 'unit',
+            status: defaultStatus,
+            storeId: defaultStoreId,
+          });
+      if (existing) updateItem(existing.id, { status: item.status, storeId: item.storeId });
+      reset();
+      onClose();
+      onItemsAdded?.([item]);
+      return;
+    }
     setSelected((current) => {
       if (current[catalogItem.id]) {
         const next = { ...current };
@@ -221,7 +247,7 @@ export function AddItemSheet({
         />
       ) : null}
 
-      {selectedItems.length ? (
+      {!quickAdd && selectedItems.length ? (
         <>
           <View style={styles.selectedHeader}>
             <Text style={styles.sectionTitle}>Selected items</Text>
@@ -269,12 +295,14 @@ export function AddItemSheet({
         </>
       ) : null}
 
-      <Button
-        label={submitLabel}
-        onPress={submit}
-        disabled={!selectedItems.length}
-        style={styles.submit}
-      />
+      {!quickAdd ? (
+        <Button
+          label={submitLabel}
+          onPress={submit}
+          disabled={!selectedItems.length}
+          style={styles.submit}
+        />
+      ) : null}
     </Sheet>
   );
 }

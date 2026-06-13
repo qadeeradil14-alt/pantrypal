@@ -36,7 +36,6 @@ function getGreeting(): string {
 }
 
 const SHOPPING_BAG = require('../../assets/shopping-mission-bag.png');
-const SHOPPING_CART = require('../../assets/shopping-cart-full.png');
 export default function PantryScreen() {
   const router = useRouter();
   const { colors } = useTheme();
@@ -47,6 +46,7 @@ export default function PantryScreen() {
   const addItem = useDurableStore((state) => state.addItem);
   const members = useHouseholdStore((s) => s.members);
   const [addVisible, setAddVisible] = useState(false);
+  const [showMore, setShowMore] = useState(false);
   const [showAtHome, setShowAtHome] = useState(false);
   const [actionItem, setActionItem] = useState<PantryItem | null>(null);
   const [pickerItem, setPickerItem] = useState<PantryItem | null>(null);
@@ -59,18 +59,12 @@ export default function PantryScreen() {
   const firstName = myName.split(' ')[0] || '';
   const greeting = `${getGreeting()}${firstName ? `, ${firstName}` : ''} 👋`;
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const { isDark } = useTheme();
-
   const storeById = (id: string | null) => id ? stores.find((store) => store.id === id) : undefined;
   const listItems = useMemo(
     () => items.filter((item) => item.status === 'low' || item.status === 'expiring'),
     [items],
   );
 
-  const readyItems = useMemo(
-    () => listItems.filter((item) => item.storeId),
-    [listItems],
-  );
   const atHomeItems = useMemo(
     () => items.filter((item) => item.status === 'stocked'),
     [items],
@@ -119,16 +113,6 @@ export default function PantryScreen() {
 
     return () => { active = false; };
   }, [atHomeItems]);
-  const previewItems = filteredListItems.slice(0, 3);
-  const readyStores = new Set(readyItems.map((item) => item.storeId));
-  const shoppingHelper = listItems.length === 0
-    ? 'Add items to build your shopping list'
-    : readyItems.length === 0
-      ? 'Assign stores and start shopping'
-      : readyItems.length < listItems.length
-        ? `Shop ${readyItems.length} ready · assign ${listItems.length - readyItems.length} more`
-        : `Shop ${readyItems.length} item${readyItems.length === 1 ? '' : 's'} at ${readyStores.size === 1 ? storeById(readyItems[0].storeId)?.name ?? 'your store' : `${readyStores.size} stores`}`;
-
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -146,16 +130,6 @@ export default function PantryScreen() {
           </Pressable>
         </View>
 
-        <HouseholdBanner />
-        
-        {atHomeItems.length > 0 && (
-          <UseItOrLoseItWidget
-            items={atHomeItems}
-            onUsed={(item) => deleteItem(item.id)}
-            onRestock={(item) => setItemStatus(item.id, 'low')}
-          />
-        )}
-
         <ActionCard
           title="Add something to buy"
           subtitle="Put it on your shopping list"
@@ -166,35 +140,6 @@ export default function PantryScreen() {
           showPlus
           onPress={() => setAddVisible(true)}
         />
-        <ActionCard
-          title="Start shopping"
-          subtitle={
-            readyItems.length
-              ? `${readyItems.length} ready across ${new Set(readyItems.map((i) => i.storeId)).size} store${new Set(readyItems.map((i) => i.storeId)).size === 1 ? '' : 's'}`
-              : listItems.length
-                ? `${listItems.length} item${listItems.length === 1 ? '' : 's'} to assign to stores`
-                : 'Your list is empty'
-          }
-          icon="cart"
-          color={colors.success}
-          background={colors.successSoft}
-          image={SHOPPING_CART}
-          tint={isDark ? colors.surface : '#F8FBF5'}
-          onPress={() => router.push('/shopping')}
-        />
-        <Pressable
-          onPress={() => setShowAtHome((value) => !value)}
-          style={({ pressed }) => [styles.atHomeHeader, pressed && styles.pressed]}
-        >
-          <View>
-            <Text style={styles.atHomeTitle}>At home</Text>
-            <Text style={styles.atHomeCount}>{atHomeItems.length} item{atHomeItems.length === 1 ? '' : 's'}</Text>
-          </View>
-          <Ionicons name={showAtHome ? 'chevron-up' : 'chevron-down'} size={20} color={colors.primary} />
-        </Pressable>
-
-        <RecipeSuggestionsCard recipes={recipes} onPress={setSelectedRecipe} />
-
         {showSearch && (
           <View style={styles.searchBar}>
             <Ionicons name="search" size={16} color={colors.muted} style={{ marginRight: 8 }} />
@@ -210,69 +155,107 @@ export default function PantryScreen() {
           </View>
         )}
 
-        {frequentBuys.length > 0 && !showAtHome && (
-          <View style={styles.frequentSection}>
-            <Text style={styles.frequentTitle}>Recently added</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.frequentScroll}>
-              {frequentBuys.map((fb) => {
-                const isActioned = listItems.some(i => i.id === fb.id);
-                return (
-                  <Pressable
-                    key={fb.id}
-                    style={({ pressed }) => [styles.frequentItem, pressed && { opacity: 0.7 }]}
-                    onPress={() => setItemStatus(fb.id, 'low')}
-                  >
-                    <ItemAvatar name={fb.name} size={48} />
-                    <Text style={styles.frequentName} numberOfLines={1}>{fb.name}</Text>
-                    <View style={styles.frequentAddBtn}>
-                      <Ionicons name="add" size={14} color={colors.primary} />
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </View>
-        )}
-
         <SectionTitle
-          title={showAtHome ? 'Items at home' : 'On your list'}
-          action={showAtHome ? 'Close' : 'View all'}
-          onAction={showAtHome ? () => setShowAtHome(false) : () => router.push('/shopping')}
+          title="On your list"
+          action="Shop"
+          onAction={() => router.push('/shopping')}
         />
         <View style={styles.list}>
-          {(showAtHome ? filteredAtHomeItems : previewItems).length ? (showAtHome ? filteredAtHomeItems : previewItems).map((item, index) => (
+          {filteredListItems.length ? filteredListItems.map((item, index) => (
             <View key={item.id}>
               {index > 0 ? <View style={styles.divider} /> : null}
               <SimpleItemRow
                 item={item}
                 store={storeById(item.storeId)}
                 onPress={() => setActionItem(item)}
-                action={showAtHome ? 'Add to list' : 'cart'}
-                onAction={showAtHome ? () => setItemStatus(item.id, 'low') : undefined}
+                action="cart"
                 onSwipeLeft={() => deleteItem(item.id)}
-                onSwipeRight={showAtHome ? () => setItemStatus(item.id, 'low') : undefined}
               />
             </View>
           )) : (
             <View style={styles.empty}>
-              <Ionicons
-                name={showAtHome ? 'file-tray-stacked-outline' : 'cart-outline'}
-                size={28}
-                color={colors.muted}
-              />
-              <Text style={styles.emptyTitle}>
-                {query
-                  ? 'No results'
-                  : showAtHome ? 'Nothing at home yet' : 'Your list is empty'}
-              </Text>
+              <Ionicons name="cart-outline" size={28} color={colors.muted} />
+              <Text style={styles.emptyTitle}>{query ? 'No results' : 'Your list is empty'}</Text>
               <Text style={styles.emptyText}>
-                {query
-                  ? `No items match "${searchQuery}"`
-                  : showAtHome ? 'Add items you already have.' : 'Tap "Add something to buy" to get started.'}
+                {query ? `No items match "${searchQuery}"` : 'Tap "Add something to buy" to get started.'}
               </Text>
             </View>
           )}
         </View>
+
+        <Pressable
+          onPress={() => setShowMore((value) => !value)}
+          style={({ pressed }) => [styles.moreHeader, pressed && styles.pressed]}
+        >
+          <Text style={styles.moreTitle}>More for you</Text>
+          <Ionicons name={showMore ? 'chevron-up' : 'chevron-down'} size={20} color={colors.primary} />
+        </Pressable>
+
+        {showMore ? (
+          <>
+            <HouseholdBanner />
+            {atHomeItems.length > 0 ? (
+              <UseItOrLoseItWidget
+                items={atHomeItems}
+                onUsed={(item) => deleteItem(item.id)}
+                onRestock={(item) => setItemStatus(item.id, 'low')}
+              />
+            ) : null}
+            <Pressable
+              onPress={() => setShowAtHome((value) => !value)}
+              style={({ pressed }) => [styles.atHomeHeader, pressed && styles.pressed]}
+            >
+              <View>
+                <Text style={styles.atHomeTitle}>At home</Text>
+                <Text style={styles.atHomeCount}>{atHomeItems.length} item{atHomeItems.length === 1 ? '' : 's'}</Text>
+              </View>
+              <Ionicons name={showAtHome ? 'chevron-up' : 'chevron-down'} size={20} color={colors.primary} />
+            </Pressable>
+            {showAtHome ? (
+              <View style={styles.list}>
+                {filteredAtHomeItems.length ? filteredAtHomeItems.map((item, index) => (
+                  <View key={item.id}>
+                    {index > 0 ? <View style={styles.divider} /> : null}
+                    <SimpleItemRow
+                      item={item}
+                      store={storeById(item.storeId)}
+                      onPress={() => setActionItem(item)}
+                      action="Add to list"
+                      onAction={() => setItemStatus(item.id, 'low')}
+                      onSwipeLeft={() => deleteItem(item.id)}
+                      onSwipeRight={() => setItemStatus(item.id, 'low')}
+                    />
+                  </View>
+                )) : (
+                  <View style={styles.empty}>
+                    <Text style={styles.emptyTitle}>Nothing at home yet</Text>
+                  </View>
+                )}
+              </View>
+            ) : null}
+            <RecipeSuggestionsCard recipes={recipes} onPress={setSelectedRecipe} />
+            {frequentBuys.length > 0 ? (
+              <View style={styles.frequentSection}>
+                <Text style={styles.frequentTitle}>Recently added</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.frequentScroll}>
+                  {frequentBuys.map((fb) => (
+                    <Pressable
+                      key={fb.id}
+                      style={({ pressed }) => [styles.frequentItem, pressed && { opacity: 0.7 }]}
+                      onPress={() => setItemStatus(fb.id, 'low')}
+                    >
+                      <ItemAvatar name={fb.name} size={48} />
+                      <Text style={styles.frequentName} numberOfLines={1}>{fb.name}</Text>
+                      <View style={styles.frequentAddBtn}>
+                        <Ionicons name="add" size={14} color={colors.primary} />
+                      </View>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+            ) : null}
+          </>
+        ) : null}
         <View style={{ height: 110 }} />
       </ScrollView>
 
@@ -280,8 +263,9 @@ export default function PantryScreen() {
         visible={addVisible}
         onClose={() => setAddVisible(false)}
         defaultStatus="low"
+        quickAdd
         title="Add something to buy"
-        subtitle="Choose items for your shopping list."
+        subtitle="Tap an item to add it instantly."
       />
       <ItemActionSheet item={actionItem} store={storeById(actionItem?.storeId ?? null)} onClose={() => setActionItem(null)} onAssignStore={setPickerItem} />
       <StorePickerSheet item={pickerItem} onClose={() => setPickerItem(null)} />
@@ -538,6 +522,8 @@ function makeStyles(c: AppColors) {
     atHomeHeader:      { marginBottom: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.sm, borderBottomWidth: 1, borderBottomColor: c.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     atHomeTitle:       { fontFamily: fonts.sansSemibold, fontSize: 19, color: c.ink },
     atHomeCount:       { fontFamily: fonts.sans, fontSize: 13, color: c.muted, marginTop: 2 },
+    moreHeader:        { marginTop: spacing.xl, paddingVertical: spacing.lg, borderTopWidth: 1, borderTopColor: c.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    moreTitle:         { fontFamily: fonts.sansSemibold, fontSize: 18, color: c.ink },
     searchBar:        { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: radii.md, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.md, paddingVertical: 10, marginTop: spacing.sm, marginBottom: spacing.xs },
     searchInput:      { flex: 1, fontFamily: fonts.sans, fontSize: 15, color: c.ink, padding: 0 },
     sectionTitleRow:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.lg, marginBottom: spacing.sm },
