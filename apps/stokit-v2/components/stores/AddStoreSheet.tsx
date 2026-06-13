@@ -7,7 +7,7 @@ import { Button } from '../shared/ui';
 import { Ionicons } from '@expo/vector-icons';
 import { fonts, radii, spacing, type AppColors } from '../../theme';
 import { useDurableStore } from '../../store/durable-store';
-import { autocompleteGooglePlaces, getPlaceDetailsGoogle, geocodeLocation, type AutocompleteSuggestion } from '../../core/services/places';
+import { autocompleteGooglePlaces, getPlaceDetailsGoogle, geocodeLocation, searchNearbyStoresByName, type AutocompleteSuggestion, type NearbyStore } from '../../core/services/places';
 import { useTheme } from '../../hooks/useTheme';
 
 const LOGO_COLORS = ['#C0392B','#E8913E','#D8A24A','#3D7A53','#2E6DA4','#6C5CE7','#444'];
@@ -59,6 +59,8 @@ export function AddStoreContent({
 
   const userLocRef = useRef<{lat: number, lng: number} | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Cache NearbyStore details so selection doesn't need an extra Places API round-trip
+  const nearbyStoreCache = useRef<Map<string, NearbyStore>>(new Map());
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -91,9 +93,8 @@ export function AddStoreContent({
       try {
         let searchLat = userLocRef.current?.lat;
         let searchLng = userLocRef.current?.lng;
-        
+
         if (currentZip.trim().length >= 3) {
-          // Append country context so bare ZIP codes geocode precisely
           const zipQuery = /^\d{5}$/.test(currentZip.trim())
             ? `${currentZip.trim()}, USA`
             : currentZip.trim();
@@ -103,9 +104,26 @@ export function AddStoreContent({
             searchLng = geo.lng;
           }
         }
-        
-        const res = await autocompleteGooglePlaces(currentName, searchLat, searchLng);
-        setSuggestions(res);
+
+        // When we have coordinates use Text Search (distance-sorted) rather than
+        // Autocomplete (relevance-sorted) so the closest store always wins.
+        if (searchLat !== undefined && searchLng !== undefined) {
+          const nearby = await searchNearbyStoresByName(searchLat, searchLng, currentName);
+          nearbyStoreCache.current.clear();
+          const asSuggestions: AutocompleteSuggestion[] = nearby.slice(0, 5).map((s) => {
+            nearbyStoreCache.current.set(s.placeId, s);
+            return {
+              placeId: s.placeId,
+              description: `${s.name} — ${s.address}`,
+              mainText: s.name,
+              secondaryText: s.address,
+            };
+          });
+          setSuggestions(asSuggestions);
+        } else {
+          const res = await autocompleteGooglePlaces(currentName, searchLat, searchLng);
+          setSuggestions(res);
+        }
         setSearchError('');
       } catch (e) {
         console.error('[AddStoreSheet] autocomplete error:', e);
@@ -120,6 +138,7 @@ export function AddStoreContent({
     setName(''); setZip(''); setColor(LOGO_COLORS[1]); setEmoji(undefined);
     setPlaceId(undefined); setAddress(undefined); setLat(undefined); setLng(undefined); setOpeningHours(undefined); setIsOpen(undefined);
     setSuggestions([]); setLoadingSuggestion(false); setSearchError('');
+    nearbyStoreCache.current.clear();
   };
 
   const handleClose = () => { reset(); onClose(); };
@@ -144,6 +163,19 @@ export function AddStoreContent({
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setName(s.mainText);
     setSuggestions([]);
+
+    // If this came from a nearby search we already have full details — no extra call needed
+    const cached = nearbyStoreCache.current.get(s.placeId);
+    if (cached) {
+      setPlaceId(cached.placeId);
+      setAddress(cached.address || s.secondaryText);
+      setLat(cached.lat);
+      setLng(cached.lng);
+      setOpeningHours(cached.openingHours);
+      setIsOpen(cached.isOpen);
+      return;
+    }
+
     setLoadingSuggestion(true);
     try {
       const details = await getPlaceDetailsGoogle(s.placeId);
