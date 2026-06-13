@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
   Pressable,
@@ -22,10 +22,11 @@ import { useDurableStore } from '../../store/durable-store';
 import { useHouseholdStore } from '../../store/household-store';
 import { useTheme } from '../../hooks/useTheme';
 import { classifyItem } from '../../core/services/itemClassifier';
-import { suggestRecipes } from '../../core/services/recipes';
+import { fetchRawRecipes, reEvaluateRecipes } from '../../core/services/recipes';
 import { RecipeSuggestionsCard } from '../../components/recipes/RecipeSuggestionsCard';
-import type { PantryItem } from '../../types';
-import type { RecipeSuggestion } from '../../core/services/recipes';
+import { RecipeDetailSheet } from '../../components/recipes/RecipeDetailSheet';
+import type { PantryItem, } from '../../types';
+import type { RecipeSuggestion, RawMealData } from '../../core/services/recipes';
 import { ItemAvatar } from '../../components/shared/ItemAvatar';
 
 function getGreeting(): string {
@@ -45,12 +46,15 @@ export default function PantryScreen() {
   const stores = useDurableStore((state) => state.stores);
   const setItemStatus = useDurableStore((state) => state.setItemStatus);
   const deleteItem = useDurableStore((state) => state.deleteItem);
+  const addItem = useDurableStore((state) => state.addItem);
   const members = useHouseholdStore((s) => s.members);
   const [addVisible, setAddVisible] = useState(false);
   const [showAtHome, setShowAtHome] = useState(false);
   const [actionItem, setActionItem] = useState<PantryItem | null>(null);
   const [pickerItem, setPickerItem] = useState<PantryItem | null>(null);
   const [recipes, setRecipes] = useState<RecipeSuggestion[]>([]);
+  const [selectedRecipe, setSelectedRecipe] = useState<RecipeSuggestion | null>(null);
+  const rawMealsRef = useRef<RawMealData[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
 
   const myName = members.find((m) => m.isMe)?.displayName ?? '';
@@ -95,13 +99,26 @@ export default function PantryScreen() {
 
   useEffect(() => {
     let active = true;
-    if (atHomeItems.length > 0) {
-      suggestRecipes(atHomeItems).then(res => {
-        if (active) setRecipes(res);
+    if (atHomeItems.length === 0) { setRecipes([]); return; }
+
+    if (rawMealsRef.current.length > 0) {
+      // Re-evaluate locally — same recipes, updated have/missing flags, no API call
+      const updated = reEvaluateRecipes(rawMealsRef.current, atHomeItems);
+      setRecipes(updated);
+      // Keep open sheet in sync
+      setSelectedRecipe((prev) => {
+        if (!prev) return null;
+        return updated.find((r) => r.id === prev.id) ?? null;
       });
     } else {
-      setRecipes([]);
+      // First load: fetch raw data from TheMealDB
+      fetchRawRecipes(atHomeItems).then((raws) => {
+        if (!active) return;
+        rawMealsRef.current = raws;
+        setRecipes(reEvaluateRecipes(raws, atHomeItems));
+      });
     }
+
     return () => { active = false; };
   }, [atHomeItems]);
   const previewItems = filteredListItems.slice(0, 3);
@@ -178,7 +195,7 @@ export default function PantryScreen() {
           onPress={() => setShowAtHome((value) => !value)}
         />
 
-        <RecipeSuggestionsCard recipes={recipes} />
+        <RecipeSuggestionsCard recipes={recipes} onPress={setSelectedRecipe} />
 
         {showSearch && (
           <View style={styles.searchBar}>
@@ -270,6 +287,14 @@ export default function PantryScreen() {
       />
       <ItemActionSheet item={actionItem} store={storeById(actionItem?.storeId ?? null)} onClose={() => setActionItem(null)} onAssignStore={setPickerItem} />
       <StorePickerSheet item={pickerItem} onClose={() => setPickerItem(null)} />
+      <RecipeDetailSheet
+        recipe={selectedRecipe}
+        onClose={() => setSelectedRecipe(null)}
+        onAddMissing={(ingredients) => {
+          ingredients.forEach((name) => addItem({ name, quantity: 1, unit: 'unit', storeId: null, status: 'low' }));
+          setSelectedRecipe(null);
+        }}
+      />
     </SafeAreaView>
   );
 }

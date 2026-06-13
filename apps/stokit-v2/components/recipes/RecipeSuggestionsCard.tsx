@@ -6,7 +6,7 @@ import { fonts, spacing, radii, shadow } from '../../theme';
 import type { AppColors } from '../../theme';
 import type { RecipeSuggestion } from '../../core/services/recipes';
 
-export function RecipeSuggestionsCard({ recipes }: { recipes: RecipeSuggestion[] }) {
+export function RecipeSuggestionsCard({ recipes, onPress }: { recipes: RecipeSuggestion[]; onPress?: (recipe: RecipeSuggestion) => void }) {
   const { colors, isDark } = useTheme();
   const s = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
 
@@ -20,7 +20,7 @@ export function RecipeSuggestionsCard({ recipes }: { recipes: RecipeSuggestion[]
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.scrollContent}>
         {recipes.map(recipe => (
-          <Pressable key={recipe.id} style={({ pressed }) => [s.card, pressed && s.cardPressed]}>
+          <Pressable key={recipe.id} onPress={() => onPress?.(recipe)} style={({ pressed }) => [s.card, pressed && s.cardPressed]}>
             <Image source={{ uri: recipe.imageUrl }} style={s.image} resizeMode="cover" />
             <View style={s.content}>
               <Text style={s.recipeTitle} numberOfLines={1}>{recipe.title}</Text>
