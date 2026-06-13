@@ -422,9 +422,10 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
         style={{ marginTop: spacing.xl }}
       />
       
-      <AddItemSheet 
-        visible={addSheetVisible} 
-        onClose={() => setAddSheetVisible(false)} 
+      <CancelTripLink dispatch={dispatch} colors={colors} />
+      <AddItemSheet
+        visible={addSheetVisible}
+        onClose={() => setAddSheetVisible(false)}
         defaultStatus="low"
         defaultStoreId={storeId}
         hideStorePicker={true}
@@ -432,9 +433,9 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
         subtitle="Add items you need to buy here right now."
         onItemsAdded={(addedItems) => {
            addedItems.forEach(i => {
-              dispatch({ 
-                type: 'ADD_ENTRY', 
-                entry: { itemId: i.id, name: i.name, quantity: i.quantity, unit: i.unit, storeId: storeId, picked: false } 
+              dispatch({
+                type: 'ADD_ENTRY',
+                entry: { itemId: i.id, name: i.name, quantity: i.quantity, unit: i.unit, storeId: storeId, picked: false }
               });
            });
         }}
@@ -705,6 +706,7 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
           </View>
         </View>
       </Sheet>
+      <CancelTripLink dispatch={dispatch} colors={colors} />
     </Screen>
   );
 }
@@ -772,6 +774,7 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
         onPress={() => dispatch({ type: 'ACKNOWLEDGE_SUMMARY' })}
         style={{ marginTop: spacing.xl }}
       />
+      <CancelTripLink dispatch={dispatch} colors={colors} />
     </Screen>
   );
 }
@@ -1007,7 +1010,28 @@ function NextStoreSelector({ session, dispatch, storeById, styles, nsStyles, col
           </>
         )}
       </Sheet>
+      <CancelTripLink dispatch={dispatch} colors={colors} />
     </Screen>
+  );
+}
+
+// ── Shared cancel-trip link ───────────────────────────────────────────────────
+
+function CancelTripLink({ dispatch, colors }: { dispatch: SubProps['dispatch']; colors: AppColors }) {
+  const confirmCancel = () => {
+    Alert.alert(
+      'Cancel this trip?',
+      'All picks and receipts from this trip will be discarded. Your pantry plan stays unchanged.',
+      [
+        { text: 'Keep going', style: 'cancel' },
+        { text: 'Cancel trip', style: 'destructive', onPress: () => dispatch({ type: 'END_TRIP' }) },
+      ],
+    );
+  };
+  return (
+    <Pressable onPress={confirmCancel} style={{ alignItems: 'center', paddingVertical: spacing.lg }}>
+      <Text style={{ fontFamily: fonts.sans, fontSize: 13, color: colors.muted }}>Cancel trip</Text>
+    </Pressable>
   );
 }
 
