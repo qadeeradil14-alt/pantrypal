@@ -66,13 +66,6 @@ export default function SettingsScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const toggleGeofence = useCallback(async (value: boolean) => {
-    if (inExpoGo) {
-      Alert.alert(
-        'Requires a standalone build',
-        'Background store arrival reminders need a native build (EAS Build or expo run:ios). This feature is fully implemented and will work once you build the app.',
-      );
-      return;
-    }
     if (value && gpsStores.length === 0) {
       Alert.alert(
         'No store coordinates',
@@ -311,14 +304,14 @@ export default function SettingsScreen() {
           label="Store arrival reminders"
           description={
             inExpoGo
-              ? 'Requires standalone build'
+              ? 'Coming soon'
               : gpsStores.length === 0
               ? `Add stores via "Find nearby" to enable`
               : `Active for ${gpsStores.length} store${gpsStores.length === 1 ? '' : 's'}`
           }
           value={geofenceOn}
           onValueChange={toggleGeofence}
-          disabled={geofenceLoading}
+          disabled={geofenceLoading || inExpoGo}
           dimmed={inExpoGo || gpsStores.length === 0}
           styles={styles}
           colors={colors}

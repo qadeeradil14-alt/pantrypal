@@ -8,9 +8,9 @@ import type { PantryItem, Store } from '../../types';
 import { useTheme } from '../../hooks/useTheme';
 
 const STATUS_META = {
-  stocked: { tone: 'stocked' as const, label: 'Stocked' },
-  low: { tone: 'low' as const, label: 'Low' },
-  expiring: { tone: 'expiring' as const, label: 'Expiring' },
+  stocked: { tone: 'stocked' as const, label: 'Have it' },
+  low: { tone: 'low' as const, label: 'Need more' },
+  expiring: { tone: 'expiring' as const, label: 'Use soon' },
   purchased: { tone: 'muted' as const, label: 'Bought' },
 };
 
@@ -46,7 +46,7 @@ export function ItemRow({
           {item.name}
         </Text>
         <Text style={styles.meta}>
-          {item.quantity} {item.unit}
+          ×{item.quantity}
           {store ? ` · ${store.name}` : ''}
         </Text>
       </View>
@@ -56,7 +56,7 @@ export function ItemRow({
       ) : onMarkLow ? (
         <Pressable onPress={onMarkLow} hitSlop={8} style={styles.markLow}>
           <Ionicons name="trending-down" size={14} color={colors.primary} />
-          <Text style={styles.markLowText}>Low</Text>
+          <Text style={styles.markLowText}>Need more</Text>
         </Pressable>
       ) : (
         <Pill label={meta.label} tone={meta.tone} />

@@ -263,6 +263,19 @@ test('FINISH_TRIP explicitly completes the full trip from the continuation promp
   assert.deepEqual(s.completedTrip!.skippedStoreIds, ['target']);
 });
 
+test('store summary directly supports continue and finish decisions', () => {
+  let s = startTrip();
+  s = reduce(s, { type: 'FINISH_STORE', now: 2 });
+  s = reduce(s, { type: 'SKIP_RECEIPT', now: 3 });
+  assert.equal(s.status, 'store_summary');
+
+  const continued = reduce(s, { type: 'CONTINUE_TRIP' });
+  assert.equal(continued.status, 'next_store_ready');
+
+  const finished = reduce(s, { type: 'FINISH_TRIP', now: 4 });
+  assert.equal(finished.status, 'trip_summary');
+});
+
 test('START_MANUAL_STORE continues the same trip with an unplanned empty store visit', () => {
   const oneStoreEntries = [entry('milk', 'aldi')];
   let s = reduce(initialSession, { type: 'START_TRIP', entries: oneStoreEntries, now: 1 });

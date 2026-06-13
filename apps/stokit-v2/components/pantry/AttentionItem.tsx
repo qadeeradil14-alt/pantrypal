@@ -42,7 +42,7 @@ export function AttentionItem({ item, store, onAddToList, onViewItem, onAssignSt
       {/* Name + quantity + store */}
       <View style={styles.info}>
         <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
-        <Text style={styles.qty}>{item.quantity} {item.unit.toUpperCase()}</Text>
+        <Text style={styles.qty}>×{item.quantity}</Text>
         {needsStore ? (
           <Text style={styles.noStore}>No store assigned</Text>
         ) : store ? (
@@ -63,7 +63,7 @@ export function AttentionItem({ item, store, onAddToList, onViewItem, onAssignSt
       <View style={[styles.badge, isExpiring ? styles.badgeExpiring : styles.badgeLow]}>
         <View style={[styles.dot, { backgroundColor: isExpiring ? colors.danger : colors.warning }]} />
         <Text style={[styles.badgeText, { color: isExpiring ? colors.danger : colors.warning }]}>
-          {isExpiring ? 'EXPIRING' : 'LOW'}
+          {isExpiring ? 'USE SOON' : 'NEED MORE'}
         </Text>
       </View>
 

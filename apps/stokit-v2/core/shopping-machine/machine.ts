@@ -8,8 +8,8 @@
  *     -> shopping_store      START_TRIP
  *     -> receipt_prompt      FINISH_STORE
  *     -> store_summary       SAVE_RECEIPT | SKIP_RECEIPT         ← per-store card
- *     -> continue_prompt     ACKNOWLEDGE_SUMMARY                 ← ask continue or finish
- *        -> next_store_ready CONTINUE_TRIP (more pending)        ← pick next store
+ *     -> next_store_ready    CONTINUE_TRIP (more pending)        ← pick next store
+ *     -> continue_prompt     ACKNOWLEDGE_SUMMARY                 ← legacy persisted flow
  *        -> shopping_store   START_MANUAL_STORE                  ← unplanned store visit
  *        -> shopping_store   CHOOSE_NEXT_STORE | ADVANCE_STORE
  *        -> next_store_ready SKIP_STORE (more still pending)
@@ -85,7 +85,7 @@ export type ShoppingEvent =
       now: number;
     }
   | { type: 'SKIP_RECEIPT'; now: number }
-  /** Leave store_summary → always ask whether the full trip continues. */
+  /** Legacy transition kept for persisted sessions and older clients. */
   | { type: 'ACKNOWLEDGE_SUMMARY' }
   | { type: 'CONTINUE_TRIP' }
   | { type: 'START_MANUAL_STORE'; storeId: string }
@@ -290,13 +290,13 @@ export function reduce(
     }
 
     case 'CONTINUE_TRIP': {
-      if (session.status !== 'continue_prompt') return session;
+      if (session.status !== 'store_summary' && session.status !== 'continue_prompt') return session;
       if (pendingStoreIds(session).length === 0) return session;
       return { ...session, status: 'next_store_ready' };
     }
 
     case 'START_MANUAL_STORE': {
-      if (session.status !== 'continue_prompt' && session.status !== 'next_store_ready') return session;
+      if (session.status !== 'store_summary' && session.status !== 'continue_prompt' && session.status !== 'next_store_ready') return session;
       if (session.storeQueue.includes(event.storeId)) return session;
       return {
         ...session,
@@ -307,7 +307,7 @@ export function reduce(
     }
 
     case 'FINISH_TRIP': {
-      if (session.status !== 'continue_prompt') return session;
+      if (session.status !== 'store_summary' && session.status !== 'continue_prompt') return session;
       const skippedStoreIds = [
         ...session.skippedStoreIds,
         ...pendingStoreIds(session),

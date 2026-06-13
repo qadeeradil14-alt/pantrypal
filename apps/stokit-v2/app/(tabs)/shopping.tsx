@@ -1,18 +1,19 @@
 /**
  * Stokit V2 — Shopping screen.
  *
- * Five sub-screens driven by the session state machine:
+ * Sub-screens driven by the session state machine:
  *   idle           → plan preview + start button
  *   shopping_store → pick items at current store
  *   receipt_prompt → V1-style spend input (store name, $, Camera/Library, Skip)
- *   store_summary  → per-store summary (spent, items, time) → Continue
+ *   store_summary  → per-store stats + continue / finish decision
  *   next_store_ready → pick next store / skip stores / finish early
  *   trip_summary   → full bird's-eye summary with per-store breakdown
  */
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Image,
+  KeyboardAvoidingView,
   Linking,
   Platform,
   Pressable,
@@ -22,6 +23,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -72,33 +74,36 @@ export default function ShoppingScreen() {
 
   const { action } = useLocalSearchParams<{ action?: string }>();
   const [quickScanStorePicker, setQuickScanStorePicker] = useState(false);
+  // Holds the storeId we want to skip to receipt once START_TRIP settles
+  const [pendingQuickScanStore, setPendingQuickScanStore] = useState<string | null>(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (action === 'scan' && session.status === 'idle') {
       setQuickScanStorePicker(true);
     }
   }, [action, session.status]);
 
+  // Once the machine enters shopping_store, fire the skip to land on ReceiptPrompt
+  useEffect(() => {
+    if (pendingQuickScanStore && session.status === 'shopping_store') {
+      const storeId = pendingQuickScanStore;
+      setPendingQuickScanStore(null);
+      dispatch({ type: 'SKIP_STORE', storeId, now: Date.now() });
+    }
+  }, [session.status, pendingQuickScanStore]);
+
   const handleQuickScanStoreSelect = (storeId: string) => {
     setQuickScanStorePicker(false);
-    
-    // 1. Create a dummy entry just to satisfy the shopping state machine
     const dummyEntry: ShoppingEntry = {
-      itemId: 'dummy',
+      itemId: '__quick_scan__',
       name: 'Quick Scan',
       quantity: 1,
       unit: 'unit',
       storeId: storeId,
-      picked: false
+      picked: false,
     };
-
-    // 2. Start the trip with this single item
     dispatch({ type: 'START_TRIP', entries: [dummyEntry], now: Date.now() });
-
-    // 3. Instantly skip the store to jump directly to the ReceiptPrompt screen
-    setTimeout(() => {
-      dispatch({ type: 'SKIP_STORE', storeId: storeId, now: Date.now() });
-    }, 100);
+    setPendingQuickScanStore(storeId);
   };
 
   const storeById = (id: string) => stores.find((s) => s.id === id);
@@ -183,8 +188,7 @@ export default function ShoppingScreen() {
   // ── Active states ──────────────────────────────────────────────────────────
   if (session.status === 'shopping_store')  return <ShoppingActive  session={session} dispatch={dispatch} storeById={storeById} styles={styles} colors={colors} />;
   if (session.status === 'receipt_prompt')  return <ReceiptPrompt   session={session} dispatch={dispatch} storeById={storeById} rStyles={rStyles} colors={colors} />;
-  if (session.status === 'store_summary')   return <StoreSummary    session={session} dispatch={dispatch} storeById={storeById} ssStyles={ssStyles} colors={colors} />;
-  if (session.status === 'continue_prompt') return <ContinuePrompt  session={session} dispatch={dispatch} storeById={storeById} styles={styles} colors={colors} />;
+  if (session.status === 'store_summary' || session.status === 'continue_prompt') return <StoreSummary session={session} dispatch={dispatch} storeById={storeById} ssStyles={ssStyles} colors={colors} />;
   if (session.status === 'next_store_ready') return <NextStoreSelector session={session} dispatch={dispatch} storeById={storeById} styles={styles} nsStyles={nsStyles} colors={colors} />;
   if (session.status === 'trip_summary')    return <TripSummary     session={session} dispatch={dispatch} storeById={storeById} tsStyles={tsStyles} colors={colors} />;
 
@@ -240,7 +244,7 @@ export default function ShoppingScreen() {
                         <ItemAvatar name={e.name} size={32} />
                         <View style={{ flex: 1 }}>
                           <Text style={styles.planName}>{e.name}</Text>
-                          <Text style={styles.planMeta}>{e.quantity} {e.unit}</Text>
+                          <Text style={styles.planMeta}>×{e.quantity}</Text>
                         </View>
                       </View>
                     </View>
@@ -377,6 +381,16 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
   const total   = session.storeQueue.length;
   const [addSheetVisible, setAddSheetVisible] = useState(false);
 
+  const progressAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.spring(progressAnim, {
+      toValue: entries.length ? picked / entries.length : 0,
+      useNativeDriver: false,
+      friction: 8,
+      tension: 60,
+    }).start();
+  }, [picked, entries.length]);
+
   const groupedEntries = useMemo(() => {
     const groups = new Map<string, typeof entries>();
     for (const e of entries) {
@@ -390,12 +404,22 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
 
   return (
     <Screen>
-      <PageTitle eyebrow={`Stop ${stepNo} of ${total}`} title="Shopping" />
+      <PageTitle eyebrow={total > 1 ? `Stop ${stepNo} of ${total}` : undefined} title="Shopping" />
       <Card>
         <StoreHeader store={storeById(storeId)} eyebrow="Now shopping" styles={styles} />
         <View style={styles.progressWrap}>
           <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${entries.length ? (picked / entries.length) * 100 : 0}%` }]} />
+            <Animated.View
+              style={[
+                styles.progressFill,
+                {
+                  width: progressAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ['0%', '100%'],
+                  }),
+                },
+              ]}
+            />
           </View>
           <Text style={styles.progressText}>{picked}/{entries.length} picked</Text>
         </View>
@@ -410,7 +434,10 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                 {idx > 0 && <View style={styles.rowDivider} />}
                 <Pressable
                   style={styles.pickRow}
-                  onPress={() => dispatch({ type: 'TOGGLE_PICK', itemId: e.itemId })}
+                  onPress={() => {
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    dispatch({ type: 'TOGGLE_PICK', itemId: e.itemId });
+                  }}
                 >
                   <Ionicons
                     name={e.picked ? 'checkmark-circle' : 'ellipse-outline'}
@@ -418,7 +445,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                     color={e.picked ? colors.success : colors.faintText}
                   />
                   <Text style={[styles.pickName, e.picked && styles.pickNameDone]}>{e.name}</Text>
-                  <Text style={styles.planMeta}>{e.quantity} {e.unit}</Text>
+                  <Text style={styles.planMeta}>×{e.quantity}</Text>
                 </Pressable>
               </View>
             ))}
@@ -441,7 +468,10 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
 
       <Button
         label="Done at this store"
-        onPress={() => dispatch({ type: 'FINISH_STORE', now: Date.now() })}
+        onPress={() => {
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          dispatch({ type: 'FINISH_STORE', now: Date.now() });
+        }}
         style={{ marginTop: spacing.xl }}
       />
       
@@ -589,6 +619,10 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
   };
 
   return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1 }}
+    >
     <Screen>
       <View style={rStyles.header}>
         <View>
@@ -702,7 +736,7 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
                 <View style={{ marginLeft: spacing.sm, flex: 1 }}>
                   <Text style={{ fontFamily: fonts.sansMedium, fontSize: 15, color: colors.ink }}>{item.name}</Text>
                   <Text style={{ fontFamily: fonts.mono, fontSize: 13, color: colors.muted }}>
-                    {item.quantity} {item.unit || ''}{item.price ? ` · $${item.price.toFixed(2)}` : ''}
+                    ×{item.quantity}{item.price ? ` · $${item.price.toFixed(2)}` : ''}
                   </Text>
                 </View>
               </View>
@@ -731,12 +765,15 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
       </Sheet>
       <CancelTripLink dispatch={dispatch} colors={colors} />
     </Screen>
+    </KeyboardAvoidingView>
   );
 }
 
 // ── 3. Per-store summary ──────────────────────────────────────────────────────
 
 function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubProps) {
+  const router = useRouter();
+  const stores = useDurableStore((s) => s.stores);
   const storeId = currentStoreId(session)!;
   const store   = storeById(storeId);
   const receipt = session.receipts.find((r) => r.storeId === storeId);
@@ -744,6 +781,8 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
   const bought  = entries.filter((e) => e.picked).length;
   const left    = entries.filter((e) => !e.picked).length;
   const pending = pendingStoreIds(session);
+  const manualStores = stores.filter((candidate) => !session.storeQueue.includes(candidate.id));
+  const hasOptions = pending.length > 0 || manualStores.length > 0;
   const spent   = receipt && receipt.status !== 'skipped' ? receipt.amount : 0;
   const completedAt = receipt?.createdAt ?? Date.now();
 
@@ -792,11 +831,45 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
         </View>
       )}
 
+      {pending.length > 0 ? (
+        <Button
+          label="Continue to next store →"
+          onPress={() => dispatch({ type: 'CONTINUE_TRIP' })}
+          style={{ marginTop: spacing.xl }}
+        />
+      ) : null}
+
+      {pending.length === 0 && manualStores.length > 0 ? (
+        <View style={{ marginTop: spacing.xl, gap: spacing.sm }}>
+          <Text style={ssStyles.nextHintText}>Shopping somewhere else?</Text>
+          {manualStores.map((candidate) => (
+            <Pressable
+              key={candidate.id}
+              onPress={() => dispatch({ type: 'START_MANUAL_STORE', storeId: candidate.id })}
+              style={ssStyles.manualStore}
+            >
+              <StoreChip name={candidate.name} emoji={candidate.logoEmoji} color={candidate.logoColor} size={40} />
+              <Text style={ssStyles.manualStoreName}>{candidate.name}</Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+
       <Button
-        label={pending.length > 0 ? 'Continue →' : 'See trip summary →'}
-        onPress={() => dispatch({ type: 'ACKNOWLEDGE_SUMMARY' })}
-        style={{ marginTop: spacing.xl }}
+        label="Finish trip"
+        variant={hasOptions ? 'ghost' : 'primary'}
+        onPress={() => dispatch({ type: 'FINISH_TRIP', now: Date.now() })}
+        style={{ marginTop: spacing.md }}
       />
+      {!hasOptions ? (
+        <Button
+          label="Add a store for next time"
+          variant="subtle"
+          onPress={() => router.push('/(tabs)/stores')}
+          style={{ marginTop: spacing.sm }}
+        />
+      ) : null}
       <CancelTripLink dispatch={dispatch} colors={colors} />
     </Screen>
   );
@@ -1160,7 +1233,7 @@ function TripSummary({ session, dispatch, storeById, tsStyles, colors }: SubProp
               .map((b, idx) => {
                 const store = storeById(b.storeId);
                 const barColor = ROUTE_COLORS[idx % ROUTE_COLORS.length];
-                const boughtHere = session.entries.filter((e) => e.storeId === b.storeId && e.picked);
+                const boughtHere = session.entries.filter((e) => e.storeId === b.storeId && e.picked && e.itemId !== '__quick_scan__');
                 return (
                   <Card key={b.storeId} style={tsStyles.storeCard}>
                     <View style={tsStyles.storeRow}>
@@ -1372,6 +1445,17 @@ function makeStyles(colors: AppColors) {
     timeText: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted },
     nextHint: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.lg, paddingHorizontal: spacing.sm },
     nextHintText: { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.primary },
+    manualStore: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.md,
+      backgroundColor: colors.surface,
+      padding: spacing.md,
+    },
+    manualStoreName: { flex: 1, fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
   });
 
   const nsStyles = StyleSheet.create({

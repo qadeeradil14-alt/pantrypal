@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Sheet } from '../shared/Sheet';
-import { ChipSelect, Stepper } from '../shared/Field';
+import { ChipSelect } from '../shared/Field';
 import { Button } from '../shared/ui';
 import { fonts, radii, spacing, type AppColors } from '../../theme';
 import { useDurableStore } from '../../store/durable-store';
@@ -15,24 +15,6 @@ import {
   type PantryCatalogItem,
 } from '../../constants/pantryCatalog';
 import { ItemAvatar } from '../shared/ItemAvatar';
-
-const UNIT_OPTIONS: { value: Unit; label: string }[] = [
-  { value: 'unit', label: 'unit' },
-  { value: 'gal', label: 'gal' },
-  { value: 'L', label: 'L' },
-  { value: 'lb', label: 'lb' },
-  { value: 'oz', label: 'oz' },
-  { value: 'dozen', label: 'dozen' },
-  { value: 'pack', label: 'pack' },
-  { value: 'box', label: 'box' },
-  { value: 'can', label: 'can' },
-];
-
-const STATUS_OPTIONS: { value: PantryStatus; label: string }[] = [
-  { value: 'stocked', label: 'Stocked' },
-  { value: 'low', label: 'Running low' },
-  { value: 'expiring', label: 'Expiring' },
-];
 
 interface SelectedItem {
   catalog: PantryCatalogItem;
@@ -245,7 +227,7 @@ export function AddItemSheet({
             <Text style={styles.sectionTitle}>Selected items</Text>
             <Text style={styles.selectedCount}>{selectedItems.length}</Text>
           </View>
-          {selectedItems.map(({ catalog, quantity, unit, status, storeId }) => (
+          {selectedItems.map(({ catalog, quantity, storeId }) => (
             <View key={catalog.id} style={styles.selectedCard}>
               <View style={styles.selectedTop}>
                 <ItemAvatar name={catalog.name} size={36} />
@@ -256,25 +238,24 @@ export function AddItemSheet({
                 <Pressable onPress={() => toggle(catalog)} hitSlop={8} style={styles.remove}>
                   <Ionicons name="trash-outline" size={17} color={colors.danger} />
                 </Pressable>
+                <View style={styles.quantity}>
+                  <Pressable
+                    onPress={() => updateSelected(catalog.id, { quantity: Math.max(1, quantity - 1) })}
+                    hitSlop={6}
+                    style={styles.quantityButton}
+                  >
+                    <Ionicons name="remove" size={16} color={colors.ink} />
+                  </Pressable>
+                  <Text style={styles.quantityValue}>×{quantity}</Text>
+                  <Pressable
+                    onPress={() => updateSelected(catalog.id, { quantity: quantity + 1 })}
+                    hitSlop={6}
+                    style={styles.quantityButton}
+                  >
+                    <Ionicons name="add" size={16} color={colors.ink} />
+                  </Pressable>
+                </View>
               </View>
-              <Stepper
-                label="Quantity"
-                value={quantity}
-                onChange={(value) => updateSelected(catalog.id, { quantity: value })}
-                min={1}
-              />
-              <ChipSelect
-                label="Unit"
-                options={UNIT_OPTIONS}
-                value={unit}
-                onChange={(value) => updateSelected(catalog.id, { unit: value })}
-              />
-              <ChipSelect
-                label="Status"
-                options={STATUS_OPTIONS}
-                value={status}
-                onChange={(value) => updateSelected(catalog.id, { status: value })}
-              />
               {!hideStorePicker && storeOptions.length ? (
                 <ChipSelect
                   label="Buy at store"
@@ -426,6 +407,27 @@ function makeStyles(colors: AppColors) {
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: colors.dangerSoft,
+    },
+    quantity: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+    },
+    quantityButton: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    quantityValue: {
+      minWidth: 28,
+      textAlign: 'center',
+      fontFamily: fonts.mono,
+      fontSize: 12,
+      color: colors.ink,
     },
     submit: { marginTop: spacing.md, marginBottom: spacing.sm },
   });

@@ -122,7 +122,7 @@ function makeStyles(c: AppColors, isDark: boolean) {
     },
     tagMissing: {
       backgroundColor: c.warningSoft,
-      borderColor: c.warningSoft,
+      borderColor: c.warning,
     },
     tagText: {
       fontFamily: fonts.sansMedium,
@@ -132,7 +132,7 @@ function makeStyles(c: AppColors, isDark: boolean) {
       color: isDark ? c.surface : c.success,
     },
     tagTextMissing: {
-      color: isDark ? c.surface : '#B77C00',
+      color: c.warning,
     },
   });
 }

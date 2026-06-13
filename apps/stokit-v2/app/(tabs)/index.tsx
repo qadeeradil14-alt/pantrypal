@@ -7,7 +7,6 @@ import {
   Text,
   TextInput,
   View,
-  Animated,
 } from 'react-native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { useRouter } from 'expo-router';
@@ -38,7 +37,6 @@ function getGreeting(): string {
 
 const SHOPPING_BAG = require('../../assets/shopping-mission-bag.png');
 const SHOPPING_CART = require('../../assets/shopping-cart-full.png');
-const PANTRY_BIN = require('../../assets/pantry-bin-full.png');
 export default function PantryScreen() {
   const router = useRouter();
   const { colors } = useTheme();
@@ -88,7 +86,7 @@ export default function PantryScreen() {
     () => query ? atHomeItems.filter((i) => i.name.toLowerCase().includes(query)) : atHomeItems,
     [atHomeItems, query],
   );
-  const showSearch = items.length > 4;
+  const showSearch = items.length > 0;
 
   const frequentBuys = useMemo(() => {
     if (query) return [];
@@ -148,7 +146,7 @@ export default function PantryScreen() {
           </Pressable>
         </View>
 
-        <LivePartnerBanner />
+        <HouseholdBanner />
         
         {atHomeItems.length > 0 && (
           <UseItOrLoseItWidget
@@ -184,16 +182,16 @@ export default function PantryScreen() {
           tint={isDark ? colors.surface : '#F8FBF5'}
           onPress={() => router.push('/shopping')}
         />
-        <ActionCard
-          title="See what I have"
-          subtitle={`${atHomeItems.length} item${atHomeItems.length === 1 ? '' : 's'} at home`}
-          icon="file-tray-stacked-outline"
-          color={isDark ? '#C4A0D8' : '#6D527B'}
-          background={isDark ? '#2D1E35' : '#F0E7F2'}
-          image={PANTRY_BIN}
-          tint={isDark ? colors.surface : '#FCF7FC'}
+        <Pressable
           onPress={() => setShowAtHome((value) => !value)}
-        />
+          style={({ pressed }) => [styles.atHomeHeader, pressed && styles.pressed]}
+        >
+          <View>
+            <Text style={styles.atHomeTitle}>At home</Text>
+            <Text style={styles.atHomeCount}>{atHomeItems.length} item{atHomeItems.length === 1 ? '' : 's'}</Text>
+          </View>
+          <Ionicons name={showAtHome ? 'chevron-up' : 'chevron-down'} size={20} color={colors.primary} />
+        </Pressable>
 
         <RecipeSuggestionsCard recipes={recipes} onPress={setSelectedRecipe} />
 
@@ -214,7 +212,7 @@ export default function PantryScreen() {
 
         {frequentBuys.length > 0 && !showAtHome && (
           <View style={styles.frequentSection}>
-            <Text style={styles.frequentTitle}>Frequent buys</Text>
+            <Text style={styles.frequentTitle}>Recently added</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.frequentScroll}>
               {frequentBuys.map((fb) => {
                 const isActioned = listItems.some(i => i.id === fb.id);
@@ -299,25 +297,26 @@ export default function PantryScreen() {
   );
 }
 
-function LivePartnerBanner() {
+function HouseholdBanner() {
   const { colors } = useTheme();
-  
-  // Simulated pulsing animation
-  const pulseAnim = React.useRef(new Animated.Value(1)).current;
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 0.5, duration: 1000, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true })
-      ])
-    ).start();
-  }, []);
+  const household = useHouseholdStore((s) => s.household);
+  const members = useHouseholdStore((s) => s.members);
+  const router = useRouter();
+
+  // Only show when the user is actually in a household with others
+  const otherMembers = members.filter((m) => !m.isMe);
+  if (!household || otherMembers.length === 0) return null;
 
   return (
-    <Pressable style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.successSoft, padding: spacing.md, borderRadius: radii.md, marginBottom: spacing.md, borderWidth: 1, borderColor: colors.successSoft }}>
-      <Animated.View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.success, marginRight: 10, opacity: pulseAnim }} />
-      <Text style={{ flex: 1, fontFamily: fonts.sansMedium, color: colors.success, fontSize: 14 }}>Sana is shopping at Aldi right now</Text>
-      <Ionicons name="chevron-forward" color={colors.success} size={16} />
+    <Pressable
+      onPress={() => router.push('/settings')}
+      style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primarySoft, padding: spacing.md, borderRadius: radii.md, marginBottom: spacing.md, borderWidth: 1, borderColor: colors.primary + '30' }}
+    >
+      <Ionicons name="people-outline" size={16} color={colors.primary} style={{ marginRight: 8 }} />
+      <Text style={{ flex: 1, fontFamily: fonts.sansMedium, color: colors.primary, fontSize: 14 }}>
+        {household.name} · {members.length} member{members.length !== 1 ? 's' : ''}
+      </Text>
+      <Ionicons name="chevron-forward" color={colors.primary} size={16} />
     </Pressable>
   );
 }
@@ -491,7 +490,7 @@ function SimpleItemRow({
         <View style={s.itemCopy}>
           <Text style={s.itemName}>{item.name}</Text>
           <Text style={s.itemMeta}>
-            {item.quantity} {item.unit}{store ? ` · ${store.name}` : ''}
+            ×{item.quantity}{store ? ` · ${store.name}` : ''}
           </Text>
         </View>
         {action ? (
@@ -536,6 +535,9 @@ function makeStyles(c: AppColors) {
     },
     actionImage:      { width: 60, height: 60, resizeMode: 'contain', opacity: 0.95 },
     pressed:          { opacity: 0.76 },
+    atHomeHeader:      { marginBottom: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.sm, borderBottomWidth: 1, borderBottomColor: c.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    atHomeTitle:       { fontFamily: fonts.sansSemibold, fontSize: 19, color: c.ink },
+    atHomeCount:       { fontFamily: fonts.sans, fontSize: 13, color: c.muted, marginTop: 2 },
     searchBar:        { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: radii.md, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.md, paddingVertical: 10, marginTop: spacing.sm, marginBottom: spacing.xs },
     searchInput:      { flex: 1, fontFamily: fonts.sans, fontSize: 15, color: c.ink, padding: 0 },
     sectionTitleRow:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.lg, marginBottom: spacing.sm },

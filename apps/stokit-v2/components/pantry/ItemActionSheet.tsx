@@ -54,7 +54,7 @@ export function ItemActionSheet({
         <View style={{ flex: 1 }}>
           <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
           <Text style={styles.meta}>
-            {item.quantity} {item.unit.toUpperCase()}
+            ×{item.quantity}
             {store ? ` · ${store.name}` : ' · No store'}
           </Text>
         </View>
@@ -64,7 +64,7 @@ export function ItemActionSheet({
         <ActionRow
           icon="checkmark-circle-outline"
           tint={colors.success}
-          label="Mark as stocked"
+          label="Mark as have it"
           sub="Remove from your shopping route"
           onPress={() => act(() => setItemStatus(item.id, 'stocked'))}
           styles={styles}
@@ -74,7 +74,7 @@ export function ItemActionSheet({
         <ActionRow
           icon="trending-down"
           tint={colors.warning}
-          label="Mark as low"
+          label="Mark as need more"
           sub="Add it to your shopping route"
           onPress={() => act(() => setItemStatus(item.id, 'low'))}
           styles={styles}

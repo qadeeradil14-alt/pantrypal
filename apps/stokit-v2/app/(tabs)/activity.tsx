@@ -18,14 +18,12 @@ const ICON_META: Record<ActivityType, { name: keyof typeof Ionicons.glyphMap; co
   trip_completed: { name: 'flag', colorKey: 'primary' },
 };
 
-type FilterKey = 'all' | 'trips' | 'receipts' | 'pantry' | 'stores';
+type FilterKey = 'all' | 'trips' | 'pantry';
 
 const FILTERS: { key: FilterKey; label: string; types: ActivityType[] | null }[] = [
   { key: 'all', label: 'All', types: null },
   { key: 'trips', label: 'Trips', types: ['trip_completed'] },
-  { key: 'receipts', label: 'Receipts', types: ['receipt_logged'] },
   { key: 'pantry', label: 'Pantry', types: ['item_added', 'marked_low', 'picked_up'] },
-  { key: 'stores', label: 'Stores', types: ['store_added'] },
 ];
 
 function timeAgo(ts: number): string {
@@ -50,7 +48,7 @@ function dayLabel(ts: number): string {
   yd.setDate(yd.getDate() - 1);
   if (dayKey(d) === dayKey(now)) return 'Today';
   if (dayKey(d) === dayKey(yd)) return 'Yesterday';
-  return 'Earlier';
+  return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
 export default function ActivityScreen() {
@@ -67,18 +65,17 @@ export default function ActivityScreen() {
     return types ? activity.filter((e) => types.includes(e.type)) : activity;
   }, [activity, filter]);
 
-  // Group into Today / Yesterday / Earlier, preserving newest-first order.
+  // Group by day, newest sections first.
   const sections = useMemo(() => {
-    const order = ['Today', 'Yesterday', 'Earlier'];
-    const byDay = new Map<string, ActivityEvent[]>();
+    const byDay = new Map<string, { label: string; ts: number; events: ActivityEvent[] }>();
     for (const e of filtered) {
-      const label = dayLabel(e.createdAt);
-      if (!byDay.has(label)) byDay.set(label, []);
-      byDay.get(label)!.push(e);
+      const key = dayKey(new Date(e.createdAt));
+      if (!byDay.has(key)) {
+        byDay.set(key, { label: dayLabel(e.createdAt), ts: e.createdAt, events: [] });
+      }
+      byDay.get(key)!.events.push(e);
     }
-    return order
-      .filter((label) => byDay.has(label))
-      .map((label) => ({ label, events: byDay.get(label)! }));
+    return Array.from(byDay.values()).sort((a, b) => b.ts - a.ts);
   }, [filtered]);
 
   if (activity.length === 0) {
