@@ -81,15 +81,44 @@ export async function searchNearbyStoresByName(
 }
 
 /**
- * Geocode a free-text location (city, ZIP, address) to lat/lng using Nominatim.
- * Free, no key, part of OpenStreetMap.
+ * Geocode a free-text location (city, ZIP, address) to lat/lng.
+ * Priority: Google Geocoding API (most accurate for US ZIPs) → Geoapify → Nominatim.
  */
 export async function geocodeLocation(
   query: string,
 ): Promise<{ lat: number; lng: number; displayName: string } | null> {
   if (!query.trim()) return null;
 
-  // 1. Try Geoapify if key is present
+  // 1. Google Geocoding API — most accurate for US ZIP codes
+  if (hasGoogleKey()) {
+    try {
+      const params = new URLSearchParams({
+        address: query.trim(),
+        region: 'us',
+        key: config.googleApiKey,
+      });
+      const res = await fetchWithTimeout(
+        `https://maps.googleapis.com/maps/api/geocode/json?${params.toString()}`,
+        { headers: { 'X-Ios-Bundle-Identifier': 'com.hewadadil.pantrypal' } },
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status === 'OK' && data.results?.length > 0) {
+          const r = data.results[0];
+          const loc = r.geometry.location;
+          return {
+            lat: loc.lat,
+            lng: loc.lng,
+            displayName: r.formatted_address ?? query,
+          };
+        }
+      }
+    } catch {
+      // fall through
+    }
+  }
+
+  // 2. Geoapify fallback
   if (hasGeoapifyKey()) {
     try {
       const url =
@@ -112,17 +141,17 @@ export async function geocodeLocation(
         }
       }
     } catch {
-      // Fallback to OSM
+      // fall through
     }
   }
 
-  // 2. Fallback to OSM Nominatim
+  // 3. OSM Nominatim last resort
   try {
     const params = new URLSearchParams({
       q: query.trim(),
       format: 'json',
       limit: '1',
-      countrycodes: 'us', // Fix: Restrict to US to prevent 22193 resolving to Spain!
+      countrycodes: 'us',
     });
     const res = await fetchWithTimeout(
       `https://nominatim.openstreetmap.org/search?${params.toString()}`,
