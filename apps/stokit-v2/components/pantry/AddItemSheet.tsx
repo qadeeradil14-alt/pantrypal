@@ -67,7 +67,18 @@ export function AddItemSheet({
     if (!chosen.length) return;
     const addedItems: PantryItem[] = [];
     chosen.forEach(({ catalog, quantity, unit, status, storeId }) => {
-      const item = addItem({ name: catalog.name, quantity, unit, status, storeId });
+      const existing = quickAdd
+        ? items.find((item) => item.name.trim().toLowerCase() === catalog.name.trim().toLowerCase())
+        : undefined;
+      const item = existing
+        ? {
+            ...existing,
+            status,
+            storeId: storeId ?? existing.storeId,
+            updatedAt: Date.now(),
+          }
+        : addItem({ name: catalog.name, quantity, unit, status, storeId });
+      if (existing) updateItem(existing.id, { status: item.status, storeId: item.storeId });
       addedItems.push(item);
     });
     reset();
@@ -100,28 +111,6 @@ export function AddItemSheet({
   );
 
   const toggle = (catalogItem: PantryCatalogItem) => {
-    if (quickAdd) {
-      const existing = items.find((item) => item.name.trim().toLowerCase() === catalogItem.name.trim().toLowerCase());
-      const item = existing
-        ? {
-            ...existing,
-            status: defaultStatus,
-            storeId: defaultStoreId ?? existing.storeId,
-            updatedAt: Date.now(),
-          }
-        : addItem({
-            name: catalogItem.name,
-            quantity: 1,
-            unit: catalogItem.defaultUnit ?? 'unit',
-            status: defaultStatus,
-            storeId: defaultStoreId,
-          });
-      if (existing) updateItem(existing.id, { status: item.status, storeId: item.storeId });
-      reset();
-      onClose();
-      onItemsAdded?.([item]);
-      return;
-    }
     setSelected((current) => {
       if (current[catalogItem.id]) {
         const next = { ...current };
@@ -295,14 +284,12 @@ export function AddItemSheet({
         </>
       ) : null}
 
-      {!quickAdd ? (
-        <Button
-          label={submitLabel}
-          onPress={submit}
-          disabled={!selectedItems.length}
-          style={styles.submit}
-        />
-      ) : null}
+      <Button
+        label={submitLabel}
+        onPress={submit}
+        disabled={!selectedItems.length}
+        style={styles.submit}
+      />
     </Sheet>
   );
 }

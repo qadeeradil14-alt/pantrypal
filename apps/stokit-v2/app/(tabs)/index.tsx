@@ -265,7 +265,7 @@ export default function PantryScreen() {
         defaultStatus="low"
         quickAdd
         title="Add something to buy"
-        subtitle="Tap an item to add it instantly."
+        subtitle="Select everything you need, then add it all at once."
       />
       <ItemActionSheet item={actionItem} store={storeById(actionItem?.storeId ?? null)} onClose={() => setActionItem(null)} onAssignStore={setPickerItem} />
       <StorePickerSheet item={pickerItem} onClose={() => setPickerItem(null)} />
