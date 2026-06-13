@@ -13,6 +13,8 @@ import React, { useMemo, useState } from 'react';
 import {
   Alert,
   Image,
+  Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -118,6 +120,25 @@ export default function ShoppingScreen() {
     [items],
   );
   const unassignedCount = unassigned.length;
+
+  const openDirections = (store: Store) => {
+    const url = (() => {
+      if (store.lat && store.lng) {
+        return Platform.select({
+          ios: `maps://maps.apple.com/maps?daddr=${store.lat},${store.lng}`,
+          android: `geo:${store.lat},${store.lng}?q=${store.lat},${store.lng}(${encodeURIComponent(store.name)})`,
+        }) ?? `https://maps.google.com/maps?daddr=${store.lat},${store.lng}`;
+      }
+      if (store.address) {
+        return Platform.select({
+          ios: `maps://maps.apple.com/maps?daddr=${encodeURIComponent(store.address)}`,
+          android: `geo:0,0?q=${encodeURIComponent(store.address)}`,
+        }) ?? `https://maps.google.com/maps?q=${encodeURIComponent(store.address)}`;
+      }
+      return null;
+    })();
+    if (url) void Linking.openURL(url);
+  };
 
   const startTripAt = (firstStoreId: string) => {
     setShowFirstStorePicker(false);
@@ -230,12 +251,24 @@ export default function ShoppingScreen() {
 
       {/* First-store picker — only shown when starting a multi-store trip */}
       <Sheet visible={showFirstStorePicker} title="Where are you shopping first?" onClose={() => setShowFirstStorePicker(false)}>
+        {/* Route strip */}
+        <View style={styles.routeStrip}>
+          {planEntries.map(([, ], idx) => (
+            <React.Fragment key={idx}>
+              <View style={[styles.routeDot, idx === 0 && styles.routeDotActive]}>
+                <Text style={[styles.routeDotText, idx === 0 && styles.routeDotTextActive]}>{idx + 1}</Text>
+              </View>
+              {idx < planEntries.length - 1 && <View style={styles.routeLine} />}
+            </React.Fragment>
+          ))}
+        </View>
         <Text style={{ fontFamily: fonts.sans, fontSize: 13, color: colors.muted, marginBottom: spacing.lg }}>
-          Choose which store you're heading to first. You'll pick up the others after.
+          Pick your first stop — we'll line up the rest.
         </Text>
         {planEntries.map(([storeId, list], idx) => {
           const store = storeById(storeId);
           const barColor = ROUTE_COLORS[idx % ROUTE_COLORS.length];
+          const hasLocation = !!(store?.lat ?? store?.address);
           return (
             <Pressable
               key={storeId}
@@ -247,6 +280,15 @@ export default function ShoppingScreen() {
                 <Text style={styles.firstStoreName}>{store?.name ?? storeId}</Text>
                 <Text style={styles.firstStoreMeta}>{list.length} item{list.length !== 1 ? 's' : ''}</Text>
               </View>
+              {hasLocation && (
+                <Pressable
+                  onPress={(e) => { e.stopPropagation(); openDirections(store!); }}
+                  hitSlop={8}
+                  style={styles.directionsBtn}
+                >
+                  <Ionicons name="navigate-outline" size={18} color={colors.muted} />
+                </Pressable>
+              )}
               <View style={[styles.firstStoreGoBtn, { borderColor: barColor }]}>
                 <Text style={[styles.firstStoreGoBtnText, { color: barColor }]}>Go here first</Text>
               </View>
@@ -1194,6 +1236,13 @@ function makeStyles(colors: AppColors) {
     firstStoreMeta: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: 2 },
     firstStoreGoBtn:{ borderWidth: 1.5, borderRadius: radii.md, paddingHorizontal: 12, paddingVertical: 6 },
     firstStoreGoBtnText: { fontFamily: fonts.sansSemibold, fontSize: 13 },
+    routeStrip:     { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md },
+    routeDot:       { width: 26, height: 26, borderRadius: 13, borderWidth: 1.5, borderColor: colors.borderSoft, alignItems: 'center', justifyContent: 'center' },
+    routeDotActive: { backgroundColor: colors.ink, borderColor: colors.ink },
+    routeDotText:   { fontFamily: fonts.sansSemibold, fontSize: 12, color: colors.muted },
+    routeDotTextActive: { color: colors.surface },
+    routeLine:      { flex: 1, height: 1, borderStyle: 'dashed', borderWidth: 1, borderColor: colors.borderSoft },
+    directionsBtn:  { padding: 4 },
   });
 
   const rStyles = StyleSheet.create({
