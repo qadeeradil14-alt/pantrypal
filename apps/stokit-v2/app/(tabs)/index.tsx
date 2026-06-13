@@ -312,7 +312,9 @@ function UseItOrLoseItWidget({ items, onUsed, onRestock }: {
   if (!oldest) return null;
 
   const daysOld = Math.floor((Date.now() - oldest.createdAt) / (1000 * 60 * 60 * 24));
-  const ageLabel = daysOld < 1 ? 'added today' : daysOld === 1 ? '1 day in your pantry' : `${daysOld} days in your pantry`;
+  if (daysOld < 5) return null;
+
+  const ageLabel = daysOld === 1 ? '1 day in your pantry' : `${daysOld} days in your pantry`;
 
   return (
     <View style={{ backgroundColor: colors.warningSoft, borderRadius: radii.lg, padding: spacing.md, marginBottom: spacing.md, borderWidth: 1, borderColor: colors.warningSoft }}>
