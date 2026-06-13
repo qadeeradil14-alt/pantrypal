@@ -62,10 +62,11 @@ export default function ShoppingScreen() {
   const { colors } = useTheme();
   const { styles, rStyles, ssStyles, nsStyles, tsStyles } = useMemo(() => makeStyles(colors), [colors]);
 
-  const items   = useDurableStore((s) => s.items);
-  const stores  = useDurableStore((s) => s.stores);
-  const session = useSessionStore((s) => s.session);
-  const dispatch = useSessionStore((s) => s.dispatch);
+  const items      = useDurableStore((s) => s.items);
+  const stores     = useDurableStore((s) => s.stores);
+  const updateItem = useDurableStore((s) => s.updateItem);
+  const session    = useSessionStore((s) => s.session);
+  const dispatch   = useSessionStore((s) => s.dispatch);
   const [pickerItem, setPickerItem] = useState<PantryItem | null>(null);
   const [showFirstStorePicker, setShowFirstStorePicker] = useState(false);
 
@@ -150,6 +151,22 @@ export default function ShoppingScreen() {
       if (storeId !== firstStoreId) entries.push(...list);
     });
     dispatch({ type: 'START_TRIP', entries, now: Date.now() });
+  };
+
+  const handleResetShopping = () => {
+    const shoppingItems = items.filter((i) => i.status === 'low' || i.status === 'expiring');
+    Alert.alert(
+      'Reset shopping list?',
+      `This will clear all ${shoppingItems.length} item${shoppingItems.length !== 1 ? 's' : ''} from your shopping queue. Your pantry and receipts stay untouched.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset',
+          style: 'destructive',
+          onPress: () => shoppingItems.forEach((i) => updateItem(i.id, { status: 'stocked', storeId: null })),
+        },
+      ],
+    );
   };
 
   const handleStartShopping = () => {
@@ -240,6 +257,12 @@ export default function ShoppingScreen() {
             </>
           )}
         </>
+      )}
+
+      {(totalItems > 0 || unassignedCount > 0) && (
+        <Pressable onPress={handleResetShopping} style={{ alignItems: 'center', paddingVertical: spacing.lg }}>
+          <Text style={{ fontFamily: fonts.sans, fontSize: 13, color: colors.muted }}>Reset shopping list</Text>
+        </Pressable>
       )}
 
       <StorePickerSheet item={pickerItem} onClose={() => setPickerItem(null)} />
