@@ -4,6 +4,7 @@ import {
   type PantryCatalogCategory,
   type PantryCatalogItem,
 } from './pantryCatalog';
+import { classifyItem } from '../core/services/itemClassifier';
 
 export const CATALOG_SEARCH_LIMIT = 48;
 
@@ -37,7 +38,11 @@ const FAMILIES: Family[] = [
   { category: 'Pet', icon: '🐾', unit: 'pack', bases: ['dog food', 'cat food', 'pet treats', 'cat litter', 'dog treats', 'bird food', 'fish food', 'pet shampoo', 'waste bags'], prefixes: ['dry', 'wet', 'grain free', 'senior', 'puppy', 'kitten', 'natural', 'large', 'small'], suffixes: ['bag', 'cans', 'box', 'pack', 'pouches'] },
 ];
 
-type SearchableItem = PantryCatalogItem & { searchText: string; curated: boolean };
+type SearchableItem = PantryCatalogItem & {
+  searchText: string;
+  curated: boolean;
+  conceptKey: string;
+};
 
 const normalize = (value: string) => value.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
 const idFor = (name: string) => `extended-${normalize(name).replace(/\s+/g, '-')}`;
@@ -51,10 +56,12 @@ const buildCatalog = (): SearchableItem[] => {
       ...catalogItem,
       searchText: normalize([catalogItem.name, catalogItem.category, ...(catalogItem.keywords ?? [])].join(' ')),
       curated: true,
+      conceptKey: key,
     });
   }
   for (const family of FAMILIES) {
     for (const base of family.bases) {
+      const semanticIcon = classifyItem(base).emoji;
       const names = [
         base,
         ...family.prefixes.map((prefix) => `${prefix} ${base}`),
@@ -68,11 +75,12 @@ const buildCatalog = (): SearchableItem[] => {
           id: idFor(name),
           name: titleCase(name),
           category: family.category,
-          icon: family.icon,
+          icon: semanticIcon,
           defaultUnit: family.unit,
           keywords: family.aliases,
           searchText: normalize([name, family.category, ...(family.aliases ?? [])].join(' ')),
           curated: false,
+          conceptKey: normalize(base),
         });
       }
     }
@@ -105,20 +113,31 @@ export function searchPantryCatalog(query: string, limit = CATALOG_SEARCH_LIMIT)
   const normalized = normalize(query);
   if (!normalized) return [];
   const tokens = normalized.split(' ');
-  return getCatalog()
+  const ranked = getCatalog()
     .map((item) => {
       const name = normalize(item.name);
       if (!tokens.every((token) => item.searchText.includes(token))) return null;
+      if (tokens.length === 1 && !item.curated && !item.conceptKey.includes(tokens[0])) return null;
       const score =
         (name === normalized ? 10000 : 0) +
         (name.startsWith(normalized) ? 3000 : 0) +
         (name.includes(normalized) ? 1000 : 0) +
         (item.curated ? 500 : 0) -
+        (item.curated || name === item.conceptKey ? 0 : 750) -
         name.length;
       return { item, score };
     })
     .filter((result): result is { item: SearchableItem; score: number } => result !== null)
-    .sort((a, b) => b.score - a.score || a.item.name.localeCompare(b.item.name))
-    .slice(0, limit)
-    .map(({ item: { searchText: _searchText, curated: _curated, ...item } }) => item);
+    .sort((a, b) => b.score - a.score || a.item.name.localeCompare(b.item.name));
+
+  const seenConcepts = new Set<string>();
+  const results: PantryCatalogItem[] = [];
+  for (const { item } of ranked) {
+    if (seenConcepts.has(item.conceptKey)) continue;
+    seenConcepts.add(item.conceptKey);
+    const { searchText: _searchText, curated: _curated, conceptKey: _conceptKey, ...result } = item;
+    results.push(result);
+    if (results.length === limit) break;
+  }
+  return results;
 }
