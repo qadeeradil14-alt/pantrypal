@@ -133,7 +133,13 @@ export default function PantryScreen() {
 
         <LivePartnerBanner />
         
-        {atHomeItems.length > 0 && <UseItOrLoseItWidget items={atHomeItems} onAction={(item) => setItemStatus(item.id, 'low')} />}
+        {atHomeItems.length > 0 && (
+          <UseItOrLoseItWidget
+            items={atHomeItems}
+            onUsed={(item) => deleteItem(item.id)}
+            onRestock={(item) => setItemStatus(item.id, 'low')}
+          />
+        )}
 
         <ActionCard
           title="Add something to buy"
@@ -291,10 +297,13 @@ function LivePartnerBanner() {
   );
 }
 
-function UseItOrLoseItWidget({ items, onAction }: { items: PantryItem[], onAction: (item: PantryItem) => void }) {
+function UseItOrLoseItWidget({ items, onUsed, onRestock }: {
+  items: PantryItem[];
+  onUsed: (item: PantryItem) => void;
+  onRestock: (item: PantryItem) => void;
+}) {
   const { colors } = useTheme();
-  
-  // Find oldest item
+
   const oldest = useMemo(() => {
     if (items.length === 0) return null;
     return [...items].sort((a, b) => a.createdAt - b.createdAt)[0];
@@ -303,19 +312,35 @@ function UseItOrLoseItWidget({ items, onAction }: { items: PantryItem[], onActio
   if (!oldest) return null;
 
   const daysOld = Math.floor((Date.now() - oldest.createdAt) / (1000 * 60 * 60 * 24));
-  
+  const ageLabel = daysOld < 1 ? 'added today' : daysOld === 1 ? '1 day in your pantry' : `${daysOld} days in your pantry`;
+
   return (
-    <View style={{ backgroundColor: colors.warningSoft, borderRadius: radii.lg, padding: spacing.md, marginBottom: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderWidth: 1, borderColor: colors.warningSoft }}>
-      <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.warning + '2E', alignItems: 'center', justifyContent: 'center' }}>
-         <Ionicons name="alert-circle-outline" size={24} color={colors.warning} />
+    <View style={{ backgroundColor: colors.warningSoft, borderRadius: radii.lg, padding: spacing.md, marginBottom: spacing.md, borderWidth: 1, borderColor: colors.warningSoft }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.sm }}>
+        <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.warning + '2E', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <Ionicons name="alert-circle-outline" size={22} color={colors.warning} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontFamily: fonts.sansSemibold, color: colors.warning, fontSize: 15 }}>{oldest.name}</Text>
+          <Text style={{ fontFamily: fonts.sans, color: colors.warning, fontSize: 12, marginTop: 1, opacity: 0.8 }}>{ageLabel} — use it or restock?</Text>
+        </View>
       </View>
-      <View style={{ flex: 1 }}>
-        <Text style={{ fontFamily: fonts.sansSemibold, color: colors.warning, fontSize: 15 }}>Use it or lose it!</Text>
-        <Text style={{ fontFamily: fonts.sans, color: colors.warning, fontSize: 13, marginTop: 2 }}>You've had {oldest.name} for {daysOld === 0 ? 'a little while' : `${daysOld} days`}. Use it tonight?</Text>
+      <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+        <Pressable
+          onPress={() => onUsed(oldest)}
+          style={({ pressed }) => ({ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 8, borderRadius: radii.md, backgroundColor: colors.warning + '2E', opacity: pressed ? 0.7 : 1 })}
+        >
+          <Ionicons name="checkmark" size={15} color={colors.warning} />
+          <Text style={{ fontFamily: fonts.sansSemibold, fontSize: 13, color: colors.warning }}>Used it</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => onRestock(oldest)}
+          style={({ pressed }) => ({ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 8, borderRadius: radii.md, backgroundColor: colors.warning + '2E', opacity: pressed ? 0.7 : 1 })}
+        >
+          <Ionicons name="cart-outline" size={15} color={colors.warning} />
+          <Text style={{ fontFamily: fonts.sansSemibold, fontSize: 13, color: colors.warning }}>Need more</Text>
+        </Pressable>
       </View>
-      <Pressable onPress={() => onAction(oldest)} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.warning + '2E', alignItems: 'center', justifyContent: 'center' }}>
-        <Ionicons name="add" size={20} color={colors.warning} />
-      </Pressable>
     </View>
   );
 }
