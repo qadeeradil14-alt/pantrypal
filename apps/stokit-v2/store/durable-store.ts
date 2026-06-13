@@ -29,6 +29,7 @@ import {
   clearDurable,
 } from '../core/repositories/durableRepository';
 import { pushLocalState, startSyncEngine } from '../core/services/syncEngine';
+import { consolidatePantryItems, normalizeItemName } from '../core/services/pantryItems';
 
 interface DurableStore extends DurableState {
   hydrated: boolean;
@@ -125,7 +126,9 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     hydrate: async () => {
       const loaded = await loadDurable();
       if (loaded) {
-        set({ ...loaded, hydrated: true });
+        const normalized = { ...loaded, items: consolidatePantryItems(loaded.items) };
+        set({ ...normalized, hydrated: true });
+        void saveDurable(normalized);
       } else {
         set({ hydrated: true });
       }
@@ -135,6 +138,28 @@ export const useDurableStore = create<DurableStore>((set, get) => {
 
     addItem: (input) => {
       const { getStorageLocation } = require('../core/services/itemClassifier');
+      const existing = get().items.find((item) => normalizeItemName(item.name) === normalizeItemName(input.name));
+      if (existing) {
+        const updated: PantryItem = {
+          ...existing,
+          name: input.name.trim(),
+          quantity: input.quantity,
+          unit: input.unit,
+          status: input.status ?? existing.status,
+          storageLocation: input.storageLocation ?? existing.storageLocation,
+          storeId: input.storeId ?? existing.storeId,
+          expiryDate: input.expiryDate ?? existing.expiryDate,
+          updatedAt: now(),
+        };
+        set((s) => ({
+          items: consolidatePantryItems(s.items.map((item) => item.id === existing.id ? updated : item)),
+        }));
+        if (updated.status === 'low' && existing.status !== 'low') {
+          pushActivity('marked_low', `${updated.name} marked low`, { itemId: updated.id });
+        }
+        persist();
+        return updated;
+      }
       const item: PantryItem = {
         id: uid('item'),
         name: input.name.trim(),
@@ -271,7 +296,11 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     },
 
     applyRemotePatch: (patch) => {
-      set((s) => ({ ...s, ...patch }));
+      set((s) => ({
+        ...s,
+        ...patch,
+        items: patch.items ? consolidatePantryItems(patch.items) : s.items,
+      }));
       // Save to disk (AsyncStorage) so we have it offline, but do NOT call persist()
       // because persist() triggers the syncEngine push loop.
       void saveDurable(snapshot(get()));
