@@ -44,7 +44,7 @@ export function AttentionItem({ item, store, onAddToList, onViewItem, onAssignSt
         <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
         <Text style={styles.qty}>×{item.quantity}</Text>
         {needsStore ? (
-          <Text style={styles.noStore}>No store assigned</Text>
+          <Text style={styles.noStore}>Any store</Text>
         ) : store ? (
           <Pressable onPress={onAssignStore} hitSlop={6} style={styles.storeLine}>
             <Ionicons name="storefront-outline" size={11} color={colors.primary} />

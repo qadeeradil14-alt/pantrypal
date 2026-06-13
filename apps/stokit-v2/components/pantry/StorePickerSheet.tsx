@@ -18,12 +18,17 @@ import { useDurableStore } from '../../store/durable-store';
 import type { PantryItem } from '../../types';
 import { useTheme } from '../../hooks/useTheme';
 import { AddStoreContent } from '../stores/AddStoreSheet';
+import { Button } from '../shared/ui';
 
 export function StorePickerSheet({
   item,
   visible,
   onClose,
   onSelect,
+  title = 'Assign a store',
+  subtitle,
+  secondaryActionLabel,
+  onSecondaryAction,
 }: {
   /** The item to assign. If omitted, uses visible prop. */
   item?: PantryItem | null;
@@ -32,6 +37,10 @@ export function StorePickerSheet({
   onClose: () => void;
   /** Optional callback to bypass default assignment behavior */
   onSelect?: (storeId: string) => void;
+  title?: string;
+  subtitle?: string;
+  secondaryActionLabel?: string;
+  onSecondaryAction?: () => void;
 }) {
   const { colors } = useTheme();
   const stores = useDurableStore((s) => s.stores);
@@ -64,7 +73,7 @@ export function StorePickerSheet({
   const isOpen = visible !== undefined ? visible : !!item;
 
   return (
-    <Sheet visible={isOpen} title={addOpen ? "Add a store" : "Assign a store"} onClose={addOpen ? () => setAddOpen(false) : close}>
+    <Sheet visible={isOpen} title={addOpen ? "Add a store" : title} onClose={addOpen ? () => setAddOpen(false) : close}>
       {addOpen ? (
         <AddStoreContent
           onClose={() => setAddOpen(false)}
@@ -73,9 +82,9 @@ export function StorePickerSheet({
         />
       ) : (
         <>
-          {item ? (
+          {subtitle || item ? (
             <Text style={styles.subtitle} numberOfLines={1}>
-              Where do you buy {item.name}?
+              {subtitle ?? `Where do you buy ${item?.name}?`}
             </Text>
           ) : null}
 
@@ -127,6 +136,17 @@ export function StorePickerSheet({
             <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
             <Text style={styles.addNewText}>Add a new store</Text>
           </Pressable>
+          {secondaryActionLabel && onSecondaryAction ? (
+            <Button
+              label={secondaryActionLabel}
+              variant="subtle"
+              onPress={() => {
+                onSecondaryAction();
+                close();
+              }}
+              style={{ marginBottom: spacing.md }}
+            />
+          ) : null}
         </>
       )}
     </Sheet>

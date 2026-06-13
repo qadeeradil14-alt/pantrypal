@@ -70,7 +70,7 @@ export default function ShoppingScreen() {
   const updateItem = useDurableStore((s) => s.updateItem);
   const session    = useSessionStore((s) => s.session);
   const dispatch   = useSessionStore((s) => s.dispatch);
-  const [pickerItem, setPickerItem] = useState<PantryItem | null>(null);
+  const [showAssignAllPicker, setShowAssignAllPicker] = useState(false);
   const [showFirstStorePicker, setShowFirstStorePicker] = useState(false);
 
   const { action } = useLocalSearchParams<{ action?: string }>();
@@ -180,13 +180,13 @@ export default function ShoppingScreen() {
   const handleStartShopping = () => {
     if (unassignedCount > 0) {
       Alert.alert(
-        `${unassignedCount} item${unassignedCount === 1 ? '' : 's'} need a store`,
-        'Assign stores for an organized route, or keep every item in this trip.',
+        `${unassignedCount} Any store item${unassignedCount === 1 ? '' : 's'}`,
+        'Shop them anywhere, or assign the whole group to one store.',
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Assign stores', onPress: () => setPickerItem(unassigned[0]) },
+          { text: 'Assign all to a store', onPress: () => setShowAssignAllPicker(true) },
           {
-            text: 'Shop everything',
+            text: 'Shop anywhere',
             onPress: () => {
               const entries: ShoppingEntry[] = [];
               plan.forEach((list) => entries.push(...list));
@@ -234,30 +234,31 @@ export default function ShoppingScreen() {
           <>
             <Card style={styles.routeNotReady}>
               <View style={styles.routeNotReadyHead}>
-                <Ionicons name="alert-circle" size={18} color={colors.warning} />
-                <Text style={styles.routeNotReadyTitle}>Route not ready</Text>
+                <Ionicons name="basket-outline" size={18} color={colors.primary} />
+                <Text style={styles.routeNotReadyTitle}>Any store</Text>
               </View>
               <Text style={styles.warnText}>
-                Assign stores for an organized route, or shop everything together.
+                Buy these wherever it is most convenient.
               </Text>
             </Card>
             <Button label="Start shopping" onPress={handleStartShopping} style={{ marginBottom: spacing.lg }} />
-            <UnassignedList items={unassigned} onAssign={setPickerItem} styles={styles} />
+            <UnassignedList items={unassigned} onAssignAll={() => setShowAssignAllPicker(true)} styles={styles} />
           </>
         ) : (
           <EmptyState
             icon="cart-outline"
             title="No trip planned"
-            body="Mark pantry items low and assign them to a store. They'll show up here grouped by store, ready to shop."
-            steps={['Mark items low in Pantry', 'Make sure each has a store', 'Come back to start your route']}
+            body="Add something to buy and it will be ready for your next trip."
+            steps={['Add items from Pantry', 'Assign a store only when useful', 'Start shopping anywhere']}
           />
         )
       ) : (
         <>
           <Card style={styles.summaryCard}>
-            <Text style={styles.summaryBig}>{totalItems}</Text>
+            <Text style={styles.summaryBig}>{totalItems + unassignedCount}</Text>
             <Text style={styles.summarySub}>
-              items across {planEntries.length} store{planEntries.length > 1 ? 's' : ''}
+              {planEntries.length} store{planEntries.length === 1 ? '' : 's'}
+              {unassignedCount ? ` + ${unassignedCount} Any store` : ''}
             </Text>
             <Button label="Start shopping" onPress={handleStartShopping} style={{ marginTop: spacing.lg }} />
           </Card>
@@ -287,8 +288,8 @@ export default function ShoppingScreen() {
 
           {unassignedCount > 0 && (
             <>
-              <SectionHeader title="Needs a store" action={`${unassignedCount}`} />
-              <UnassignedList items={unassigned} onAssign={setPickerItem} styles={styles} />
+              <SectionHeader title="Any store" action={`${unassignedCount}`} />
+              <UnassignedList items={unassigned} onAssignAll={() => setShowAssignAllPicker(true)} styles={styles} />
             </>
           )}
         </>
@@ -300,7 +301,18 @@ export default function ShoppingScreen() {
         </Pressable>
       )}
 
-      <StorePickerSheet item={pickerItem} onClose={() => setPickerItem(null)} />
+      <StorePickerSheet
+        visible={showAssignAllPicker}
+        onClose={() => setShowAssignAllPicker(false)}
+        title="Assign all to one store"
+        subtitle={`Move all ${unassignedCount} Any store item${unassignedCount === 1 ? '' : 's'} together.`}
+        onSelect={(storeId) => {
+          unassigned.forEach((item) => updateItem(item.id, { storeId }));
+          setShowAssignAllPicker(false);
+        }}
+        secondaryActionLabel="Keep as Any store"
+        onSecondaryAction={() => setShowAssignAllPicker(false)}
+      />
       <StorePickerSheet
         visible={quickScanStorePicker}
         onClose={() => setQuickScanStorePicker(false)}
@@ -362,15 +374,19 @@ export default function ShoppingScreen() {
 
 function UnassignedList({
   items,
-  onAssign,
+  onAssignAll,
   styles,
 }: {
   items: PantryItem[];
-  onAssign: (item: PantryItem) => void;
+  onAssignAll: () => void;
   styles: any;
 }) {
   return (
     <Card style={{ paddingVertical: spacing.xs }}>
+      <View style={styles.unassignedActions}>
+        <Text style={styles.unassignedHelp}>Buy anywhere or organize the whole group.</Text>
+        <Button label="Assign all" small onPress={onAssignAll} />
+      </View>
       {items.map((it, idx) => (
         <View key={it.id}>
           {idx > 0 && <View style={styles.rowDivider} />}
@@ -378,9 +394,8 @@ function UnassignedList({
             <ItemAvatar name={it.name} size={32} />
             <View style={{ flex: 1 }}>
               <Text style={styles.planName}>{it.name}</Text>
-              <Text style={styles.unassignedMeta}>No store assigned</Text>
+              <Text style={styles.unassignedMeta}>Any store</Text>
             </View>
-            <Button label="Assign store" small onPress={() => onAssign(it)} />
           </View>
         </View>
       ))}
@@ -1358,12 +1373,14 @@ function makeStyles(colors: AppColors) {
     planRow:      { flexDirection: 'row', alignItems: 'center', gap: spacing.md, justifyContent: 'space-between', paddingVertical: spacing.md },
     planName:     { fontFamily: fonts.sansMedium, fontSize: 16, color: colors.ink },
     planMeta:     { fontFamily: fonts.mono, fontSize: 12, color: colors.muted },
-    warnText:     { fontFamily: fonts.sans, fontSize: 13, color: colors.warning, lineHeight: 19 },
-    routeNotReady:{ borderColor: colors.warning, borderWidth: 1, gap: spacing.sm },
+    warnText:     { fontFamily: fonts.sans, fontSize: 13, color: colors.muted, lineHeight: 19 },
+    routeNotReady:{ borderColor: colors.primary, borderWidth: 1, gap: spacing.sm },
     routeNotReadyHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     routeNotReadyTitle: { fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink },
+    unassignedActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md },
+    unassignedHelp: { flex: 1, fontFamily: fonts.sans, fontSize: 13, color: colors.muted, lineHeight: 18 },
     unassignedRow:{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, paddingVertical: spacing.md },
-    unassignedMeta:{ fontFamily: fonts.sansMedium, fontSize: 12, color: colors.warning, marginTop: 2 },
+    unassignedMeta:{ fontFamily: fonts.sansMedium, fontSize: 12, color: colors.primary, marginTop: 2 },
     activeHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
     activeStep:   { fontFamily: fonts.monoMedium, fontSize: 11, color: colors.muted, textTransform: 'uppercase', letterSpacing: 1 },
     activeStore:  { fontFamily: fonts.serifItalic, fontSize: 24, color: colors.ink, marginTop: 2 },
