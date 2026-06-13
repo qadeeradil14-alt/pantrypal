@@ -28,9 +28,10 @@ const CUSTOM_EMOJIS: Record<string, any> = {
 interface ItemAvatarProps {
   name: string;
   size?: number;
+  icon?: string;
 }
 
-export function ItemAvatar({ name, size = 44 }: ItemAvatarProps) {
+export function ItemAvatar({ name, size = 44, icon }: ItemAvatarProps) {
   const { isDark } = useTheme();
 
   // Exact catalog match keeps curated icons (incl. custom PNGs); everything
@@ -38,7 +39,7 @@ export function ItemAvatar({ name, size = 44 }: ItemAvatarProps) {
   // app instead of showing the generic 📦.
   const catalogItem = PANTRY_CATALOG.find((i) => i.name.toLowerCase() === name.toLowerCase());
   const classified = catalogItem ? null : classifyItem(name);
-  const iconStr = catalogItem?.icon || classified?.emoji || '📦';
+  const iconStr = icon || catalogItem?.icon || classified?.emoji || '📦';
   const isCustom = iconStr.startsWith('custom:');
   const category = catalogItem?.category ?? classified?.category ?? 'other';
   const categoryTheme = getCategoryColors(category, isDark);

@@ -15,6 +15,12 @@ import {
   type PantryCatalogItem,
 } from '../../constants/pantryCatalog';
 import { ItemAvatar } from '../shared/ItemAvatar';
+import {
+  CATALOG_SEARCH_LIMIT,
+  getExtendedCatalogSize,
+  hasExactCatalogMatch,
+  searchPantryCatalog,
+} from '../../constants/catalogSearch';
 
 interface SelectedItem {
   catalog: PantryCatalogItem;
@@ -94,19 +100,15 @@ export function AddItemSheet({
   const storeOptions = stores.map((s) => ({ value: s.id, label: s.name }));
   const selectedItems = Object.values(selected);
   const normalizedQuery = query.trim().toLowerCase();
-  const filteredCatalog = useMemo(() => PANTRY_CATALOG.filter((catalogItem) => {
-    if (normalizedQuery) {
-      return [
-        catalogItem.name,
-        catalogItem.category,
-        ...(catalogItem.keywords ?? []),
-      ].some((value) => value.toLowerCase().includes(normalizedQuery));
-    }
-    return catalogItem.category === category;
-  }), [category, normalizedQuery]);
+  const filteredCatalog = useMemo(
+    () => normalizedQuery
+      ? searchPantryCatalog(normalizedQuery)
+      : PANTRY_CATALOG.filter((catalogItem) => catalogItem.category === category),
+    [category, normalizedQuery],
+  );
 
   const exactMatch = useMemo(
-    () => PANTRY_CATALOG.some((catalogItem) => catalogItem.name.toLowerCase() === normalizedQuery),
+    () => normalizedQuery ? hasExactCatalogMatch(normalizedQuery) : false,
     [normalizedQuery],
   );
 
@@ -192,8 +194,12 @@ export function AddItemSheet({
       </ScrollView>
 
       <View style={styles.catalogHeader}>
-        <Text style={styles.sectionTitle}>Catalog</Text>
-        <Text style={styles.count}>{filteredCatalog.length} items</Text>
+        <Text style={styles.sectionTitle}>{normalizedQuery ? 'Search results' : 'Catalog'}</Text>
+        <Text style={styles.count}>
+          {normalizedQuery && filteredCatalog.length === CATALOG_SEARCH_LIMIT
+            ? `Top ${CATALOG_SEARCH_LIMIT} of ${getExtendedCatalogSize().toLocaleString()}+`
+            : `${filteredCatalog.length} items`}
+        </Text>
       </View>
       {filteredCatalog.length ? (
         <View style={styles.catalogGrid}>
@@ -205,7 +211,7 @@ export function AddItemSheet({
                 onPress={() => toggle(catalogItem)}
                 style={[styles.catalogItem, active && styles.catalogItemActive]}
               >
-                <ItemAvatar name={catalogItem.name} size={40} />
+                <ItemAvatar name={catalogItem.name} icon={catalogItem.icon} size={40} />
                 <View style={styles.catalogText}>
                   <Text style={styles.catalogName} numberOfLines={1}>{catalogItem.name}</Text>
                   <Text style={styles.catalogCategory} numberOfLines={1}>{catalogItem.category}</Text>
@@ -245,7 +251,7 @@ export function AddItemSheet({
           {selectedItems.map(({ catalog, quantity, storeId }) => (
             <View key={catalog.id} style={styles.selectedCard}>
               <View style={styles.selectedTop}>
-                <ItemAvatar name={catalog.name} size={36} />
+                <ItemAvatar name={catalog.name} icon={catalog.icon} size={36} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.selectedName}>{catalog.name}</Text>
                   <Text style={styles.catalogCategory}>{catalog.category}</Text>
