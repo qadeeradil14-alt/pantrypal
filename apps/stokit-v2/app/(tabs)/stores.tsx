@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { Alert, Pressable, StyleSheet, Text, View, Image, Linking, Platform, ActionSheetIOS } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../../components/shared/Screen';
@@ -12,7 +13,6 @@ import { Button } from '../../components/shared/ui';
 import { fonts, radii, spacing, type AppColors } from '../../theme';
 import { useDurableStore } from '../../store/durable-store';
 import { useTheme } from '../../hooks/useTheme';
-import { isCurrentlyOpen } from '../../lib/openingHours';
 import type { Store } from '../../types';
 
 const LOGO_COLORS = ['#C0392B', '#E8913E', '#D8A24A', '#3D7A53', '#2E6DA4', '#6C5CE7', '#444'];
@@ -93,43 +93,37 @@ export default function StoresScreen() {
   const stores = useDurableStore((s) => s.stores);
   const items = useDurableStore((s) => s.items);
   const deleteStore = useDurableStore((s) => s.deleteStore);
-  const updateStore = useDurableStore((s) => s.updateStore);
   const [addOpen, setAddOpen] = useState(false);
   const [editStore, setEditStore] = useState<Store | null>(null);
-  const fetchedHoursRef = useRef<Set<string>>(new Set());
+  // Live open/closed status — fetched fresh from Google on every tab focus, never persisted
+  const [liveStatus, setLiveStatus] = useState<Record<string, boolean | undefined>>({});
 
-  React.useEffect(() => {
-    const apiKey = process.env.EXPO_PUBLIC_GEOAPIFY_API_KEY;
-    if (!apiKey) return;
+  useFocusEffect(
+    useCallback(() => {
+      const googleKey = process.env.EXPO_PUBLIC_GOOGLE_API_KEY;
+      if (!googleKey) return;
 
-    stores.forEach((store) => {
-      if (
-        fetchedHoursRef.current.has(store.id) ||
-        store.openingHours !== undefined ||
-        !store.lat ||
-        !store.lng
-      ) return;
-
-      fetchedHoursRef.current.add(store.id);
-
-      const url = `https://api.geoapify.com/v2/places?categories=commercial&filter=circle:${store.lng},${store.lat},100&limit=1&apiKey=${apiKey}`;
-      fetch(url)
-        .then((r) => r.json())
-        .then((data) => {
-          const f = data.features?.[0];
-          if (f?.properties?.opening_hours) {
-            updateStore(store.id, { openingHours: f.properties.opening_hours });
-          } else {
-            // Empty string = checked but no data; badge stays hidden (not "Closed")
-            updateStore(store.id, { openingHours: '' });
-          }
-        })
-        .catch(() => {
-          fetchedHoursRef.current.delete(store.id);
+      stores.forEach((store) => {
+        if (!store.placeId) return;
+        const params = new URLSearchParams({
+          place_id: store.placeId,
+          fields: 'opening_hours',
+          key: googleKey,
         });
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stores.length]);
+        fetch(`https://maps.googleapis.com/maps/api/place/details/json?${params.toString()}`, {
+          headers: { 'X-Ios-Bundle-Identifier': 'com.hewadadil.pantrypal' },
+        })
+          .then((r) => r.json())
+          .then((data) => {
+            const openNow: boolean | undefined = data.result?.opening_hours?.open_now;
+            if (openNow !== undefined) {
+              setLiveStatus((prev) => ({ ...prev, [store.id]: openNow }));
+            }
+          })
+          .catch(() => {});
+      });
+    }, [stores])
+  );
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -238,21 +232,14 @@ export default function StoresScreen() {
                         </Text>
                       </View>
 
-                      {(() => {
-                        let openStatus = store.openingHours ? isCurrentlyOpen(store.openingHours) : null;
-                        if (openStatus === null && store.isOpen !== undefined) {
-                          openStatus = store.isOpen;
-                        }
-                        if (openStatus === null) return null;
-                        return (
-                          <View style={[styles.hoursBadge, openStatus ? styles.hoursBadgeOpen : styles.hoursBadgeClosed]}>
-                            <View style={[styles.statusDot, openStatus ? styles.statusDotOpen : styles.statusDotClosed]} />
-                            <Text style={[styles.hoursText, openStatus ? styles.hoursTextOpen : styles.hoursTextClosed]}>
-                              {openStatus ? 'Open' : 'Closed'}
+                      {liveStatus[store.id] !== undefined ? (
+                          <View style={[styles.hoursBadge, liveStatus[store.id] ? styles.hoursBadgeOpen : styles.hoursBadgeClosed]}>
+                            <View style={[styles.statusDot, liveStatus[store.id] ? styles.statusDotOpen : styles.statusDotClosed]} />
+                            <Text style={[styles.hoursText, liveStatus[store.id] ? styles.hoursTextOpen : styles.hoursTextClosed]}>
+                              {liveStatus[store.id] ? 'Open now' : 'Closed'}
                             </Text>
                           </View>
-                        );
-                      })()}
+                        ) : null}
                     </View>
                   </View>
                 </Pressable>

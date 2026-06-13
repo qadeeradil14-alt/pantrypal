@@ -50,9 +50,6 @@ export function AddStoreContent({
   const [address, setAddress]  = useState<string | undefined>(undefined);
   const [lat, setLat]          = useState<number | undefined>(undefined);
   const [lng, setLng]          = useState<number | undefined>(undefined);
-  const [openingHours, setOpeningHours] = useState<string | undefined>(undefined);
-  const [isOpen, setIsOpen]    = useState<boolean | undefined>(undefined);
-
   const [suggestions, setSuggestions] = useState<AutocompleteSuggestion[]>([]);
   const [loadingSuggestion, setLoadingSuggestion] = useState(false);
   const [searchError, setSearchError] = useState('');
@@ -136,7 +133,7 @@ export function AddStoreContent({
   const reset = () => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setName(''); setZip(''); setColor(LOGO_COLORS[1]); setEmoji(undefined);
-    setPlaceId(undefined); setAddress(undefined); setLat(undefined); setLng(undefined); setOpeningHours(undefined); setIsOpen(undefined);
+    setPlaceId(undefined); setAddress(undefined); setLat(undefined); setLng(undefined);
     setSuggestions([]); setLoadingSuggestion(false); setSearchError('');
     nearbyStoreCache.current.clear();
   };
@@ -146,7 +143,7 @@ export function AddStoreContent({
   const handleNameChange = (v: string) => {
     setName(v);
     if (placeId) {
-      setPlaceId(undefined); setAddress(undefined); setLat(undefined); setLng(undefined); setOpeningHours(undefined); setIsOpen(undefined);
+      setPlaceId(undefined); setAddress(undefined); setLat(undefined); setLng(undefined);
     }
     runAutocomplete(v, zip);
   };
@@ -154,7 +151,7 @@ export function AddStoreContent({
   const handleZipChange = (v: string) => {
     setZip(v);
     if (placeId) {
-      setPlaceId(undefined); setAddress(undefined); setLat(undefined); setLng(undefined); setOpeningHours(undefined); setIsOpen(undefined);
+      setPlaceId(undefined); setAddress(undefined); setLat(undefined); setLng(undefined);
     }
     runAutocomplete(name, v);
   };
@@ -171,8 +168,6 @@ export function AddStoreContent({
       setAddress(cached.address || s.secondaryText);
       setLat(cached.lat);
       setLng(cached.lng);
-      setOpeningHours(cached.openingHours);
-      setIsOpen(cached.isOpen);
       return;
     }
 
@@ -184,8 +179,6 @@ export function AddStoreContent({
         setAddress(details.address || s.secondaryText);
         setLat(details.lat);
         setLng(details.lng);
-        setOpeningHours(details.openingHours);
-        setIsOpen(details.isOpen);
       } else {
         setPlaceId(s.placeId);
         setAddress(s.secondaryText);
@@ -215,8 +208,6 @@ export function AddStoreContent({
       address, 
       lat, 
       lng, 
-      openingHours, 
-      isOpen 
     });
     reset();
     onClose();
