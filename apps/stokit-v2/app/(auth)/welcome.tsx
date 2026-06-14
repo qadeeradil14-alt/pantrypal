@@ -444,18 +444,9 @@ export default function WelcomeScreen() {
               }
             }} style={styles.signInLink}>Sign in</Text>
           </Text>
-          <Pressable
-            onPress={() => {
-              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              enterGuestMode();
-            }}
-            style={({ pressed }) => [styles.guestBtn, pressed && { opacity: 0.6 }]}
-          >
-            <Text style={styles.guestBtnText}>Continue without an account</Text>
-          </Pressable>
         </Animated.View>
       </SafeAreaView>
-      <Text style={{ position: 'absolute', top: 50, right: 15, fontSize: 10, color: colors.faintText, fontFamily: fonts.sans, zIndex: 10 }}>v1.0.0 (OTA 83)</Text>
+      <Text style={{ position: 'absolute', top: 50, right: 15, fontSize: 10, color: colors.faintText, fontFamily: fonts.sans, zIndex: 10 }}>v1.0.0 (OTA 87)</Text>
     </View>
   );
 }

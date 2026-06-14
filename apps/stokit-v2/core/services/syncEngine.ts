@@ -1,7 +1,7 @@
 import { supabase } from '../../lib/supabase';
 import { useDurableStore } from '../../store/durable-store';
 import { useHouseholdStore } from '../../store/household-store';
-import type { DurableState, PantryItem, Receipt } from '../../types';
+import type { DurableState, PantryItem, Receipt, Store } from '../../types';
 import * as FileSystem from 'expo-file-system';
 import { decode } from 'base64-arraybuffer';
 
@@ -55,6 +55,42 @@ export function startSyncEngine() {
           const deletedId = payload.old.id;
           const newItems = items.filter(it => it.id !== deletedId);
           state.applyRemotePatch({ items: newItems });
+        }
+      }
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'pantry_stores' },
+      (payload) => {
+        const state = useDurableStore.getState();
+        const stores = [...state.stores];
+
+        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+          const r = payload.new as any;
+          const incoming: Store = {
+            id: r.id,
+            name: r.name,
+            logoColor: r.logo_color ?? undefined,
+            logoEmoji: r.logo_emoji ?? undefined,
+            logoUrl: r.logo_url ?? undefined,
+            placeId: r.place_id ?? undefined,
+            address: r.address ?? undefined,
+            lat: r.lat != null ? Number(r.lat) : undefined,
+            lng: r.lng != null ? Number(r.lng) : undefined,
+            openingHours: r.opening_hours ?? undefined,
+            isOpen: r.is_open ?? undefined,
+            createdAt: Number(r.created_at),
+            updatedAt: Number(r.updated_at),
+          };
+          const idx = stores.findIndex(s => s.id === incoming.id);
+          if (idx >= 0) {
+            if (incoming.updatedAt > stores[idx].updatedAt) stores[idx] = incoming;
+          } else {
+            stores.push(incoming);
+          }
+          state.applyRemotePatch({ stores });
+        } else if (payload.eventType === 'DELETE') {
+          state.applyRemotePatch({ stores: stores.filter(s => s.id !== payload.old.id) });
         }
       }
     )
@@ -160,6 +196,32 @@ export async function pullFromSupabase(): Promise<void> {
       console.log('[Sync Engine] Restored', receipts.length, 'receipts from cloud.');
       useDurableStore.getState().applyRemotePatch({ receipts });
     }
+
+    const { data: remoteStores, error: storesError } = await supabase
+      .from('pantry_stores')
+      .select('*')
+      .eq('household_id', userId)
+      .order('created_at', { ascending: true });
+
+    if (!storesError && remoteStores && remoteStores.length > 0) {
+      const stores: Store[] = remoteStores.map((row: any) => ({
+        id: row.id,
+        name: row.name,
+        logoColor: row.logo_color ?? undefined,
+        logoEmoji: row.logo_emoji ?? undefined,
+        logoUrl: row.logo_url ?? undefined,
+        placeId: row.place_id ?? undefined,
+        address: row.address ?? undefined,
+        lat: row.lat != null ? Number(row.lat) : undefined,
+        lng: row.lng != null ? Number(row.lng) : undefined,
+        openingHours: row.opening_hours ?? undefined,
+        isOpen: row.is_open ?? undefined,
+        createdAt: Number(row.created_at),
+        updatedAt: Number(row.updated_at),
+      }));
+      console.log('[Sync Engine] Restored', stores.length, 'stores from cloud.');
+      useDurableStore.getState().applyRemotePatch({ stores });
+    }
   } catch (err) {
     console.warn('[Sync Engine] Cloud pull failed:', err);
   }
@@ -244,6 +306,29 @@ export async function pushLocalState(state: DurableState) {
     if (receiptRecords.length > 0) {
       const { error } = await supabase.from('pantry_receipts').upsert(receiptRecords, { onConflict: 'id' });
       if (error) console.warn('[Sync Engine] Failed to push receipts:', error.message);
+    }
+
+    // Sync stores (logos, addresses, place IDs)
+    const storeRecords = state.stores.map(store => ({
+      id: store.id,
+      household_id: householdId,
+      name: store.name,
+      logo_color: store.logoColor ?? null,
+      logo_emoji: store.logoEmoji ?? null,
+      logo_url: store.logoUrl ?? null,
+      place_id: store.placeId ?? null,
+      address: store.address ?? null,
+      lat: store.lat ?? null,
+      lng: store.lng ?? null,
+      opening_hours: store.openingHours ?? null,
+      is_open: store.isOpen ?? null,
+      created_at: store.createdAt,
+      updated_at: store.updatedAt,
+    }));
+
+    if (storeRecords.length > 0) {
+      const { error } = await supabase.from('pantry_stores').upsert(storeRecords, { onConflict: 'id' });
+      if (error) console.warn('[Sync Engine] Failed to push stores:', error.message);
     }
   } catch (err) {
     console.warn('[Sync Engine] Offline or push failed.', err);

@@ -21,6 +21,7 @@ export default function SignInScreen() {
   const styles = React.useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
   const signIn = useAuthStore((s) => s.signIn);
+  const resetPassword = useAuthStore((s) => s.resetPassword);
   const loading = useAuthStore((s) => s.loading);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -38,6 +39,21 @@ export default function SignInScreen() {
       return;
     }
     // Let _layout.tsx handle the routing based on auth state change
+  };
+
+  const sendReset = async () => {
+    if (!email.trim()) {
+      setError('Enter your email to reset your password.');
+      return;
+    }
+    const result = await resetPassword(email);
+    if (result.ok) {
+      setError('');
+      // Email with an 8-digit code is on its way — go to the code-entry screen.
+      router.push({ pathname: '/(auth)/reset-password', params: { email: email.trim() } });
+    } else {
+      setError(result.message);
+    }
   };
 
   return (
@@ -76,8 +92,14 @@ export default function SignInScreen() {
             </Pressable>
           </View>
           <Button label={loading ? 'Signing in…' : 'Sign in'} onPress={() => void submit()} disabled={loading} />
+          <Button
+            label={loading ? 'Sending…' : 'Forgot password?'}
+            onPress={() => void sendReset()}
+            disabled={loading}
+            variant="subtle"
+          />
         </Card>
-        <Link href="/(auth)/sign-up" style={styles.link}>Don’t have an account? Sign up</Link>
+        <Link href="/(auth)/sign-up" style={styles.link}>Don't have an account? Sign up</Link>
       </View>
     </KeyboardAvoidingView>
   );
@@ -96,6 +118,7 @@ function makeStyles(colors: AppColors) {
     passwordRow: { height: 50, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.lg, flexDirection: 'row', alignItems: 'center' },
     passwordInput: { flex: 1, color: colors.ink, fontFamily: fonts.sans },
     error: { fontFamily: fonts.sansMedium, color: colors.danger, lineHeight: 20 },
+    resetSent: { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.success, textAlign: 'center' },
     link: { marginTop: spacing.xl, textAlign: 'center', color: colors.primary, fontFamily: fonts.sansSemibold },
   });
 }

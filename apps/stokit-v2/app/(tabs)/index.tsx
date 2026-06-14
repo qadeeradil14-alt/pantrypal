@@ -119,12 +119,18 @@ export default function PantryScreen() {
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.greeting}>{greeting}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 }}>
-              <Logo size={42} color={colors.ink} accent={colors.primary} />
-              <Text style={styles.title}>Pantry</Text>
+            <View style={styles.wordmark}>
+              <Logo size={22} color={colors.ink} accent={colors.primary} />
+              <Text style={styles.wordmarkText}>Stokit</Text>
             </View>
-            <Text style={styles.tagline}>What do you want to do?</Text>
+            <Text style={styles.title}>{greeting}</Text>
+            <Text style={styles.tagline}>
+              {items.length === 0
+                ? 'Add your first item to get started'
+                : listItems.length > 0
+                  ? `${items.length} item${items.length === 1 ? '' : 's'} · ${listItems.length} running low`
+                  : `${items.length} item${items.length === 1 ? '' : 's'} · well stocked`}
+            </Text>
           </View>
           <Pressable onPress={() => router.push('/settings')} style={styles.settings}>
             <Ionicons name="settings-outline" size={25} color={colors.primary} />
@@ -509,9 +515,11 @@ function makeStyles(c: AppColors) {
     safe:             { flex: 1, backgroundColor: c.background },
     scroll:           { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
     header:           { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: spacing.xl },
+    wordmark:         { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 10 },
+    wordmarkText:     { fontFamily: fonts.sansSemibold, fontSize: 18, color: c.ink, letterSpacing: -0.3 },
     greeting:         { fontFamily: fonts.sans, fontSize: 14, color: c.muted, marginBottom: 2 },
-    title:            { fontFamily: fonts.serifItalic, fontSize: 49, lineHeight: 53, color: c.ink },
-    tagline:          { fontFamily: fonts.sans, fontSize: 16, color: c.muted, marginTop: 8 },
+    title:            { fontFamily: fonts.serifItalic, fontSize: 30, lineHeight: 36, color: c.ink, marginBottom: 4 },
+    tagline:          { fontFamily: fonts.sans, fontSize: 15, color: c.muted },
     settings:         { width: 48, height: 48, borderRadius: 24, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, alignItems: 'center', justifyContent: 'center', marginTop: 8, ...shadow.card },
     actionCard:       { minHeight: 128, marginBottom: spacing.md, padding: spacing.md, borderRadius: radii.lg, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, overflow: 'hidden', ...shadow.card },
     actionIcon:       { width: 70, height: 70, borderRadius: 35, alignItems: 'center', justifyContent: 'center', zIndex: 2 },

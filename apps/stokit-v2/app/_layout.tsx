@@ -72,7 +72,11 @@ export default function RootLayout() {
   const hydrateHousehold = useHouseholdStore((s) => s.hydrate);
   const hydratedHousehold = useHouseholdStore((s) => s.hydrated);
   const hydrateSession = useSessionStore((s) => s.hydrateSession);
-  const authLoading = useAuthStore((s) => s.loading);
+  // Gate the navigator on `initializing` (first startup auth check) — NOT on
+  // `loading`, which toggles during every sign-in/sign-up button press. Gating
+  // on `loading` tore the navigator down mid-sign-up and bounced the user to
+  // the welcome screen before the success state could render.
+  const authInitializing = useAuthStore((s) => s.initializing);
   const user = useAuthStore((s) => s.user);
   const guestMode = useAuthStore((s) => s.guestMode);
   const router = useRouter();
@@ -93,21 +97,18 @@ export default function RootLayout() {
     return () => linkSubscription.remove();
   }, [hydrateDurable, hydrateHousehold, hydrateSession]);
 
-  // Cloud recovery: if the user is authenticated but local store is empty
-  // (e.g. after app reinstall), pull their data back from Supabase.
+  // Cloud recovery: pull data back from Supabase on every sign-in so that
+  // stores (logos) are restored even when items already exist locally.
   useEffect(() => {
     if (!user || !hydratedDurable) return;
-    const { items } = useDurableStore.getState();
-    if (items.length === 0) {
-      void pullFromSupabase();
-    }
+    void pullFromSupabase();
   }, [user, hydratedDurable]);
 
 
 
   const verified = isEmailVerified(user);
   const unlocked = verified || guestMode;
-  const ready = fontsLoaded && hydratedDurable && hydratedHousehold && !authLoading;
+  const ready = fontsLoaded && hydratedDurable && hydratedHousehold && !authInitializing;
 
   const rootNavigationState = useRootNavigationState();
   const segments = useSegments();
@@ -118,13 +119,13 @@ export default function RootLayout() {
     // Add microtask delay to allow React state to settle before routing
     setTimeout(() => {
       // Email verification check
-      if (user && !verified && !guestMode && pathname !== '/verify-email') {
+      if (user && !verified && !guestMode && pathname !== '/verify-email' && pathname !== '/sign-up') {
         router.replace('/(auth)/verify-email');
         return;
       }
 
       // Main auth routing
-      const authPaths = ['/welcome', '/sign-in', '/sign-up', '/verify-email'];
+      const authPaths = ['/welcome', '/sign-in', '/sign-up', '/verify-email', '/reset-password'];
       const inAuthGroup = authPaths.includes(pathname);
 
       if (unlocked && inAuthGroup) {
