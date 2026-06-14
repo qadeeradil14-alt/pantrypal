@@ -286,14 +286,20 @@ export function StoreChip({
     );
   }
 
-  // Fallback to app logo
+  // Letter/abbr chip — always shown when no image or emoji is available.
+  // Never show the app icon inside a store chip.
   return (
-    <View style={{ ...chipStyle, backgroundColor: themeColors.surfaceRaised, borderWidth: 1, borderColor: themeColors.borderSoft }}>
-      <Image
-        source={require('../../assets/icon.png')}
-        style={{ width: size * 0.72, height: size * 0.72 }}
-        resizeMode="contain"
-      />
+    <View style={{ ...chipStyle, backgroundColor: bg }}>
+      <Text
+        style={{
+          fontSize: size * 0.38,
+          fontFamily: fonts.sansSemibold,
+          color: '#fff',
+          letterSpacing: 0.5,
+        }}
+      >
+        {glyph}
+      </Text>
     </View>
   );
 }

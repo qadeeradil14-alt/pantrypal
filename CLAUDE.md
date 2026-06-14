@@ -65,6 +65,10 @@ You are not a narrow patch bot. For every bug or feature request:
 - Do not silently expand scope.
 - Do not redesign unrelated screens.
 - Do not commit unless explicitly approved.
+- **After every OTA-eligible fix, always push OTA automatically** (no approval needed):
+  `cd apps/stokit-v2 && eas update --branch production --environment production --message "<msg>"`
+- **Do not push a full EAS Build without explicit approval.**
+- **Do not push to GitHub without explicit approval.**
 
 ---
 

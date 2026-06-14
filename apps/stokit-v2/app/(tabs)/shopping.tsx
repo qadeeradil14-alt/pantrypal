@@ -72,6 +72,7 @@ export default function ShoppingScreen() {
   const dispatch   = useSessionStore((s) => s.dispatch);
   const [showAssignAllPicker, setShowAssignAllPicker] = useState(false);
   const [showFirstStorePicker, setShowFirstStorePicker] = useState(false);
+  const [showIndividualAssign, setShowIndividualAssign] = useState(false);
 
   const { action } = useLocalSearchParams<{ action?: string }>();
   const [quickScanStorePicker, setQuickScanStorePicker] = useState(false);
@@ -267,7 +268,7 @@ export default function ShoppingScreen() {
             const store = storeById(storeId);
             return (
               <View key={storeId}>
-                <SectionHeader title={store?.name ?? 'Store'} action={`${list.length}`} />
+                <SectionHeader title={store?.name ?? 'Unknown Store'} action={`${list.length}`} />
                 <Card style={{ paddingVertical: spacing.xs }}>
                   {list.map((e, idx) => (
                     <View key={e.itemId}>
@@ -310,13 +311,22 @@ export default function ShoppingScreen() {
           unassigned.forEach((item) => updateItem(item.id, { storeId }));
           setShowAssignAllPicker(false);
         }}
-        secondaryActionLabel="Keep as Any store"
-        onSecondaryAction={() => setShowAssignAllPicker(false)}
+        secondaryActionLabel="Assign to individual stores"
+        onSecondaryAction={() => {
+          setShowAssignAllPicker(false);
+          setShowIndividualAssign(true);
+        }}
       />
       <StorePickerSheet
         visible={quickScanStorePicker}
         onClose={() => setQuickScanStorePicker(false)}
         onSelect={(storeId) => handleQuickScanStoreSelect(storeId)}
+      />
+
+      <IndividualAssignSheet
+        visible={showIndividualAssign}
+        onClose={() => setShowIndividualAssign(false)}
+        items={unassigned}
       />
 
       {/* First-store picker — only shown when starting a multi-store trip */}
@@ -345,9 +355,9 @@ export default function ShoppingScreen() {
               onPress={() => startTripAt(storeId)}
               style={({ pressed }) => [styles.firstStoreRow, pressed && { opacity: 0.7 }]}
             >
-              <StoreChip name={store?.name ?? '?'} emoji={store?.logoEmoji} color={store?.logoColor} size={44} />
+              <StoreChip name={store?.name ?? 'Unknown Store'} emoji={store?.logoEmoji} color={store?.logoColor} size={44} />
               <View style={{ flex: 1 }}>
-                <Text style={styles.firstStoreName}>{store?.name ?? storeId}</Text>
+                <Text style={styles.firstStoreName}>{store?.name ?? 'Unknown Store'}</Text>
                 <Text style={styles.firstStoreMeta}>{list.length} item{list.length !== 1 ? 's' : ''}</Text>
               </View>
               {hasLocation && (
@@ -1075,7 +1085,7 @@ function NextStoreSelector({ session, dispatch, storeById, styles, nsStyles, col
                 <View style={nsStyles.storeRow}>
                   <StoreChip name={store?.name ?? '?'} emoji={store?.logoEmoji} color={store?.logoColor} size={48} />
                   <View style={{ flex: 1 }}>
-                    <Text style={nsStyles.storeName}>{store?.name ?? storeId}</Text>
+                    <Text style={nsStyles.storeName}>{store?.name ?? 'Unknown Store'}</Text>
                     <Text style={nsStyles.storeItems}>{itemCount} item{itemCount !== 1 ? 's' : ''} waiting</Text>
                   </View>
                   <Pressable
@@ -1094,7 +1104,7 @@ function NextStoreSelector({ session, dispatch, storeById, styles, nsStyles, col
                   }}
                   style={nsStyles.skipStoreBtn}
                 >
-                  <Text style={nsStyles.skipStoreText}>Skip {store?.name ?? 'this store'}</Text>
+                  <Text style={nsStyles.skipStoreText}>Skip {store?.name ?? 'Unknown Store'}</Text>
                 </Pressable>
               </Card>
             );
@@ -1174,6 +1184,133 @@ function CancelTripLink({ dispatch, colors }: { dispatch: SubProps['dispatch']; 
     <Pressable onPress={confirmCancel} style={{ alignItems: 'center', paddingVertical: spacing.lg }}>
       <Text style={{ fontFamily: fonts.sans, fontSize: 13, color: colors.muted }}>Cancel trip</Text>
     </Pressable>
+  );
+}
+
+// ── Individual item-by-item store assignment ──────────────────────────────────
+
+function IndividualAssignSheet({
+  visible,
+  onClose,
+  items,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  items: PantryItem[];
+}) {
+  const stores = useDurableStore((s) => s.stores);
+  const updateItem = useDurableStore((s) => s.updateItem);
+  const { colors } = useTheme();
+  const [picks, setPicks] = useState<Record<string, string>>({});
+  const [pickingItem, setPickingItem] = useState<PantryItem | null>(null);
+
+  useEffect(() => {
+    if (!visible) {
+      setPicks({});
+      setPickingItem(null);
+    }
+  }, [visible]);
+
+  const save = () => {
+    Object.entries(picks).forEach(([itemId, storeId]) => {
+      updateItem(itemId, { storeId });
+    });
+    onClose();
+  };
+
+  const assignedCount = Object.keys(picks).length;
+  const sheetTitle = pickingItem ? `Store for ${pickingItem.name}` : 'Assign to individual stores';
+  const handleClose = pickingItem ? () => setPickingItem(null) : onClose;
+
+  return (
+    <Sheet visible={visible} title={sheetTitle} onClose={handleClose}>
+      {pickingItem ? (
+        <>
+          {stores.length === 0 ? (
+            <Text style={{ fontFamily: fonts.sans, fontSize: 14, color: colors.muted, textAlign: 'center', paddingVertical: spacing.xl }}>
+              No saved stores. Add a store from the Stores tab first.
+            </Text>
+          ) : (
+            stores.map((store) => {
+              const selected = picks[pickingItem.id] === store.id;
+              return (
+                <Pressable
+                  key={store.id}
+                  onPress={() => {
+                    setPicks((p) => ({ ...p, [pickingItem.id]: store.id }));
+                    setPickingItem(null);
+                  }}
+                  style={({ pressed }) => [
+                    {
+                      flexDirection: 'row' as const,
+                      alignItems: 'center' as const,
+                      gap: spacing.md,
+                      paddingVertical: spacing.md,
+                      paddingHorizontal: spacing.sm,
+                      borderRadius: radii.md,
+                    },
+                    selected && { backgroundColor: colors.primarySoft },
+                    pressed && { opacity: 0.7 },
+                  ]}
+                >
+                  <StoreChip name={store.name} emoji={store.logoEmoji} color={store.logoColor} size={44} />
+                  <Text style={{ flex: 1, fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink }}>
+                    {store.name}
+                  </Text>
+                  {selected && <Ionicons name="checkmark-circle" size={22} color={colors.primary} />}
+                </Pressable>
+              );
+            })
+          )}
+        </>
+      ) : (
+        <>
+          <Text style={{ fontFamily: fonts.sans, fontSize: 14, color: colors.muted, marginBottom: spacing.lg }}>
+            Tap each item to pick its store.
+          </Text>
+          {items.map((item) => {
+            const storeId = picks[item.id];
+            const store = storeId ? stores.find((s) => s.id === storeId) : undefined;
+            return (
+              <Pressable
+                key={item.id}
+                onPress={() => setPickingItem(item)}
+                style={({ pressed }) => [
+                  {
+                    flexDirection: 'row' as const,
+                    alignItems: 'center' as const,
+                    gap: spacing.md,
+                    paddingVertical: spacing.md,
+                    borderBottomWidth: 1,
+                    borderBottomColor: colors.borderSoft,
+                  },
+                  pressed && { opacity: 0.7 },
+                ]}
+              >
+                <ItemAvatar name={item.name} size={36} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink }}>
+                    {item.name}
+                  </Text>
+                  <Text style={{ fontFamily: fonts.sans, fontSize: 13, color: store ? colors.primary : colors.muted, marginTop: 2 }}>
+                    {store ? store.name : 'Tap to choose store'}
+                  </Text>
+                </View>
+                {store && (
+                  <StoreChip name={store.name} emoji={store.logoEmoji} color={store.logoColor} size={32} />
+                )}
+                <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+              </Pressable>
+            );
+          })}
+          <Button
+            label={assignedCount > 0 ? `Save (${assignedCount} of ${items.length} assigned)` : 'Save'}
+            onPress={save}
+            style={{ marginTop: spacing.lg }}
+          />
+        </>
+      )}
+    </Sheet>
   );
 }
 
@@ -1285,7 +1422,7 @@ function TripSummary({ session, dispatch, storeById, tsStyles, colors }: SubProp
                     <View style={tsStyles.storeRow}>
                       <StoreChip name={store?.name ?? '?'} emoji={store?.logoEmoji} color={store?.logoColor} size={44} />
                       <View style={{ flex: 1 }}>
-                        <Text style={tsStyles.storeName}>{store?.name ?? b.storeId}</Text>
+                        <Text style={tsStyles.storeName}>{store?.name ?? 'Unknown Store'}</Text>
                         <Text style={tsStyles.storeMeta}>
                           {b.itemsBought} item{b.itemsBought !== 1 ? 's' : ''} bought
                         </Text>
@@ -1319,7 +1456,7 @@ function TripSummary({ session, dispatch, storeById, tsStyles, colors }: SubProp
                     <View style={tsStyles.storeRow}>
                       <StoreChip name={store?.name ?? '?'} emoji={store?.logoEmoji} color={store?.logoColor} size={44} />
                       <View style={{ flex: 1 }}>
-                        <Text style={[tsStyles.storeName, { color: colors.muted }]}>{store?.name ?? b.storeId}</Text>
+                        <Text style={[tsStyles.storeName, { color: colors.muted }]}>{store?.name ?? 'Unknown Store'}</Text>
                         <Text style={tsStyles.storeMeta}>{remaining} item{remaining !== 1 ? 's' : ''} not bought</Text>
                       </View>
                       <Pill label="Skipped" tone="muted" />
