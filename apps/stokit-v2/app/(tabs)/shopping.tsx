@@ -32,7 +32,6 @@ import { Screen } from '../../components/shared/Screen';
 import { Button, Card, PageTitle, Pill, SectionHeader, StoreChip } from '../../components/shared/ui';
 import { EmptyState } from '../../components/shared/EmptyState';
 import { StorePickerSheet } from '../../components/pantry/StorePickerSheet';
-import { MoveItemsSheet } from '../../components/pantry/MoveItemsSheet';
 import { AddItemSheet } from '../../components/pantry/AddItemSheet';
 import { Sheet } from '../../components/shared/Sheet';
 import { ItemAvatar } from '../../components/shared/ItemAvatar';
@@ -71,9 +70,8 @@ export default function ShoppingScreen() {
   const updateItem = useDurableStore((s) => s.updateItem);
   const session    = useSessionStore((s) => s.session);
   const dispatch   = useSessionStore((s) => s.dispatch);
-  const [showMoveItems, setShowMoveItems] = useState(false);
+  const [showAssignAllPicker, setShowAssignAllPicker] = useState(false);
   const [showFirstStorePicker, setShowFirstStorePicker] = useState(false);
-  // Tap any plan item to move it to a different store.
   const [reassignItem, setReassignItem] = useState<PantryItem | null>(null);
 
   const { action } = useLocalSearchParams<{ action?: string }>();
@@ -198,11 +196,9 @@ export default function ShoppingScreen() {
   const handleStartShopping = () => {
     const total = (planItemsFull.length) + unassignedCount;
     if (total === 0) return;
-    if (plan.size === 1 && unassignedCount === 0) {
-      // Single store, all assigned — fast start, no picker needed.
-      const entries: ShoppingEntry[] = [];
-      plan.forEach((list) => entries.push(...list));
-      dispatch({ type: 'START_TRIP', entries, now: Date.now() });
+    if (plan.size === 1) {
+      // One store — auto-start there; unassigned items join it automatically.
+      startTripAt(planEntries[0][0]);
       return;
     }
     setShowFirstStorePicker(true);
@@ -218,11 +214,12 @@ export default function ShoppingScreen() {
   // ── Idle ───────────────────────────────────────────────────────────────────
   const planEntries = Array.from(plan.entries());
   const totalItems  = planEntries.reduce((n, [, list]) => n + list.length, 0);
+  const singleStore = planEntries.length === 1 ? storeById(planEntries[0][0]) : undefined;
   const shoppableCount = totalItems + unassignedCount;
-  // When there are unassigned items the user can send them to ANY store, so show all stores.
-  // When everything is already assigned, only show stores that actually have items (planEntries).
+  // No assigned items → show all stores so user can pick where unassigned items go.
+  // Otherwise → show only stores that already have items (unassigned join whichever is first).
   const firstStoreOptions: Array<[string, ShoppingEntry[]]> =
-    unassignedCount > 0 || planEntries.length === 0
+    planEntries.length === 0
       ? stores.map((s) => [s.id, plan.get(s.id) ?? []] as [string, ShoppingEntry[]])
       : planEntries;
 
@@ -239,15 +236,29 @@ export default function ShoppingScreen() {
       ) : (
         <>
           <Card style={styles.summaryCard}>
+            {singleStore && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md }}>
+                <StoreChip
+                  name={singleStore.name}
+                  emoji={singleStore.logoEmoji}
+                  color={singleStore.logoColor}
+                  size={36}
+                />
+                <Text style={styles.firstDestLabel}>{singleStore.name}</Text>
+              </View>
+            )}
             <Text style={styles.summaryBig}>{shoppableCount}</Text>
             <Text style={styles.summarySub}>
-              {planEntries.length > 0
-                ? `${planEntries.length} store${planEntries.length === 1 ? '' : 's'}${unassignedCount > 0 ? ` · ${unassignedCount} unassigned` : ''}`
+              {planEntries.length > 1
+                ? `${planEntries.length} stores${unassignedCount > 0 ? ` · ${unassignedCount} unassigned` : ''}`
+                : planEntries.length === 1
+                ? `${shoppableCount} item${shoppableCount !== 1 ? 's' : ''}${unassignedCount > 0 ? ` · ${unassignedCount} unassigned` : ''}`
                 : `${unassignedCount} item${unassignedCount !== 1 ? 's' : ''} · pick a store to start`}
             </Text>
             <Button label="Start shopping" onPress={handleStartShopping} style={{ marginTop: spacing.lg }} />
           </Card>
 
+          {/* Assigned items — tap any row to change its store */}
           {planEntries.map(([storeId, list]) => {
             const store = storeById(storeId);
             return (
@@ -267,12 +278,11 @@ export default function ShoppingScreen() {
                         <ItemAvatar name={e.name} size={32} />
                         <View style={{ flex: 1 }}>
                           <Text style={styles.planName}>{e.name}</Text>
-                          <Text style={styles.planMeta}>×{e.quantity}</Text>
+                          {(e.quantity > 1 || (e.unit && e.unit !== 'unit')) && (
+                            <Text style={styles.planMeta}>×{e.quantity}{e.unit && e.unit !== 'unit' ? ` ${e.unit}` : ''}</Text>
+                          )}
                         </View>
-                        <View style={styles.moveHint}>
-                          <Text style={styles.moveHintText}>Move</Text>
-                          <Ionicons name="swap-horizontal" size={15} color={colors.muted} />
-                        </View>
+                        <Ionicons name="chevron-forward" size={16} color={colors.faintText} />
                       </Pressable>
                     </View>
                   ))}
@@ -281,23 +291,41 @@ export default function ShoppingScreen() {
             );
           })}
 
+          {/* Unassigned items — tap a row to assign a store, or use Assign all */}
           {unassignedCount > 0 && (
-            <View style={styles.unassignedNote}>
-              <Ionicons name="information-circle-outline" size={15} color={colors.muted} />
-              <Text style={styles.unassignedNoteText}>
-                {unassignedCount} item{unassignedCount !== 1 ? 's' : ''} will be assigned to your first chosen store
-              </Text>
-            </View>
-          )}
-
-          {planEntries.length > 0 && (
-            <Pressable
-              onPress={() => setShowMoveItems(true)}
-              style={({ pressed }) => [styles.moveItemsBtn, pressed && { opacity: 0.7 }]}
-            >
-              <Ionicons name="swap-horizontal" size={18} color={colors.primary} />
-              <Text style={styles.moveItemsBtnText}>Move some items to another store</Text>
-            </Pressable>
+            <>
+              <SectionHeader
+                title="No store yet"
+                action={`${unassignedCount}`}
+              />
+              <Card style={{ paddingVertical: spacing.xs }}>
+                <View style={styles.assignAllRow}>
+                  <Text style={styles.assignAllHint}>Tap an item to assign a store, or assign them all at once.</Text>
+                  <Pressable
+                    onPress={() => setShowAssignAllPicker(true)}
+                    style={({ pressed }) => [styles.assignAllBtn, pressed && { opacity: 0.7 }]}
+                  >
+                    <Text style={styles.assignAllBtnText}>Assign all</Text>
+                  </Pressable>
+                </View>
+                {unassigned.map((item, idx) => (
+                  <View key={item.id}>
+                    <View style={styles.rowDivider} />
+                    <Pressable
+                      onPress={() => setReassignItem(item)}
+                      style={({ pressed }) => [styles.planRow, pressed && { opacity: 0.6 }]}
+                    >
+                      <ItemAvatar name={item.name} size={32} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.planName}>{item.name}</Text>
+                        <Text style={styles.unassignedMeta}>Tap to assign a store</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={16} color={colors.faintText} />
+                    </Pressable>
+                  </View>
+                ))}
+              </Card>
+            </>
           )}
         </>
       )}
@@ -314,18 +342,23 @@ export default function ShoppingScreen() {
         onSelect={(storeId) => handleQuickScanStoreSelect(storeId)}
       />
 
-      {/* Tap any plan item to move it to a different store (or remove it). */}
+      {/* Tap any item row to change its store */}
       <StorePickerSheet
         item={reassignItem}
-        title="Move to store"
+        title={reassignItem?.storeId ? 'Change store' : 'Assign store'}
         onClose={() => setReassignItem(null)}
       />
 
-      <MoveItemsSheet
-        visible={showMoveItems}
-        onClose={() => setShowMoveItems(false)}
-        items={planItemsFull}
-        stores={stores}
+      {/* Assign all unassigned items to one store at once */}
+      <StorePickerSheet
+        visible={showAssignAllPicker}
+        onClose={() => setShowAssignAllPicker(false)}
+        title="Assign all to one store"
+        subtitle={`All ${unassignedCount} unassigned item${unassignedCount !== 1 ? 's' : ''} will go to this store.`}
+        onSelect={(storeId) => {
+          unassigned.forEach((item) => updateItem(item.id, { storeId }));
+          setShowAssignAllPicker(false);
+        }}
       />
 
       {/* First-store picker — always ask "Where are you shopping first?" */}
@@ -358,7 +391,10 @@ export default function ShoppingScreen() {
             const store = storeById(storeId);
             const barColor = ROUTE_COLORS[idx % ROUTE_COLORS.length];
             const hasLocation = !!(store?.lat ?? store?.address);
-            const displayCount = planEntries.length === 0 ? unassignedCount : list.length;
+            const assignedCount = planEntries.length === 0 ? 0 : list.length;
+            // Whichever store the user taps receives all unassigned items.
+            const extraCount = unassignedCount;
+            const displayCount = assignedCount + extraCount;
             return (
               <Pressable
                 key={storeId}
@@ -369,7 +405,8 @@ export default function ShoppingScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.firstStoreName}>{store?.name ?? 'Unknown Store'}</Text>
                   <Text style={styles.firstStoreMeta}>
-                    {displayCount} item{displayCount !== 1 ? 's' : ''}
+                    {assignedCount} item{assignedCount !== 1 ? 's' : ''}
+                    {extraCount > 0 ? ` + ${extraCount} unassigned` : ''}
                   </Text>
                 </View>
                 {hasLocation && (
@@ -505,6 +542,23 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
       <Button
         label="Done at this store"
         onPress={() => {
+          if (picked === 0 && entries.length > 0) {
+            Alert.alert(
+              'Nothing checked off',
+              'You haven\'t picked any items yet. Done here anyway?',
+              [
+                { text: 'Keep shopping', style: 'cancel' },
+                {
+                  text: 'Done anyway',
+                  onPress: () => {
+                    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                    dispatch({ type: 'FINISH_STORE', now: Date.now() });
+                  },
+                },
+              ],
+            );
+            return;
+          }
           void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           dispatch({ type: 'FINISH_STORE', now: Date.now() });
         }}
@@ -1372,20 +1426,20 @@ function makeStyles(colors: AppColors) {
     summaryCard:  { alignItems: 'center', paddingVertical: spacing.xl },
     summaryBig:   { fontFamily: fonts.mono, fontSize: 48, color: colors.primary },
     summarySub:   { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.muted, marginTop: 2 },
+    firstDestLabel: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
     rowDivider:   { height: 1, backgroundColor: colors.borderSoft, marginLeft: spacing.lg },
     planRow:      { flexDirection: 'row', alignItems: 'center', gap: spacing.md, justifyContent: 'space-between', paddingVertical: spacing.md },
     planName:     { fontFamily: fonts.sansMedium, fontSize: 16, color: colors.ink },
     planMeta:     { fontFamily: fonts.mono, fontSize: 12, color: colors.muted },
-    moveHint:     { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: spacing.sm, paddingVertical: 5, borderRadius: radii.sm, backgroundColor: colors.surfaceRaised },
-    moveHintText: { fontFamily: fonts.sansMedium, fontSize: 12, color: colors.muted },
+    unassignedMeta: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 2 },
+    assignAllRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm },
+    assignAllHint: { flex: 1, fontFamily: fonts.sans, fontSize: 13, color: colors.muted, lineHeight: 18 },
+    assignAllBtn: { paddingHorizontal: spacing.md, paddingVertical: 7, borderRadius: radii.sm, backgroundColor: colors.primary },
+    assignAllBtnText: { fontFamily: fonts.sansSemibold, fontSize: 13, color: colors.onPrimary },
     warnText:     { fontFamily: fonts.sans, fontSize: 13, color: colors.muted, lineHeight: 19 },
     routeNotReady:{ borderColor: colors.primary, borderWidth: 1, gap: spacing.sm },
     routeNotReadyHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     routeNotReadyTitle: { fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink },
-    unassignedActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md },
-    unassignedHelp: { flex: 1, fontFamily: fonts.sans, fontSize: 13, color: colors.muted, lineHeight: 18 },
-    unassignedRow:{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, paddingVertical: spacing.md },
-    unassignedMeta:{ fontFamily: fonts.sansMedium, fontSize: 12, color: colors.primary, marginTop: 2 },
     activeHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
     activeStep:   { fontFamily: fonts.monoMedium, fontSize: 11, color: colors.muted, textTransform: 'uppercase', letterSpacing: 1 },
     activeStore:  { fontFamily: fonts.serifItalic, fontSize: 24, color: colors.ink, marginTop: 2 },
@@ -1416,10 +1470,6 @@ function makeStyles(colors: AppColors) {
     routeDotTextActive: { color: colors.surface },
     routeLine:      { flex: 1, height: 1, borderStyle: 'dashed', borderWidth: 1, borderColor: colors.borderSoft },
     directionsBtn:  { padding: 4 },
-    unassignedNote:     { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.md, paddingHorizontal: spacing.xs, paddingVertical: spacing.sm },
-    unassignedNoteText: { flex: 1, fontFamily: fonts.sans, fontSize: 13, color: colors.muted, lineHeight: 18 },
-    moveItemsBtn:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, marginTop: spacing.lg, paddingVertical: spacing.lg, borderWidth: 1.5, borderColor: colors.primary, borderStyle: 'dashed', borderRadius: radii.lg },
-    moveItemsBtnText:   { fontFamily: fonts.sansMedium, fontSize: 15, color: colors.primary },
   });
 
   const rStyles = StyleSheet.create({

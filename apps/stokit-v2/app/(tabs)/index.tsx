@@ -16,6 +16,7 @@ import { Logo } from '../../components/shared/Logo';
 import { AddItemSheet } from '../../components/pantry/AddItemSheet';
 import { ItemActionSheet } from '../../components/pantry/ItemActionSheet';
 import { StorePickerSheet } from '../../components/pantry/StorePickerSheet';
+import { IndividualAssignSheet } from '../../components/pantry/IndividualAssignSheet';
 import { fonts, radii, shadow, spacing, type AppColors } from '../../theme';
 import { useDurableStore } from '../../store/durable-store';
 import { useHouseholdStore } from '../../store/household-store';
@@ -28,6 +29,7 @@ import type { PantryItem, } from '../../types';
 import type { RecipeSuggestion, RawMealData } from '../../core/services/recipes';
 import { ItemAvatar } from '../../components/shared/ItemAvatar';
 import * as Updates from 'expo-updates';
+import { OTA_SEQ } from '../../constants/version';
 
 function getGreeting(): string {
   const h = new Date().getHours();
@@ -52,6 +54,7 @@ export default function PantryScreen() {
   const [actionItem, setActionItem] = useState<PantryItem | null>(null);
   const [pickerItem, setPickerItem] = useState<PantryItem | null>(null);
   const [addedBatch, setAddedBatch] = useState<PantryItem[]>([]);
+  const [showIndividualAssign, setShowIndividualAssign] = useState(false);
   const [recipes, setRecipes] = useState<RecipeSuggestion[]>([]);
   const [selectedRecipe, setSelectedRecipe] = useState<RecipeSuggestion | null>(null);
   const rawMealsRef = useRef<RawMealData[]>([]);
@@ -124,7 +127,7 @@ export default function PantryScreen() {
               <Logo size={22} color={colors.ink} accent={colors.primary} />
               <Text style={styles.wordmarkText}>Stokit</Text>
               <Text style={{ fontFamily: fonts.mono, fontSize: 10, color: colors.muted, marginLeft: 6, alignSelf: 'center' }}>
-                {Updates.updateId ? '88' : 'dev'}
+                {Updates.updateId ? String(OTA_SEQ) : 'dev'}
               </Text>
             </View>
             <Text style={styles.title}>{greeting}</Text>
@@ -290,8 +293,13 @@ export default function PantryScreen() {
           addedBatch.forEach((item) => useDurableStore.getState().updateItem(item.id, { storeId }));
           setAddedBatch([]);
         }}
-        secondaryActionLabel="Keep as Any store"
-        onSecondaryAction={() => setAddedBatch([])}
+        secondaryActionLabel="Assign to individual stores"
+        onSecondaryAction={() => { setShowIndividualAssign(true); }}
+      />
+      <IndividualAssignSheet
+        visible={showIndividualAssign}
+        onClose={() => { setShowIndividualAssign(false); setAddedBatch([]); }}
+        items={addedBatch}
       />
       <RecipeDetailSheet
         recipe={selectedRecipe}
