@@ -27,6 +27,7 @@ import { RecipeDetailSheet } from '../../components/recipes/RecipeDetailSheet';
 import type { PantryItem, } from '../../types';
 import type { RecipeSuggestion, RawMealData } from '../../core/services/recipes';
 import { ItemAvatar } from '../../components/shared/ItemAvatar';
+import * as Updates from 'expo-updates';
 
 function getGreeting(): string {
   const h = new Date().getHours();
@@ -122,6 +123,9 @@ export default function PantryScreen() {
             <View style={styles.wordmark}>
               <Logo size={22} color={colors.ink} accent={colors.primary} />
               <Text style={styles.wordmarkText}>Stokit</Text>
+              <Text style={{ fontFamily: fonts.mono, fontSize: 10, color: colors.muted, marginLeft: 6, alignSelf: 'center' }}>
+                {Updates.updateId ? Updates.updateId.slice(0, 8) : 'dev'}
+              </Text>
             </View>
             <Text style={styles.title}>{greeting}</Text>
             <Text style={styles.tagline}>
