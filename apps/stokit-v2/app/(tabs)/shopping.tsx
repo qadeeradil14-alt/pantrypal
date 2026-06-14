@@ -657,7 +657,7 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={{ flex: 1 }}
+      style={{ flex: 1, backgroundColor: colors.background }}
     >
       {/* scroll={false} so the store name is pinned and never scrolls off screen */}
       <Screen scroll={false}>
@@ -676,6 +676,7 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
         <ScrollView
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          style={{ backgroundColor: colors.background }}
           contentContainerStyle={{ paddingBottom: spacing.huge }}
         >
           <View style={rStyles.amountRow}>
@@ -686,6 +687,7 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
               placeholder="0.00"
               placeholderTextColor={colors.muted}
               keyboardType="decimal-pad"
+              keyboardAppearance="dark"
               returnKeyType="done"
               onSubmitEditing={save}
               style={rStyles.amountInput}
