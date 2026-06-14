@@ -32,6 +32,7 @@ import { Screen } from '../../components/shared/Screen';
 import { Button, Card, PageTitle, Pill, SectionHeader, StoreChip } from '../../components/shared/ui';
 import { EmptyState } from '../../components/shared/EmptyState';
 import { StorePickerSheet } from '../../components/pantry/StorePickerSheet';
+import { MoveItemsSheet } from '../../components/pantry/MoveItemsSheet';
 import { AddItemSheet } from '../../components/pantry/AddItemSheet';
 import { Sheet } from '../../components/shared/Sheet';
 import { ItemAvatar } from '../../components/shared/ItemAvatar';
@@ -70,9 +71,10 @@ export default function ShoppingScreen() {
   const updateItem = useDurableStore((s) => s.updateItem);
   const session    = useSessionStore((s) => s.session);
   const dispatch   = useSessionStore((s) => s.dispatch);
-  const [showAssignAllPicker, setShowAssignAllPicker] = useState(false);
+  const [showMoveItems, setShowMoveItems] = useState(false);
   const [showFirstStorePicker, setShowFirstStorePicker] = useState(false);
-  const [showIndividualAssign, setShowIndividualAssign] = useState(false);
+  // Tap any plan item to move it to a different store.
+  const [reassignItem, setReassignItem] = useState<PantryItem | null>(null);
 
   const { action } = useLocalSearchParams<{ action?: string }>();
   const [quickScanStorePicker, setQuickScanStorePicker] = useState(false);
@@ -130,6 +132,10 @@ export default function ShoppingScreen() {
     [items],
   );
   const unassignedCount = unassigned.length;
+  const planItemsFull = useMemo(
+    () => items.filter((i) => (i.status === 'low' || i.status === 'expiring') && !!i.storeId),
+    [items],
+  );
 
   const openDirections = (store: Store) => {
     const url = (() => {
@@ -152,12 +158,23 @@ export default function ShoppingScreen() {
 
   const startTripAt = (firstStoreId: string) => {
     setShowFirstStorePicker(false);
-    const entries: ShoppingEntry[] = [];
-    // Chosen store's entries go first so its items appear at stop 1
-    const firstList = plan.get(firstStoreId) ?? [];
-    entries.push(...firstList);
-    plan.forEach((list, storeId) => {
-      if (storeId !== firstStoreId) entries.push(...list);
+    // Build entries in memory — never rely on post-updateItem Zustand timing.
+    const shoppable = items.filter((i) => i.status === 'low' || i.status === 'expiring');
+    // Persist store assignment for previously unassigned items.
+    shoppable
+      .filter((i) => !i.storeId)
+      .forEach((i) => updateItem(i.id, { storeId: firstStoreId }));
+    // Build a normalized list immediately (storeId ?? firstStoreId), don't wait for Zustand.
+    const byStore = new Map<string, ShoppingEntry[]>();
+    for (const item of shoppable) {
+      const sid = item.storeId ?? firstStoreId;
+      const list = byStore.get(sid) ?? [];
+      list.push({ itemId: item.id, name: item.name, quantity: item.quantity, unit: item.unit, storeId: sid, picked: false });
+      byStore.set(sid, list);
+    }
+    const entries: ShoppingEntry[] = [...(byStore.get(firstStoreId) ?? [])];
+    byStore.forEach((list, sid) => {
+      if (sid !== firstStoreId) entries.push(...list);
     });
     dispatch({ type: 'START_TRIP', entries, now: Date.now() });
   };
@@ -179,41 +196,16 @@ export default function ShoppingScreen() {
   };
 
   const handleStartShopping = () => {
-    if (unassignedCount > 0) {
-      Alert.alert(
-        `${unassignedCount} Any store item${unassignedCount === 1 ? '' : 's'}`,
-        'Shop them anywhere, or assign the whole group to one store.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Assign all to a store', onPress: () => setShowAssignAllPicker(true) },
-          {
-            text: 'Shop anywhere',
-            onPress: () => {
-              const entries: ShoppingEntry[] = [];
-              plan.forEach((list) => entries.push(...list));
-              unassigned.forEach((item) => entries.push({
-                itemId: item.id,
-                name: item.name,
-                quantity: item.quantity,
-                unit: item.unit,
-                storeId: UNASSIGNED_STORE_ID,
-                picked: false,
-              }));
-              dispatch({ type: 'START_TRIP', entries, now: Date.now() });
-            },
-          },
-        ],
-      );
-      return;
-    }
-    if (planEntries.length <= 1) {
-      // Single store — no need to ask
+    const total = (planItemsFull.length) + unassignedCount;
+    if (total === 0) return;
+    if (plan.size === 1 && unassignedCount === 0) {
+      // Single store, all assigned — fast start, no picker needed.
       const entries: ShoppingEntry[] = [];
       plan.forEach((list) => entries.push(...list));
       dispatch({ type: 'START_TRIP', entries, now: Date.now() });
-    } else {
-      setShowFirstStorePicker(true);
+      return;
     }
+    setShowFirstStorePicker(true);
   };
 
   // ── Active states ──────────────────────────────────────────────────────────
@@ -226,40 +218,32 @@ export default function ShoppingScreen() {
   // ── Idle ───────────────────────────────────────────────────────────────────
   const planEntries = Array.from(plan.entries());
   const totalItems  = planEntries.reduce((n, [, list]) => n + list.length, 0);
+  const shoppableCount = totalItems + unassignedCount;
+  // When there are unassigned items the user can send them to ANY store, so show all stores.
+  // When everything is already assigned, only show stores that actually have items (planEntries).
+  const firstStoreOptions: Array<[string, ShoppingEntry[]]> =
+    unassignedCount > 0 || planEntries.length === 0
+      ? stores.map((s) => [s.id, plan.get(s.id) ?? []] as [string, ShoppingEntry[]])
+      : planEntries;
 
   return (
     <Screen>
       <PageTitle eyebrow="Plan your trip" title="Shopping" />
-      {totalItems === 0 ? (
-        unassignedCount > 0 ? (
-          <>
-            <Card style={styles.routeNotReady}>
-              <View style={styles.routeNotReadyHead}>
-                <Ionicons name="basket-outline" size={18} color={colors.primary} />
-                <Text style={styles.routeNotReadyTitle}>Any store</Text>
-              </View>
-              <Text style={styles.warnText}>
-                Buy these wherever it is most convenient.
-              </Text>
-            </Card>
-            <Button label="Start shopping" onPress={handleStartShopping} style={{ marginBottom: spacing.lg }} />
-            <UnassignedList items={unassigned} onAssignAll={() => setShowAssignAllPicker(true)} styles={styles} />
-          </>
-        ) : (
-          <EmptyState
-            icon="cart-outline"
-            title="No trip planned"
-            body="Add something to buy and it will be ready for your next trip."
-            steps={['Add items from Pantry', 'Assign a store only when useful', 'Start shopping anywhere']}
-          />
-        )
+      {shoppableCount === 0 ? (
+        <EmptyState
+          icon="cart-outline"
+          title="No trip planned"
+          body="Add something to buy and it will be ready for your next trip."
+          steps={['Add items from Pantry', 'Assign a store only when useful', 'Start shopping anywhere']}
+        />
       ) : (
         <>
           <Card style={styles.summaryCard}>
-            <Text style={styles.summaryBig}>{totalItems + unassignedCount}</Text>
+            <Text style={styles.summaryBig}>{shoppableCount}</Text>
             <Text style={styles.summarySub}>
-              {planEntries.length} store{planEntries.length === 1 ? '' : 's'}
-              {unassignedCount ? ` + ${unassignedCount} Any store` : ''}
+              {planEntries.length > 0
+                ? `${planEntries.length} store${planEntries.length === 1 ? '' : 's'}${unassignedCount > 0 ? ` · ${unassignedCount} unassigned` : ''}`
+                : `${unassignedCount} item${unassignedCount !== 1 ? 's' : ''} · pick a store to start`}
             </Text>
             <Button label="Start shopping" onPress={handleStartShopping} style={{ marginTop: spacing.lg }} />
           </Card>
@@ -273,13 +257,23 @@ export default function ShoppingScreen() {
                   {list.map((e, idx) => (
                     <View key={e.itemId}>
                       {idx > 0 && <View style={styles.rowDivider} />}
-                      <View style={styles.planRow}>
+                      <Pressable
+                        onPress={() => {
+                          const full = items.find((i) => i.id === e.itemId);
+                          if (full) setReassignItem(full);
+                        }}
+                        style={({ pressed }) => [styles.planRow, pressed && { opacity: 0.6 }]}
+                      >
                         <ItemAvatar name={e.name} size={32} />
                         <View style={{ flex: 1 }}>
                           <Text style={styles.planName}>{e.name}</Text>
                           <Text style={styles.planMeta}>×{e.quantity}</Text>
                         </View>
-                      </View>
+                        <View style={styles.moveHint}>
+                          <Text style={styles.moveHintText}>Move</Text>
+                          <Ionicons name="swap-horizontal" size={15} color={colors.muted} />
+                        </View>
+                      </Pressable>
                     </View>
                   ))}
                 </Card>
@@ -288,128 +282,114 @@ export default function ShoppingScreen() {
           })}
 
           {unassignedCount > 0 && (
-            <>
-              <SectionHeader title="Any store" action={`${unassignedCount}`} />
-              <UnassignedList items={unassigned} onAssignAll={() => setShowAssignAllPicker(true)} styles={styles} />
-            </>
+            <View style={styles.unassignedNote}>
+              <Ionicons name="information-circle-outline" size={15} color={colors.muted} />
+              <Text style={styles.unassignedNoteText}>
+                {unassignedCount} item{unassignedCount !== 1 ? 's' : ''} will be assigned to your first chosen store
+              </Text>
+            </View>
+          )}
+
+          {planEntries.length > 0 && (
+            <Pressable
+              onPress={() => setShowMoveItems(true)}
+              style={({ pressed }) => [styles.moveItemsBtn, pressed && { opacity: 0.7 }]}
+            >
+              <Ionicons name="swap-horizontal" size={18} color={colors.primary} />
+              <Text style={styles.moveItemsBtnText}>Move some items to another store</Text>
+            </Pressable>
           )}
         </>
       )}
 
-      {(totalItems > 0 || unassignedCount > 0) && (
+      {shoppableCount > 0 && (
         <Pressable onPress={handleResetShopping} style={{ alignItems: 'center', paddingVertical: spacing.lg }}>
           <Text style={{ fontFamily: fonts.sans, fontSize: 13, color: colors.muted }}>Reset shopping list</Text>
         </Pressable>
       )}
 
       <StorePickerSheet
-        visible={showAssignAllPicker}
-        onClose={() => setShowAssignAllPicker(false)}
-        title="Assign all to one store"
-        subtitle={`Move all ${unassignedCount} Any store item${unassignedCount === 1 ? '' : 's'} together.`}
-        onSelect={(storeId) => {
-          unassigned.forEach((item) => updateItem(item.id, { storeId }));
-          setShowAssignAllPicker(false);
-        }}
-        secondaryActionLabel="Assign to individual stores"
-        onSecondaryAction={() => {
-          setShowAssignAllPicker(false);
-          setShowIndividualAssign(true);
-        }}
-      />
-      <StorePickerSheet
         visible={quickScanStorePicker}
         onClose={() => setQuickScanStorePicker(false)}
         onSelect={(storeId) => handleQuickScanStoreSelect(storeId)}
       />
 
-      <IndividualAssignSheet
-        visible={showIndividualAssign}
-        onClose={() => setShowIndividualAssign(false)}
-        items={unassigned}
+      {/* Tap any plan item to move it to a different store (or remove it). */}
+      <StorePickerSheet
+        item={reassignItem}
+        title="Move to store"
+        onClose={() => setReassignItem(null)}
       />
 
-      {/* First-store picker — only shown when starting a multi-store trip */}
+      <MoveItemsSheet
+        visible={showMoveItems}
+        onClose={() => setShowMoveItems(false)}
+        items={planItemsFull}
+        stores={stores}
+      />
+
+      {/* First-store picker — always ask "Where are you shopping first?" */}
       <Sheet visible={showFirstStorePicker} title="Where are you shopping first?" onClose={() => setShowFirstStorePicker(false)}>
-        {/* Route strip */}
-        <View style={styles.routeStrip}>
-          {planEntries.map(([, ], idx) => (
-            <React.Fragment key={idx}>
-              <View style={[styles.routeDot, idx === 0 && styles.routeDotActive]}>
-                <Text style={[styles.routeDotText, idx === 0 && styles.routeDotTextActive]}>{idx + 1}</Text>
-              </View>
-              {idx < planEntries.length - 1 && <View style={styles.routeLine} />}
-            </React.Fragment>
-          ))}
-        </View>
+        {planEntries.length > 1 && unassignedCount === 0 && (
+          <View style={styles.routeStrip}>
+            {planEntries.map(([, ], idx) => (
+              <React.Fragment key={idx}>
+                <View style={[styles.routeDot, idx === 0 && styles.routeDotActive]}>
+                  <Text style={[styles.routeDotText, idx === 0 && styles.routeDotTextActive]}>{idx + 1}</Text>
+                </View>
+                {idx < planEntries.length - 1 && <View style={styles.routeLine} />}
+              </React.Fragment>
+            ))}
+          </View>
+        )}
         <Text style={{ fontFamily: fonts.sans, fontSize: 13, color: colors.muted, marginBottom: spacing.lg }}>
-          Pick your first stop — we'll line up the rest.
+          {planEntries.length === 0
+            ? `All ${unassignedCount} item${unassignedCount !== 1 ? 's' : ''} will go to your first store. You can split them after.`
+            : unassignedCount > 0
+            ? `Pick your first stop. ${unassignedCount} unassigned item${unassignedCount !== 1 ? 's' : ''} will join it.`
+            : "Pick your first stop — we'll line up the rest."}
         </Text>
-        {planEntries.map(([storeId, list], idx) => {
-          const store = storeById(storeId);
-          const barColor = ROUTE_COLORS[idx % ROUTE_COLORS.length];
-          const hasLocation = !!(store?.lat ?? store?.address);
-          return (
-            <Pressable
-              key={storeId}
-              onPress={() => startTripAt(storeId)}
-              style={({ pressed }) => [styles.firstStoreRow, pressed && { opacity: 0.7 }]}
-            >
-              <StoreChip name={store?.name ?? 'Unknown Store'} emoji={store?.logoEmoji} color={store?.logoColor} size={44} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.firstStoreName}>{store?.name ?? 'Unknown Store'}</Text>
-                <Text style={styles.firstStoreMeta}>{list.length} item{list.length !== 1 ? 's' : ''}</Text>
-              </View>
-              {hasLocation && (
-                <Pressable
-                  onPress={(e) => { e.stopPropagation(); openDirections(store!); }}
-                  hitSlop={8}
-                  style={styles.directionsBtn}
-                >
-                  <Ionicons name="navigate-outline" size={18} color={colors.muted} />
-                </Pressable>
-              )}
-              <View style={[styles.firstStoreGoBtn, { borderColor: barColor }]}>
-                <Text style={[styles.firstStoreGoBtnText, { color: barColor }]}>Go here first</Text>
-              </View>
-            </Pressable>
-          );
-        })}
+        {firstStoreOptions.length === 0 ? (
+          <Text style={{ fontFamily: fonts.sans, fontSize: 14, color: colors.muted, textAlign: 'center', paddingVertical: spacing.xl }}>
+            Add a store first to begin shopping.
+          </Text>
+        ) : (
+          firstStoreOptions.map(([storeId, list], idx) => {
+            const store = storeById(storeId);
+            const barColor = ROUTE_COLORS[idx % ROUTE_COLORS.length];
+            const hasLocation = !!(store?.lat ?? store?.address);
+            const displayCount = planEntries.length === 0 ? unassignedCount : list.length;
+            return (
+              <Pressable
+                key={storeId}
+                onPress={() => startTripAt(storeId)}
+                style={({ pressed }) => [styles.firstStoreRow, pressed && { opacity: 0.7 }]}
+              >
+                <StoreChip name={store?.name ?? 'Unknown Store'} emoji={store?.logoEmoji} color={store?.logoColor} size={44} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.firstStoreName}>{store?.name ?? 'Unknown Store'}</Text>
+                  <Text style={styles.firstStoreMeta}>
+                    {displayCount} item{displayCount !== 1 ? 's' : ''}
+                  </Text>
+                </View>
+                {hasLocation && (
+                  <Pressable
+                    onPress={(e) => { e.stopPropagation(); openDirections(store!); }}
+                    hitSlop={8}
+                    style={styles.directionsBtn}
+                  >
+                    <Ionicons name="navigate-outline" size={18} color={colors.muted} />
+                  </Pressable>
+                )}
+                <View style={[styles.firstStoreGoBtn, { borderColor: barColor }]}>
+                  <Text style={[styles.firstStoreGoBtnText, { color: barColor }]}>Go here first</Text>
+                </View>
+              </Pressable>
+            );
+          })
+        )}
       </Sheet>
     </Screen>
-  );
-}
-
-// ── Unassigned low items → tap to assign a store ───────────────────────────────
-
-function UnassignedList({
-  items,
-  onAssignAll,
-  styles,
-}: {
-  items: PantryItem[];
-  onAssignAll: () => void;
-  styles: any;
-}) {
-  return (
-    <Card style={{ paddingVertical: spacing.xs }}>
-      <View style={styles.unassignedActions}>
-        <Text style={styles.unassignedHelp}>Buy anywhere or organize the whole group.</Text>
-        <Button label="Assign all" small onPress={onAssignAll} />
-      </View>
-      {items.map((it, idx) => (
-        <View key={it.id}>
-          {idx > 0 && <View style={styles.rowDivider} />}
-          <View style={styles.unassignedRow}>
-            <ItemAvatar name={it.name} size={32} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.planName}>{it.name}</Text>
-              <Text style={styles.unassignedMeta}>Any store</Text>
-            </View>
-          </View>
-        </View>
-      ))}
-    </Card>
   );
 }
 
@@ -1197,132 +1177,6 @@ function CancelTripLink({ dispatch, colors }: { dispatch: SubProps['dispatch']; 
   );
 }
 
-// ── Individual item-by-item store assignment ──────────────────────────────────
-
-function IndividualAssignSheet({
-  visible,
-  onClose,
-  items,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  items: PantryItem[];
-}) {
-  const stores = useDurableStore((s) => s.stores);
-  const updateItem = useDurableStore((s) => s.updateItem);
-  const { colors } = useTheme();
-  const [picks, setPicks] = useState<Record<string, string>>({});
-  const [pickingItem, setPickingItem] = useState<PantryItem | null>(null);
-
-  useEffect(() => {
-    if (!visible) {
-      setPicks({});
-      setPickingItem(null);
-    }
-  }, [visible]);
-
-  const save = () => {
-    Object.entries(picks).forEach(([itemId, storeId]) => {
-      updateItem(itemId, { storeId });
-    });
-    onClose();
-  };
-
-  const assignedCount = Object.keys(picks).length;
-  const sheetTitle = pickingItem ? `Store for ${pickingItem.name}` : 'Assign to individual stores';
-  const handleClose = pickingItem ? () => setPickingItem(null) : onClose;
-
-  return (
-    <Sheet visible={visible} title={sheetTitle} onClose={handleClose}>
-      {pickingItem ? (
-        <>
-          {stores.length === 0 ? (
-            <Text style={{ fontFamily: fonts.sans, fontSize: 14, color: colors.muted, textAlign: 'center', paddingVertical: spacing.xl }}>
-              No saved stores. Add a store from the Stores tab first.
-            </Text>
-          ) : (
-            stores.map((store) => {
-              const selected = picks[pickingItem.id] === store.id;
-              return (
-                <Pressable
-                  key={store.id}
-                  onPress={() => {
-                    setPicks((p) => ({ ...p, [pickingItem.id]: store.id }));
-                    setPickingItem(null);
-                  }}
-                  style={({ pressed }) => [
-                    {
-                      flexDirection: 'row' as const,
-                      alignItems: 'center' as const,
-                      gap: spacing.md,
-                      paddingVertical: spacing.md,
-                      paddingHorizontal: spacing.sm,
-                      borderRadius: radii.md,
-                    },
-                    selected && { backgroundColor: colors.primarySoft },
-                    pressed && { opacity: 0.7 },
-                  ]}
-                >
-                  <StoreChip name={store.name} emoji={store.logoEmoji} color={store.logoColor} size={44} />
-                  <Text style={{ flex: 1, fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink }}>
-                    {store.name}
-                  </Text>
-                  {selected && <Ionicons name="checkmark-circle" size={22} color={colors.primary} />}
-                </Pressable>
-              );
-            })
-          )}
-        </>
-      ) : (
-        <>
-          <Text style={{ fontFamily: fonts.sans, fontSize: 14, color: colors.muted, marginBottom: spacing.lg }}>
-            Tap each item to pick its store.
-          </Text>
-          {items.map((item) => {
-            const storeId = picks[item.id];
-            const store = storeId ? stores.find((s) => s.id === storeId) : undefined;
-            return (
-              <Pressable
-                key={item.id}
-                onPress={() => setPickingItem(item)}
-                style={({ pressed }) => [
-                  {
-                    flexDirection: 'row' as const,
-                    alignItems: 'center' as const,
-                    gap: spacing.md,
-                    paddingVertical: spacing.md,
-                    borderBottomWidth: 1,
-                    borderBottomColor: colors.borderSoft,
-                  },
-                  pressed && { opacity: 0.7 },
-                ]}
-              >
-                <ItemAvatar name={item.name} size={36} />
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink }}>
-                    {item.name}
-                  </Text>
-                  <Text style={{ fontFamily: fonts.sans, fontSize: 13, color: store ? colors.primary : colors.muted, marginTop: 2 }}>
-                    {store ? store.name : 'Tap to choose store'}
-                  </Text>
-                </View>
-                {store && (
-                  <StoreChip name={store.name} emoji={store.logoEmoji} color={store.logoColor} size={32} />
-                )}
-                <Ionicons name="chevron-forward" size={18} color={colors.muted} />
-              </Pressable>
-            );
-          })}
-          <Button
-            label={assignedCount > 0 ? `Save (${assignedCount} of ${items.length} assigned)` : 'Save'}
-            onPress={save}
-            style={{ marginTop: spacing.lg }}
-          />
-        </>
-      )}
-    </Sheet>
-  );
-}
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -1520,6 +1374,8 @@ function makeStyles(colors: AppColors) {
     planRow:      { flexDirection: 'row', alignItems: 'center', gap: spacing.md, justifyContent: 'space-between', paddingVertical: spacing.md },
     planName:     { fontFamily: fonts.sansMedium, fontSize: 16, color: colors.ink },
     planMeta:     { fontFamily: fonts.mono, fontSize: 12, color: colors.muted },
+    moveHint:     { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: spacing.sm, paddingVertical: 5, borderRadius: radii.sm, backgroundColor: colors.surfaceRaised },
+    moveHintText: { fontFamily: fonts.sansMedium, fontSize: 12, color: colors.muted },
     warnText:     { fontFamily: fonts.sans, fontSize: 13, color: colors.muted, lineHeight: 19 },
     routeNotReady:{ borderColor: colors.primary, borderWidth: 1, gap: spacing.sm },
     routeNotReadyHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
@@ -1558,6 +1414,10 @@ function makeStyles(colors: AppColors) {
     routeDotTextActive: { color: colors.surface },
     routeLine:      { flex: 1, height: 1, borderStyle: 'dashed', borderWidth: 1, borderColor: colors.borderSoft },
     directionsBtn:  { padding: 4 },
+    unassignedNote:     { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.md, paddingHorizontal: spacing.xs, paddingVertical: spacing.sm },
+    unassignedNoteText: { flex: 1, fontFamily: fonts.sans, fontSize: 13, color: colors.muted, lineHeight: 18 },
+    moveItemsBtn:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, marginTop: spacing.lg, paddingVertical: spacing.lg, borderWidth: 1.5, borderColor: colors.primary, borderStyle: 'dashed', borderRadius: radii.lg },
+    moveItemsBtnText:   { fontFamily: fonts.sansMedium, fontSize: 15, color: colors.primary },
   });
 
   const rStyles = StyleSheet.create({
