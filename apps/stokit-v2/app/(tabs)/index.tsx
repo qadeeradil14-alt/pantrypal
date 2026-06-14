@@ -124,7 +124,7 @@ export default function PantryScreen() {
               <Logo size={22} color={colors.ink} accent={colors.primary} />
               <Text style={styles.wordmarkText}>Stokit</Text>
               <Text style={{ fontFamily: fonts.mono, fontSize: 10, color: colors.muted, marginLeft: 6, alignSelf: 'center' }}>
-                {Updates.updateId ? Updates.updateId.slice(0, 8) : 'dev'}
+                {Updates.updateId ? '88' : 'dev'}
               </Text>
             </View>
             <Text style={styles.title}>{greeting}</Text>
