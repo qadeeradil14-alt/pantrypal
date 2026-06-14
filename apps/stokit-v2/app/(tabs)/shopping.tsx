@@ -679,98 +679,110 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={{ flex: 1 }}
     >
-    <Screen>
-      <View style={rStyles.header}>
-        <View>
-          <Text style={rStyles.storeName} numberOfLines={1}>{store?.name ?? 'Store'}</Text>
-          <Text style={rStyles.stopLabel}>Stop complete</Text>
-        </View>
-        <Pressable onPress={skip} style={rStyles.checkBadge}>
-          <Ionicons name="checkmark" size={20} color={colors.primary} />
-        </Pressable>
-      </View>
-
-      <View style={rStyles.amountRow}>
-        <Text style={rStyles.currency}>$</Text>
-        <TextInput
-          value={amount}
-          onChangeText={(t) => setAmount(t.replace(/[^0-9.]/g, ''))}
-          placeholder="0.00"
-          placeholderTextColor={colors.muted}
-          keyboardType="decimal-pad"
-          returnKeyType="done"
-          onSubmitEditing={save}
-          style={rStyles.amountInput}
-          autoFocus
-        />
-      </View>
-      <Text style={rStyles.hint}>How much did you spend here? Save to continue — receipt photo is optional.</Text>
-
-      <Animated.View
-        style={[
-          rStyles.budgetWarning,
-          {
-            opacity: slideAnim,
-            transform: [
-              {
-                translateY: slideAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [-10, 0],
-                }),
-              },
-            ],
-          },
-        ]}
-      >
-        <Ionicons name="warning" size={20} color="#fff" />
-        <Text style={rStyles.budgetWarningText}>
-          This pushes you ${((totalPriorSpend + parsed) - weeklyBudget).toFixed(2)} over your ${weeklyBudget} weekly budget!
-        </Text>
-        <Pressable 
-          onPress={() => updatePrefs({ dismissedBudgetWarningWeekOf: weekStart })}
-          style={{ padding: spacing.xs, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 12 }}
-        >
-          <Ionicons name="close" size={18} color="#fff" />
-        </Pressable>
-      </Animated.View>
-
-      {imageUri && (
-        <View style={rStyles.previewContainer}>
-          <Image source={{ uri: imageUri }} style={rStyles.previewImage} />
-          <View style={rStyles.previewInfo}>
-            <Text style={rStyles.previewTitle}>Receipt Photo</Text>
-            <Text style={rStyles.previewMeta}>Ready to save with receipt</Text>
+      {/* scroll={false} so the store name is pinned and never scrolls off screen */}
+      <Screen scroll={false}>
+        {/* Always-visible store header */}
+        <View style={rStyles.header}>
+          <View>
+            <Text style={rStyles.storeName} numberOfLines={1}>{store?.name ?? 'Store'}</Text>
+            <Text style={rStyles.stopLabel}>Stop complete</Text>
           </View>
-          <Pressable onPress={() => setImageUri(null)} style={rStyles.removeBtn}>
-            <Ionicons name="close-circle" size={24} color={colors.primary} />
+          <Pressable onPress={skip} style={rStyles.checkBadge}>
+            <Ionicons name="checkmark" size={20} color={colors.primary} />
           </Pressable>
         </View>
-      )}
 
-      <Pressable
-        onPress={save}
-        disabled={parsed <= 0 || saving}
-        style={({ pressed }) => [rStyles.saveBtn, (parsed <= 0 || saving) && { opacity: 0.45 }, pressed && { opacity: 0.85 }]}
-      >
-        <Text style={rStyles.saveBtnText}>
-          {saving ? (imageUri && parsed === 0 ? 'Reading receipt…' : 'Saving…') : parsed > 0 ? `Save  ·  $${parsed.toFixed(2)}` : 'Save amount'}
-        </Text>
-      </Pressable>
+        {/* Scrollable body — amount input + buttons stay reachable when keyboard is up */}
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: spacing.huge }}
+        >
+          <View style={rStyles.amountRow}>
+            <Text style={rStyles.currency}>$</Text>
+            <TextInput
+              value={amount}
+              onChangeText={(t) => setAmount(t.replace(/[^0-9.]/g, ''))}
+              placeholder="0.00"
+              placeholderTextColor={colors.muted}
+              keyboardType="decimal-pad"
+              returnKeyType="done"
+              onSubmitEditing={save}
+              style={rStyles.amountInput}
+              autoFocus
+            />
+          </View>
+          <Text style={rStyles.hint}>How much did you spend here? Save to continue — receipt photo is optional.</Text>
 
-      <View style={rStyles.chipRow}>
-        <Pressable style={({ pressed }) => [rStyles.chip, pressed && { opacity: 0.7 }]} onPress={() => void pickImage('camera')}>
-          <Ionicons name="camera-outline" size={16} color={colors.ink} />
-          <Text style={rStyles.chipText}>Scan Receipt</Text>
-        </Pressable>
-        <Pressable style={({ pressed }) => [rStyles.chip, pressed && { opacity: 0.7 }]} onPress={() => void pickImage('library')}>
-          <Ionicons name="image-outline" size={16} color={colors.ink} />
-          <Text style={rStyles.chipText}>Upload Photo</Text>
-        </Pressable>
-      </View>
+          <Animated.View
+            style={[
+              rStyles.budgetWarning,
+              {
+                opacity: slideAnim,
+                transform: [
+                  {
+                    translateY: slideAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [-10, 0],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <Ionicons name="warning" size={20} color="#fff" />
+            <Text style={rStyles.budgetWarningText}>
+              This pushes you ${((totalPriorSpend + parsed) - weeklyBudget).toFixed(2)} over your ${weeklyBudget} weekly budget!
+            </Text>
+            <Pressable
+              onPress={() => updatePrefs({ dismissedBudgetWarningWeekOf: weekStart })}
+              style={{ padding: spacing.xs, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 12 }}
+            >
+              <Ionicons name="close" size={18} color="#fff" />
+            </Pressable>
+          </Animated.View>
 
-      <Pressable onPress={skip} style={rStyles.skipBtn}>
-        <Text style={rStyles.skipText}>Skip for now</Text>
-      </Pressable>
+          {imageUri && (
+            <View style={rStyles.previewContainer}>
+              <Image source={{ uri: imageUri }} style={rStyles.previewImage} />
+              <View style={rStyles.previewInfo}>
+                <Text style={rStyles.previewTitle}>Receipt Photo</Text>
+                <Text style={rStyles.previewMeta}>Ready to save with receipt</Text>
+              </View>
+              <Pressable onPress={() => setImageUri(null)} style={rStyles.removeBtn}>
+                <Ionicons name="close-circle" size={24} color={colors.primary} />
+              </Pressable>
+            </View>
+          )}
+
+          <Pressable
+            onPress={save}
+            disabled={parsed <= 0 || saving}
+            style={({ pressed }) => [rStyles.saveBtn, (parsed <= 0 || saving) && { opacity: 0.45 }, pressed && { opacity: 0.85 }]}
+          >
+            <Text style={rStyles.saveBtnText}>
+              {saving ? (imageUri && parsed === 0 ? 'Reading receipt…' : 'Saving…') : parsed > 0 ? `Save  ·  $${parsed.toFixed(2)}` : 'Save amount'}
+            </Text>
+          </Pressable>
+
+          <View style={rStyles.chipRow}>
+            <Pressable style={({ pressed }) => [rStyles.chip, pressed && { opacity: 0.7 }]} onPress={() => void pickImage('camera')}>
+              <Ionicons name="camera-outline" size={16} color={colors.ink} />
+              <Text style={rStyles.chipText}>Scan Receipt</Text>
+            </Pressable>
+            <Pressable style={({ pressed }) => [rStyles.chip, pressed && { opacity: 0.7 }]} onPress={() => void pickImage('library')}>
+              <Ionicons name="image-outline" size={16} color={colors.ink} />
+              <Text style={rStyles.chipText}>Upload Photo</Text>
+            </Pressable>
+          </View>
+
+          <Pressable onPress={skip} style={rStyles.skipBtn}>
+            <Text style={rStyles.skipText}>Skip for now</Text>
+          </Pressable>
+
+          <CancelTripLink dispatch={dispatch} colors={colors} />
+        </ScrollView>
+      </Screen>
 
       <Sheet visible={!!scanResult} title="Receipt Scanned!" onClose={() => setScanResult(null)}>
         <Text style={{ fontFamily: fonts.sans, fontSize: 15, color: colors.ink, marginBottom: spacing.md }}>
@@ -819,8 +831,6 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
           </View>
         </View>
       </Sheet>
-      <CancelTripLink dispatch={dispatch} colors={colors} />
-    </Screen>
     </KeyboardAvoidingView>
   );
 }
