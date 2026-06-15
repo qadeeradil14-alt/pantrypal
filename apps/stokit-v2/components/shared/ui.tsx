@@ -210,7 +210,7 @@ export function StatTile({
  *  4. First-letter chip on a neutral background (unknown/local stores).
  *
  * Image errors fall back silently to the letter chip — no broken image icons.
- * Unknown/local stores never guess a domain or make a logo network request.
+ * Unknown/local stores get a Google Favicon domain-guess attempt; 404s are silent.
  */
 export function StoreChip({
   store,

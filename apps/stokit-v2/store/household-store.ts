@@ -25,6 +25,7 @@ interface HouseholdState {
   createHousehold: (name: string, myName: string) => Promise<Result>;
   joinHousehold: (rawCode: string, myName: string) => Promise<Result>;
   leaveHousehold: () => Promise<Result>;
+  renameMe: (name: string) => Promise<Result>;
 }
 
 type PersistedShape = Pick<HouseholdState, 'household' | 'members'>;
@@ -174,5 +175,12 @@ export const useHouseholdStore = create<HouseholdState>((set, get) => ({
       set({ syncStatus: 'error' });
       return { ok: false, message: message(error) };
     }
+  },
+
+  renameMe: async (name) => {
+    const trimmed = name.trim() || 'Me';
+    const { error } = await supabase.rpc('rename_me', { p_display_name: trimmed });
+    if (error) return { ok: false, message: error.message };
+    return get().refresh();
   },
 }));

@@ -6,7 +6,7 @@
  * assign / change store, or delete. Store assignment is delegated upward so
  * the caller can chain into StorePickerSheet.
  */
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Sheet } from '../shared/Sheet';
@@ -31,13 +31,24 @@ export function ItemActionSheet({
   const { colors } = useTheme();
   const setItemStatus = useDurableStore((s) => s.setItemStatus);
   const deleteItem = useDurableStore((s) => s.deleteItem);
+  const updateItem = useDurableStore((s) => s.updateItem);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const [qty, setQty] = useState(item?.quantity ?? 1);
+
+  // Sync qty when a different item is opened
+  React.useEffect(() => { if (item) setQty(item.quantity); }, [item?.id]);
 
   if (!item) return <Sheet visible={false} title="" onClose={onClose}>{null}</Sheet>;
 
   const { emoji, color } = classifyItem(item.name);
   const isLow = item.status === 'low' || item.status === 'expiring';
+
+  const changeQty = (delta: number) => {
+    const next = Math.max(1, qty + delta);
+    setQty(next);
+    updateItem(item.id, { quantity: next });
+  };
 
   const act = (fn: () => void) => {
     fn();
@@ -54,9 +65,26 @@ export function ItemActionSheet({
         <View style={{ flex: 1 }}>
           <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
           <Text style={styles.meta}>
-            ×{item.quantity}
-            {store ? ` · ${store.name}` : ' · No store'}
+            {store ? store.name : 'No store'}
           </Text>
+        </View>
+        {/* Inline quantity stepper */}
+        <View style={styles.stepper}>
+          <Pressable
+            onPress={() => changeQty(-1)}
+            style={({ pressed }) => [styles.stepBtn, pressed && { opacity: 0.5 }]}
+            hitSlop={8}
+          >
+            <Text style={[styles.stepIcon, { color: qty <= 1 ? colors.muted : colors.ink }]}>−</Text>
+          </Pressable>
+          <Text style={styles.stepQty}>{qty}</Text>
+          <Pressable
+            onPress={() => changeQty(1)}
+            style={({ pressed }) => [styles.stepBtn, pressed && { opacity: 0.5 }]}
+            hitSlop={8}
+          >
+            <Text style={[styles.stepIcon, { color: colors.ink }]}>+</Text>
+          </Pressable>
         </View>
       </View>
 
@@ -185,5 +213,22 @@ function makeStyles(colors: AppColors) {
     },
     actionLabel: { fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink },
     actionSub: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 2 },
+    stepper: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 2,
+      backgroundColor: colors.surfaceRaised,
+      borderRadius: radii.sm,
+      paddingHorizontal: 4,
+      paddingVertical: 4,
+    },
+    stepBtn: {
+      width: 30,
+      height: 30,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    stepIcon: { fontFamily: fonts.sansSemibold, fontSize: 20, lineHeight: 24 },
+    stepQty: { fontFamily: fonts.mono, fontSize: 15, color: colors.ink, minWidth: 24, textAlign: 'center' },
   });
 }

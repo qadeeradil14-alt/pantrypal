@@ -44,6 +44,9 @@ export default function SettingsScreen() {
   const members = useHouseholdStore((s) => s.members);
   const syncStatus = useHouseholdStore((s) => s.syncStatus);
   const leaveHousehold = useHouseholdStore((s) => s.leaveHousehold);
+  const renameMe = useHouseholdStore((s) => s.renameMe);
+
+  const myDisplayName = members.find((m) => m.isMe)?.displayName ?? 'Me';
 
   const [name, setName] = useState(prefs.householdName);
   const [signingOut, setSigningOut] = useState(false);
@@ -147,6 +150,42 @@ export default function SettingsScreen() {
   return (
     <Screen>
       <PageTitle eyebrow="Your account" title="Settings" />
+
+      {/* ── PROFILE ───────────────────────────────────────────────────────── */}
+      <SectionHeader title="Profile" />
+      <Card>
+        <Pressable
+          style={styles.budgetRow}
+          onPress={() => {
+            if (Platform.OS === 'ios') {
+              Alert.prompt(
+                'Your name',
+                'This is how others in your household see you.',
+                (value) => {
+                  const trimmed = (value ?? '').trim();
+                  if (trimmed) void renameMe(trimmed);
+                },
+                'plain-text',
+                myDisplayName,
+              );
+            } else {
+              Alert.alert('Your name', `Current name: ${myDisplayName}\n\nTo change, tap Edit in your profile.`);
+            }
+          }}
+        >
+          <View style={styles.budgetLeft}>
+            <Ionicons name="person-outline" size={18} color={colors.primary} />
+            <View>
+              <Text style={styles.budgetLabel}>Your name</Text>
+              <Text style={styles.budgetSub}>Shown to household members</Text>
+            </View>
+          </View>
+          <View style={styles.budgetRight}>
+            <Text style={styles.budgetAmount}>{myDisplayName}</Text>
+            <Ionicons name="pencil-outline" size={14} color={colors.muted} />
+          </View>
+        </Pressable>
+      </Card>
 
       <SectionHeader title="Account sync" />
       <Card>

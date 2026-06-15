@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -38,7 +37,6 @@ function getGreeting(): string {
   return 'Good evening';
 }
 
-const SHOPPING_BAG = require('../../assets/shopping-mission-bag.png');
 export default function PantryScreen() {
   const router = useRouter();
   const { colors } = useTheme();
@@ -122,26 +120,32 @@ export default function PantryScreen() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <View style={{ flex: 1 }}>
+          {/* Top row: logo + sync pill + settings */}
+          <View style={styles.topRow}>
             <View style={styles.wordmark}>
               <Logo size={22} color={colors.ink} accent={colors.primary} />
               <Text style={styles.wordmarkText}>Stokit</Text>
-              <Text style={{ fontFamily: fonts.mono, fontSize: 10, color: colors.muted, marginLeft: 6, alignSelf: 'center' }}>
-                {Updates.updateId ? String(OTA_SEQ) : 'dev'}
-              </Text>
             </View>
-            <Text style={styles.title}>{greeting}</Text>
-            <Text style={styles.tagline}>
-              {items.length === 0
-                ? 'Add your first item to get started'
-                : listItems.length > 0
-                  ? `${items.length} item${items.length === 1 ? '' : 's'} · ${listItems.length} running low`
-                  : `${items.length} item${items.length === 1 ? '' : 's'} · well stocked`}
-            </Text>
+            <View style={styles.topRowRight}>
+              <View style={styles.syncPill}>
+                <Text style={styles.syncPillText}>
+                  {Updates.updateId ? `v${OTA_SEQ}` : 'dev'}
+                </Text>
+              </View>
+              <Pressable onPress={() => router.push('/settings')} style={styles.settings}>
+                <Ionicons name="settings-outline" size={25} color={colors.primary} />
+              </Pressable>
+            </View>
           </View>
-          <Pressable onPress={() => router.push('/settings')} style={styles.settings}>
-            <Ionicons name="settings-outline" size={25} color={colors.primary} />
-          </Pressable>
+          {/* Greeting — 20px below the logo row */}
+          <Text style={styles.title}>{greeting}</Text>
+          <Text style={styles.tagline}>
+            {items.length === 0
+              ? 'Add your first item to get started'
+              : listItems.length > 0
+                ? `${items.length} item${items.length === 1 ? '' : 's'} · ${listItems.length} running low`
+                : `${items.length} item${items.length === 1 ? '' : 's'} · well stocked`}
+          </Text>
         </View>
 
         <ActionCard
@@ -150,8 +154,6 @@ export default function PantryScreen() {
           icon="cart-outline"
           color={colors.primary}
           background={colors.primarySoft}
-          image={SHOPPING_BAG}
-          showPlus
           onPress={() => setAddVisible(true)}
         />
         {showSearch && (
@@ -393,8 +395,6 @@ function ActionCard({
   icon,
   color,
   background,
-  image,
-  showPlus,
   tint,
   onPress,
 }: {
@@ -403,8 +403,6 @@ function ActionCard({
   icon: keyof typeof Ionicons.glyphMap;
   color: string;
   background: string;
-  image?: number;
-  showPlus?: boolean;
   tint?: string;
   onPress: () => void;
 }) {
@@ -415,26 +413,19 @@ function ActionCard({
       onPress={onPress}
       style={({ pressed }) => [s.actionCard, tint ? { backgroundColor: tint } : null, pressed && s.pressed]}
     >
+      {/* Ghost icon — decorative, fills right side at low opacity */}
+      <View style={s.actionGhost} pointerEvents="none">
+        <Ionicons name="nutrition-outline" size={82} color={color + '14'} />
+      </View>
+      {/* Small branded icon chip */}
       <View style={[s.actionIcon, { backgroundColor: background }]}>
-        <Ionicons name={icon} size={34} color={color} />
-        {showPlus ? (
-          <View style={s.plusBadge}>
-            <Ionicons name="add" size={23} color={colors.primary} />
-          </View>
-        ) : null}
+        <Ionicons name={icon} size={20} color={color} />
       </View>
       <View style={s.actionCopy}>
         <Text style={s.actionTitle}>{title}</Text>
         <Text style={s.actionSubtitle}>{subtitle}</Text>
       </View>
-      <View style={s.actionMedia}>
-        {image ? (
-          <View style={s.actionImageContainer}>
-            <Image source={image} style={s.actionImage} />
-          </View>
-        ) : null}
-        <Ionicons name="chevron-forward" size={22} color={colors.muted} />
-      </View>
+      <Ionicons name="chevron-forward" size={18} color={colors.muted} style={{ marginRight: 2 }} />
     </Pressable>
   );
 }
@@ -526,32 +517,23 @@ function makeStyles(c: AppColors) {
   return StyleSheet.create({
     safe:             { flex: 1, backgroundColor: c.background },
     scroll:           { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
-    header:           { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: spacing.xl },
-    wordmark:         { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 10 },
+    header:           { flexDirection: 'column', paddingBottom: 28 },
+    topRow:           { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
+    topRowRight:      { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    wordmark:         { flexDirection: 'row', alignItems: 'center', gap: 7 },
     wordmarkText:     { fontFamily: fonts.sansSemibold, fontSize: 18, color: c.ink, letterSpacing: -0.3 },
+    syncPill:         { backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
+    syncPillText:     { fontFamily: fonts.mono, fontSize: 10, color: c.muted },
     greeting:         { fontFamily: fonts.sans, fontSize: 14, color: c.muted, marginBottom: 2 },
-    title:            { fontFamily: fonts.serifItalic, fontSize: 30, lineHeight: 36, color: c.ink, marginBottom: 4 },
+    title:            { fontFamily: fonts.serifItalic, fontSize: 25, lineHeight: 30, color: c.ink, marginBottom: 4 },
     tagline:          { fontFamily: fonts.sans, fontSize: 15, color: c.muted },
-    settings:         { width: 48, height: 48, borderRadius: 24, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, alignItems: 'center', justifyContent: 'center', marginTop: 8, ...shadow.card },
-    actionCard:       { minHeight: 128, marginBottom: spacing.md, padding: spacing.md, borderRadius: radii.lg, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, overflow: 'hidden', ...shadow.card },
-    actionIcon:       { width: 70, height: 70, borderRadius: 35, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
-    plusBadge:        { position: 'absolute', right: 5, top: 5, width: 24, height: 24, borderRadius: 12, backgroundColor: c.surface, borderWidth: 1, borderColor: c.borderSoft, alignItems: 'center', justifyContent: 'center' },
-    actionCopy:       { flex: 1, zIndex: 2 },
-    actionTitle:      { fontFamily: fonts.sansSemibold, fontSize: 19, lineHeight: 24, color: c.ink },
-    actionSubtitle:   { fontFamily: fonts.sans, fontSize: 13, lineHeight: 18, color: c.muted, marginTop: spacing.xs },
-    actionMedia:      { width: 100, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8 },
-    actionImageContainer: {
-      width: 72,
-      height: 72,
-      borderRadius: 18,
-      backgroundColor: c.surfaceRaised,
-      borderWidth: 1,
-      borderColor: c.borderSoft,
-      alignItems: 'center',
-      justifyContent: 'center',
-      overflow: 'hidden',
-    },
-    actionImage:      { width: 60, height: 60, resizeMode: 'contain', opacity: 0.95 },
+    settings:         { width: 44, height: 44, borderRadius: 22, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, alignItems: 'center', justifyContent: 'center', ...shadow.card },
+    actionCard:       { marginBottom: spacing.md, paddingVertical: 14, paddingHorizontal: spacing.md, borderRadius: radii.lg, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.md, overflow: 'hidden', minHeight: 72, ...shadow.card },
+    actionGhost:      { position: 'absolute', right: -8, top: 0, bottom: 0, justifyContent: 'center', opacity: 1 },
+    actionIcon:       { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+    actionCopy:       { flex: 1 },
+    actionTitle:      { fontFamily: fonts.sansSemibold, fontSize: 15, color: c.ink },
+    actionSubtitle:   { fontFamily: fonts.sans, fontSize: 11, color: c.muted, marginTop: 2 },
     pressed:          { opacity: 0.76 },
     atHomeHeader:      { marginBottom: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.sm, borderBottomWidth: 1, borderBottomColor: c.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     atHomeTitle:       { fontFamily: fonts.sansSemibold, fontSize: 19, color: c.ink },
