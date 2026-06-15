@@ -85,12 +85,12 @@ export default function ShoppingScreen() {
     }
   }, [action, session.status]);
 
-  // Once the machine enters shopping_store, fire the skip to land on ReceiptPrompt
+  // Once the machine enters shopping_store, finish the store immediately to land on ReceiptPrompt.
+  // SKIP_STORE only works from next_store_ready; FINISH_STORE is the correct event here.
   useEffect(() => {
     if (pendingQuickScanStore && session.status === 'shopping_store') {
-      const storeId = pendingQuickScanStore;
       setPendingQuickScanStore(null);
-      dispatch({ type: 'SKIP_STORE', storeId, now: Date.now() });
+      dispatch({ type: 'FINISH_STORE', now: Date.now() });
     }
   }, [session.status, pendingQuickScanStore]);
 
@@ -239,9 +239,7 @@ export default function ShoppingScreen() {
             {singleStore && (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md }}>
                 <StoreChip
-                  name={singleStore.name}
-                  emoji={singleStore.logoEmoji}
-                  color={singleStore.logoColor}
+                  store={singleStore}
                   size={36}
                 />
                 <Text style={styles.firstDestLabel}>{singleStore.name}</Text>
@@ -401,7 +399,7 @@ export default function ShoppingScreen() {
                 onPress={() => startTripAt(storeId)}
                 style={({ pressed }) => [styles.firstStoreRow, pressed && { opacity: 0.7 }]}
               >
-                <StoreChip name={store?.name ?? 'Unknown Store'} emoji={store?.logoEmoji} color={store?.logoColor} size={44} />
+                <StoreChip store={store} name={store?.name ?? 'Unknown Store'} size={44} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.firstStoreName}>{store?.name ?? 'Unknown Store'}</Text>
                   <Text style={styles.firstStoreMeta}>
@@ -435,7 +433,7 @@ export default function ShoppingScreen() {
 function StoreHeader({ store, eyebrow, styles }: { store?: Store; eyebrow?: string; styles: any }) {
   return (
     <View style={styles.activeHeader}>
-      <StoreChip name={store?.name ?? '?'} emoji={store?.logoEmoji} color={store?.logoColor} size={52} />
+      <StoreChip store={store} name={store?.name ?? '?'} size={52} />
       <View style={{ flex: 1 }}>
         {eyebrow ? <Text style={styles.activeStep}>{eyebrow}</Text> : null}
         <Text style={styles.activeStore}>{store?.name ?? 'Store'}</Text>
@@ -629,7 +627,7 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
     dispatch({
       type: 'SAVE_RECEIPT',
       amount: parsed,
-      status: imageUri ? 'logged' : 'photo_pending',
+      status: 'logged',
       imageUri,
       now: Date.now()
     });
@@ -669,7 +667,9 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
     if (result.canceled || !result.assets[0]) return;
 
     const asset = result.assets[0];
-    setImageUri(asset.uri);
+    const { persistReceiptImage } = await import('../../core/services/receiptImages');
+    const durableImageUri = await persistReceiptImage(asset.uri);
+    setImageUri(durableImageUri);
 
     if (!asset.base64) {
       Alert.alert('Scan failed', 'Could not read image data. Please try again.');
@@ -751,6 +751,7 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
           <Text style={rStyles.hint}>How much did you spend here? Save to continue — receipt photo is optional.</Text>
 
           <Animated.View
+            pointerEvents={isOverBudget ? 'auto' : 'none'}
             style={[
               rStyles.budgetWarning,
               {
@@ -950,7 +951,7 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
               onPress={() => dispatch({ type: 'START_MANUAL_STORE', storeId: candidate.id })}
               style={ssStyles.manualStore}
             >
-              <StoreChip name={candidate.name} emoji={candidate.logoEmoji} color={candidate.logoColor} size={40} />
+              <StoreChip store={candidate} size={40} />
               <Text style={ssStyles.manualStoreName}>{candidate.name}</Text>
               <Ionicons name="chevron-forward" size={18} color={colors.muted} />
             </Pressable>
@@ -1068,9 +1069,7 @@ function ContinuePrompt({ session, dispatch, storeById, styles, colors }: SubPro
               ]}
             >
               <StoreChip
-                name={candidate.name}
-                emoji={candidate.logoEmoji}
-                color={candidate.logoColor}
+                store={candidate}
                 size={40}
               />
               <View style={{ flex: 1 }}>
@@ -1129,7 +1128,7 @@ function NextStoreSelector({ session, dispatch, storeById, styles, nsStyles, col
             return (
               <Card key={storeId} style={nsStyles.storeCard}>
                 <View style={nsStyles.storeRow}>
-                  <StoreChip name={store?.name ?? '?'} emoji={store?.logoEmoji} color={store?.logoColor} size={48} />
+                  <StoreChip store={store} name={store?.name ?? '?'} size={48} />
                   <View style={{ flex: 1 }}>
                     <Text style={nsStyles.storeName}>{store?.name ?? 'Unknown Store'}</Text>
                     <Text style={nsStyles.storeItems}>{itemCount} item{itemCount !== 1 ? 's' : ''} waiting</Text>
@@ -1200,7 +1199,7 @@ function NextStoreSelector({ session, dispatch, storeById, styles, nsStyles, col
                 }}
                 style={({ pressed }) => [nsStyles.addStoreRow, pressed && { opacity: 0.7 }]}
               >
-                <StoreChip name={store.name} emoji={store.logoEmoji} color={store.logoColor} size={44} />
+                <StoreChip store={store} size={44} />
                 <Text style={nsStyles.addStoreRowName}>{store.name}</Text>
                 <Ionicons name="chevron-forward" size={18} color={colors.muted} />
               </Pressable>
@@ -1340,7 +1339,7 @@ function TripSummary({ session, dispatch, storeById, tsStyles, colors }: SubProp
                 return (
                   <Card key={b.storeId} style={tsStyles.storeCard}>
                     <View style={tsStyles.storeRow}>
-                      <StoreChip name={store?.name ?? '?'} emoji={store?.logoEmoji} color={store?.logoColor} size={44} />
+                      <StoreChip store={store} name={store?.name ?? '?'} size={44} />
                       <View style={{ flex: 1 }}>
                         <Text style={tsStyles.storeName}>{store?.name ?? 'Unknown Store'}</Text>
                         <Text style={tsStyles.storeMeta}>
@@ -1374,7 +1373,7 @@ function TripSummary({ session, dispatch, storeById, tsStyles, colors }: SubProp
                 return (
                   <Card key={b.storeId} style={[tsStyles.storeCard, tsStyles.skippedCard]}>
                     <View style={tsStyles.storeRow}>
-                      <StoreChip name={store?.name ?? '?'} emoji={store?.logoEmoji} color={store?.logoColor} size={44} />
+                      <StoreChip store={store} name={store?.name ?? '?'} size={44} />
                       <View style={{ flex: 1 }}>
                         <Text style={[tsStyles.storeName, { color: colors.muted }]}>{store?.name ?? 'Unknown Store'}</Text>
                         <Text style={tsStyles.storeMeta}>{remaining} item{remaining !== 1 ? 's' : ''} not bought</Text>

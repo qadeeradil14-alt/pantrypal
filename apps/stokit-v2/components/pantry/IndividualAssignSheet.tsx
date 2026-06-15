@@ -72,7 +72,7 @@ export function IndividualAssignSheet({
                   </Text>
                 </View>
                 {store
-                  ? <StoreChip name={store.name} emoji={store.logoEmoji} color={store.logoColor} size={28} />
+                  ? <StoreChip store={store} size={28} />
                   : <Ionicons name="chevron-forward" size={16} color={colors.faintText} />
                 }
               </Pressable>

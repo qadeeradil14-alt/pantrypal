@@ -28,7 +28,12 @@ import {
   saveDurable,
   clearDurable,
 } from '../core/repositories/durableRepository';
-import { pushLocalState, startSyncEngine } from '../core/services/syncEngine';
+import {
+  clearCloudState,
+  pushLocalState,
+  refreshGeofencedStoreData,
+  startSyncEngine,
+} from '../core/services/syncEngine';
 import { consolidatePantryItems, normalizeItemName } from '../core/services/pantryItems';
 
 interface DurableStore extends DurableState {
@@ -80,6 +85,7 @@ interface DurableStore extends DurableState {
   ) => void;
 
   resetAll: () => Promise<void>;
+  resetLocalOnly: () => Promise<void>;
   
   // Sync Engine support: updates local state from remote WITHOUT pushing back
   applyRemotePatch: (patch: Partial<DurableState>) => void;
@@ -93,15 +99,27 @@ function snapshot(s: DurableState): DurableState {
     trips: s.trips,
     activity: s.activity,
     prefs: s.prefs,
+    updatedAt: s.updatedAt,
   };
 }
 
 export const useDurableStore = create<DurableStore>((set, get) => {
   // is swallowed by the repository so the in-memory state stays authoritative.
+  let persistQueue = Promise.resolve();
+  let persistEpoch = 0;
   const persist = () => {
+    const updatedAt = now();
+    const epoch = persistEpoch;
+    set({ updatedAt });
     const snap = snapshot(get());
-    void saveDurable(snap);
-    void pushLocalState(snap);
+    persistQueue = persistQueue
+      .then(async () => {
+        if (epoch !== persistEpoch) return;
+        await saveDurable(snap);
+        if (epoch !== persistEpoch) return;
+        await pushLocalState(snap);
+      })
+      .catch((err) => console.warn('[durable-store] persist failed', err));
   };
 
   const pushActivity = (
@@ -230,6 +248,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         storeId: store.id,
       });
       persist();
+      void refreshGeofencedStoreData();
       return store;
     },
 
@@ -240,6 +259,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         ),
       }));
       persist();
+      void refreshGeofencedStoreData();
     },
 
     deleteStore: (id) => {
@@ -251,13 +271,13 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         ),
       }));
       persist();
+      void refreshGeofencedStoreData();
     },
 
     commitTrip: (trip, receipts) => {
       set((s) => ({
         trips: [trip, ...s.trips],
         receipts: [...receipts, ...s.receipts],
-        // Mark purchased items as stocked again and reset expiry.
       }));
       // Log activity for receipts + trip.
       const stores = get().stores;
@@ -291,6 +311,16 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     },
 
     resetAll: async () => {
+      persistEpoch += 1;
+      await persistQueue;
+      await clearCloudState();
+      await clearDurable();
+      set({ ...emptyDurableState, prefs: { ...defaultPrefs }, hydrated: true });
+    },
+
+    resetLocalOnly: async () => {
+      persistEpoch += 1;
+      await persistQueue;
       await clearDurable();
       set({ ...emptyDurableState, prefs: { ...defaultPrefs }, hydrated: true });
     },

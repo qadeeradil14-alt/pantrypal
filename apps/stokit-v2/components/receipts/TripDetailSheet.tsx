@@ -58,7 +58,7 @@ export function TripDetailSheet({
         const store = storeById(b.storeId);
         return (
           <View key={b.storeId} style={[styles.storeRow, b.skipped && { opacity: 0.6 }]}>
-            <StoreChip name={store?.name ?? '?'} emoji={store?.logoEmoji} color={store?.logoColor} size={40} />
+            <StoreChip store={store} name={store?.name ?? '?'} size={40} />
             <View style={{ flex: 1 }}>
               <Text style={styles.storeName}>{store?.name ?? 'Store'}</Text>
               <Text style={styles.storeMeta}>

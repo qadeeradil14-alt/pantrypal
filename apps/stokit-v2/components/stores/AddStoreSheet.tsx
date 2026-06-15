@@ -195,15 +195,10 @@ export function AddStoreContent({
   const submit = () => {
     if (!name.trim()) return;
     
-    // Infer a Google Favicon logo URL
-    const cleanDomain = name.trim().toLowerCase().replace(/[^a-z0-9]/g, '') + '.com';
-    const inferredLogoUrl = `https://s2.googleusercontent.com/s2/favicons?domain=${cleanDomain}&sz=128`;
-
     const store = addStore({ 
       name: name.trim(), 
       logoColor: color, 
       logoEmoji: emoji, 
-      logoUrl: inferredLogoUrl,
       placeId, 
       address, 
       lat, 
@@ -356,4 +351,3 @@ function makeStyles(colors: AppColors) {
     hint: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: spacing.md },
   });
 }
-

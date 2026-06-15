@@ -1,15 +1,10 @@
 -- Create the receipts storage bucket
-insert into storage.buckets (id, name, public) values ('receipts', 'receipts', true);
+insert into storage.buckets (id, name, public) values ('receipts', 'receipts', false);
 
--- Allow public read access
-create policy "Public Access"
-  on storage.objects for select
-  using ( bucket_id = 'receipts' );
-
--- Allow public insert access for the prototype
-create policy "Public Insert"
-  on storage.objects for insert
-  with check ( bucket_id = 'receipts' );
+create policy "receipt image owner access"
+  on storage.objects for all to authenticated
+  using (bucket_id = 'receipts' and (storage.foldername(name))[1] = auth.uid()::text)
+  with check (bucket_id = 'receipts' and (storage.foldername(name))[1] = auth.uid()::text);
 
 -- Create the receipts table
 CREATE TABLE IF NOT EXISTS receipts (
@@ -19,19 +14,19 @@ CREATE TABLE IF NOT EXISTS receipts (
     amount NUMERIC NOT NULL,
     status TEXT NOT NULL,
     image_uri TEXT,
-    household_id TEXT,
+    household_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
     created_at BIGINT NOT NULL
 );
 
 -- Enable Row Level Security (RLS)
 ALTER TABLE receipts ENABLE ROW LEVEL SECURITY;
 
--- Create policy to allow public access for the prototype
-CREATE POLICY "Enable public read/write access for prototype"
+CREATE POLICY "receipt owner access"
 ON receipts
 FOR ALL
-USING (true)
-WITH CHECK (true);
+TO authenticated
+USING (household_id = auth.uid())
+WITH CHECK (household_id = auth.uid());
 
 -- Enable realtime broadcasting
 alter publication supabase_realtime add table receipts;

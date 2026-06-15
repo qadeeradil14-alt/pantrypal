@@ -131,7 +131,7 @@ export default function StoresScreen() {
     items.filter((i) => i.storeId === storeId).length;
 
   const handleDirections = async (store: Store) => {
-    if (!store.lat || !store.lng) {
+    if (store.lat == null || store.lng == null) {
       Alert.alert('Location Missing', 'This store does not have precise GPS coordinates saved.');
       return;
     }
@@ -215,7 +215,7 @@ export default function StoresScreen() {
                   style={({ pressed }) => [{ flex: 1, flexDirection: 'row', gap: spacing.md }, pressed && { opacity: 0.7 }]}
                   onPress={() => handleDirections(store)}
                 >
-                  <StoreChip name={store.name} emoji={store.logoEmoji} color={store.logoColor} size={48} />
+                  <StoreChip store={store} size={48} />
                   <View style={styles.storeHeaderText}>
                     <Text style={styles.name}>{store.name}</Text>
                     {store.address ? (

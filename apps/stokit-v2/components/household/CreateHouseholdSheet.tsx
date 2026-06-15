@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Sheet } from '../shared/Sheet';
 import { TextField } from '../shared/Field';
@@ -20,10 +20,17 @@ export function CreateHouseholdSheet({
   const createHousehold = useHouseholdStore((s) => s.createHousehold);
   const [householdName, setHouseholdName] = useState('');
   const [myName, setMyName] = useState('');
+  const [creating, setCreating] = useState(false);
 
-  const submit = () => {
+  const submit = async () => {
     if (!householdName.trim()) return;
-    createHousehold(householdName, myName);
+    setCreating(true);
+    const result = await createHousehold(householdName, myName);
+    setCreating(false);
+    if (!result.ok) {
+      Alert.alert('Could not create household', result.message);
+      return;
+    }
     setHouseholdName('');
     setMyName('');
     onClose();
@@ -36,7 +43,7 @@ export function CreateHouseholdSheet({
       </View>
       <Text style={styles.body}>
         Create a household so family members can join and share your pantry.
-        You'll get a 6-digit invite code to share with them.
+        You'll get an invite code to share with them.
       </Text>
 
       <TextField
@@ -54,9 +61,9 @@ export function CreateHouseholdSheet({
       />
 
       <Button
-        label="Create household"
+        label={creating ? 'Creating…' : 'Create household'}
         onPress={submit}
-        disabled={!householdName.trim()}
+        disabled={!householdName.trim() || creating}
         style={{ marginTop: spacing.lg }}
       />
     </Sheet>

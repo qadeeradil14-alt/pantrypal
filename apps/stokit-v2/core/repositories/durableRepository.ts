@@ -26,6 +26,7 @@ export const emptyDurableState: DurableState = {
   trips: [],
   activity: [],
   prefs: defaultPrefs,
+  updatedAt: 0,
 };
 
 /** Merge a partial/unknown parsed blob into a complete, valid DurableState. */
@@ -39,6 +40,7 @@ function normalize(parsed: unknown): DurableState {
     trips: Array.isArray(p.trips) ? p.trips : [],
     activity: Array.isArray(p.activity) ? p.activity : [],
     prefs: { ...defaultPrefs, ...(p.prefs ?? {}) },
+    updatedAt: typeof p.updatedAt === 'number' ? p.updatedAt : 0,
   };
 }
 

@@ -4,6 +4,8 @@ import type { Session, User } from '@supabase/supabase-js';
 import { supabase, SESSION_BACKUP_KEY } from '../lib/supabase';
 import { useDurableStore } from './durable-store';
 import { useHouseholdStore } from './household-store';
+import { useSessionStore } from './session-store';
+import { stopSyncEngine } from '../core/services/syncEngine';
 
 type AuthResult =
   | { ok: true; next?: 'VERIFY_EMAIL' | 'SIGN_IN' }
@@ -238,9 +240,11 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     // Clear all local user data so the next account that signs in on this
     // device starts with a clean slate — no cross-account data leakage.
     await Promise.all([
-      useDurableStore.getState().resetAll(),
+      useDurableStore.getState().resetLocalOnly(),
       useHouseholdStore.getState().clearLocal(),
+      useSessionStore.getState().clearSession(),
     ]);
+    stopSyncEngine();
     // Delete our backup so the user is truly signed out on next cold start.
     AsyncStorage.removeItem(SESSION_BACKUP_KEY).catch(() => {});
     AsyncStorage.removeItem('stokit:v2:guestMode').catch(() => {});

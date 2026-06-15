@@ -12,6 +12,14 @@ import { Platform } from 'react-native';
 
 /** Call once at app startup (from _layout.tsx). */
 export async function setupNotifications(): Promise<void> {
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('store-arrivals', {
+      name: 'Store arrival reminders',
+      importance: Notifications.AndroidImportance.DEFAULT,
+      sound: null,
+      vibrationPattern: null,
+    });
+  }
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
       shouldShowAlert: true,
@@ -52,6 +60,6 @@ export async function notifyArrival(storeName: string, itemCount: number): Promi
       data: { storeName },
       ...(Platform.OS === 'ios' ? { interruptionLevel: 'passive' } : {}),
     },
-    trigger: null, // Fire immediately
+    trigger: Platform.OS === 'android' ? { channelId: 'store-arrivals' } : null,
   });
 }

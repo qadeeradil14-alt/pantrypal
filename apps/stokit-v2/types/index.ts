@@ -78,6 +78,7 @@ export interface Receipt {
   amount: number;
   status: ReceiptStatus;
   imageUri?: string | null;
+  imagePath?: string | null;
   createdAt: number;
 }
 
@@ -133,8 +134,9 @@ export interface HouseholdIdentity {
   /** UUID generated locally on creation. */
   id: string;
   name: string;
-  /** 6-char unambiguous alphanumeric code. Used to invite others. */
-  inviteCode: string;
+  /** Server-generated invite code. Null while this is a private pantry. */
+  inviteCode: string | null;
+  isPersonal: boolean;
   role: 'owner' | 'member';
   createdAt: number;
 }
@@ -175,4 +177,5 @@ export interface DurableState {
   trips: Trip[];
   activity: ActivityEvent[];
   prefs: HouseholdPrefs;
+  updatedAt: number;
 }

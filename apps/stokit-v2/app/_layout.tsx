@@ -28,7 +28,7 @@ import { useSessionStore } from '../store/session-store';
 import { setupNotifications } from '../core/services/notifications';
 import { handleAuthLink } from '../lib/auth-links';
 import { isEmailVerified, useAuthStore } from '../store/auth-store';
-import { pullFromSupabase } from '../core/services/syncEngine';
+import { pullFromSupabase, startSyncEngine } from '../core/services/syncEngine';
 // Geofence background task must be defined at module load time (before any render).
 import { defineGeofenceTask } from '../core/services/geofencing';
 
@@ -71,6 +71,7 @@ export default function RootLayout() {
   const hydratedDurable = useDurableStore((s) => s.hydrated);
   const hydrateHousehold = useHouseholdStore((s) => s.hydrate);
   const hydratedHousehold = useHouseholdStore((s) => s.hydrated);
+  const ensureHousehold = useHouseholdStore((s) => s.ensureHousehold);
   const hydrateSession = useSessionStore((s) => s.hydrateSession);
   // Gate the navigator on `initializing` (first startup auth check) — NOT on
   // `loading`, which toggles during every sign-in/sign-up button press. Gating
@@ -100,9 +101,13 @@ export default function RootLayout() {
   // Cloud recovery: pull data back from Supabase on every sign-in so that
   // stores (logos) are restored even when items already exist locally.
   useEffect(() => {
-    if (!user || !hydratedDurable) return;
-    void pullFromSupabase();
-  }, [user, hydratedDurable]);
+    if (!user || !hydratedDurable || !hydratedHousehold) return;
+    void (async () => {
+      await ensureHousehold();
+      await pullFromSupabase();
+      await startSyncEngine();
+    })();
+  }, [user, hydratedDurable, hydratedHousehold, ensureHousehold]);
 
 
 

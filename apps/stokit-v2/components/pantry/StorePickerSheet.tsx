@@ -100,7 +100,7 @@ export function StorePickerSheet({
                   pressed && { opacity: 0.8 },
                 ]}
               >
-                <StoreChip name={store.name} emoji={store.logoEmoji} color={store.logoColor} size={44} />
+                <StoreChip store={store} size={44} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.name}>{store.name}</Text>
                   <Text style={styles.meta}>

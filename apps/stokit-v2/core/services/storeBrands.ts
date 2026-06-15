@@ -104,14 +104,8 @@ export function getStoreBrand(
       ? (words[0][0] + words[1][0]).toUpperCase()
       : name.slice(0, 2).toUpperCase();
       
-  // Dynamically generate a .com domain for Logo.dev if unknown
-  // e.g. "Kmart" -> "kmart.com"
-  const cleanDomain = name.toLowerCase().replace(/[^a-z0-9]/g, '') + '.com';
-  const dynamicLogoUrl = ld(cleanDomain);
-
   return { 
     color: fallbackColor ?? '#A4917A', 
     abbr,
-    logoUrl: dynamicLogoUrl,
   };
 }

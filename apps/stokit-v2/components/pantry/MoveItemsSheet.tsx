@@ -86,7 +86,7 @@ export function MoveItemsSheet({
                 opacity: pressed ? 0.8 : 1,
               })}
             >
-              <StoreChip name={store.name} emoji={store.logoEmoji} color={store.logoColor} size={44} />
+              <StoreChip store={store} size={44} />
               <Text style={{ flex: 1, fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink }}>
                 {store.name}
               </Text>

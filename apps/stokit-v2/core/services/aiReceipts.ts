@@ -1,4 +1,5 @@
 import { config, hasOpenAiKey } from '../../lib/config';
+import { supabase } from '../../lib/supabase';
 
 export type ItemCategory = 'food' | 'household' | 'personal_care' | 'non_grocery';
 
@@ -67,7 +68,7 @@ export async function extractReceiptItems(
   mimeType: string = 'image/jpeg'
 ): Promise<ReceiptScanResult | null> {
   if (!hasOpenAiKey()) {
-    console.warn('[AI] OpenAI API key is not configured.');
+    console.warn('[AI] Receipt scan endpoint is not configured.');
     return null;
   }
 
@@ -75,35 +76,19 @@ export async function extractReceiptItems(
     throw new Error('Image appears to be empty. Please try a different photo.');
   }
 
-  const body = {
-    model: 'gpt-4o',
-    max_tokens: 4096,
-    messages: [
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: PROMPT },
-          {
-            type: 'image_url',
-            image_url: {
-              url: `data:${mimeType};base64,${base64}`,
-              detail: 'high',
-            },
-          },
-        ],
-      },
-    ],
-    response_format: { type: 'json_object' },
-  };
+  const body = { prompt: PROMPT, image: base64, mimeType };
+
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token ?? '';
 
   let res: Response | null = null;
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      res = await fetch('https://api.openai.com/v1/chat/completions', {
+      res = await fetch(config.receiptScanUrl, {
         method: 'POST',
-        headers: {
+        headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${config.openAiKey}`,
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify(body),
       });
@@ -129,10 +114,10 @@ export async function extractReceiptItems(
   }
 
   const data = await res!.json();
-  const text = data.choices?.[0]?.message?.content;
+  const text = typeof data === 'string' ? data : JSON.stringify(data);
 
   if (!text) {
-    console.error('[AI] No text returned from OpenAI:', JSON.stringify(data));
+    console.error('[AI] No receipt scan result returned');
     throw new Error('No response from AI. Please try again with a clearer photo.');
   }
 

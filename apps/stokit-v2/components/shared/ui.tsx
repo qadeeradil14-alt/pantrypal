@@ -1,5 +1,5 @@
 /** Small shared primitives: PageTitle, Card, Button, Pill, StatTile, etc. */
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Image,
   Pressable,
@@ -204,13 +204,13 @@ export function StatTile({
  * Round logo chip for a store. Visual only — never gates business logic.
  *
  * Priority order:
- *  1. Clearbit logo image (fetched for all known chain stores).
+ *  1. Saved or verified brand logo image.
  *  2. Custom emoji (user-defined on the store record).
  *  3. Brand abbreviation on brand-color background (known chains, image failed).
  *  4. First-letter chip on a neutral background (unknown/local stores).
  *
  * Image errors fall back silently to the letter chip — no broken image icons.
- * Unknown/local stores never make a network request.
+ * Unknown/local stores never guess a domain or make a logo network request.
  */
 export function StoreChip({
   store,
@@ -236,6 +236,7 @@ export function StoreChip({
 
   const brand = getStoreBrand(name, color);
   const [imgError, setImgError] = useState(false);
+  useEffect(() => setImgError(false), [logoUrlParam, name]);
 
   // Brand logo always wins for known chains (brand.logoUrl defined), OR if logoUrlParam is provided
   // User-set emoji is only shown for local/custom stores with no brand logo.

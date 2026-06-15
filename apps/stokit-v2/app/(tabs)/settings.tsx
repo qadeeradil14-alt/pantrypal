@@ -6,14 +6,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../../components/shared/Screen';
 import { Button, Card, PageTitle, SectionHeader } from '../../components/shared/ui';
 import { TextField, ChipSelect } from '../../components/shared/Field';
-import { InviteCodeCard } from '../../components/household/InviteCodeCard';
-import { MemberList } from '../../components/household/MemberList';
-import { CreateHouseholdSheet } from '../../components/household/CreateHouseholdSheet';
-import { JoinHouseholdSheet } from '../../components/household/JoinHouseholdSheet';
 import { fonts, spacing, type AppColors } from '../../theme';
 import { useDurableStore } from '../../store/durable-store';
-import { useHouseholdStore } from '../../store/household-store';
 import { useAuthStore } from '../../store/auth-store';
+import { useHouseholdStore } from '../../store/household-store';
+import { CreateHouseholdSheet } from '../../components/household/CreateHouseholdSheet';
+import { JoinHouseholdSheet } from '../../components/household/JoinHouseholdSheet';
+import { InviteCodeCard } from '../../components/household/InviteCodeCard';
+import { MemberList } from '../../components/household/MemberList';
 import { useTheme } from '../../hooks/useTheme';
 import { clearLocalAppData } from '../../lib/local-data';
 import {
@@ -40,18 +40,15 @@ export default function SettingsScreen() {
   const items = useDurableStore((s) => s.items);
   const stores = useDurableStore((s) => s.stores);
   const trips = useDurableStore((s) => s.trips);
-
   const household = useHouseholdStore((s) => s.household);
   const members = useHouseholdStore((s) => s.members);
+  const syncStatus = useHouseholdStore((s) => s.syncStatus);
   const leaveHousehold = useHouseholdStore((s) => s.leaveHousehold);
-  const updateHouseholdName = useHouseholdStore((s) => s.updateHouseholdName);
-  const updateMyName = useHouseholdStore((s) => s.updateMyName);
 
   const [name, setName] = useState(prefs.householdName);
-  const [myName, setMyName] = useState(members.find((m) => m.isMe)?.displayName ?? '');
-  const [createOpen, setCreateOpen] = useState(false);
-  const [joinOpen, setJoinOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [createVisible, setCreateVisible] = useState(false);
+  const [joinVisible, setJoinVisible] = useState(false);
 
   // ── Geofence toggle state ──────────────────────────────────────────────────
   const [geofenceOn, setGeofenceOn] = useState(false);
@@ -85,6 +82,14 @@ export default function SettingsScreen() {
           setGeofenceOn(false);
           return;
         }
+        if (result === 'no_notification_permission') {
+          Alert.alert(
+            'Notification permission needed',
+            'Allow notifications in Settings so Stokit can remind you when you arrive at a store.',
+          );
+          setGeofenceOn(false);
+          return;
+        }
         setGeofenceOn(result === 'ok');
       } else {
         await stopGeofencing();
@@ -95,25 +100,20 @@ export default function SettingsScreen() {
     }
   }, [stores, gpsStores.length, inExpoGo]);
 
-  const confirmLeave = () => {
-    Alert.alert(
-      'Leave household?',
-      "Your local data stays, but you'll be disconnected from the household.",
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Leave', style: 'destructive', onPress: leaveHousehold },
-      ],
-    );
-  };
-
   const confirmReset = () => {
+    if (household && !household.isPersonal && household.role !== 'owner') {
+      Alert.alert('Owner permission needed', 'Only the household owner can wipe a shared pantry.');
+      return;
+    }
     Alert.alert(
-      'Reset local app data?',
-      'This clears local app data on this device. It does not delete your account or cloud data.',
+      household && !household.isPersonal ? 'Wipe the shared pantry?' : 'Wipe all local data?',
+      household && !household.isPersonal
+        ? 'This permanently deletes the pantry, stores, receipts, and shopping history for every household member.\n\nThis cannot be undone.'
+        : 'This permanently deletes your pantry items, stores, receipts, and shopping history from this device and your synced account. Your account stays active but you will start completely fresh.\n\nThis cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Reset',
+          text: 'Yes, wipe everything',
           style: 'destructive',
           onPress: () => {
             void stopGeofencing().catch(() => {});
@@ -125,7 +125,7 @@ export default function SettingsScreen() {
   };
 
   const confirmLogout = () => {
-    Alert.alert('Log out?', 'Your pantry, stores, and history stay on this device. Use "Reset all local data" to wipe everything.', [
+    Alert.alert('Log out?', 'Your local pantry, stores, shopping session, and history will be removed from this device. Synced cloud data stays in your account.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Log out',
@@ -148,81 +148,49 @@ export default function SettingsScreen() {
     <Screen>
       <PageTitle eyebrow="Your account" title="Settings" />
 
-      {/* ── HOUSEHOLD ──────────────────────────────────────────────────────── */}
-      <SectionHeader title="Household" />
-
-      {household ? (
-        <>
-          {/* Invite code + share */}
-          <InviteCodeCard
-            householdName={household.name}
-            inviteCode={household.inviteCode}
-          />
-
-          <View style={{ height: spacing.md }} />
-
-          {/* Members */}
-          <Card>
-            <Text style={styles.sectionLabel}>Members</Text>
+      <SectionHeader title="Account sync" />
+      <Card>
+        <Text style={styles.noHouseholdTitle}>
+          {household?.isPersonal ? 'Private pantry' : household?.name ?? 'Account sync'}
+        </Text>
+        <Text style={styles.noHouseholdBody}>
+          {household?.isPersonal
+            ? 'Your pantry is securely backed up. Create or join a household to share updates live with family.'
+            : household
+            ? `${members.length} member${members.length === 1 ? '' : 's'} share this pantry in real time.`
+            : 'Sign in to securely back up your pantry and share it with family.'}
+        </Text>
+        <View style={styles.syncRow}>
+          <View style={[styles.syncDot, syncStatus === 'synced' && { backgroundColor: colors.success }]} />
+          <Text style={styles.syncText}>{syncStatus === 'synced' ? 'Live sync connected' : 'Connecting to live sync'}</Text>
+        </View>
+        {household?.isPersonal ? (
+          <>
+            <Button label="Create shared household" onPress={() => setCreateVisible(true)} style={{ marginTop: spacing.lg }} />
+            <Button label="Join with invite code" variant="ghost" onPress={() => setJoinVisible(true)} style={{ marginTop: spacing.sm }} />
+          </>
+        ) : household ? (
+          <>
+            {household?.inviteCode ? <InviteCodeCard householdName={household.name} inviteCode={household.inviteCode} /> : null}
             <MemberList members={members} />
-
-            {/* Sync status pill */}
-            <View style={styles.syncRow}>
-              <View style={styles.syncDot} />
-              <Text style={styles.syncText}>
-                Local mode · real-time sync requires Supabase
-              </Text>
-            </View>
-          </Card>
-
-          <View style={{ height: spacing.md }} />
-
-          {/* Edit household name + my name */}
-          <Card>
-            <TextField
-              label="Household name"
-              value={household.name}
-              onChangeText={updateHouseholdName}
-              placeholder="My Household"
-            />
-            <TextField
-              label="Your display name"
-              value={myName}
-              onChangeText={(v) => {
-                setMyName(v);
-                updateMyName(v);
-              }}
-              placeholder="e.g. Sarah"
-            />
             <Button
-              label="Leave household"
-              variant="ghost"
-              small
-              onPress={confirmLeave}
-              style={{ marginTop: spacing.sm }}
+              label="Leave shared household"
+              variant="danger"
+              onPress={() => Alert.alert(
+                'Leave shared household?',
+                'You will keep a private copy of the current pantry. Owners must remove other members before leaving.',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Leave', style: 'destructive', onPress: () => void leaveHousehold().then((result) => {
+                    if (!result.ok) Alert.alert('Could not leave', result.message);
+                  }) },
+                ],
+              )}
+              style={{ marginTop: spacing.lg }}
             />
-          </Card>
-        </>
-      ) : (
-        <Card>
-          <Text style={styles.noHouseholdTitle}>Share your pantry with family</Text>
-          <Text style={styles.noHouseholdBody}>
-            Create a household to get an invite code. Family members enter the code
-            to see the same pantry, shopping list, and activity feed.
-          </Text>
-          <Button
-            label="Create household"
-            onPress={() => setCreateOpen(true)}
-            style={{ marginTop: spacing.lg }}
-          />
-          <Button
-            label="Join with invite code"
-            variant="subtle"
-            onPress={() => setJoinOpen(true)}
-            style={{ marginTop: spacing.sm }}
-          />
-        </Card>
-      )}
+          </>
+        ) : null}
+      </Card>
 
       {/* ── APPEARANCE ────────────────────────────────────────────────────── */}
       <SectionHeader title="Appearance" />
@@ -359,8 +327,8 @@ export default function SettingsScreen() {
       </Card>
 
       {/* Sheets */}
-      <CreateHouseholdSheet visible={createOpen} onClose={() => setCreateOpen(false)} />
-      <JoinHouseholdSheet visible={joinOpen} onClose={() => setJoinOpen(false)} />
+      <CreateHouseholdSheet visible={createVisible} onClose={() => setCreateVisible(false)} />
+      <JoinHouseholdSheet visible={joinVisible} onClose={() => setJoinVisible(false)} />
     </Screen>
   );
 }

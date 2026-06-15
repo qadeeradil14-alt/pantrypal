@@ -14,7 +14,7 @@
 
 // Unambiguous character set — no 0/O, 1/I/L confusion (identical to V1).
 const CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-export const INVITE_CODE_RE = /^[A-Z2-9]{6}$/;
+export const INVITE_CODE_RE = /^[A-Z0-9]{6,9}$/;
 
 /** Generate a random 6-character invite code. */
 export function generateInviteCode(): string {
@@ -27,7 +27,7 @@ export function generateInviteCode(): string {
   return Array.from(bytes, (b) => CHARS[b % CHARS.length]).join('');
 }
 
-/** Normalize and validate a user-entered invite code. */
+/** Normalize and validate current and legacy invite codes. */
 export function normalizeInviteCode(raw: string): string | null {
   const normalized = raw.trim().toUpperCase().replace(/[\s-]/g, '');
   return INVITE_CODE_RE.test(normalized) ? normalized : null;

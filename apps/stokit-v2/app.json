@@ -30,10 +30,8 @@
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.RECORD_AUDIO",
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.POST_NOTIFICATIONS"
       ]
     },
     "plugins": [
@@ -44,7 +42,8 @@
         {
           "locationWhenInUsePermission": "Stokit needs your location to find grocery stores near you.",
           "locationAlwaysAndWhenInUsePermission": "Stokit uses background location to remind you when you arrive at a store where you have items.",
-          "isIosBackgroundLocationEnabled": true
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true
         }
       ],
       [
@@ -71,12 +70,7 @@
           "resizeMode": "contain"
         }
       ],
-      [
-        "@bacons/apple-targets",
-        {
-          "appleTeamId": "YOUR_TEAM_ID"
-        }
-      ]
+      "@bacons/apple-targets"
     ],
     "extra": {
       "eas": {

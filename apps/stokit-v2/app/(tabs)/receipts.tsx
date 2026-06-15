@@ -117,9 +117,8 @@ export default function ReceiptsScreen() {
                     {idx > 0 && <View style={styles.divider} />}
                     <View style={styles.row}>
                       <StoreChip
+                        store={store}
                         name={store?.name ?? '?'}
-                        emoji={store?.logoEmoji}
-                        color={store?.logoColor}
                       />
                       <View style={{ flex: 1 }}>
                         <Text style={styles.storeName}>{store?.name ?? 'Store'}</Text>
@@ -147,10 +146,7 @@ export default function ReceiptsScreen() {
 
 function ReceiptStatusPill({ status, hasPhoto }: { status: Receipt['status']; hasPhoto?: boolean }) {
   if (status === 'logged') return <Pill label="Complete" tone="stocked" />;
-  if (status === 'photo_pending') {
-    if (hasPhoto) return <Pill label="Processed" tone="low" />;
-    return <Pill label="Photo later" tone="muted" />;
-  }
+  if (status === 'photo_pending') return <Pill label={hasPhoto ? 'Photo saved' : 'Amount saved'} tone="muted" />;
   return <Pill label="Skipped" tone="muted" />;
 }
 

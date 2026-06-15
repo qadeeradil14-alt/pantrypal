@@ -47,7 +47,7 @@ export function RouteSection({ stops }: { stops: RouteStop[] }) {
           return (
             <React.Fragment key={store.id}>
               <View style={styles.stopCol}>
-                <StoreChip name={store.name} emoji={store.logoEmoji} color={store.logoColor} size={52} />
+                <StoreChip store={store} size={52} />
                 <Text style={styles.storeName} numberOfLines={1}>
                   {store.name}
                 </Text>

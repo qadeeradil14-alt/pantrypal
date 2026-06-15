@@ -29,10 +29,14 @@ export function JoinHouseholdSheet({
   const submit = async () => {
     setError('');
     setJoining(true);
-    const result = joinHousehold(code, myName);
+    const result = await joinHousehold(code, myName);
     setJoining(false);
-    if (result === 'invalid_code') {
+    if (!result.ok && result.invalidCode) {
       setError('Invalid invite code. Check the code and try again.');
+      return;
+    }
+    if (!result.ok) {
+      setError(result.message);
       return;
     }
     setCode('');
@@ -50,7 +54,7 @@ export function JoinHouseholdSheet({
       </Text>
 
       <TextField
-        label="Invite code (e.g. ABC-123)"
+        label="Invite code"
         value={code}
         onChangeText={(v) => {
           setCode(v.toUpperCase());

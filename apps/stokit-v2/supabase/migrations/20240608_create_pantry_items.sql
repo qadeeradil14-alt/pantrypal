@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS pantry_items (
     storage_location TEXT NOT NULL,
     store_id TEXT,
     expiry_date TEXT,
-    household_id TEXT,
+    household_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
     created_at BIGINT NOT NULL,
     updated_at BIGINT NOT NULL
 );
@@ -16,13 +16,12 @@ CREATE TABLE IF NOT EXISTS pantry_items (
 -- Enable Row Level Security (RLS)
 ALTER TABLE pantry_items ENABLE ROW LEVEL SECURITY;
 
--- Create policy to allow public access for the prototype (since auth isn't fully locked down yet)
--- In a real app, this would be restricted to authenticated users matching household_id
-CREATE POLICY "Enable public read/write access for prototype"
+CREATE POLICY "pantry item owner access"
 ON pantry_items
 FOR ALL
-USING (true)
-WITH CHECK (true);
+TO authenticated
+USING (household_id = auth.uid())
+WITH CHECK (household_id = auth.uid());
 
 -- Enable realtime broadcasting for optimistic UI sync
 alter publication supabase_realtime add table pantry_items;

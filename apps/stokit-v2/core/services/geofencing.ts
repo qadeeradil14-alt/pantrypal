@@ -25,8 +25,10 @@ import * as TaskManager from 'expo-task-manager';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
-import { notifyArrival } from './notifications';
+import { notifyArrival, requestNotificationPermission } from './notifications';
 import type { PantryItem, Store } from '../../types';
+import { loadDurable } from '../repositories/durableRepository';
+import { arrivalItemCount, geofenceableStores } from './geofencingLogic';
 
 // ── Constants (match V1 values) ───────────────────────────────────────────────
 
@@ -85,13 +87,12 @@ export function defineGeofenceTask(
     }
 
     // Count low items at this store
-    const items = getItems();
-    const stores = getStores();
+    const durable = await loadDurable();
+    const items = durable?.items ?? getItems();
+    const stores = durable?.stores ?? getStores();
     const store = stores.find((s) => s.id === storeId);
     if (!store) return;
-    const lowCount = items.filter(
-      (it) => it.storeId === storeId && (it.status === 'low' || it.status === 'expiring'),
-    ).length;
+    const lowCount = arrivalItemCount(items, storeId);
     await notifyArrival(store.name, lowCount);
   });
 }
@@ -102,17 +103,20 @@ export function defineGeofenceTask(
  * Start geofencing. Only registers stores that have GPS coordinates (placeId is
  * not required — lat/lng is enough). Silently caps at 20 regions on iOS.
  *
- * Returns 'ok' | 'no_permission' | 'no_stores' | 'expo_go'.
+ * Returns 'ok' | 'no_permission' | 'no_notification_permission' | 'no_stores' | 'expo_go'.
  */
 export async function startGeofencing(
   stores: Store[],
-): Promise<'ok' | 'no_permission' | 'no_stores' | 'expo_go'> {
+): Promise<'ok' | 'no_permission' | 'no_notification_permission' | 'no_stores' | 'expo_go'> {
   if (isExpoGo()) return 'expo_go';
 
-  const geofenceable = stores.filter(
-    (s) => s.lat != null && s.lng != null,
+  const geofenceable = geofenceableStores(
+    stores,
+    Platform.OS === 'ios' ? MAX_GEOFENCES_IOS : 100,
   );
   if (geofenceable.length === 0) return 'no_stores';
+
+  if (!(await requestNotificationPermission())) return 'no_notification_permission';
 
   // Request foreground first (required before background on iOS)
   const { status: fg } = await Location.requestForegroundPermissionsAsync();
@@ -122,9 +126,7 @@ export async function startGeofencing(
   const { status: bg } = await Location.requestBackgroundPermissionsAsync();
   if (bg !== 'granted') return 'no_permission';
 
-  const regions: Location.LocationRegion[] = geofenceable
-    .slice(0, Platform.OS === 'ios' ? MAX_GEOFENCES_IOS : 100)
-    .map((s) => ({
+  const regions: Location.LocationRegion[] = geofenceable.map((s) => ({
       identifier: s.id,
       latitude: s.lat!,
       longitude: s.lng!,

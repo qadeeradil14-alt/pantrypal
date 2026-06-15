@@ -1,167 +1,114 @@
-import { supabase } from '../../lib/supabase';
-import { useDurableStore } from '../../store/durable-store';
-import { useHouseholdStore } from '../../store/household-store';
-import type { DurableState, PantryItem, Receipt, Store } from '../../types';
-import * as FileSystem from 'expo-file-system';
+import { File } from 'expo-file-system';
 import { decode } from 'base64-arraybuffer';
+import { supabase } from '../../lib/supabase';
+import type { DurableState, Receipt } from '../../types';
+
+const CLOUD_TABLE = 'household_snapshots';
+const RECEIPT_BUCKET = 'receipts';
+const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24 * 7;
 
 let syncChannel: ReturnType<typeof supabase.channel> | null = null;
-let isStarted = false;
+let activeHouseholdId: string | null = null;
 
-export function startSyncEngine() {
-  if (isStarted) return;
-  isStarted = true;
-
-  console.log('[Sync Engine] Starting realtime subscription...');
-
-  syncChannel = supabase
-    .channel('public:pantry_items')
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'pantry_items' },
-      (payload) => {
-        console.log('[Sync Engine] Received remote change:', payload.eventType);
-        const state = useDurableStore.getState();
-        const items = [...state.items];
-
-        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-          const remoteItem = payload.new as any;
-          // Map DB snake_case back to camelCase PantryItem
-          const incoming: PantryItem = {
-            id: remoteItem.id,
-            name: remoteItem.name,
-            quantity: Number(remoteItem.quantity),
-            unit: remoteItem.unit,
-            status: remoteItem.status,
-            storageLocation: remoteItem.storage_location,
-            storeId: remoteItem.store_id,
-            expiryDate: remoteItem.expiry_date,
-            createdAt: Number(remoteItem.created_at),
-            updatedAt: Number(remoteItem.updated_at),
-          };
-
-          const existingIdx = items.findIndex(it => it.id === incoming.id);
-          if (existingIdx >= 0) {
-            // Only overwrite if the remote change is strictly newer to prevent bouncing
-            if (incoming.updatedAt > items[existingIdx].updatedAt) {
-              items[existingIdx] = incoming;
-              state.applyRemotePatch({ items });
-            }
-          } else {
-            items.unshift(incoming);
-            state.applyRemotePatch({ items });
-          }
-        } else if (payload.eventType === 'DELETE') {
-          const deletedId = payload.old.id;
-          const newItems = items.filter(it => it.id !== deletedId);
-          state.applyRemotePatch({ items: newItems });
-        }
-      }
-    )
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'pantry_stores' },
-      (payload) => {
-        const state = useDurableStore.getState();
-        const stores = [...state.stores];
-
-        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-          const r = payload.new as any;
-          const incoming: Store = {
-            id: r.id,
-            name: r.name,
-            logoColor: r.logo_color ?? undefined,
-            logoEmoji: r.logo_emoji ?? undefined,
-            logoUrl: r.logo_url ?? undefined,
-            placeId: r.place_id ?? undefined,
-            address: r.address ?? undefined,
-            lat: r.lat != null ? Number(r.lat) : undefined,
-            lng: r.lng != null ? Number(r.lng) : undefined,
-            openingHours: r.opening_hours ?? undefined,
-            isOpen: r.is_open ?? undefined,
-            createdAt: Number(r.created_at),
-            updatedAt: Number(r.updated_at),
-          };
-          const idx = stores.findIndex(s => s.id === incoming.id);
-          if (idx >= 0) {
-            if (incoming.updatedAt > stores[idx].updatedAt) stores[idx] = incoming;
-          } else {
-            stores.push(incoming);
-          }
-          state.applyRemotePatch({ stores });
-        } else if (payload.eventType === 'DELETE') {
-          state.applyRemotePatch({ stores: stores.filter(s => s.id !== payload.old.id) });
-        }
-      }
-    )
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'pantry_receipts' },
-      (payload) => {
-        const state = useDurableStore.getState();
-        const receipts = [...state.receipts];
-
-        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-          const remote = payload.new as any;
-          const incoming: Receipt = {
-            id: remote.id,
-            tripId: remote.trip_id,
-            storeId: remote.store_id,
-            amount: Number(remote.amount),
-            status: remote.status,
-            imageUri: remote.image_uri,
-            createdAt: Number(remote.created_at),
-          };
-          const existingIdx = receipts.findIndex(r => r.id === incoming.id);
-          if (existingIdx >= 0) {
-            receipts[existingIdx] = incoming;
-          } else {
-            receipts.unshift(incoming);
-          }
-          state.applyRemotePatch({ receipts });
-        } else if (payload.eventType === 'DELETE') {
-          const deletedId = payload.old.id;
-          state.applyRemotePatch({ receipts: receipts.filter(r => r.id !== deletedId) });
-        }
-      }
-    )
-    .subscribe((status) => {
-      console.log('[Sync Engine] Subscription status:', status);
-    });
+async function durableStore() {
+  return (await import('../../store/durable-store')).useDurableStore;
 }
 
-export function stopSyncEngine() {
-  if (syncChannel) {
-    supabase.removeChannel(syncChannel);
-    syncChannel = null;
-  }
-  isStarted = false;
+async function householdId(): Promise<string | null> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.user?.id) return null;
+  const householdStore = (await import('../../store/household-store')).useHouseholdStore;
+  if (!householdStore.getState().household) await householdStore.getState().ensureHousehold();
+  return householdStore.getState().household?.id ?? null;
 }
 
-/**
- * Called automatically by durable-store persist()
- */
-/**
- * Pull pantry_items and receipts from Supabase and restore them to local store.
- * Called on sign-in when local AsyncStorage is empty (e.g. after reinstall).
- * Uses auth.user.id as the stable household identifier — survives reinstalls.
- */
-export async function pullFromSupabase(): Promise<void> {
+async function withSignedReceiptUrls(state: DurableState): Promise<DurableState> {
+  const receipts = await Promise.all(state.receipts.map(async (receipt) => {
+    if (!receipt.imagePath) return receipt;
+    const { data, error } = await supabase.storage
+      .from(RECEIPT_BUCKET)
+      .createSignedUrl(receipt.imagePath, SIGNED_URL_TTL_SECONDS);
+    return error ? receipt : { ...receipt, imageUri: data.signedUrl };
+  }));
+  return { ...state, receipts };
+}
+
+async function uploadReceipt(householdId: string, receipt: Receipt): Promise<Receipt> {
+  if (!receipt.imageUri?.startsWith('file://')) return receipt;
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    const userId = session?.user?.id;
-    if (!userId) return;
+    const ext = receipt.imageUri.split('.').pop()?.toLowerCase() || 'jpg';
+    const imagePath = `${householdId}/${receipt.id}.${ext}`;
+    const base64 = await new File(receipt.imageUri).base64();
+    const { error } = await supabase.storage.from(RECEIPT_BUCKET).upload(
+      imagePath,
+      decode(base64),
+      { contentType: `image/${ext === 'jpg' ? 'jpeg' : ext}`, upsert: true },
+    );
+    return error ? receipt : { ...receipt, imagePath };
+  } catch (err) {
+    console.warn('[Sync Engine] Receipt upload failed', err);
+    return receipt;
+  }
+}
 
-    console.log('[Sync Engine] Pulling cloud data for user:', userId);
+export async function pushLocalState(state: DurableState): Promise<void> {
+  const id = await householdId();
+  if (!id) return;
 
-    const { data: remoteItems, error: itemsError } = await supabase
-      .from('pantry_items')
-      .select('*')
-      .eq('household_id', userId)
-      .order('created_at', { ascending: false });
+  try {
+    const receipts = await Promise.all(state.receipts.map((receipt) => uploadReceipt(id, receipt)));
+    const snapshot = { ...state, receipts };
+    const { error } = await supabase.from(CLOUD_TABLE).upsert({
+      household_id: id,
+      state: snapshot,
+      updated_at: snapshot.updatedAt,
+    }, { onConflict: 'household_id' });
+    if (error) console.warn('[Sync Engine] Snapshot push failed:', error.message);
+    if (!error) {
+      const store = await durableStore();
+      const uploadedById = new Map(receipts.map((receipt) => [receipt.id, receipt]));
+      const currentReceipts = store.getState().receipts.map((receipt) => {
+        const uploaded = uploadedById.get(receipt.id);
+        return uploaded?.imagePath && uploaded.imageUri === receipt.imageUri
+          ? { ...receipt, imagePath: uploaded.imagePath }
+          : receipt;
+      });
+      store.getState().applyRemotePatch({ receipts: currentReceipts });
+    }
+  } catch (err) {
+    console.warn('[Sync Engine] Offline or push failed.', err);
+  }
+}
 
-    if (!itemsError && remoteItems && remoteItems.length > 0) {
-      const items: PantryItem[] = remoteItems.map((row: any) => ({
+export async function pullFromSupabase(): Promise<void> {
+  const id = await householdId();
+  if (!id) return;
+  const store = await durableStore();
+
+  const { data, error } = await supabase
+    .from(CLOUD_TABLE)
+    .select('state, updated_at')
+    .eq('household_id', id)
+    .maybeSingle();
+  if (error) return;
+
+  if (!data?.state) {
+    const local = store.getState();
+    if (local.items.length || local.stores.length || local.receipts.length || local.trips.length) {
+      await pushLocalState({ ...local, updatedAt: Date.now() });
+      return;
+    }
+
+    const [{ data: items }, { data: stores }, { data: receipts }] = await Promise.all([
+      supabase.from('pantry_items').select('*').eq('household_id', id),
+      supabase.from('pantry_stores').select('*').eq('household_id', id),
+      supabase.from('pantry_receipts').select('*').eq('household_id', id),
+    ]);
+    if (!items?.length && !stores?.length && !receipts?.length) return;
+
+    const migrated: DurableState = {
+      ...local,
+      items: (items ?? []).map((row: any) => ({
         id: row.id,
         name: row.name,
         quantity: Number(row.quantity),
@@ -172,39 +119,8 @@ export async function pullFromSupabase(): Promise<void> {
         expiryDate: row.expiry_date,
         createdAt: Number(row.created_at),
         updatedAt: Number(row.updated_at),
-      }));
-      console.log('[Sync Engine] Restored', items.length, 'items from cloud.');
-      useDurableStore.getState().applyRemotePatch({ items });
-    }
-
-    const { data: remoteReceipts, error: receiptsError } = await supabase
-      .from('pantry_receipts')
-      .select('*')
-      .eq('household_id', userId)
-      .order('created_at', { ascending: false });
-
-    if (!receiptsError && remoteReceipts && remoteReceipts.length > 0) {
-      const receipts: Receipt[] = remoteReceipts.map((row: any) => ({
-        id: row.id,
-        tripId: row.trip_id,
-        storeId: row.store_id,
-        amount: Number(row.amount),
-        status: row.status,
-        imageUri: row.image_uri,
-        createdAt: Number(row.created_at),
-      }));
-      console.log('[Sync Engine] Restored', receipts.length, 'receipts from cloud.');
-      useDurableStore.getState().applyRemotePatch({ receipts });
-    }
-
-    const { data: remoteStores, error: storesError } = await supabase
-      .from('pantry_stores')
-      .select('*')
-      .eq('household_id', userId)
-      .order('created_at', { ascending: true });
-
-    if (!storesError && remoteStores && remoteStores.length > 0) {
-      const stores: Store[] = remoteStores.map((row: any) => ({
+      })),
+      stores: (stores ?? []).map((row: any) => ({
         id: row.id,
         name: row.name,
         logoColor: row.logo_color ?? undefined,
@@ -212,125 +128,79 @@ export async function pullFromSupabase(): Promise<void> {
         logoUrl: row.logo_url ?? undefined,
         placeId: row.place_id ?? undefined,
         address: row.address ?? undefined,
-        lat: row.lat != null ? Number(row.lat) : undefined,
-        lng: row.lng != null ? Number(row.lng) : undefined,
+        lat: row.lat == null ? undefined : Number(row.lat),
+        lng: row.lng == null ? undefined : Number(row.lng),
         openingHours: row.opening_hours ?? undefined,
         isOpen: row.is_open ?? undefined,
         createdAt: Number(row.created_at),
         updatedAt: Number(row.updated_at),
-      }));
-      console.log('[Sync Engine] Restored', stores.length, 'stores from cloud.');
-      useDurableStore.getState().applyRemotePatch({ stores });
-    }
-  } catch (err) {
-    console.warn('[Sync Engine] Cloud pull failed:', err);
+      })),
+      receipts: (receipts ?? []).map((row: any) => ({
+        id: row.id,
+        tripId: row.trip_id,
+        storeId: row.store_id,
+        amount: Number(row.amount),
+        status: row.status,
+        imageUri: row.image_uri,
+        createdAt: Number(row.created_at),
+      })),
+      updatedAt: Date.now(),
+    };
+    store.getState().applyRemotePatch(migrated);
+    await pushLocalState(migrated);
+    return;
   }
+
+  const local = store.getState();
+  const remote = data.state as DurableState;
+  if ((remote.updatedAt ?? data.updated_at ?? 0) <= local.updatedAt) return;
+  store.getState().applyRemotePatch(await withSignedReceiptUrls(remote));
 }
 
-export async function pushLocalState(state: DurableState) {
-  // Push all items to Supabase
-  // In a real app we'd only push items that changed (dirty tracking)
-  // For the prototype, we push the whole pantry if we have an active household.
+export async function clearCloudState(): Promise<void> {
+  const id = await householdId();
+  if (!id) return;
+  const store = await durableStore();
+  await Promise.all([
+    supabase.from(CLOUD_TABLE).delete().eq('household_id', id),
+    supabase.storage.from(RECEIPT_BUCKET).remove(
+      store.getState().receipts
+        .map((receipt) => receipt.imagePath)
+        .filter((path): path is string => Boolean(path)),
+    ),
+  ]);
+}
 
-  // Use auth user.id as the stable cloud household key — survives reinstalls.
-  const { data: { session } } = await supabase.auth.getSession();
-  const householdId = session?.user?.id ?? useHouseholdStore.getState().household?.id ?? null;
+export async function startSyncEngine(): Promise<void> {
+  const id = await householdId();
+  if (!id || activeHouseholdId === id) return;
+  stopSyncEngine();
+  activeHouseholdId = id;
 
-  try {
-    const records = state.items.map(item => ({
-      id: item.id,
-      name: item.name,
-      quantity: item.quantity,
-      unit: item.unit,
-      status: item.status,
-      storage_location: item.storageLocation,
-      store_id: item.storeId,
-      expiry_date: item.expiryDate,
-      created_at: item.createdAt,
-      updated_at: item.updatedAt,
-      household_id: householdId,
-    }));
+  syncChannel = supabase
+    .channel(`household-snapshot:${id}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: CLOUD_TABLE,
+        filter: `household_id=eq.${id}`,
+      },
+      () => { void pullFromSupabase(); },
+    )
+    .subscribe();
+}
 
-    if (records.length > 0) {
-      // upsert handles inserting new or updating existing
-      const { error } = await supabase.from('pantry_items').upsert(records, { onConflict: 'id' });
-      if (error) {
-        console.warn('[Sync Engine] Failed to push to Supabase:', error.message);
-      }
-    }
+export function stopSyncEngine(): void {
+  if (syncChannel) void supabase.removeChannel(syncChannel);
+  syncChannel = null;
+  activeHouseholdId = null;
+}
 
-    // Sync Receipts
-    const receiptRecords = await Promise.all(state.receipts.map(async (receipt) => {
-      let finalUri = receipt.imageUri;
-
-      // If it's a local file URI, upload to Supabase Storage first
-      if (finalUri?.startsWith('file://')) {
-        try {
-          const base64 = await FileSystem.readAsStringAsync(finalUri, { encoding: FileSystem.EncodingType.Base64 });
-          const fileExt = finalUri.split('.').pop()?.toLowerCase() || 'jpeg';
-          const fileName = `${receipt.id}.${fileExt}`;
-          const filePath = `${householdId ?? 'guest'}/${fileName}`;
-          
-          const { error: uploadError } = await supabase.storage.from('receipts').upload(filePath, decode(base64), {
-            contentType: `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`,
-            upsert: true
-          });
-
-          if (!uploadError) {
-            const { data } = supabase.storage.from('receipts').getPublicUrl(filePath);
-            finalUri = data.publicUrl;
-            
-            // Update durable store with the remote URI silently
-            setTimeout(() => {
-               const s = useDurableStore.getState();
-               s.applyRemotePatch({ receipts: s.receipts.map(r => r.id === receipt.id ? { ...r, imageUri: finalUri, status: 'logged' } : r) });
-            }, 0);
-          }
-        } catch (e) {
-          console.warn('[Sync Engine] Failed to upload receipt image', e);
-        }
-      }
-
-      return {
-        id: receipt.id,
-        trip_id: receipt.tripId,
-        store_id: receipt.storeId,
-        amount: receipt.amount,
-        status: (finalUri && !finalUri.startsWith('file://')) ? 'logged' : receipt.status,
-        image_uri: finalUri,
-        household_id: householdId,
-        created_at: receipt.createdAt,
-      };
-    }));
-
-    if (receiptRecords.length > 0) {
-      const { error } = await supabase.from('pantry_receipts').upsert(receiptRecords, { onConflict: 'id' });
-      if (error) console.warn('[Sync Engine] Failed to push receipts:', error.message);
-    }
-
-    // Sync stores (logos, addresses, place IDs)
-    const storeRecords = state.stores.map(store => ({
-      id: store.id,
-      household_id: householdId,
-      name: store.name,
-      logo_color: store.logoColor ?? null,
-      logo_emoji: store.logoEmoji ?? null,
-      logo_url: store.logoUrl ?? null,
-      place_id: store.placeId ?? null,
-      address: store.address ?? null,
-      lat: store.lat ?? null,
-      lng: store.lng ?? null,
-      opening_hours: store.openingHours ?? null,
-      is_open: store.isOpen ?? null,
-      created_at: store.createdAt,
-      updated_at: store.updatedAt,
-    }));
-
-    if (storeRecords.length > 0) {
-      const { error } = await supabase.from('pantry_stores').upsert(storeRecords, { onConflict: 'id' });
-      if (error) console.warn('[Sync Engine] Failed to push stores:', error.message);
-    }
-  } catch (err) {
-    console.warn('[Sync Engine] Offline or push failed.', err);
+export async function refreshGeofencedStoreData(): Promise<void> {
+  const { isGeofencingRunning, startGeofencing } = await import('./geofencing');
+  if (await isGeofencingRunning()) {
+    await startGeofencing((await durableStore()).getState().stores);
   }
 }

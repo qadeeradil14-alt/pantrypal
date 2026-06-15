@@ -158,7 +158,7 @@ function EventRow({ event, store, styles, colors }: { event: ActivityEvent; stor
     <View style={styles.row}>
       {/* Real store chip when the event belongs to a store; generic icon otherwise. */}
       {store ? (
-        <StoreChip name={store.name} emoji={store.logoEmoji} color={store.logoColor} size={38} />
+        <StoreChip store={store} size={38} />
       ) : (
         <View style={[styles.iconWrap, { borderColor: colors.border }]}>
           <Ionicons name={meta.name} size={18} color={colors[meta.colorKey]} />
