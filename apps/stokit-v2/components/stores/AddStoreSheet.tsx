@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View, ScrollView } from 'react-native';
 import * as Location from 'expo-location';
 import { Sheet } from '../shared/Sheet';
 import { TextField, FieldLabel } from '../shared/Field';
@@ -233,7 +233,7 @@ export function AddStoreContent({
 
       {/* Autocomplete suggestions */}
       {suggestions.length > 0 && (
-        <View style={styles.dropdown}>
+        <ScrollView style={styles.dropdown} keyboardShouldPersistTaps="handled">
           {suggestions.slice(0, 5).map((s, i) => (
             <Pressable
               key={s.placeId}
@@ -254,7 +254,7 @@ export function AddStoreContent({
               <Ionicons name="chevron-forward" size={14} color={colors.muted} />
             </Pressable>
           ))}
-        </View>
+        </ScrollView>
       )}
 
       {/* Loading details */}

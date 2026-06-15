@@ -193,6 +193,7 @@ export function NearbyStorePicker({ visible, onClose, onSelect, searchTerm }: Pr
           data={displayed}
           keyExtractor={(s) => s.placeId}
           scrollEnabled={false}
+          keyboardShouldPersistTaps="handled"
           ItemSeparatorComponent={() => <View style={styles.sep} />}
           renderItem={({ item }) => (
             <StoreRow store={item} onPress={() => { onSelect(item); onClose(); }} />
