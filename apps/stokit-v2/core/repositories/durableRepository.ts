@@ -22,6 +22,7 @@ export const defaultPrefs: HouseholdPrefs = {
 export const emptyDurableState: DurableState = {
   items: [],
   stores: [],
+  priceHistory: [],
   receipts: [],
   trips: [],
   activity: [],
@@ -36,6 +37,7 @@ function normalize(parsed: unknown): DurableState {
   return {
     items: Array.isArray(p.items) ? p.items : [],
     stores: Array.isArray(p.stores) ? p.stores : [],
+    priceHistory: Array.isArray(p.priceHistory) ? p.priceHistory : [],
     receipts: Array.isArray(p.receipts) ? p.receipts : [],
     trips: Array.isArray(p.trips) ? p.trips : [],
     activity: Array.isArray(p.activity) ? p.activity : [],

@@ -3,9 +3,7 @@
  *
  * Logo resolution order (StoreChip enforces this at render time):
  *   1. Registry entry      — known chain, Google Favicon at sz=128.
- *   2. Domain-guess        — unknown store, tries {name}.com via Google Favicon.
- *                            Google 404s for non-existent domains → initials fallback.
- *   3. Letter chip         — instant fallback on any image failure.
+ *   2. Letter chip         — safe fallback for unknown stores.
  *
  * Google Favicon API (s2.googleusercontent.com) confirmed working:
  *   - Returns 200 for real domains (favicons are the brand logo for most chains)
@@ -169,21 +167,6 @@ const BRANDS: Record<string, StoreBrand> = {
   'door dash':          { color: '#FF3008', abbr: 'DD',  logoUrl: gf('doordash.com') },
 };
 
-// ── Domain guesser for unknown stores ────────────────────────────────────────
-
-/**
- * Converts a store name to a best-guess .com domain.
- * Google Favicon 404s for non-existent domains → onError → letter chip.
- */
-function guessDomain(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[''`]/g, '')
-    .replace(/[^a-z0-9\s]/g, '')
-    .replace(/\s+/g, '')
-    + '.com';
-}
-
 /** Progress-bar colors for route stops (up to 6). */
 export const ROUTE_COLORS = [
   '#6FB585', // green
@@ -196,8 +179,7 @@ export const ROUTE_COLORS = [
 
 /**
  * Returns brand color, abbreviation, and logo URL for a store name.
- * Unknown stores get a Google Favicon domain-guess attempt.
- * Google 404s for non-existent domains → StoreChip onError → letter chip.
+ * Unknown stores use a safe letter chip rather than guessing a brand domain.
  */
 export function getStoreBrand(
   name: string,
@@ -217,6 +199,5 @@ export function getStoreBrand(
   return {
     color: fallbackColor ?? '#A4917A',
     abbr,
-    logoUrl: gf(guessDomain(name)),
   };
 }

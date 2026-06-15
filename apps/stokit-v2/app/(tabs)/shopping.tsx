@@ -35,12 +35,14 @@ import { StorePickerSheet } from '../../components/pantry/StorePickerSheet';
 import { AddItemSheet } from '../../components/pantry/AddItemSheet';
 import { Sheet } from '../../components/shared/Sheet';
 import { ItemAvatar } from '../../components/shared/ItemAvatar';
+import { PricePromptSheet } from '../../components/shopping/PricePromptSheet';
 import { fonts, radii, spacing, type AppColors } from '../../theme';
 import { useDurableStore } from '../../store/durable-store';
 import { useSessionStore } from '../../store/session-store';
 import { currentStoreEntries, currentStoreId, pendingStoreIds } from '../../core/shopping-machine';
 import { ROUTE_COLORS } from '../../core/services/storeBrands';
 import { classifyItem, categoryLabel } from '../../core/services/itemClassifier';
+import { cheapestRecentPrice, lastPriceAtStore } from '../../core/services/priceHistory';
 import type { PantryItem, ShoppingEntry, Store } from '../../types';
 import { useTheme } from '../../hooks/useTheme';
 import { UNASSIGNED_STORE_ID, UNASSIGNED_STORE_NAME } from '../../constants/shopping';
@@ -451,6 +453,9 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
   const stepNo  = session.currentIndex + 1;
   const total   = session.storeQueue.length;
   const [addSheetVisible, setAddSheetVisible] = useState(false);
+  const [priceEntry, setPriceEntry] = useState<ShoppingEntry | null>(null);
+  const priceHistory = useDurableStore((s) => s.priceHistory);
+  const recordPrice = useDurableStore((s) => s.recordPrice);
 
   const progressAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -515,8 +520,37 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                     size={26}
                     color={e.picked ? colors.success : colors.faintText}
                   />
-                  <Text style={[styles.pickName, e.picked && styles.pickNameDone]}>{e.name}</Text>
-                  <Text style={styles.planMeta}>×{e.quantity}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.pickName, e.picked && styles.pickNameDone]}>{e.name}</Text>
+                    {(() => {
+                      const here = lastPriceAtStore(priceHistory, e.name, storeId);
+                      const best = cheapestRecentPrice(priceHistory, e.name);
+                      if (!here && !best) return null;
+                      const bestStore = best && best.storeId !== storeId ? storeById(best.storeId) : undefined;
+                      return (
+                        <Text style={styles.priceHint}>
+                          {here ? `Last here $${here.price.toFixed(2)}` : 'No price here yet'}
+                          {bestStore ? ` · Best $${best!.price.toFixed(2)} at ${bestStore.name}` : ''}
+                        </Text>
+                      );
+                    })()}
+                  </View>
+                  {e.picked && e.itemId !== '__quick_scan__' ? (
+                    <Pressable
+                      onPress={(event) => {
+                        event.stopPropagation();
+                        setPriceEntry(e);
+                      }}
+                      style={styles.addPriceButton}
+                    >
+                      <Ionicons name="pricetag-outline" size={14} color={colors.primary} />
+                      <Text style={styles.addPriceText}>
+                        {lastPriceAtStore(priceHistory, e.name, storeId) ? 'Update' : 'Add price'}
+                      </Text>
+                    </Pressable>
+                  ) : (
+                    <Text style={styles.planMeta}>×{e.quantity}</Text>
+                  )}
                 </Pressable>
               </View>
             ))}
@@ -581,6 +615,23 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
            });
         }}
       />
+      <PricePromptSheet
+        entry={priceEntry}
+        store={storeById(storeId)}
+        lastPrice={priceEntry ? lastPriceAtStore(priceHistory, priceEntry.name, storeId)?.price : undefined}
+        onClose={() => setPriceEntry(null)}
+        onSave={(price) => {
+          if (priceEntry) {
+            recordPrice({
+              itemId: priceEntry.itemId,
+              itemName: priceEntry.name,
+              storeId,
+              price,
+            });
+          }
+          setPriceEntry(null);
+        }}
+      />
     </Screen>
   );
 }
@@ -597,6 +648,7 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [scanResult, setScanResult] = useState<any>(null);
   const addItem = useDurableStore((s) => s.addItem);
+  const recordPrice = useDurableStore((s) => s.recordPrice);
 
   // Budget tracking
   const allTrips = useDurableStore((s) => s.trips);
@@ -860,7 +912,15 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
               label={`Add ${scanResult?.items?.length} to Pantry`}
               onPress={() => {
                 scanResult?.items?.forEach((item: any) => {
-                  addItem({ name: item.name, quantity: item.quantity, unit: item.unit || 'unit', storeId: storeId, status: 'stocked' });
+                  const pantryItem = addItem({ name: item.name, quantity: item.quantity, unit: item.unit || 'unit', storeId: storeId, status: 'stocked' });
+                  if (item.price > 0) {
+                    recordPrice({
+                      itemId: pantryItem.id,
+                      itemName: pantryItem.name,
+                      storeId,
+                      price: item.price,
+                    });
+                  }
                 });
                 setScanResult(null);
               }}
@@ -1449,6 +1509,9 @@ function makeStyles(colors: AppColors) {
     pickRow:      { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md },
     pickName:     { flex: 1, fontFamily: fonts.sansMedium, fontSize: 16, color: colors.ink },
     pickNameDone: { color: colors.muted, textDecorationLine: 'line-through' },
+    priceHint:    { fontFamily: fonts.sans, fontSize: 11, color: colors.primary, marginTop: 3 },
+    addPriceButton: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 8 },
+    addPriceText: { fontFamily: fonts.sansSemibold, fontSize: 11, color: colors.primary },
     emptyNote:    { fontFamily: fonts.sans, fontSize: 14, color: colors.muted, textAlign: 'center', paddingVertical: spacing.lg },
     continueTitle:{ fontFamily: fonts.serifItalic, fontSize: 22, color: colors.ink, textAlign: 'center' },
     continueBody: { fontFamily: fonts.sans, fontSize: 14, lineHeight: 20, color: colors.muted, textAlign: 'center', marginTop: spacing.md },

@@ -135,6 +135,7 @@ export async function pullFromSupabase(): Promise<void> {
         createdAt: Number(row.created_at),
         updatedAt: Number(row.updated_at),
       })),
+      priceHistory: local.priceHistory,
       receipts: (receipts ?? []).map((row: any) => ({
         id: row.id,
         tripId: row.trip_id,

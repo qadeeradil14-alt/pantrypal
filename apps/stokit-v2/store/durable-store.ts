@@ -13,6 +13,7 @@ import type {
   HouseholdPrefs,
   PantryItem,
   PantryStatus,
+  PriceEntry,
   Receipt,
   Store,
   StorageLocation,
@@ -73,6 +74,7 @@ interface DurableStore extends DurableState {
 
   // Trips / receipts (committed from the shopping session)
   commitTrip: (trip: Trip, receipts: Receipt[]) => void;
+  recordPrice: (input: Omit<PriceEntry, 'id' | 'paidAt'>) => void;
 
   // Preferences
   updatePrefs: (patch: Partial<HouseholdPrefs>) => void;
@@ -95,6 +97,7 @@ function snapshot(s: DurableState): DurableState {
   return {
     items: s.items,
     stores: s.stores,
+    priceHistory: s.priceHistory,
     receipts: s.receipts,
     trips: s.trips,
     activity: s.activity,
@@ -300,6 +303,17 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       persist();
     },
 
+    recordPrice: (input) => {
+      const entry: PriceEntry = {
+        ...input,
+        id: uid('price'),
+        price: Math.round(input.price * 100) / 100,
+        paidAt: now(),
+      };
+      set((s) => ({ priceHistory: [entry, ...s.priceHistory].slice(0, 1000) }));
+      persist();
+    },
+
     updatePrefs: (patch) => {
       set((s) => ({ prefs: { ...s.prefs, ...patch } }));
       persist();
@@ -330,6 +344,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         ...s,
         ...patch,
         items: patch.items ? consolidatePantryItems(patch.items) : s.items,
+        priceHistory: patch.priceHistory ?? s.priceHistory,
       }));
       // Save to disk (AsyncStorage) so we have it offline, but do NOT call persist()
       // because persist() triggers the syncEngine push loop.

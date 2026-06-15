@@ -135,7 +135,7 @@ export async function extractReceiptItems(
   if (parsed.items) {
     parsed.items = parsed.items.map(item => ({
       ...item,
-      price: item.total_price ?? item.unit_price ?? undefined,
+      price: item.unit_price ?? item.total_price ?? undefined,
       unit: 'unit',
     }));
   }

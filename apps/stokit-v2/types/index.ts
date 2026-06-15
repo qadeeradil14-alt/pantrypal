@@ -69,6 +69,15 @@ export interface ShoppingEntry {
   picked: boolean;
 }
 
+export interface PriceEntry {
+  id: string;
+  itemId: string;
+  itemName: string;
+  storeId: string;
+  price: number;
+  paidAt: number;
+}
+
 export type ReceiptStatus = 'logged' | 'photo_pending' | 'skipped';
 
 export interface Receipt {
@@ -173,6 +182,7 @@ export interface HouseholdPrefs {
 export interface DurableState {
   items: PantryItem[];
   stores: Store[];
+  priceHistory: PriceEntry[];
   receipts: Receipt[];
   trips: Trip[];
   activity: ActivityEvent[];

@@ -109,6 +109,7 @@ returns jsonb language sql immutable as $$
   select jsonb_build_object(
     'items', public.merge_jsonb_array_by_id(p_target->'items', p_source->'items'),
     'stores', public.merge_jsonb_array_by_id(p_target->'stores', p_source->'stores'),
+    'priceHistory', public.merge_jsonb_array_by_id(p_target->'priceHistory', p_source->'priceHistory'),
     'receipts', public.merge_jsonb_array_by_id(p_target->'receipts', p_source->'receipts'),
     'trips', public.merge_jsonb_array_by_id(p_target->'trips', p_source->'trips'),
     'activity', public.merge_jsonb_array_by_id(p_target->'activity', p_source->'activity'),
