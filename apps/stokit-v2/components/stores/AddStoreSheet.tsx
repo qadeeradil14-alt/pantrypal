@@ -233,7 +233,7 @@ export function AddStoreContent({
 
       {/* Autocomplete suggestions */}
       {suggestions.length > 0 && (
-        <ScrollView style={styles.dropdown} keyboardShouldPersistTaps="handled">
+        <ScrollView style={styles.dropdown} keyboardShouldPersistTaps="always">
           {suggestions.slice(0, 5).map((s, i) => (
             <Pressable
               key={s.placeId}
