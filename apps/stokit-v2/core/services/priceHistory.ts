@@ -1,6 +1,32 @@
 import type { PriceEntry } from '../../types';
 import { normalizeItemName } from './pantryItems';
 
+/** Returns true only for a finite positive number. Rejects 0, NaN, Infinity, negatives. */
+export function isValidPrice(price: unknown): price is number {
+  return typeof price === 'number' && isFinite(price) && price > 0;
+}
+
+/**
+ * Returns true when an equivalent entry already exists — same normalized item
+ * name, same store, and recorded within `windowMs` milliseconds. Used to guard
+ * against receipt re-scan creating duplicate history rows.
+ */
+export function isDuplicatePriceEntry(
+  entries: PriceEntry[],
+  candidate: { itemName: string; storeId: string; price: number },
+  windowMs = 30_000,
+): boolean {
+  const key = normalizeItemName(candidate.itemName);
+  const cutoff = Date.now() - windowMs;
+  return entries.some(
+    (e) =>
+      normalizeItemName(e.itemName) === key &&
+      e.storeId === candidate.storeId &&
+      Math.abs(e.price - candidate.price) < 0.01 &&
+      e.paidAt >= cutoff,
+  );
+}
+
 export function itemPriceHistory(entries: PriceEntry[], itemName: string): PriceEntry[] {
   const key = normalizeItemName(itemName);
   return entries

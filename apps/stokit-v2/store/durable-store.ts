@@ -36,6 +36,7 @@ import {
   startSyncEngine,
 } from '../core/services/syncEngine';
 import { consolidatePantryItems, normalizeItemName } from '../core/services/pantryItems';
+import { isDuplicatePriceEntry, isValidPrice } from '../core/services/priceHistory';
 import { refreshWidgets } from '../core/services/widgets';
 
 interface DurableStore extends DurableState {
@@ -307,10 +308,14 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     },
 
     recordPrice: (input) => {
+      if (!isValidPrice(input.price)) return;
+      const rounded = Math.round(input.price * 100) / 100;
+      // Skip if an identical entry was recorded in the last 30 s (receipt re-scan guard).
+      if (isDuplicatePriceEntry(get().priceHistory, { ...input, price: rounded })) return;
       const entry: PriceEntry = {
         ...input,
         id: uid('price'),
-        price: Math.round(input.price * 100) / 100,
+        price: rounded,
         paidAt: now(),
       };
       set((s) => ({ priceHistory: [entry, ...s.priceHistory].slice(0, 1000) }));

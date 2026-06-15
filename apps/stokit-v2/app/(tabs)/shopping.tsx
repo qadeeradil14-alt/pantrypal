@@ -42,7 +42,8 @@ import { useSessionStore } from '../../store/session-store';
 import { currentStoreEntries, currentStoreId, pendingStoreIds } from '../../core/shopping-machine';
 import { ROUTE_COLORS } from '../../core/services/storeBrands';
 import { classifyItem, categoryLabel } from '../../core/services/itemClassifier';
-import { cheapestRecentPrice, lastPriceAtStore } from '../../core/services/priceHistory';
+import { cheapestRecentPrice, itemPriceHistory, lastPriceAtStore } from '../../core/services/priceHistory';
+import { normalizeItemName } from '../../core/services/pantryItems';
 import type { PantryItem, ShoppingEntry, Store } from '../../types';
 import { useTheme } from '../../hooks/useTheme';
 import { UNASSIGNED_STORE_ID, UNASSIGNED_STORE_NAME } from '../../constants/shopping';
@@ -482,6 +483,20 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
   const priceHistory = useDurableStore((s) => s.priceHistory);
   const recordPrice = useDurableStore((s) => s.recordPrice);
 
+  // Build per-item price index once per priceHistory change instead of scanning
+  // the full array 3× per list row per render.
+  const priceIndex = useMemo(() => {
+    const map = new Map<string, { lastHere: ReturnType<typeof lastPriceAtStore>; best: ReturnType<typeof cheapestRecentPrice> }>();
+    const names = [...new Set(entries.map((e) => normalizeItemName(e.name)))];
+    for (const name of names) {
+      map.set(name, {
+        lastHere: lastPriceAtStore(priceHistory, name, storeId),
+        best: cheapestRecentPrice(priceHistory, name),
+      });
+    }
+    return map;
+  }, [priceHistory, entries, storeId]);
+
   const progressAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.spring(progressAnim, {
@@ -548,8 +563,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.pickName, e.picked && styles.pickNameDone]}>{e.name}</Text>
                     {(() => {
-                      const here = lastPriceAtStore(priceHistory, e.name, storeId);
-                      const best = cheapestRecentPrice(priceHistory, e.name);
+                      const { lastHere: here, best } = priceIndex.get(normalizeItemName(e.name)) ?? {};
                       if (!here && !best) return null;
                       const bestStore = best && best.storeId !== storeId ? storeById(best.storeId) : undefined;
                       return (
@@ -572,7 +586,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                     >
                       <Ionicons name="pricetag-outline" size={14} color={colors.primary} />
                       <Text style={styles.addPriceText}>
-                        {lastPriceAtStore(priceHistory, e.name, storeId) ? 'Update' : 'Add price'}
+                        {priceIndex.get(normalizeItemName(e.name))?.lastHere ? 'Update' : 'Add price'}
                       </Text>
                     </Pressable>
                     </>
@@ -646,7 +660,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
       <PricePromptSheet
         entry={priceEntry}
         store={storeById(storeId)}
-        lastPrice={priceEntry ? lastPriceAtStore(priceHistory, priceEntry.name, storeId)?.price : undefined}
+        lastPrice={priceEntry ? priceIndex.get(normalizeItemName(priceEntry.name))?.lastHere?.price : undefined}
         onClose={() => setPriceEntry(null)}
         onSave={(price) => {
           if (priceEntry) {
