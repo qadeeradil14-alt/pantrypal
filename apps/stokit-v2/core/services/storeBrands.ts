@@ -74,6 +74,30 @@ const BRANDS: Record<string, StoreBrand> = {
   'food4less':          { color: '#E31837', abbr: 'F4',  logoUrl: gf('food4less.com') },
   'food 4 less':        { color: '#E31837', abbr: 'F4',  logoUrl: gf('food4less.com') },
   fiesta:               { color: '#E31837', abbr: 'FM',  logoUrl: gf('fiestamart.com') },
+  albertsons:           { color: '#0072CE', abbr: 'A',   logoUrl: gf('albertsons.com') },
+  'jewel osco':         { color: '#E31837', abbr: 'JO',  logoUrl: gf('jewelosco.com') },
+  'king soopers':       { color: '#00539B', abbr: 'KS',  logoUrl: gf('kingsoopers.com') },
+  'fred meyer':         { color: '#E31837', abbr: 'FM',  logoUrl: gf('fredmeyer.com') },
+  'smiths food':        { color: '#00539B', abbr: 'SF',  logoUrl: gf('smithsfoodanddrug.com') },
+  qfc:                  { color: '#00539B', abbr: 'QFC', logoUrl: gf('qfc.com') },
+  marianos:             { color: '#6B1D32', abbr: 'M',   logoUrl: gf('marianos.com') },
+  'tom thumb':          { color: '#E31837', abbr: 'TT',  logoUrl: gf('tomthumb.com') },
+  weis:                 { color: '#00539B', abbr: 'W',   logoUrl: gf('weismarkets.com') },
+  'weis markets':       { color: '#00539B', abbr: 'W',   logoUrl: gf('weismarkets.com') },
+  schnucks:             { color: '#D71920', abbr: 'S',   logoUrl: gf('schnucks.com') },
+  ingles:               { color: '#00539B', abbr: 'I',   logoUrl: gf('ingles-markets.com') },
+  rouses:               { color: '#D71920', abbr: 'R',   logoUrl: gf('rouses.com') },
+  bashas:               { color: '#D71920', abbr: 'B' },
+  'piggly wiggly':      { color: '#E31837', abbr: 'PW',  logoUrl: gf('pigglywiggly.com') },
+  'save a lot':         { color: '#F5B335', abbr: 'SL',  logoUrl: gf('savealot.com') },
+  'grocery outlet':     { color: '#D71920', abbr: 'GO',  logoUrl: gf('groceryoutlet.com') },
+  'h mart':             { color: '#D71920', abbr: 'HM',  logoUrl: gf('hmart.com') },
+  '99 ranch':           { color: '#E31837', abbr: '99',  logoUrl: gf('99ranch.com') },
+  'seafood city':       { color: '#00539B', abbr: 'SC',  logoUrl: gf('seafoodcity.com') },
+  'food bazaar':        { color: '#D71920', abbr: 'FB',  logoUrl: gf('foodbazaar.com') },
+  'key food':           { color: '#D71920', abbr: 'KF',  logoUrl: gf('keyfood.com') },
+  erewhon:              { color: '#111111', abbr: 'E',   logoUrl: gf('erewhon.com') },
+  gelsons:              { color: '#00674B', abbr: 'G',   logoUrl: gf('gelsons.com') },
 
   // ── Wholesale / Club ──────────────────────────────────────────────────────
   costco:               { color: '#E31837', abbr: 'C',   logoUrl: gf('costco.com') },
@@ -160,6 +184,94 @@ const BRANDS: Record<string, StoreBrand> = {
   caribou:              { color: '#7B3F00', abbr: 'CC',  logoUrl: gf('cariboucoffee.com') },
   einstein:             { color: '#003DA5', abbr: 'EB',  logoUrl: gf('einsteinbros.com') },
 
+  // ── Home Improvement / Hardware / Garden ─────────────────────────────────
+  'home depot':         { color: '#F96302', abbr: 'HD',  logoUrl: gf('homedepot.com') },
+  lowes:                { color: '#004990', abbr: 'L',   logoUrl: gf('lowes.com') },
+  ace:                  { color: '#CC0000', abbr: 'ACE', logoUrl: gf('acehardware.com') },
+  'ace hardware':       { color: '#CC0000', abbr: 'ACE', logoUrl: gf('acehardware.com') },
+  menards:              { color: '#0066A4', abbr: 'M',   logoUrl: gf('menards.com') },
+  'true value':         { color: '#D71920', abbr: 'TV',  logoUrl: gf('truevalue.com') },
+  'tractor supply':     { color: '#D71920', abbr: 'TS',  logoUrl: gf('tractorsupplycompany.com') },
+  'harbor freight':     { color: '#00529B', abbr: 'HF',  logoUrl: gf('harborfreight.com') },
+  flooranddecor:        { color: '#D71920', abbr: 'FD',  logoUrl: gf('flooranddecor.com') },
+  'floor and decor':    { color: '#D71920', abbr: 'FD',  logoUrl: gf('flooranddecor.com') },
+  'northern tool':      { color: '#F5B335', abbr: 'NT',  logoUrl: gf('northerntool.com') },
+  'rural king':         { color: '#D71920', abbr: 'RK',  logoUrl: gf('ruralking.com') },
+
+  // ── General Merchandise / Household Value ────────────────────────────────
+  ikea:                 { color: '#0058A3', abbr: 'IKEA', logoUrl: gf('ikea.com') },
+  macys:                { color: '#E21A2C', abbr: 'M',   logoUrl: gf('macys.com') },
+  kohls:                { color: '#7A1F3D', abbr: 'K',   logoUrl: gf('kohls.com') },
+  'jcpenney':           { color: '#CC0000', abbr: 'JCP', logoUrl: gf('jcpenney.com') },
+  'j c penney':         { color: '#CC0000', abbr: 'JCP', logoUrl: gf('jcpenney.com') },
+  nordstrom:            { color: '#111111', abbr: 'N',   logoUrl: gf('nordstrom.com') },
+  'nordstrom rack':     { color: '#111111', abbr: 'NR',  logoUrl: gf('nordstromrack.com') },
+  burlington:           { color: '#D71920', abbr: 'B',   logoUrl: gf('burlington.com') },
+  marshalls:            { color: '#003B70', abbr: 'M',   logoUrl: gf('marshalls.com') },
+  tjmaxx:               { color: '#D71920', abbr: 'TJ',  logoUrl: gf('tjmaxx.com') },
+  'tj maxx':            { color: '#D71920', abbr: 'TJ',  logoUrl: gf('tjmaxx.com') },
+  homegoods:            { color: '#7A2E6E', abbr: 'HG',  logoUrl: gf('homegoods.com') },
+  'home goods':         { color: '#7A2E6E', abbr: 'HG',  logoUrl: gf('homegoods.com') },
+  ross:                 { color: '#00539B', abbr: 'R',   logoUrl: gf('rossstores.com') },
+  'ross dress for less': { color: '#00539B', abbr: 'R',  logoUrl: gf('rossstores.com') },
+  'big lots':           { color: '#F58220', abbr: 'BL',  logoUrl: gf('biglots.com') },
+  ollies:               { color: '#F58220', abbr: 'O',   logoUrl: gf('ollies.us') },
+  'dollar tree':        { color: '#007A3D', abbr: 'DT',  logoUrl: gf('dollartree.com') },
+  'dollar general':     { color: '#F5D000', abbr: 'DG',  logoUrl: gf('dollargeneral.com') },
+  familydollar:         { color: '#E31837', abbr: 'FD',  logoUrl: gf('familydollar.com') },
+  'family dollar':      { color: '#E31837', abbr: 'FD',  logoUrl: gf('familydollar.com') },
+  fivebelow:            { color: '#0067B1', abbr: '5B',  logoUrl: gf('fivebelow.com') },
+  'five below':         { color: '#0067B1', abbr: '5B',  logoUrl: gf('fivebelow.com') },
+  'at home':            { color: '#E31837', abbr: 'AH',  logoUrl: gf('athome.com') },
+  wayfair:              { color: '#7F187F', abbr: 'W',   logoUrl: gf('wayfair.com') },
+  crateandbarrel:       { color: '#111111', abbr: 'CB',  logoUrl: gf('crateandbarrel.com') },
+  'crate and barrel':   { color: '#111111', abbr: 'CB',  logoUrl: gf('crateandbarrel.com') },
+  potterybarn:          { color: '#5A4637', abbr: 'PB',  logoUrl: gf('potterybarn.com') },
+  'pottery barn':       { color: '#5A4637', abbr: 'PB',  logoUrl: gf('potterybarn.com') },
+  'bed bath and beyond': { color: '#1B3F8B', abbr: 'BB', logoUrl: gf('bedbathandbeyond.com') },
+  'container store':    { color: '#007DBA', abbr: 'CS',  logoUrl: gf('containerstore.com') },
+  ashley:               { color: '#D71920', abbr: 'A',   logoUrl: gf('ashleyfurniture.com') },
+  'ashley furniture':   { color: '#D71920', abbr: 'A',   logoUrl: gf('ashleyfurniture.com') },
+  'rooms to go':        { color: '#E31837', abbr: 'RTG', logoUrl: gf('roomstogo.com') },
+  'value city furniture': { color: '#D71920', abbr: 'VC', logoUrl: gf('valuecityfurniture.com') },
+
+  // ── Pet / Office / Crafts ────────────────────────────────────────────────
+  petsmart:             { color: '#0072BC', abbr: 'PS',  logoUrl: gf('petsmart.com') },
+  petco:                { color: '#0055A5', abbr: 'PC',  logoUrl: gf('petco.com') },
+  chewy:                { color: '#1C49C2', abbr: 'C',   logoUrl: gf('chewy.com') },
+  staples:              { color: '#CC0000', abbr: 'S',   logoUrl: gf('staples.com') },
+  'office depot':       { color: '#CC0000', abbr: 'OD',  logoUrl: gf('officedepot.com') },
+  officemax:            { color: '#CC0000', abbr: 'OM',  logoUrl: gf('officedepot.com') },
+  'office max':         { color: '#CC0000', abbr: 'OM',  logoUrl: gf('officedepot.com') },
+  michaels:             { color: '#CC0000', abbr: 'M',   logoUrl: gf('michaels.com') },
+  'hobby lobby':        { color: '#00529B', abbr: 'HL',  logoUrl: gf('hobbylobby.com') },
+  joann:                { color: '#7A1D5D', abbr: 'J',   logoUrl: gf('joann.com') },
+  ulta:                 { color: '#E36B2C', abbr: 'U',   logoUrl: gf('ulta.com') },
+  'ulta beauty':        { color: '#E36B2C', abbr: 'U',   logoUrl: gf('ulta.com') },
+  sephora:              { color: '#111111', abbr: 'S',   logoUrl: gf('sephora.com') },
+  'sally beauty':       { color: '#7A1D5D', abbr: 'SB',  logoUrl: gf('sallybeauty.com') },
+  'bath and body works': { color: '#3D6FA5', abbr: 'BB', logoUrl: gf('bathandbodyworks.com') },
+
+  // ── Electronics / Appliances ─────────────────────────────────────────────
+  'best buy':           { color: '#0046BE', abbr: 'BB',  logoUrl: gf('bestbuy.com') },
+  apple:                { color: '#111111', abbr: 'A',   logoUrl: gf('apple.com') },
+  microcenter:          { color: '#E31837', abbr: 'MC',  logoUrl: gf('microcenter.com') },
+  'micro center':       { color: '#E31837', abbr: 'MC',  logoUrl: gf('microcenter.com') },
+  gamestop:             { color: '#CC0000', abbr: 'GS',  logoUrl: gf('gamestop.com') },
+  'aarons':             { color: '#0072CE', abbr: 'A',   logoUrl: gf('aarons.com') },
+
+  // ── Auto / Tools / Household Maintenance ─────────────────────────────────
+  autozone:             { color: '#E31837', abbr: 'AZ',  logoUrl: gf('autozone.com') },
+  'advance auto parts': { color: '#D71920', abbr: 'AA',  logoUrl: gf('advanceautoparts.com') },
+  oreilly:              { color: '#007A33', abbr: 'OR',  logoUrl: gf('oreillyauto.com') },
+  'o reilly auto parts': { color: '#007A33', abbr: 'OR', logoUrl: gf('oreillyauto.com') },
+  napa:                 { color: '#00529B', abbr: 'N',   logoUrl: gf('napaonline.com') },
+  'napa auto parts':    { color: '#00529B', abbr: 'N',   logoUrl: gf('napaonline.com') },
+  pepboys:              { color: '#D71920', abbr: 'PB',  logoUrl: gf('pepboys.com') },
+  'pep boys':           { color: '#D71920', abbr: 'PB',  logoUrl: gf('pepboys.com') },
+  carquest:             { color: '#D71920', abbr: 'CQ',  logoUrl: gf('carquestprofessionals.com') },
+  'discount tire':      { color: '#00529B', abbr: 'DT',  logoUrl: gf('discounttire.com') },
+
   // ── Online / Delivery ─────────────────────────────────────────────────────
   amazon:               { color: '#FF9900', abbr: 'A',   logoUrl: gf('amazon.com') },
   instacart:            { color: '#43B02A', abbr: 'IC',  logoUrl: gf('instacart.com') },
@@ -181,13 +293,32 @@ export const ROUTE_COLORS = [
  * Returns brand color, abbreviation, and logo URL for a store name.
  * Unknown stores use a safe letter chip rather than guessing a brand domain.
  */
+function normalizeBrandName(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[’']/g, '')
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+const NORMALIZED_BRANDS = Object.entries(BRANDS)
+  .map(([brandName, brand]) => ({ brandName: normalizeBrandName(brandName), brand }))
+  .sort((a, b) => b.brandName.length - a.brandName.length);
+
 export function getStoreBrand(
   name: string,
   fallbackColor?: string,
 ): StoreBrand {
-  const key = name.toLowerCase().trim();
-  for (const [k, brand] of Object.entries(BRANDS)) {
-    if (key === k || key.includes(k)) return brand;
+  const key = normalizeBrandName(name);
+
+  for (const entry of NORMALIZED_BRANDS) {
+    if (key === entry.brandName || ` ${key} `.includes(` ${entry.brandName} `)) {
+      return entry.brand;
+    }
   }
 
   const words = name.trim().split(/\s+/);

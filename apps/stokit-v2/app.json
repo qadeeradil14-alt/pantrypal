@@ -71,7 +71,35 @@
           "resizeMode": "contain"
         }
       ],
-      "@bacons/apple-targets"
+      [
+        "expo-widgets",
+        {
+          "bundleIdentifier": "com.hewadadil.pantrypal.widgets",
+          "groupIdentifier": "group.com.hewadadil.pantrypal",
+          "widgets": [
+            {
+              "name": "LowStockWidget",
+              "displayName": "Low Stock",
+              "description": "See what your household needs at a glance.",
+              "supportedFamilies": [
+                "systemSmall",
+                "systemMedium",
+                "accessoryRectangular",
+                "accessoryInline"
+              ]
+            },
+            {
+              "name": "QuickScanWidget",
+              "displayName": "Quick Scan",
+              "description": "Open Stokit to scan a receipt.",
+              "supportedFamilies": [
+                "systemSmall"
+              ]
+            }
+          ]
+        }
+      ],
+      "./plugins/with-widget-version"
     ],
     "extra": {
       "eas": {

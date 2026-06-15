@@ -36,6 +36,7 @@ import {
   startSyncEngine,
 } from '../core/services/syncEngine';
 import { consolidatePantryItems, normalizeItemName } from '../core/services/pantryItems';
+import { refreshWidgets } from '../core/services/widgets';
 
 interface DurableStore extends DurableState {
   hydrated: boolean;
@@ -115,6 +116,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     const epoch = persistEpoch;
     set({ updatedAt });
     const snap = snapshot(get());
+    void refreshWidgets(snap.items);
     persistQueue = persistQueue
       .then(async () => {
         if (epoch !== persistEpoch) return;
@@ -153,6 +155,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       } else {
         set({ hydrated: true });
       }
+      void refreshWidgets(get().items);
       // Start real-time sync listeners once hydrated
       startSyncEngine();
     },
@@ -330,6 +333,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       await clearCloudState();
       await clearDurable();
       set({ ...emptyDurableState, prefs: { ...defaultPrefs }, hydrated: true });
+      void refreshWidgets([]);
     },
 
     resetLocalOnly: async () => {
@@ -337,18 +341,26 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       await persistQueue;
       await clearDurable();
       set({ ...emptyDurableState, prefs: { ...defaultPrefs }, hydrated: true });
+      void refreshWidgets([]);
     },
 
     applyRemotePatch: (patch) => {
       set((s) => ({
         ...s,
         ...patch,
-        items: patch.items ? consolidatePantryItems(patch.items) : s.items,
-        priceHistory: patch.priceHistory ?? s.priceHistory,
+        // Defensive: guard every array field against old cloud snapshots that
+        // pre-date newly-added fields (e.g. priceHistory added in OTA 120).
+        items:        patch.items        ? consolidatePantryItems(patch.items) : s.items,
+        stores:       Array.isArray(patch.stores)       ? patch.stores       : s.stores,
+        priceHistory: Array.isArray(patch.priceHistory) ? patch.priceHistory : s.priceHistory,
+        receipts:     Array.isArray(patch.receipts)     ? patch.receipts     : s.receipts,
+        trips:        Array.isArray(patch.trips)        ? patch.trips        : s.trips,
+        activity:     Array.isArray(patch.activity)     ? patch.activity     : s.activity,
       }));
       // Save to disk (AsyncStorage) so we have it offline, but do NOT call persist()
       // because persist() triggers the syncEngine push loop.
       void saveDurable(snapshot(get()));
+      void refreshWidgets(get().items);
     },
   };
 });

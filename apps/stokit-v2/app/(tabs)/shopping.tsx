@@ -69,6 +69,7 @@ export default function ShoppingScreen() {
 
   const items      = useDurableStore((s) => s.items);
   const stores     = useDurableStore((s) => s.stores);
+  const priceHistory = useDurableStore((s) => s.priceHistory);
   const updateItem = useDurableStore((s) => s.updateItem);
   const session    = useSessionStore((s) => s.session);
   const dispatch   = useSessionStore((s) => s.dispatch);
@@ -229,14 +230,18 @@ export default function ShoppingScreen() {
     <Screen>
       <PageTitle eyebrow="Plan your trip" title="Shopping" />
       {shoppableCount === 0 ? (
-        <EmptyState
-          icon="cart-outline"
-          title="No trip planned"
-          body="Add something to buy and it will be ready for your next trip."
-          steps={['Add items from Pantry', 'Assign a store only when useful', 'Start shopping anywhere']}
-        />
+        <>
+          <PriceMemoryIntro count={priceHistory.length} styles={styles} colors={colors} />
+          <EmptyState
+            icon="cart-outline"
+            title="No trip planned"
+            body="Add something to buy and it will be ready for your next trip."
+            steps={['Add items from Pantry', 'Assign a store only when useful', 'Start shopping anywhere']}
+          />
+        </>
       ) : (
         <>
+          <PriceMemoryIntro count={priceHistory.length} styles={styles} colors={colors} />
           <Card style={styles.summaryCard}>
             {singleStore && (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md }}>
@@ -444,6 +449,26 @@ function StoreHeader({ store, eyebrow, styles }: { store?: Store; eyebrow?: stri
   );
 }
 
+function PriceMemoryIntro({ count, styles, colors }: { count: number; styles: any; colors: AppColors }) {
+  return (
+    <Card style={styles.priceMemoryCard}>
+      <View style={styles.priceMemoryHeader}>
+        <View style={styles.priceMemoryIcon}>
+          <Ionicons name="pricetag-outline" size={19} color={colors.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.priceMemoryTitle}>Price memory</Text>
+          <Text style={styles.priceMemoryBody}>
+            {count > 0
+              ? `${count} price${count === 1 ? '' : 's'} remembered. Stokit will show cheaper stores while you shop.`
+              : 'During a shopping trip, tap Add price beside an item. Stokit will remember and compare stores next time.'}
+          </Text>
+        </View>
+      </View>
+    </Card>
+  );
+}
+
 // ── 1. Shopping at current store ──────────────────────────────────────────────
 
 function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubProps) {
@@ -535,7 +560,9 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                       );
                     })()}
                   </View>
-                  {e.picked && e.itemId !== '__quick_scan__' ? (
+                  {e.itemId !== '__quick_scan__' ? (
+                    <>
+                      <Text style={styles.planMeta}>×{e.quantity}</Text>
                     <Pressable
                       onPress={(event) => {
                         event.stopPropagation();
@@ -548,6 +575,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                         {lastPriceAtStore(priceHistory, e.name, storeId) ? 'Update' : 'Add price'}
                       </Text>
                     </Pressable>
+                    </>
                   ) : (
                     <Text style={styles.planMeta}>×{e.quantity}</Text>
                   )}
@@ -1483,6 +1511,11 @@ function StatBox({ value, label, dim, mono = true, tsStyles, colors }: { value: 
 function makeStyles(colors: AppColors) {
   const styles = StyleSheet.create({
     summaryCard:  { alignItems: 'center', paddingVertical: spacing.xl },
+    priceMemoryCard: { marginBottom: spacing.lg, borderColor: colors.primary + '55' },
+    priceMemoryHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+    priceMemoryIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
+    priceMemoryTitle: { fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink },
+    priceMemoryBody: { fontFamily: fonts.sans, fontSize: 12, lineHeight: 18, color: colors.muted, marginTop: 2 },
     summaryBig:   { fontFamily: fonts.mono, fontSize: 48, color: colors.primary },
     summarySub:   { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.muted, marginTop: 2 },
     firstDestLabel: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
