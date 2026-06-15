@@ -261,7 +261,10 @@ export function StoreChip({
     return (
       <View style={{ ...chipStyle, backgroundColor: themeColors.surfaceRaised, borderWidth: 1, borderColor: themeColors.borderSoft }}>
         <Image
-          source={{ uri: logoUrl }}
+          source={{ 
+            uri: logoUrl,
+            headers: { 'User-Agent': 'PantryPal/2.0 (Mobile App)' }
+          }}
           style={{ width: size * 0.72, height: size * 0.72 }}
           resizeMode="contain"
           onError={() => setImgError(true)}
