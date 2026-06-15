@@ -12,6 +12,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.hewadadil.pantrypal",
+      "appleTeamId": "4AJ8TH5QF7",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Stokit uses your location to remind you when you arrive at a store where you have items.",

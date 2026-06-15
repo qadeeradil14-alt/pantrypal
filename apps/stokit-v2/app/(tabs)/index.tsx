@@ -59,7 +59,7 @@ export default function PantryScreen() {
   const [searchQuery, setSearchQuery] = useState('');
 
   const myName = members.find((m) => m.isMe)?.displayName ?? '';
-  const firstName = myName.split(' ')[0] || '';
+  const firstName = (myName === 'Me' || myName === '') ? '' : myName.split(' ')[0];
   const greeting = `${getGreeting()}${firstName ? `, ${firstName}` : ''} 👋`;
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const storeById = (id: string | null) => id ? stores.find((store) => store.id === id) : undefined;

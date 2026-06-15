@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, Platform, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Pressable, Platform, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -52,6 +52,8 @@ export default function SettingsScreen() {
   const [signingOut, setSigningOut] = useState(false);
   const [createVisible, setCreateVisible] = useState(false);
   const [joinVisible, setJoinVisible] = useState(false);
+  const [renameVisible, setRenameVisible] = useState(false);
+  const [draftName, setDraftName] = useState('');
 
   // ── Geofence toggle state ──────────────────────────────────────────────────
   const [geofenceOn, setGeofenceOn] = useState(false);
@@ -154,6 +156,39 @@ export default function SettingsScreen() {
       {/* ── PROFILE ───────────────────────────────────────────────────────── */}
       <SectionHeader title="Profile" />
       <Card>
+        {renameVisible && (
+          <View style={styles.renameModal}>
+            <Text style={styles.renameTitle}>Your name</Text>
+            <Text style={styles.renameSub}>Shown to household members</Text>
+            <TextInput
+              style={styles.renameInput}
+              value={draftName}
+              onChangeText={setDraftName}
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={() => {
+                const t = draftName.trim();
+                if (t) void renameMe(t);
+                setRenameVisible(false);
+              }}
+            />
+            <View style={styles.renameActions}>
+              <Pressable onPress={() => setRenameVisible(false)} style={styles.renameCancelBtn}>
+                <Text style={styles.renameCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  const t = draftName.trim();
+                  if (t) void renameMe(t);
+                  setRenameVisible(false);
+                }}
+                style={styles.renameSaveBtn}
+              >
+                <Text style={styles.renameSaveText}>Save</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
         <Pressable
           style={styles.budgetRow}
           onPress={() => {
@@ -169,7 +204,8 @@ export default function SettingsScreen() {
                 myDisplayName,
               );
             } else {
-              Alert.alert('Your name', `Current name: ${myDisplayName}\n\nTo change, tap Edit in your profile.`);
+              setDraftName(myDisplayName === 'Me' ? '' : myDisplayName);
+              setRenameVisible(true);
             }
           }}
         >
@@ -473,6 +509,15 @@ function makeStyles(colors: AppColors) {
     budgetLabel: { fontFamily: fonts.sansMedium, fontSize: 15, color: colors.ink },
     budgetSub: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 2 },
     budgetAmount: { fontFamily: fonts.monoMedium, fontSize: 16, color: colors.primary },
+    renameModal: { backgroundColor: colors.surfaceRaised, borderRadius: 14, padding: spacing.lg, marginBottom: spacing.md },
+    renameTitle: { fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink, marginBottom: 4 },
+    renameSub: { fontFamily: fonts.sans, fontSize: 13, color: colors.muted, marginBottom: spacing.md },
+    renameInput: { fontFamily: fonts.sans, fontSize: 15, color: colors.ink, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: spacing.md, paddingVertical: 10, marginBottom: spacing.md },
+    renameActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.md },
+    renameCancelBtn: { paddingHorizontal: spacing.md, paddingVertical: 8 },
+    renameCancelText: { fontFamily: fonts.sans, fontSize: 15, color: colors.muted },
+    renameSaveBtn: { paddingHorizontal: spacing.md, paddingVertical: 8, backgroundColor: colors.primary, borderRadius: 8 },
+    renameSaveText: { fontFamily: fonts.sansSemibold, fontSize: 15, color: '#fff' },
     statRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
