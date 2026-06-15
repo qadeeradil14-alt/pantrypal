@@ -701,7 +701,7 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
         Alert.alert('Nothing found', 'Could not find any items on the receipt. Please try a clearer, well-lit photo.');
       }
     } catch (e: any) {
-      console.warn('[AI] Error extracting items:', e);
+      if (__DEV__) console.warn('[AI] Error extracting items:', e);
       Alert.alert('Scan failed', e?.message ?? 'An unexpected error occurred while parsing the receipt.');
     } finally {
       setSaving(false);

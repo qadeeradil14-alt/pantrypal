@@ -35,7 +35,7 @@ const item = (
 
 export const PANTRY_CATALOG: PantryCatalogItem[] = [
   item('Produce', 'Apple', '🍎'), item('Produce', 'Banana', '🍌'), item('Produce', 'Orange', '🍊'),
-  item('Produce', 'Lemon', '🍋'), item('Produce', 'Lime', '🍈'), item('Produce', 'Grapes', '🍇', 'lb'),
+  item('Produce', 'Lemon', '🍋'), item('Produce', 'Lime', '🍋'), item('Produce', 'Grapes', '🍇', 'lb'),
   item('Produce', 'Strawberry', '🍓', 'pack'), item('Produce', 'Blueberry', '🫐', 'pack'), item('Produce', 'Watermelon', '🍉'),
   item('Produce', 'Tomato', '🍅'), item('Produce', 'Onion', '🧅'), item('Produce', 'Garlic', '🧄'),
   item('Produce', 'Potato', '🥔'), item('Produce', 'Carrot', '🥕', 'lb'), item('Produce', 'Broccoli', '🥦'),
@@ -43,7 +43,7 @@ export const PANTRY_CATALOG: PantryCatalogItem[] = [
   item('Produce', 'Bell pepper', '🫑'), item('Produce', 'Avocado', '🥑'),
 
   item('Dairy', 'Milk', '🥛', 'gal'), item('Dairy', 'Eggs', '🥚', 'dozen'), item('Dairy', 'Cheese', '🧀', 'pack'),
-  item('Dairy', 'Yogurt', '🥣'), item('Dairy', 'Butter', '🧈', 'pack'), item('Dairy', 'Cream cheese', '🥯', 'pack'),
+  item('Dairy', 'Yogurt', '🥣'), item('Dairy', 'Butter', '🧈', 'pack'), item('Dairy', 'Cream cheese', '🧀', 'pack'),
   item('Dairy', 'Sour cream', '🥣'), item('Dairy', 'Heavy cream', '🥛'), item('Dairy', 'Goat cheese', '🧀', 'pack'),
 
   item('Meat', 'Chicken', '🍗', 'lb'), item('Meat', 'Ground beef', '🥩', 'lb'), item('Meat', 'Steak', '🥩', 'lb'),
@@ -55,13 +55,13 @@ export const PANTRY_CATALOG: PantryCatalogItem[] = [
   item('Seafood', 'Crab', '🦀', 'lb'), item('Seafood', 'Lobster', '🦞', 'lb'),
 
   item('Bakery', 'Bread', '🍞'), item('Bakery', 'Bagels', '🥯', 'pack'), item('Bakery', 'Tortillas', '🫓', 'pack'),
-  item('Bakery', 'Pita bread', '🫓', 'pack'), item('Bakery', 'Croissants', '🥐', 'pack'), item('Bakery', 'Buns', '🍔', 'pack'),
+  item('Bakery', 'Pita bread', '🫓', 'pack'), item('Bakery', 'Croissants', '🥐', 'pack'), item('Bakery', 'Buns', '🍞', 'pack'),
 
   item('Frozen', 'Frozen vegetables', '🥦', 'pack'), item('Frozen', 'Frozen fruit', '🍓', 'pack'),
   item('Frozen', 'Ice cream', '🍦'), item('Frozen', 'Frozen pizza', '🍕'), item('Frozen', 'Frozen chicken', '🍗', 'pack'),
 
   item('Dry Goods', 'Pasta', '🍝', 'box'), item('Dry Goods', 'Rice', '🍚', 'pack'), item('Dry Goods', 'Oats', '🥣', 'box'),
-  item('Dry Goods', 'Flour', '🌾', 'pack'), item('Dry Goods', 'Sugar', '🧂', 'pack'), item('Dry Goods', 'Cereal', '🥣', 'box'),
+  item('Dry Goods', 'Flour', '🌾', 'pack'), item('Dry Goods', 'Sugar', '🧁', 'pack'), item('Dry Goods', 'Cereal', '🥣', 'box'),
   item('Dry Goods', 'Lentils', '🫘', 'lb'), item('Dry Goods', 'Beans', '🫘', 'lb'), item('Dry Goods', 'Chickpeas', '🫘', 'lb'),
   item('Dry Goods', 'Quinoa', '🍚', 'lb'),
 
@@ -71,26 +71,26 @@ export const PANTRY_CATALOG: PantryCatalogItem[] = [
   item('Canned', 'Peanut butter', '🥜'),
 
   item('Spices', 'Salt', '🧂'), item('Spices', 'Black pepper', '🧂'), item('Spices', 'Olive oil', '🫒'),
-  item('Spices', 'Vegetable oil', '🍾'), item('Spices', 'Vinegar', '🍶'), item('Spices', 'Soy sauce', '🍶'),
+  item('Spices', 'Vegetable oil', '🫙'), item('Spices', 'Vinegar', '🍶'), item('Spices', 'Soy sauce', '🍶'),
   item('Spices', 'Ketchup', 'custom:ketchup'), item('Spices', 'Mustard', 'custom:mustard'),
   item('Spices', 'Mayonnaise', '🫙'), item('Spices', 'Hot sauce', '🌶️'), item('Spices', 'Honey', '🍯'),
-  item('Spices', 'Cinnamon', '🪵'), item('Spices', 'Cumin', '🌿'), item('Spices', 'Paprika', '🌶️'),
-  item('Spices', 'Turmeric', '🟡'),
+  item('Spices', 'Cinnamon', '🌿'), item('Spices', 'Cumin', '🌿'), item('Spices', 'Paprika', '🌶️'),
+  item('Spices', 'Turmeric', '🌿'),
 
   item('Drinks', 'Water', '💧', 'pack'), item('Drinks', 'Juice', '🧃'), item('Drinks', 'Soda', '🥤', 'pack'),
   item('Drinks', 'Coffee', '☕'), item('Drinks', 'Tea', '🍵', 'box'), item('Drinks', 'Sparkling water', '🫧', 'pack'),
 
-  item('Snacks', 'Chips', '🥔', 'pack'), item('Snacks', 'Crackers', '🍘', 'box'), item('Snacks', 'Cookies', '🍪', 'pack'),
+  item('Snacks', 'Chips', '🍟', 'pack'), item('Snacks', 'Crackers', '🍘', 'box'), item('Snacks', 'Cookies', '🍪', 'pack'),
   item('Snacks', 'Popcorn', '🍿', 'box'), item('Snacks', 'Nuts', '🥜', 'pack'), item('Snacks', 'Pretzels', '🥨', 'pack'),
   item('Snacks', 'Chocolate', '🍫', 'pack'), item('Snacks', 'Candy', '🍬', 'pack'), item('Snacks', 'Gum', '🍬', 'pack'),
   item('Snacks', 'Mint', '🌿', 'pack'), item('Snacks', 'Ice cream', '🍦'), item('Snacks', 'Popsicles', '🍧', 'box'),
-  item('Snacks', 'Dates', '🌰', 'pack'), item('Snacks', 'Granola bars', '🍫', 'box'),
+  item('Snacks', 'Dates', '🌴', 'pack'), item('Snacks', 'Granola bars', '🥣', 'box'),
 
   item('Kitchen', 'Plates', '🍽️', 'pack'), item('Kitchen', 'Bowls', '🥣', 'pack'), item('Kitchen', 'Cups', '🥤', 'pack'),
   item('Kitchen', 'Mugs', '☕'), item('Kitchen', 'Forks', '🍴', 'pack'), item('Kitchen', 'Spoons', '🥄', 'pack'),
   item('Kitchen', 'Knives', '🔪', 'pack'), item('Kitchen', 'Napkins', '🧻', 'pack'), item('Kitchen', 'Food containers', '🥡', 'pack'),
-  item('Kitchen', 'Aluminum foil', '🧻', 'box'), item('Kitchen', 'Plastic wrap', '🧻', 'box'),
-  item('Kitchen', 'Zip bags', '👝', 'box'), item('Kitchen', 'Cutting board', '🪵'), item('Kitchen', 'Sponges', '🧽', 'pack'),
+  item('Kitchen', 'Aluminum foil', '', 'box'), item('Kitchen', 'Plastic wrap', '🫙', 'box'),
+  item('Kitchen', 'Zip bags', '🫙', 'box'), item('Kitchen', 'Cutting board', '🪵'), item('Kitchen', 'Sponges', '🧽', 'pack'),
 
   item('Cleaning', 'Dish soap', 'custom:dishsoap'), item('Cleaning', 'Hand soap', 'custom:handsoap'), item('Cleaning', 'Laundry detergent', 'custom:laundry_detergent'),
   item('Cleaning', 'Fabric softener', 'custom:fabric_softener'), item('Cleaning', 'Bleach', 'custom:bleach'), item('Cleaning', 'All-purpose cleaner', 'custom:all_purpose_cleaner'),
@@ -112,5 +112,5 @@ export const PANTRY_CATALOG: PantryCatalogItem[] = [
   item('Baby', 'Formula', '🍼'), item('Baby', 'Baby lotion', '🧴'),
 
   item('Pet', 'Dog food', '🐶', 'pack'), item('Pet', 'Cat food', '🐱', 'pack'), item('Pet', 'Pet treats', '🦴', 'pack'),
-  item('Pet', 'Litter', '🐱', 'pack'),
+  item('Pet', 'Litter', '🐈', 'pack'),
 ];

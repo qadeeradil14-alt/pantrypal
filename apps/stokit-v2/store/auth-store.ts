@@ -288,7 +288,7 @@ supabase.auth.onAuthStateChange(async (event, session) => {
 
     if (session) {
       // Happy path: Supabase loaded a valid session from storage.
-      console.log('[Auth] INITIAL_SESSION: valid session loaded.');
+      if (__DEV__) console.log('[Auth] INITIAL_SESSION: valid session loaded.');
       // Also refresh the backup here so it always has the latest data.
       saveBackup(session);
       useAuthStore.setState({
@@ -309,7 +309,7 @@ supabase.auth.onAuthStateChange(async (event, session) => {
     //
     // Our session backup (seeded at module load time in lib/supabase.ts)
     // survives this deletion. Use it to recover the session.
-    console.warn('[Auth] INITIAL_SESSION: null session — attempting recovery from backup...');
+    if (__DEV__) console.warn('[Auth] INITIAL_SESSION: null session — attempting recovery from backup...');
 
     try {
       const backupRaw = await AsyncStorage.getItem(SESSION_BACKUP_KEY);
@@ -322,7 +322,7 @@ supabase.auth.onAuthStateChange(async (event, session) => {
         };
 
         if (backup?.refresh_token) {
-          console.log('[Auth] Backup found. Attempting token refresh...');
+          if (__DEV__) console.log('[Auth] Backup found. Attempting token refresh...');
 
           // Attempt a fresh session via the stored refresh token.
           const { data, error } = await supabase.auth.refreshSession({
@@ -330,7 +330,7 @@ supabase.auth.onAuthStateChange(async (event, session) => {
           });
 
           if (!error && data.session) {
-            console.log('[Auth] Recovery via refresh succeeded.');
+            if (__DEV__) console.log('[Auth] Recovery via refresh succeeded.');
             saveBackup(data.session);
             useAuthStore.setState({
               session: data.session,
@@ -347,7 +347,7 @@ supabase.auth.onAuthStateChange(async (event, session) => {
           // Keep the user logged in with the cached user object so they can
           // use the app. Supabase will auto-refresh when connectivity returns.
           if (backup.user) {
-            console.warn('[Auth] Offline recovery: keeping user logged in with cached profile.');
+            if (__DEV__) console.warn('[Auth] Offline recovery: keeping user logged in with cached profile.');
             useAuthStore.setState({
               session: null,
               user: backup.user,
@@ -364,11 +364,11 @@ supabase.auth.onAuthStateChange(async (event, session) => {
         AsyncStorage.removeItem(SESSION_BACKUP_KEY).catch(() => {});
       }
     } catch (restoreError) {
-      console.warn('[Auth] Recovery failed:', restoreError);
+      if (__DEV__) console.warn('[Auth] Recovery failed:', restoreError);
     }
 
     // Truly no session (first-ever launch, or backup unavailable).
-    console.log('[Auth] No session found. Directing to welcome screen.');
+    if (__DEV__) console.log('[Auth] No session found. Directing to welcome screen.');
     useAuthStore.setState({
       session: null,
       user: null,
@@ -385,7 +385,7 @@ supabase.auth.onAuthStateChange(async (event, session) => {
     if (!_explicitSignOut) {
       // Supabase fires SIGNED_OUT for internal reasons (failed refresh, etc.).
       // We handle recovery above, so silently ignore these.
-      console.warn('[Auth] Ignoring non-user-initiated SIGNED_OUT.');
+      if (__DEV__) console.warn('[Auth] Ignoring non-user-initiated SIGNED_OUT.');
       return;
     }
     _explicitSignOut = false;

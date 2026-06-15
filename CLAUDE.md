@@ -165,6 +165,81 @@ Existing project docs (human-authored reference; treat as context, not law where
 
 ---
 
+## Prompt Templates for Claude Code
+
+Use these copy-paste prompts in the terminal. Customize the bracketed parts before running.
+
+### Pre-Ship Audit (no fixes — report only)
+```
+You are a senior Apple developer and QA engineer doing a pre-App Store audit. Your job is NOT to fix anything.
+
+1. Run `npx tsc --noEmit` — report every error or confirm zero.
+2. Search `app/` and `components/` for: any "PantryPal" in user-facing copy; console.log/warn/error in production code; __DEV__ blocks that render visible UI; hardcoded strings like "TODO", "FIXME", "debug", "temp".
+3. Check `app.json`/`eas.json`: ITSAppUsesNonExemptEncryption:false under ios.infoPlist; app name is "Stokit"; permission strings are human-readable; autoIncrement:true in production profile.
+4. Check every screen in app/(main)/, app/(auth)/, app/(setup)/: blank screens on empty data; unguarded .map() or property access; navigation to nonexistent routes.
+5. Check Zustand stores in store/: state never reset on sign-out; state initialized undefined where non-null assumed.
+
+Report P0 (crash/rejection) / P1 (bad UX) / P2 (polish). Do NOT make any changes.
+```
+
+### Bug Investigation (root cause, not patch)
+```
+You are a senior React Native / Expo engineer. Do NOT patch the symptom.
+
+Bug: [DESCRIBE THE BUG]
+
+1. Investigate the full flow: screen in app/, Zustand store state, Supabase queries/Edge Functions, Expo Router group (auth/main/setup), any modals or sheets.
+2. Find the root cause — why does this happen, not just where.
+3. Report before touching code: what you found, exact files, state variables/handlers, the safest fix, what you are NOT changing, regression risks, OTA or EAS Build?
+4. Wait for approval before coding.
+```
+
+### Feature Implementation
+```
+You are a senior React Native / Expo architect. Feature: [DESCRIBE FEATURE]
+
+Before writing any code: read CLAUDE.md and DESIGN.md; map affected files (screens, stores, Supabase, navigation); check for reusable components; write an implementation plan with files to create/modify, state changes, DB/Edge Function changes, OTA vs EAS Build classification, and regression risks. Wait for approval.
+
+After coding: run `npx tsc --noEmit`; list files changed; describe before/after behavior; list simulator and real-device QA steps.
+```
+
+### UI / Design Review
+```
+You are a senior Apple UI designer and React Native engineer. Screen: [SCREEN NAME OR FILE]
+
+1. Read DESIGN.md first.
+2. Review: font usage (correct typefaces/sizes/weights), colors (design system tokens only — no hardcoded hex), spacing (design system grid), empty states, loading states, error states.
+3. Flag deviations as P0/P1/P2. Do NOT change anything.
+```
+
+### TypeScript Cleanup
+```
+You are a TypeScript expert. Run `npx tsc --noEmit` and fix all errors in severity order. For each fix: explain the error, why it happened, what you changed, OTA or Build? Do NOT change logic or behavior — type errors only. Do NOT commit.
+```
+
+### OTA vs Build Classification
+```
+Classify this change for EAS deployment: [DESCRIBE CHANGE]
+
+Answer: Does it touch native code, app.json, package.json (new native dep), iOS/Android config, or permissions? Or is it purely JS/TS/UI/logic?
+
+Classify as OTA (EAS Update) or Native (EAS Build) and provide the exact command if OTA.
+```
+
+### App Store Final Submission Checklist
+```
+You are a senior Apple developer. Run through this checklist and report PASS/FAIL:
+
+BUILD: app icon is Stokit, splash renders, ITSAppUsesNonExemptEncryption:false in app.json, no secrets in bundle, autoIncrement:true, production profile used.
+COPY: no "PantryPal" in UI, no debug labels, permission strings are prose, Settings shows "Stokit v1.0.0".
+CODE: npx tsc --noEmit = zero errors, no console.log in production paths, no blank screens on empty data.
+FLOWS (real device): fresh install → sign up → household → store → item → shop → complete → sign out. Existing user reopens → stays logged in. Shopping does NOT auto-start on reopen.
+
+Report P0 (blocker) / P1 (must fix) / P2 (polish) for failures.
+```
+
+---
+
 ## graphify
 
 This project has a knowledge graph at `graphify-out/` with god nodes, community

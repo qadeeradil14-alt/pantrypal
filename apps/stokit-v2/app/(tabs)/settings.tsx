@@ -321,7 +321,7 @@ export default function SettingsScreen() {
         <View style={styles.statRow}>
           <Text style={styles.statLabel}>Build</Text>
           <Text style={styles.statValue}>
-            {inExpoGo ? 'Expo Go · prototype' : 'Standalone · prototype'}
+            {inExpoGo ? 'Expo Go' : 'Standalone'}
           </Text>
         </View>
       </Card>

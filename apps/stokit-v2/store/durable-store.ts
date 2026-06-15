@@ -119,7 +119,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         if (epoch !== persistEpoch) return;
         await pushLocalState(snap);
       })
-      .catch((err) => console.warn('[durable-store] persist failed', err));
+      .catch((err) => { if (__DEV__) console.warn('[durable-store] persist failed', err); });
   };
 
   const pushActivity = (

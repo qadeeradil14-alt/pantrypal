@@ -153,7 +153,7 @@ export default function StoresScreen() {
           return;
         }
       } catch (err) {
-        console.log('Failed to open native map app:', err);
+        if (__DEV__) console.log('Failed to open native map app:', err);
       }
     }
     

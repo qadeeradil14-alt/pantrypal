@@ -2,7 +2,6 @@ import React from 'react';
 import { View, Text, StyleSheet, Image } from 'react-native';
 import { useTheme } from '../../hooks/useTheme';
 import { PANTRY_CATALOG } from '../../constants/pantryCatalog';
-import { classifyItem } from '../../core/services/itemClassifier';
 import { getCategoryColors } from '../../theme/categoryPalette';
 
 const CUSTOM_EMOJIS: Record<string, any> = {
@@ -25,6 +24,45 @@ const CUSTOM_EMOJIS: Record<string, any> = {
   'custom:mustard': require('../../assets/custom-emojis/mustard.png'),
 };
 
+// Icons for commonly typed items that are not in the catalog
+const ITEM_ICON: Record<string, string> = {
+  'hummus': '🫙', 'salsa': '🫙', 'guacamole': '🥑', 'ranch': '🫙',
+  'ranch dressing': '🫙', 'bbq sauce': '🫙', 'sriracha': '🌶️',
+  'teriyaki': '🫙', 'teriyaki sauce': '🫙', 'tahini': '🫙',
+  'pesto': '🌿', 'marinara': '🍅', 'pasta sauce': '🍅', 'alfredo': '🫙',
+  'baking soda': '🌾', 'baking powder': '🌾', 'vanilla extract': '🫙',
+  'chocolate chips': '🍫', 'brown sugar': '🍬', 'cocoa powder': '🍫',
+  'yeast': '🌾', 'cornstarch': '🌾',
+  'beer': '🍺', 'wine': '🍷', 'vodka': '🥃', 'whiskey': '🥃',
+  'kombucha': '🫙', 'iced tea': '🧃', 'lemonade': '🧃',
+  'sweet potato': '🍠', 'yam': '🍠', 'mushroom': '🍄', 'mushrooms': '🍄',
+  'jalapeño': '🌶️', 'jalapeno': '🌶️', 'zucchini': '🥒', 'asparagus': '🥦',
+  'kale': '🥬', 'mango': '🥭', 'peach': '🍑', 'pear': '🍐',
+  'cherry': '🍒', 'cherries': '🍒', 'pineapple': '🍍', 'coconut': '🥥',
+  'kiwi': '🥝', 'grapefruit': '🍊', 'basil': '🌿', 'cilantro': '🌿',
+  'parsley': '🌿', 'rosemary': '🌿', 'thyme': '🌿', 'dill': '🌿',
+  'ham': '🥩', 'pork': '🥩', 'salami': '🥩', 'pepperoni': '🥩',
+  'tofu': '🍱', 'tempeh': '🍱',
+  'oysters': '🦪', 'clams': '🦪', 'scallops': '🦐',
+  'broth': '🍲', 'chicken broth': '🍲', 'beef broth': '🍲',
+  'vegetable broth': '🍲', 'stock': '🍲', 'coconut milk': '🥛',
+  'sunscreen': '☀️', 'dental floss': '🦷', 'floss': '🦷',
+  'mouthwash': '🫙', 'cotton balls': '🌸', 'lip balm': '💄',
+  'vitamins': '💊', 'ibuprofen': '💊', 'tylenol': '💊', 'aspirin': '💊',
+  'protein powder': '💪', 'band aid': '🩹', 'bandaids': '🩹',
+  'batteries': '🔋', 'light bulbs': '💡', 'candle': '🕯️',
+  'air freshener': '🌸', 'matches': '🔥',
+};
+
+// Safe per-category fallback — guarantees no blank box
+const CATEGORY_ICON: Record<string, string> = {
+  'Produce': '🥬', 'Dairy': '🥛', 'Meat': '🥩', 'Seafood': '🐟',
+  'Bakery': '🍞', 'Frozen': '🧊', 'Dry Goods': '🌾', 'Canned': '🥫',
+  'Spices': '🧂', 'Drinks': '🥤', 'Snacks': '🍿', 'Kitchen': '🍽️',
+  'Cleaning': '🧹', 'Paper Goods': '🧻', 'Personal Care': '🧴',
+  'Baby': '👶', 'Pet': '🐾', 'Other': '🛒',
+};
+
 interface ItemAvatarProps {
   name: string;
   size?: number;
@@ -34,15 +72,19 @@ interface ItemAvatarProps {
 export function ItemAvatar({ name, size = 44, icon }: ItemAvatarProps) {
   const { isDark } = useTheme();
 
-  // Exact catalog match keeps curated icons (incl. custom PNGs); everything
-  // else falls back to the keyword classifier so icons match the rest of the
-  // app instead of showing the generic 📦.
   const catalogItem = PANTRY_CATALOG.find((i) => i.name.toLowerCase() === name.toLowerCase());
-  const classified = catalogItem ? null : classifyItem(name);
-  const iconStr = icon || catalogItem?.icon || classified?.emoji || '📦';
-  const isCustom = iconStr.startsWith('custom:');
-  const category = catalogItem?.category ?? classified?.category ?? 'other';
+  const category = catalogItem?.category ?? 'Other';
   const categoryTheme = getCategoryColors(category, isDark);
+
+  // Box-proof resolution chain — '🛒' is the final guarantee
+  const iconStr: string =
+    icon ||
+    (catalogItem?.icon || undefined) ||
+    ITEM_ICON[name.toLowerCase().trim()] ||
+    CATEGORY_ICON[category] ||
+    '🛒';
+
+  const isCustom = iconStr.startsWith('custom:');
 
   return (
     <View
@@ -58,10 +100,10 @@ export function ItemAvatar({ name, size = 44, icon }: ItemAvatarProps) {
       ]}
     >
       {isCustom ? (
-        <Image 
-          source={CUSTOM_EMOJIS[iconStr]} 
-          style={{ width: size * 0.7, height: size * 0.7 }} 
-          resizeMode="contain" 
+        <Image
+          source={CUSTOM_EMOJIS[iconStr]}
+          style={{ width: size * 0.7, height: size * 0.7 }}
+          resizeMode="contain"
         />
       ) : (
         <Text style={[styles.emoji, { fontSize: size * 0.55 }]}>

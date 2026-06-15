@@ -123,7 +123,7 @@ export function AddStoreContent({
         }
         setSearchError('');
       } catch (e) {
-        console.error('[AddStoreSheet] autocomplete error:', e);
+        if (__DEV__) console.error('[AddStoreSheet] autocomplete error:', e);
         setSearchError('Search unavailable. You can still type the store name manually.');
         setSuggestions([]);
       }
@@ -184,7 +184,7 @@ export function AddStoreContent({
         setAddress(s.secondaryText);
       }
     } catch (e) {
-      console.error('[AddStoreSheet] details error:', e);
+      if (__DEV__) console.error('[AddStoreSheet] details error:', e);
       setPlaceId(s.placeId);
       setAddress(s.secondaryText);
     } finally {
