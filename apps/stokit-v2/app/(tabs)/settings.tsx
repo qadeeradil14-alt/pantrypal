@@ -241,8 +241,8 @@ export default function SettingsScreen() {
         </View>
         {household?.isPersonal ? (
           <>
-            <Button label="Create shared household" onPress={() => setCreateVisible(true)} style={{ marginTop: spacing.lg }} />
-            <Button label="Join with invite code" variant="ghost" onPress={() => setJoinVisible(true)} style={{ marginTop: spacing.sm }} />
+            <Button label="Join with invite code" onPress={() => setJoinVisible(true)} style={{ marginTop: spacing.lg }} />
+            <Button label="Create shared household" variant="ghost" onPress={() => setCreateVisible(true)} style={{ marginTop: spacing.sm }} />
           </>
         ) : household ? (
           <>

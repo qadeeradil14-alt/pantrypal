@@ -1,36 +1,55 @@
 import React from 'react';
-import Svg, { Path, Defs, LinearGradient, Stop } from 'react-native-svg';
+import Svg, { Path, Text as SvgText } from 'react-native-svg';
 
-export function Logo({ size = 40, color = '#FFFFFF', accent = '#FF3B30' }: { size?: number, color?: string, accent?: string }) {
+/**
+ * Stokit "Midnight S" mark — a faithful in-app copy of the approved app icon
+ * (assets/icon-light.svg / icon-dark.svg): a faint ghost shopping bag with a
+ * bold red "S" as the hero. Transparent background so it sits on any surface.
+ *
+ *  - `color`  drives the ghost bag (pass the theme ink so it adapts light/dark).
+ *  - `accent` is the bold S; defaults to the brand red used by the icon.
+ */
+export function Logo({
+  size = 40,
+  color = '#111827',
+  accent = '#E8432D',
+}: {
+  size?: number;
+  color?: string;
+  accent?: string;
+}) {
   return (
-    <Svg width={size} height={size} viewBox="120 90 272 360" fill="none">
-      <Defs>
-        <LinearGradient id="bagGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <Stop offset="0%" stopColor={accent} />
-          <Stop offset="100%" stopColor="#FF2D55" />
-        </LinearGradient>
-      </Defs>
-      {/* Bag Handle */}
+    <Svg width={size} height={size} viewBox="0 0 1024 1024" fill="none">
+      {/* Bag handle — faint ghost */}
       <Path
-        d="M 200 200 V 160 C 200 128, 224 104, 256 104 C 288 104, 312 128, 312 160 V 200"
+        d="M 283 488 L 283 370 C 283 260 346 197 512 197 C 678 197 740 260 740 370 L 740 488"
         stroke={color}
-        strokeWidth={24}
+        strokeOpacity={0.12}
+        strokeWidth={47}
         strokeLinecap="round"
         fill="none"
       />
-      {/* Bag Body */}
+      {/* Bag body — faint ghost */}
       <Path
-        d="M 144 200 C 128 200, 120 216, 128 232 L 160 408 C 160 424, 176 432, 192 432 H 320 C 336 432, 352 424, 352 408 L 384 232 C 392 216, 384 200, 368 200 Z"
-        fill="url(#bagGrad)"
-      />
-      {/* S Initial on Bag */}
-      <Path
-        d="M 280 272 C 280 256, 232 256, 232 288 C 232 320, 280 320, 280 352 C 280 384, 232 384, 232 368"
+        d="M 150 488 C 118 488 102 520 110 559 L 197 866 C 197 906 236 921 268 921 L 756 921 C 788 921 827 906 827 866 L 914 559 C 922 520 906 488 874 488 Z"
+        fill={color}
+        fillOpacity={0.045}
         stroke={color}
-        strokeWidth={20}
-        strokeLinecap="round"
-        fill="none"
+        strokeOpacity={0.1}
+        strokeWidth={9}
       />
+      {/* Bold S — the hero, matches the icon exactly */}
+      <SvgText
+        x={512}
+        y={800}
+        textAnchor="middle"
+        fontFamily="Helvetica Neue"
+        fontSize={600}
+        fontWeight="700"
+        fill={accent}
+      >
+        S
+      </SvgText>
     </Svg>
   );
 }

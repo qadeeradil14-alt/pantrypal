@@ -76,6 +76,8 @@ interface DurableStore extends DurableState {
 
   // Trips / receipts (committed from the shopping session)
   commitTrip: (trip: Trip, receipts: Receipt[]) => void;
+  removeTrip: (tripId: string, receiptIds: string[]) => void;
+  updateReceipt: (receiptId: string, patch: Partial<Receipt>) => void;
   recordPrice: (input: Omit<PriceEntry, 'id' | 'paidAt'>) => void;
 
   // Preferences
@@ -304,6 +306,22 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         `Trip complete · ${trip.itemsBought} items · $${trip.totalSpent.toFixed(2)}`,
         { tripId: trip.id }
       );
+      persist();
+    },
+
+    removeTrip: (tripId, receiptIds) => {
+      const receiptSet = new Set(receiptIds);
+      set((s) => ({
+        trips: s.trips.filter((t) => t.id !== tripId),
+        receipts: s.receipts.filter((r) => !receiptSet.has(r.id)),
+      }));
+      persist();
+    },
+
+    updateReceipt: (receiptId, patch) => {
+      set((s) => ({
+        receipts: s.receipts.map((r) => r.id === receiptId ? { ...r, ...patch } : r),
+      }));
       persist();
     },
 

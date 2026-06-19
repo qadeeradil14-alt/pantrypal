@@ -480,6 +480,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
   const total   = session.storeQueue.length;
   const [addSheetVisible, setAddSheetVisible] = useState(false);
   const [priceEntry, setPriceEntry] = useState<ShoppingEntry | null>(null);
+  const [quantityStepperId, setQuantityStepperId] = useState<string | null>(null);
   const priceHistory = useDurableStore((s) => s.priceHistory);
   const recordPrice = useDurableStore((s) => s.recordPrice);
 
@@ -549,47 +550,83 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
               <View key={e.itemId}>
                 {idx > 0 && <View style={styles.rowDivider} />}
                 <Pressable
-                  style={styles.pickRow}
+                  style={[styles.pickRow, e.outOfStock && { opacity: 0.5 }]}
                   onPress={() => {
+                    if (e.outOfStock) return;
                     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     dispatch({ type: 'TOGGLE_PICK', itemId: e.itemId });
                   }}
+                  onLongPress={() => {
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    Alert.alert(
+                      e.name,
+                      e.outOfStock ? 'Mark as available again?' : 'Mark as out of stock?',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: e.outOfStock ? 'Available' : 'Out of stock',
+                          onPress: () => dispatch({ type: 'MARK_OUT_OF_STOCK', itemId: e.itemId }),
+                        },
+                      ],
+                    );
+                  }}
                 >
                   <Ionicons
-                    name={e.picked ? 'checkmark-circle' : 'ellipse-outline'}
+                    name={e.outOfStock ? 'close-circle-outline' : e.picked ? 'checkmark-circle' : 'ellipse-outline'}
                     size={26}
-                    color={e.picked ? colors.success : colors.faintText}
+                    color={e.outOfStock ? colors.danger : e.picked ? colors.success : colors.faintText}
                   />
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.pickName, e.picked && styles.pickNameDone]}>{e.name}</Text>
                     {(() => {
                       const { lastHere: here, best } = priceIndex.get(normalizeItemName(e.name)) ?? {};
-                      if (!here && !best) return null;
                       const bestStore = best && best.storeId !== storeId ? storeById(best.storeId) : undefined;
+                      const priceText = here
+                        ? `$${here.price.toFixed(2)}${bestStore ? ` · Best $${best!.price.toFixed(2)} @ ${bestStore.name}` : ''}`
+                        : bestStore ? `Best $${best!.price.toFixed(2)} @ ${bestStore.name}` : null;
                       return (
-                        <Text style={styles.priceHint}>
-                          {here ? `Last here $${here.price.toFixed(2)}` : 'No price here yet'}
-                          {bestStore ? ` · Best $${best!.price.toFixed(2)} at ${bestStore.name}` : ''}
-                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
+                          {priceText ? <Text style={styles.priceHint}>{priceText}</Text> : null}
+                          {e.itemId !== '__quick_scan__' && (
+                            <Pressable
+                              onPress={(ev) => { ev.stopPropagation(); setPriceEntry(e); }}
+                              style={styles.addPriceButton}
+                            >
+                              <Ionicons name="pricetag-outline" size={12} color={colors.primary} />
+                              <Text style={styles.addPriceText}>
+                                {priceIndex.get(normalizeItemName(e.name))?.lastHere ? 'Update' : 'Log price'}
+                              </Text>
+                            </Pressable>
+                          )}
+                        </View>
                       );
                     })()}
                   </View>
+                  {/* Qty badge → stepper on right, never overlaps pricetag */}
                   {e.itemId !== '__quick_scan__' ? (
-                    <>
-                      <Text style={styles.planMeta}>×{e.quantity}</Text>
-                    <Pressable
-                      onPress={(event) => {
-                        event.stopPropagation();
-                        setPriceEntry(e);
-                      }}
-                      style={styles.addPriceButton}
-                    >
-                      <Ionicons name="pricetag-outline" size={14} color={colors.primary} />
-                      <Text style={styles.addPriceText}>
-                        {priceIndex.get(normalizeItemName(e.name))?.lastHere ? 'Update' : 'Add price'}
-                      </Text>
-                    </Pressable>
-                    </>
+                    quantityStepperId === e.itemId ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                        <Pressable
+                          onPress={(ev) => { ev.stopPropagation(); void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); dispatch({ type: 'UPDATE_QUANTITY', itemId: e.itemId, quantity: e.quantity - 1 }); if (e.quantity <= 1) setQuantityStepperId(null); }}
+                          style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
+                        >
+                          <Text style={{ fontSize: 16, color: colors.ink, lineHeight: 20 }}>−</Text>
+                        </Pressable>
+                        <Pressable onPress={(ev) => { ev.stopPropagation(); setQuantityStepperId(null); }}>
+                          <Text style={[styles.planMeta, { minWidth: 28, textAlign: 'center' }]}>×{e.quantity}</Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={(ev) => { ev.stopPropagation(); void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); dispatch({ type: 'UPDATE_QUANTITY', itemId: e.itemId, quantity: e.quantity + 1 }); }}
+                          style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
+                        >
+                          <Text style={{ fontSize: 16, color: colors.ink, lineHeight: 20 }}>+</Text>
+                        </Pressable>
+                      </View>
+                    ) : (
+                      <Pressable onPress={(ev) => { ev.stopPropagation(); setQuantityStepperId(e.itemId); }} hitSlop={10}>
+                        <Text style={styles.planMeta}>×{e.quantity}</Text>
+                      </Pressable>
+                    )
                   ) : (
                     <Text style={styles.planMeta}>×{e.quantity}</Text>
                   )}
@@ -1257,6 +1294,34 @@ function NextStoreSelector({ session, dispatch, storeById, styles, nsStyles, col
             );
           })}
 
+          {/* Skipped stores — allow un-skipping */}
+          {session.skippedStoreIds.length > 0 && (
+            <View style={{ marginTop: spacing.md }}>
+              <Text style={[nsStyles.subtitle, { marginBottom: spacing.sm }]}>Skipped:</Text>
+              {session.skippedStoreIds.map((storeId) => {
+                const store = storeById(storeId);
+                const itemCount = session.entries.filter((e) => e.storeId === storeId).length;
+                return (
+                  <Card key={storeId} style={[nsStyles.storeCard, { opacity: 0.65 }]}>
+                    <View style={nsStyles.storeRow}>
+                      <StoreChip store={store} name={store?.name ?? '?'} size={40} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={nsStyles.storeName}>{store?.name ?? 'Unknown'}</Text>
+                        <Text style={nsStyles.storeItems}>{itemCount} item{itemCount !== 1 ? 's' : ''}</Text>
+                      </View>
+                      <Pressable
+                        onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); dispatch({ type: 'UNSKIP_STORE', storeId }); }}
+                        style={{ backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 }}
+                      >
+                        <Text style={{ fontFamily: fonts.sansMedium, fontSize: 13, color: colors.ink }}>Un-skip</Text>
+                      </Pressable>
+                    </View>
+                  </Card>
+                );
+              })}
+            </View>
+          )}
+
           {/* Add an unplanned store mid-trip */}
           <Pressable onPress={() => setShowAddStore(true)} style={nsStyles.addStoreBtn}>
             <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
@@ -1353,6 +1418,20 @@ function TripSummary({ session, dispatch, storeById, tsStyles, colors }: SubProp
   const prefs = useDurableStore((s) => s.prefs);
   const allTrips = useDurableStore((s) => s.trips);
 
+  const RESUME_WINDOW_MS = 30 * 60 * 1000;
+  const [secsLeft, setSecsLeft] = React.useState(() =>
+    Math.max(0, Math.floor((trip.completedAt + RESUME_WINDOW_MS - Date.now()) / 1000))
+  );
+  useEffect(() => {
+    if (secsLeft <= 0) return;
+    const id = setInterval(() => setSecsLeft((s) => Math.max(0, s - 1)), 1000);
+    return () => clearInterval(id);
+  }, [secsLeft > 0]);
+  const canResume = secsLeft > 0;
+  const resumeLabel = canResume
+    ? `Forgot something? Go back (${Math.floor(secsLeft / 60)}:${String(secsLeft % 60).padStart(2, '0')})`
+    : null;
+
   const visitedCount = trip.storeIdsVisited.length;
   const skippedCount = trip.skippedStoreIds.length;
   const durationMin  = Math.round(trip.duration / 60_000);
@@ -1375,9 +1454,21 @@ function TripSummary({ session, dispatch, storeById, tsStyles, colors }: SubProp
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.xl, paddingTop: spacing.xl, paddingBottom: spacing.sm }}>
         <Text style={tsStyles.eyebrow}>TRIP COMPLETE</Text>
-        <Pressable onPress={() => dispatch({ type: 'END_TRIP' })} style={{ backgroundColor: colors.surfaceRaised, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 }}>
-          <Text style={{ fontFamily: fonts.sansMedium, fontSize: 14, color: colors.primary }}>Done</Text>
-        </Pressable>
+        <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+          {canResume && (
+            <Pressable
+              onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); dispatch({ type: 'RESUME_TRIP' }); }}
+              style={{ backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20 }}
+            >
+              <Text style={{ fontFamily: fonts.sansMedium, fontSize: 13, color: colors.muted }}>
+                ↩ Forgot something? ({Math.floor(secsLeft / 60)}:{String(secsLeft % 60).padStart(2, '0')})
+              </Text>
+            </Pressable>
+          )}
+          <Pressable onPress={() => dispatch({ type: 'END_TRIP' })} style={{ backgroundColor: colors.surfaceRaised, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 }}>
+            <Text style={{ fontFamily: fonts.sansMedium, fontSize: 14, color: colors.primary }}>Done</Text>
+          </Pressable>
+        </View>
       </View>
       <ScrollView contentContainerStyle={tsStyles.scroll}>
         {/* Header */}
@@ -1389,7 +1480,8 @@ function TripSummary({ session, dispatch, storeById, tsStyles, colors }: SubProp
         {/* Stats row */}
         <View style={tsStyles.statsRow}>
           <StatBox value={visitedCount} label="Stops" tsStyles={tsStyles} colors={colors} />
-          <StatBox value={trip.itemsBought} label="Items bought" tsStyles={tsStyles} colors={colors} />
+          <StatBox value={trip.itemsBought} label="Bought" tsStyles={tsStyles} colors={colors} />
+          {(trip.itemsOutOfStock ?? 0) > 0 && <StatBox value={trip.itemsOutOfStock} label="Out of stock" dim tsStyles={tsStyles} colors={colors} />}
           {trip.itemsRemaining > 0 && <StatBox value={trip.itemsRemaining} label="Remaining" dim tsStyles={tsStyles} colors={colors} />}
           <StatBox value={durationStr} label="Duration" mono={false} tsStyles={tsStyles} colors={colors} />
         </View>

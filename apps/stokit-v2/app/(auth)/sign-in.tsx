@@ -60,7 +60,7 @@ export default function SignInScreen() {
     <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={styles.content}>
         <View style={{ marginBottom: spacing.md }}>
-          <Logo size={64} color={colors.ink} accent={colors.primary} />
+          <Logo size={64} color={colors.ink} />
         </View>
         <Text style={styles.eyebrow}>WELCOME BACK</Text>
         <Text style={styles.title}>Sign in to Stokit</Text>

@@ -67,6 +67,8 @@ export interface ShoppingEntry {
   unit: Unit;
   storeId: string;
   picked: boolean;
+  /** User confirmed store didn't have this item. Counts neither as bought nor remaining. */
+  outOfStock?: boolean;
 }
 
 export interface PriceEntry {
@@ -107,6 +109,7 @@ export interface Trip {
   skippedStoreIds: string[];
   itemsBought: number;
   itemsRemaining: number;
+  itemsOutOfStock: number;
   receiptIds: string[];
   totalSpent: number;
   breakdown: TripStoreBreakdown[];

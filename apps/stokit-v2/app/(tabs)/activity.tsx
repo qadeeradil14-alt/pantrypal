@@ -4,9 +4,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../../components/shared/Screen';
 import { Card, PageTitle, StoreChip } from '../../components/shared/ui';
 import { EmptyState } from '../../components/shared/EmptyState';
+import { TripDetailSheet } from '../../components/receipts/TripDetailSheet';
 import { fonts, radii, spacing, type AppColors } from '../../theme';
 import { useDurableStore } from '../../store/durable-store';
-import type { ActivityEvent, ActivityType, Store } from '../../types';
+import type { ActivityEvent, ActivityType, Store, Trip } from '../../types';
 import { useTheme } from '../../hooks/useTheme';
 
 const ICON_META: Record<ActivityType, { name: keyof typeof Ionicons.glyphMap; colorKey: keyof AppColors }> = {
@@ -57,8 +58,11 @@ export default function ActivityScreen() {
 
   const activity = useDurableStore((s) => s.activity);
   const stores = useDurableStore((s) => s.stores);
+  const trips = useDurableStore((s) => s.trips);
   const storeById = (id?: string) => (id ? stores.find((s) => s.id === id) : undefined);
+  const tripById = (id?: string) => (id ? trips.find((t) => t.id === id) : undefined);
   const [filter, setFilter] = useState<FilterKey>('all');
+  const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
 
   const filtered = useMemo(() => {
     const types = FILTERS.find((f) => f.key === filter)?.types ?? null;
@@ -123,7 +127,13 @@ export default function ActivityScreen() {
             <Text style={styles.sectionTitle}>{section.label}</Text>
             {section.events.map((event) =>
               event.type === 'trip_completed' ? (
-                <TripCard key={event.id} event={event} styles={styles} colors={colors} />
+                <TripCard
+                  key={event.id}
+                  event={event}
+                  styles={styles}
+                  colors={colors}
+                  onPress={() => setSelectedTrip(tripById(event.tripId) ?? null)}
+                />
               ) : (
                 <Card key={event.id} style={styles.eventCard}>
                   <EventRow event={event} store={storeById(event.storeId)} styles={styles} colors={colors} />
@@ -133,13 +143,17 @@ export default function ActivityScreen() {
           </View>
         ))
       )}
+      <TripDetailSheet trip={selectedTrip} onClose={() => setSelectedTrip(null)} />
     </Screen>
   );
 }
 
-function TripCard({ event, styles, colors }: { event: ActivityEvent; styles: any; colors: AppColors }) {
+function TripCard({ event, styles, colors, onPress }: { event: ActivityEvent; styles: any; colors: AppColors; onPress: () => void }) {
   return (
-    <View style={styles.tripCard}>
+    <Pressable
+      style={({ pressed }) => [styles.tripCard, pressed && { opacity: 0.75 }]}
+      onPress={onPress}
+    >
       <View style={styles.tripIcon}>
         <Ionicons name="flag" size={20} color={colors.primary} />
       </View>
@@ -148,7 +162,8 @@ function TripCard({ event, styles, colors }: { event: ActivityEvent; styles: any
         <Text style={styles.tripMessage}>{event.message.replace('Trip complete · ', '')}</Text>
         <Text style={styles.time}>{timeAgo(event.createdAt)}</Text>
       </View>
-    </View>
+      <Ionicons name="chevron-forward" size={18} color={colors.primary} />
+    </Pressable>
   );
 }
 

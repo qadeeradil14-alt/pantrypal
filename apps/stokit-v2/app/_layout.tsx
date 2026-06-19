@@ -25,10 +25,13 @@ import { useTheme } from '../hooks/useTheme';
 import { useDurableStore } from '../store/durable-store';
 import { useHouseholdStore } from '../store/household-store';
 import { useSessionStore } from '../store/session-store';
-import { setupNotifications } from '../core/services/notifications';
+import { setupNotifications, registerPushToken } from '../core/services/notifications';
 import { handleAuthLink } from '../lib/auth-links';
 import { isEmailVerified, useAuthStore } from '../store/auth-store';
 import { pullFromSupabase, startSyncEngine } from '../core/services/syncEngine';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const PENDING_JOIN_KEY = 'stokit:v2:pending-join';
 // Geofence background task must be defined at module load time (before any render).
 import { defineGeofenceTask } from '../core/services/geofencing';
 
@@ -104,8 +107,22 @@ export default function RootLayout() {
     if (!user || !hydratedDurable || !hydratedHousehold) return;
     void (async () => {
       await ensureHousehold();
+
+      // Apply a pending household join from the /join sign-up flow
+      const pendingJoinRaw = await AsyncStorage.getItem(PENDING_JOIN_KEY);
+      if (pendingJoinRaw) {
+        await AsyncStorage.removeItem(PENDING_JOIN_KEY);
+        try {
+          const { inviteCode, displayName } = JSON.parse(pendingJoinRaw) as { inviteCode: string; displayName: string };
+          await useHouseholdStore.getState().joinHousehold(inviteCode, displayName);
+        } catch {
+          // Invalid stored data — ignore, user can join manually from settings
+        }
+      }
+
       await pullFromSupabase();
       await startSyncEngine();
+      void registerPushToken(user.id);
     })();
   }, [user, hydratedDurable, hydratedHousehold, ensureHousehold]);
 
@@ -130,7 +147,7 @@ export default function RootLayout() {
       }
 
       // Main auth routing
-      const authPaths = ['/welcome', '/sign-in', '/sign-up', '/verify-email', '/reset-password'];
+      const authPaths = ['/welcome', '/sign-in', '/sign-up', '/join', '/verify-email', '/reset-password'];
       const inAuthGroup = authPaths.includes(pathname);
 
       if (unlocked && inAuthGroup) {

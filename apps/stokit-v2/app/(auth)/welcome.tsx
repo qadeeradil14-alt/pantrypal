@@ -381,7 +381,7 @@ export default function WelcomeScreen() {
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <Animated.View style={[styles.safe, { opacity }]}>
           <View style={styles.wordmark}>
-            <Logo size={u(110)} color={colors.ink} accent={colors.primary} />
+            <Logo size={u(110)} color={colors.ink} />
             <Text style={styles.brand}>Stokit</Text>
           </View>
           <View style={styles.carousel}>
@@ -445,6 +445,16 @@ export default function WelcomeScreen() {
               }
             }} style={styles.signInLink}>Sign in</Text>
           </Text>
+          <Text style={styles.joinRow}>
+            Have an invite code?{'  '}
+            <Text onPress={() => {
+              try {
+                router.push('/join');
+              } catch (err: any) {
+                // ignore
+              }
+            }} style={styles.joinLink}>Join a household →</Text>
+          </Text>
         </Animated.View>
       </SafeAreaView>
       <Text style={{ position: 'absolute', top: 50, right: 15, fontSize: 10, color: colors.faintText, fontFamily: fonts.sans, zIndex: 10 }}>v1.0.0 (OTA {OTA_SEQ})</Text>
@@ -487,6 +497,8 @@ function makeStyles(colors: AppColors) {
     getStartedText: { fontFamily: fonts.sansSemibold, fontSize: u(46), color: colors.background },
     signInRow: { textAlign: 'center', marginTop: u(36), fontFamily: fonts.sansSemibold, fontSize: u(39), color: colors.muted },
     signInLink: { color: colors.primary },
+    joinRow: { textAlign: 'center', marginTop: u(18), fontFamily: fonts.sans, fontSize: u(34), color: colors.faintText },
+    joinLink: { color: colors.primary },
     guestBtn: { alignSelf: 'center', marginTop: u(20), paddingVertical: u(16), paddingHorizontal: u(40) },
     guestBtnText: { fontFamily: fonts.sans, fontSize: u(34), color: colors.faintText, textDecorationLine: 'underline' },
   });

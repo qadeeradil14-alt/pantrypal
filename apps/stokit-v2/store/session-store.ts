@@ -83,6 +83,12 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       }
     }
 
+    // Resume: un-commit the trip so it can be re-committed on next completion.
+    if (event.type === 'RESUME_TRIP' && prev.completedTrip) {
+      const trip = prev.completedTrip;
+      durable.removeTrip(trip.id, trip.receiptIds);
+    }
+
     // Commit to durable state exactly once when trip_summary is reached.
     if (next.status === 'trip_summary' && prev.status !== 'trip_summary' && next.completedTrip) {
       durable.commitTrip(next.completedTrip, next.receipts);

@@ -9,6 +9,7 @@
 
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import { supabase } from '../../lib/supabase';
 
 /** Call once at app startup (from _layout.tsx). */
 export async function setupNotifications(): Promise<void> {
@@ -37,6 +38,25 @@ export async function requestNotificationPermission(): Promise<boolean> {
   if (existing === 'granted') return true;
   const { status } = await Notifications.requestPermissionsAsync();
   return status === 'granted';
+}
+
+/**
+ * Get an Expo push token and save it to this user's household_members row.
+ * Called once after sign-in. Non-fatal if permissions not granted.
+ */
+export async function registerPushToken(userId: string): Promise<void> {
+  if (Platform.OS === 'web') return;
+  try {
+    const { status } = await Notifications.getPermissionsAsync();
+    if (status !== 'granted') return;
+    const tokenData = await Notifications.getExpoPushTokenAsync();
+    await supabase
+      .from('household_members')
+      .update({ push_token: tokenData.data })
+      .eq('user_id', userId);
+  } catch {
+    // Non-fatal — push degrades gracefully
+  }
 }
 
 /**

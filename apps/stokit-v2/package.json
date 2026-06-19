@@ -8,6 +8,7 @@
     "ios": "env LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 COPYFILE_DISABLE=1 expo run:ios",
     "android": "expo run:android",
     "web": "expo start --web",
+    "postinstall": "patch-package",
     "test:unit": "tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
@@ -54,6 +55,7 @@
     "@types/node": "^22.19.20",
     "@types/react": "~19.2.2",
     "babel-preset-expo": "~56.0.14",
+    "patch-package": "^8.0.1",
     "tsx": "^4.22.4",
     "typescript": "~6.0.3"
   },

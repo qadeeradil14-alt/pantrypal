@@ -45,6 +45,19 @@ const MAX_GEOFENCES_IOS = 20;
 
 const LAST_ENTER_KEY = 'stokit:v2:geofence:last-enter';
 
+// ── Haversine distance ────────────────────────────────────────────────────────
+
+/** Straight-line distance between two GPS coordinates in metres. */
+function haversineMetres(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6_371_000;
+  const φ1 = (lat1 * Math.PI) / 180;
+  const φ2 = (lat2 * Math.PI) / 180;
+  const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+  const Δλ = ((lng2 - lng1) * Math.PI) / 180;
+  const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 // ── Expo Go detection ─────────────────────────────────────────────────────────
 
 /** True when running inside the Expo Go client (not a standalone build). */
@@ -74,6 +87,31 @@ export function defineGeofenceTask(
     const storeId = region?.identifier;
     if (!storeId) return;
 
+    // Load durable state once — used by both nearest-store check and notification
+    const durable = await loadDurable();
+    const items = durable?.items ?? getItems();
+    const stores = durable?.stores ?? getStores();
+
+    // Nearest-store verification — reject bleed from adjacent stores (e.g. Walmart vs Sam's Club).
+    // Get a fresh GPS fix and confirm this store is physically the closest geofenceable store.
+    try {
+      const pos = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      const withCoords = stores.filter((s) => s.lat != null && s.lng != null);
+      if (withCoords.length > 0) {
+        const { latitude, longitude } = pos.coords;
+        const nearest = withCoords.reduce((best, s) => {
+          const d = haversineMetres(latitude, longitude, s.lat!, s.lng!);
+          const dBest = haversineMetres(latitude, longitude, best.lat!, best.lng!);
+          return d < dBest ? s : best;
+        });
+        if (nearest.id !== storeId) return; // physically closer to a different store — abort
+      }
+    } catch {
+      // Location unavailable — proceed without verification rather than silently dropping
+    }
+
     // Debounce — ignore re-enters within 3 min
     try {
       const raw = await AsyncStorage.getItem(LAST_ENTER_KEY);
@@ -87,13 +125,34 @@ export function defineGeofenceTask(
     }
 
     // Count low items at this store
-    const durable = await loadDurable();
-    const items = durable?.items ?? getItems();
-    const stores = durable?.stores ?? getStores();
     const store = stores.find((s) => s.id === storeId);
     if (!store) return;
     const lowCount = arrivalItemCount(items, storeId);
     await notifyArrival(store.name, lowCount);
+
+    // Insert store_arrivals row — DB trigger pushes notification to other household members
+    try {
+      const { supabase } = await import('../../lib/supabase');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const householdRaw = await AsyncStorage.getItem('stokit:v2:household');
+        if (householdRaw) {
+          const parsed = JSON.parse(householdRaw) as {
+            household: { id: string };
+            members: Array<{ isMe: boolean; displayName: string }>;
+          };
+          const me = parsed.members?.find((m) => m.isMe);
+          await supabase.from('store_arrivals').insert({
+            household_id: parsed.household.id,
+            store_id: storeId,
+            arrived_by: user.id,
+            arrived_by_name: me?.displayName ?? null,
+          });
+        }
+      }
+    } catch {
+      // Non-fatal
+    }
   });
 }
 

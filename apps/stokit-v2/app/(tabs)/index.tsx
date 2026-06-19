@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
+  Keyboard,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,16 +13,20 @@ import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Logo } from '../../components/shared/Logo';
 import { AddItemSheet } from '../../components/pantry/AddItemSheet';
 import { ItemActionSheet } from '../../components/pantry/ItemActionSheet';
 import { StorePickerSheet } from '../../components/pantry/StorePickerSheet';
 import { IndividualAssignSheet } from '../../components/pantry/IndividualAssignSheet';
+import { JoinHouseholdSheet } from '../../components/household/JoinHouseholdSheet';
 import { fonts, radii, shadow, spacing, type AppColors } from '../../theme';
 import { useDurableStore } from '../../store/durable-store';
 import { useHouseholdStore } from '../../store/household-store';
 import { useTheme } from '../../hooks/useTheme';
 import { classifyItem } from '../../core/services/itemClassifier';
+import { searchPantryCatalog } from '../../constants/catalogSearch';
+import type { PantryCatalogItem } from '../../constants/pantryCatalog';
 import { fetchRawRecipes, reEvaluateRecipes } from '../../core/services/recipes';
 import { RecipeSuggestionsCard } from '../../components/recipes/RecipeSuggestionsCard';
 import { RecipeDetailSheet } from '../../components/recipes/RecipeDetailSheet';
@@ -45,8 +51,10 @@ export default function PantryScreen() {
   const setItemStatus = useDurableStore((state) => state.setItemStatus);
   const deleteItem = useDurableStore((state) => state.deleteItem);
   const addItem = useDurableStore((state) => state.addItem);
+  const household = useHouseholdStore((s) => s.household);
   const members = useHouseholdStore((s) => s.members);
   const [addVisible, setAddVisible] = useState(false);
+  const [joinVisible, setJoinVisible] = useState(false);
   const [showMore, setShowMore] = useState(false);
   const [showAtHome, setShowAtHome] = useState(false);
   const [actionItem, setActionItem] = useState<PantryItem | null>(null);
@@ -83,7 +91,30 @@ export default function PantryScreen() {
     () => query ? atHomeItems.filter((i) => i.name.toLowerCase().includes(query)) : atHomeItems,
     [atHomeItems, query],
   );
-  const showSearch = items.length > 0;
+
+  const itemNameSet = useMemo(
+    () => new Set(items.map((i) => i.name.toLowerCase())),
+    [items],
+  );
+  const catalogSuggestions = useMemo((): PantryCatalogItem[] => {
+    if (!query) return [];
+    return searchPantryCatalog(query, 10)
+      .filter((c) => !itemNameSet.has(c.name.toLowerCase()))
+      .slice(0, 6);
+  }, [query, itemNameSet]);
+
+  const handleAddFromCatalog = (catalogItem: PantryCatalogItem) => {
+    addItem({ name: catalogItem.name, quantity: 1, unit: catalogItem.defaultUnit, storeId: null, status: 'low' });
+    setSearchQuery('');
+    Keyboard.dismiss();
+  };
+
+  const handleAddCustom = () => {
+    if (!searchQuery.trim()) return;
+    addItem({ name: searchQuery.trim(), quantity: 1, unit: 'unit', storeId: null, status: 'low' });
+    setSearchQuery('');
+    Keyboard.dismiss();
+  };
 
   const frequentBuys = useMemo(() => {
     if (query) return [];
@@ -91,6 +122,15 @@ export default function PantryScreen() {
       .sort((a, b) => b.updatedAt - a.updatedAt)
       .slice(0, 10);
   }, [atHomeItems, query]);
+
+  // One-time prompt: if the user has a solo personal household (created automatically
+  // on sign-up), offer to join a shared household. Only fires once per install.
+  useEffect(() => {
+    if (!household?.isPersonal) return;
+    AsyncStorage.getItem('stokit:v2:onboarding:join-shown').then((seen) => {
+      if (!seen) setJoinVisible(true);
+    });
+  }, [household?.isPersonal]);
 
   useEffect(() => {
     let active = true;
@@ -123,7 +163,7 @@ export default function PantryScreen() {
           {/* Top row: logo + sync pill + settings */}
           <View style={styles.topRow}>
             <View style={styles.wordmark}>
-              <Logo size={22} color={colors.ink} accent={colors.primary} />
+              <Logo size={22} color={colors.ink} />
               <Text style={styles.wordmarkText}>Stokit</Text>
             </View>
             <View style={styles.topRowRight}>
@@ -156,20 +196,91 @@ export default function PantryScreen() {
           background={colors.primarySoft}
           onPress={() => setAddVisible(true)}
         />
-        {showSearch && (
-          <View style={styles.searchBar}>
-            <Ionicons name="search" size={16} color={colors.muted} style={{ marginRight: 8 }} />
-            <TextInput
-              style={styles.searchInput}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="Search items…"
-              placeholderTextColor={colors.muted}
-              returnKeyType="search"
-              clearButtonMode="while-editing"
-            />
+        <View style={styles.searchBar}>
+          <Ionicons name="search" size={16} color={query ? colors.primary : colors.muted} style={{ marginRight: 8 }} />
+          <TextInput
+            style={styles.searchInput}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Search or add anything…"
+            placeholderTextColor={colors.muted}
+            returnKeyType="done"
+            clearButtonMode="while-editing"
+            onSubmitEditing={handleAddCustom}
+          />
+        </View>
+
+        {query ? (
+          <View style={styles.catalogDropdown}>
+            {catalogSuggestions.length > 0 && (
+              <>
+                {catalogSuggestions.map((c, i) => (
+                  <View key={c.id}>
+                    {i > 0 && <View style={styles.divider} />}
+                    <Pressable
+                      style={({ pressed }) => [styles.catalogRow, pressed && styles.pressed]}
+                      onPress={() => handleAddFromCatalog(c)}
+                    >
+                      <ItemAvatar name={c.name} size={40} />
+                      <View style={styles.catalogCopy}>
+                        <Text style={styles.catalogName}>{c.name}</Text>
+                        <Text style={styles.catalogCategory}>{c.category}</Text>
+                      </View>
+                      <View style={styles.catalogAddBtn}>
+                        <Ionicons name="add" size={20} color={colors.primary} />
+                      </View>
+                    </Pressable>
+                  </View>
+                ))}
+                {(filteredListItems.length > 0 || filteredAtHomeItems.length > 0) && (
+                  <View style={[styles.divider, { marginLeft: 0, marginTop: 4 }]} />
+                )}
+              </>
+            )}
+            {filteredListItems.map((item) => (
+              <Pressable
+                key={item.id}
+                style={({ pressed }) => [styles.catalogRow, pressed && styles.pressed]}
+                onPress={() => { setSearchQuery(''); Keyboard.dismiss(); setActionItem(item); }}
+              >
+                <ItemAvatar name={item.name} size={40} />
+                <View style={styles.catalogCopy}>
+                  <Text style={styles.catalogName}>{item.name}</Text>
+                  <Text style={styles.catalogCategory}>On your list</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+              </Pressable>
+            ))}
+            {filteredAtHomeItems.map((item) => (
+              <Pressable
+                key={item.id}
+                style={({ pressed }) => [styles.catalogRow, pressed && styles.pressed]}
+                onPress={() => { setSearchQuery(''); Keyboard.dismiss(); setActionItem(item); }}
+              >
+                <ItemAvatar name={item.name} size={40} />
+                <View style={styles.catalogCopy}>
+                  <Text style={styles.catalogName}>{item.name}</Text>
+                  <Text style={styles.catalogCategory}>At home</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+              </Pressable>
+            ))}
+            {catalogSuggestions.length === 0 && filteredListItems.length === 0 && filteredAtHomeItems.length === 0 && (
+              <Pressable
+                style={({ pressed }) => [styles.catalogRow, pressed && styles.pressed]}
+                onPress={handleAddCustom}
+              >
+                <View style={[styles.catalogAddBtn, { backgroundColor: colors.primarySoft, width: 40, height: 40, borderRadius: 12 }]}>
+                  <Ionicons name="add" size={22} color={colors.primary} />
+                </View>
+                <View style={styles.catalogCopy}>
+                  <Text style={styles.catalogName}>Add "{searchQuery.trim()}"</Text>
+                  <Text style={styles.catalogCategory}>Custom item</Text>
+                </View>
+              </Pressable>
+            )}
           </View>
-        )}
+        ) : null}
 
         <SectionTitle
           title="On your list"
@@ -183,7 +294,7 @@ export default function PantryScreen() {
               <SimpleItemRow
                 item={item}
                 store={storeById(item.storeId)}
-                onPress={() => setActionItem(item)}
+                onPress={() => { setSearchQuery(''); Keyboard.dismiss(); setActionItem(item); }}
                 action="cart"
                 onSwipeLeft={() => deleteItem(item.id)}
               />
@@ -235,9 +346,9 @@ export default function PantryScreen() {
                     <SimpleItemRow
                       item={item}
                       store={storeById(item.storeId)}
-                      onPress={() => setActionItem(item)}
+                      onPress={() => { setSearchQuery(''); Keyboard.dismiss(); setActionItem(item); }}
                       action="Add to list"
-                      onAction={() => setItemStatus(item.id, 'low')}
+                      onAction={() => { setSearchQuery(''); Keyboard.dismiss(); setItemStatus(item.id, 'low'); }}
                       onSwipeLeft={() => deleteItem(item.id)}
                       onSwipeRight={() => setItemStatus(item.id, 'low')}
                     />
@@ -302,6 +413,13 @@ export default function PantryScreen() {
         visible={showIndividualAssign}
         onClose={() => { setShowIndividualAssign(false); setAddedBatch([]); }}
         items={addedBatch}
+      />
+      <JoinHouseholdSheet
+        visible={joinVisible}
+        onClose={() => {
+          setJoinVisible(false);
+          void AsyncStorage.setItem('stokit:v2:onboarding:join-shown', '1');
+        }}
       />
       <RecipeDetailSheet
         recipe={selectedRecipe}
@@ -406,18 +524,38 @@ function ActionCard({
   tint?: string;
   onPress: () => void;
 }) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
+  const shimmer = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmer, { toValue: 1, duration: 900, useNativeDriver: true }),
+        Animated.delay(2800),
+        Animated.timing(shimmer, { toValue: 0, duration: 0, useNativeDriver: true }),
+      ])
+    ).start();
+  }, [shimmer]);
+
+  const translateX = shimmer.interpolate({ inputRange: [0, 1], outputRange: [-120, 500] });
+
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [s.actionCard, tint ? { backgroundColor: tint } : null, pressed && s.pressed]}
     >
-      {/* Ghost icon — decorative, fills right side at low opacity */}
+      <Animated.View
+        pointerEvents="none"
+        style={{
+          position: 'absolute', top: 0, bottom: 0, width: 100,
+          transform: [{ translateX }, { skewX: '-18deg' }],
+          backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.52)',
+        }}
+      />
       <View style={s.actionGhost} pointerEvents="none">
         <Ionicons name="nutrition-outline" size={82} color={color + '14'} />
       </View>
-      {/* Small branded icon chip */}
       <View style={[s.actionIcon, { backgroundColor: background }]}>
         <Ionicons name={icon} size={20} color={color} />
       </View>
@@ -425,7 +563,6 @@ function ActionCard({
         <Text style={s.actionTitle}>{title}</Text>
         <Text style={s.actionSubtitle}>{subtitle}</Text>
       </View>
-      <Ionicons name="chevron-forward" size={18} color={colors.muted} style={{ marginRight: 2 }} />
     </Pressable>
   );
 }
@@ -542,6 +679,12 @@ function makeStyles(c: AppColors) {
     moreTitle:         { fontFamily: fonts.sansSemibold, fontSize: 18, color: c.ink },
     searchBar:        { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: radii.md, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.md, paddingVertical: 10, marginTop: spacing.sm, marginBottom: spacing.xs },
     searchInput:      { flex: 1, fontFamily: fonts.sans, fontSize: 15, color: c.ink, padding: 0 },
+    catalogDropdown:  { backgroundColor: c.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.md, marginBottom: spacing.md, overflow: 'hidden', ...shadow.card },
+    catalogRow:       { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: 10, minHeight: 60 },
+    catalogCopy:      { flex: 1 },
+    catalogName:      { fontFamily: fonts.sansMedium, fontSize: 16, color: c.ink },
+    catalogCategory:  { fontFamily: fonts.sans, fontSize: 12, color: c.muted, marginTop: 1 },
+    catalogAddBtn:    { width: 32, height: 32, borderRadius: 10, borderWidth: 1, borderColor: c.border, alignItems: 'center', justifyContent: 'center' },
     sectionTitleRow:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.lg, marginBottom: spacing.sm },
     sectionTitle:     { fontFamily: fonts.sansSemibold, fontSize: 22, color: c.ink },
     sectionActionButton: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingVertical: spacing.xs },

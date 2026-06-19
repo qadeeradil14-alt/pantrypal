@@ -99,7 +99,11 @@ export type ShoppingEvent =
   /** Legacy — picks first pending store. Kept for test backward-compat. */
   | { type: 'ADVANCE_STORE' }
   | { type: 'END_TRIP' }
-  | { type: 'ADD_ENTRY'; entry: ShoppingEntry };
+  | { type: 'ADD_ENTRY'; entry: ShoppingEntry }
+  | { type: 'RESUME_TRIP' }
+  | { type: 'MARK_OUT_OF_STOCK'; itemId: string }
+  | { type: 'UNSKIP_STORE'; storeId: string }
+  | { type: 'UPDATE_QUANTITY'; itemId: string; quantity: number };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -181,7 +185,8 @@ function buildTrip(session: ShoppingSession, now: number): Trip {
   });
 
   const itemsBought = session.entries.filter((e) => e.picked).length;
-  const itemsRemaining = session.entries.filter((e) => !e.picked).length;
+  const itemsOutOfStock = session.entries.filter((e) => e.outOfStock && !e.picked).length;
+  const itemsRemaining = session.entries.filter((e) => !e.picked && !e.outOfStock).length;
   const totalSpent = breakdown.reduce((sum, b) => sum + b.amount, 0);
   const startedAt = session.startedAt ?? now;
 
@@ -193,6 +198,7 @@ function buildTrip(session: ShoppingSession, now: number): Trip {
     skippedStoreIds: [...session.skippedStoreIds],
     itemsBought,
     itemsRemaining,
+    itemsOutOfStock,
     receiptIds: session.receipts
       .filter((r) => r.status !== 'skipped')
       .map((r) => r.id),
@@ -354,6 +360,35 @@ export function reduce(
 
     case 'END_TRIP': {
       return { ...initialSession };
+    }
+
+    case 'RESUME_TRIP': {
+      if (session.status !== 'trip_summary') return session;
+      return { ...session, status: 'shopping_store', completedTrip: null };
+    }
+
+    case 'MARK_OUT_OF_STOCK': {
+      if (session.status !== 'shopping_store') return session;
+      const entries = session.entries.map((e) =>
+        e.itemId === event.itemId
+          ? { ...e, outOfStock: !e.outOfStock, picked: false }
+          : e,
+      );
+      return { ...session, entries };
+    }
+
+    case 'UPDATE_QUANTITY': {
+      if (session.status !== 'shopping_store') return session;
+      const entries = session.entries.map((e) =>
+        e.itemId === event.itemId ? { ...e, quantity: Math.max(1, event.quantity) } : e,
+      );
+      return { ...session, entries };
+    }
+
+    case 'UNSKIP_STORE': {
+      if (session.status !== 'next_store_ready') return session;
+      const skippedStoreIds = session.skippedStoreIds.filter((id) => id !== event.storeId);
+      return { ...session, skippedStoreIds };
     }
 
     default:
