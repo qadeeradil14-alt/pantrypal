@@ -74,6 +74,7 @@ export default function ShoppingScreen() {
   const updateItem = useDurableStore((s) => s.updateItem);
   const session    = useSessionStore((s) => s.session);
   const dispatch   = useSessionStore((s) => s.dispatch);
+  const router     = useRouter();
   const [showAssignAllPicker, setShowAssignAllPicker] = useState(false);
   const [showFirstStorePicker, setShowFirstStorePicker] = useState(false);
   const [reassignItem, setReassignItem] = useState<PantryItem | null>(null);
@@ -200,11 +201,6 @@ export default function ShoppingScreen() {
   const handleStartShopping = () => {
     const total = (planItemsFull.length) + unassignedCount;
     if (total === 0) return;
-    if (plan.size === 1) {
-      // One store — auto-start there; unassigned items join it automatically.
-      startTripAt(planEntries[0][0]);
-      return;
-    }
     setShowFirstStorePicker(true);
   };
 
@@ -389,9 +385,15 @@ export default function ShoppingScreen() {
             : "Pick your first stop — we'll line up the rest."}
         </Text>
         {firstStoreOptions.length === 0 ? (
-          <Text style={{ fontFamily: fonts.sans, fontSize: 14, color: colors.muted, textAlign: 'center', paddingVertical: spacing.xl }}>
-            Add a store first to begin shopping.
-          </Text>
+          <View style={{ alignItems: 'center', paddingVertical: spacing.xl, gap: spacing.md }}>
+            <Text style={{ fontFamily: fonts.sans, fontSize: 14, color: colors.muted, textAlign: 'center' }}>
+              Add a store first to begin shopping.
+            </Text>
+            <Button
+              label="Add a store"
+              onPress={() => { setShowFirstStorePicker(false); router.push('/stores'); }}
+            />
+          </View>
         ) : (
           firstStoreOptions.map(([storeId, list], idx) => {
             const store = storeById(storeId);
@@ -1452,9 +1454,9 @@ function TripSummary({ session, dispatch, storeById, tsStyles, colors }: SubProp
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.xl, paddingTop: spacing.xl, paddingBottom: spacing.sm }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', rowGap: spacing.xs, paddingHorizontal: spacing.xl, paddingTop: spacing.xl, paddingBottom: spacing.sm }}>
         <Text style={tsStyles.eyebrow}>TRIP COMPLETE</Text>
-        <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+        <View style={{ flexDirection: 'row', gap: spacing.sm, marginLeft: 'auto' }}>
           {canResume && (
             <Pressable
               onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); dispatch({ type: 'RESUME_TRIP' }); }}

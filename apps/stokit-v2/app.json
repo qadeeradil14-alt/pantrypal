@@ -11,10 +11,7 @@
     "backgroundColor": "#15110C",
     "ios": {
       "supportsTablet": false,
-      "icon": {
-        "any": "./assets/icon-light.png",
-        "dark": "./assets/icon-dark.png"
-      },
+      "icon": "./assets/icon-dark.png",
       "bundleIdentifier": "com.hewadadil.pantrypal",
       "appleTeamId": "4AJ8TH5QF7",
       "infoPlist": {
