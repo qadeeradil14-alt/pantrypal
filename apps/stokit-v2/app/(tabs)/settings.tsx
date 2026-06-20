@@ -79,23 +79,45 @@ export default function SettingsScreen() {
     try {
       if (value) {
         const result = await startGeofencing(stores);
-        if (result === 'no_permission') {
-          Alert.alert(
-            'Location permission needed',
-            'Allow "Always" location access in Settings to enable store arrival reminders.',
-          );
-          setGeofenceOn(false);
-          return;
+        switch (result) {
+          case 'ok':
+            setGeofenceOn(true);
+            break;
+          case 'no_permission':
+            Alert.alert(
+              'Location permission needed',
+              'Allow "Always" location access in Settings to enable store arrival reminders.',
+            );
+            setGeofenceOn(false);
+            break;
+          case 'no_notification_permission':
+            Alert.alert(
+              'Notification permission needed',
+              'Allow notifications in Settings so Stokit can remind you when you arrive at a store.',
+            );
+            setGeofenceOn(false);
+            break;
+          case 'no_stores':
+            Alert.alert(
+              'No store coordinates',
+              'At least one saved store needs GPS coordinates before arrival reminders can be enabled. Use "Find stores near me" to add them.',
+            );
+            setGeofenceOn(false);
+            break;
+          case 'expo_go':
+            Alert.alert(
+              'Not available in Expo Go',
+              'Store arrival reminders need a native build — TestFlight or a device build — and can\'t run inside Expo Go.',
+            );
+            setGeofenceOn(false);
+            break;
+          default:
+            Alert.alert(
+              'Could not enable arrival reminders',
+              'Something unexpected happened while turning this on. Please try again.',
+            );
+            setGeofenceOn(false);
         }
-        if (result === 'no_notification_permission') {
-          Alert.alert(
-            'Notification permission needed',
-            'Allow notifications in Settings so Stokit can remind you when you arrive at a store.',
-          );
-          setGeofenceOn(false);
-          return;
-        }
-        setGeofenceOn(result === 'ok');
       } else {
         await stopGeofencing();
         setGeofenceOn(false);
@@ -360,9 +382,10 @@ export default function SettingsScreen() {
           colors={colors}
         />
         <Text style={styles.privacyNote}>
-          When enabled, Stokit quietly notifies you when you arrive near a store
-          where you have items. We don't store or share your location — it's only
-          checked against your saved stores to trigger a reminder.
+          Your location is compared only against your saved stores' coordinates —
+          Stokit doesn't track or save a history of where you've been. When you
+          arrive somewhere on your list, you'll get a reminder, and if you share a
+          household, other members may also be notified that you've arrived.
         </Text>
       </Card>
 
