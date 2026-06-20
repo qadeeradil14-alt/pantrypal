@@ -361,7 +361,8 @@ export default function SettingsScreen() {
         />
         <Text style={styles.privacyNote}>
           When enabled, Stokit quietly notifies you when you arrive near a store
-          where you have items. No background tracking or data collection.
+          where you have items. We don't store or share your location — it's only
+          checked against your saved stores to trigger a reminder.
         </Text>
       </Card>
 
