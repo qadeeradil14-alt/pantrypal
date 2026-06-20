@@ -115,6 +115,8 @@ export function defineGeofenceTask(
     // Dwell confirmation — ignore quick drive-bys. Wait, then re-check that this
     // store is still the closest before treating the Enter as a real arrival.
     await new Promise((resolve) => setTimeout(resolve, DWELL_CONFIRM_MS));
+    // Unlike the entry check above (which fails open on GPS error), this dwell
+    // re-check fails closed — an uncertain location here aborts the arrival.
     try {
       const confirmPos = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
