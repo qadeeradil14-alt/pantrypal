@@ -157,6 +157,7 @@ Existing project docs (human-authored reference; treat as context, not law where
 - [BUG_LIST.md](BUG_LIST.md) — known bug list.
 - [TESTING_PLAYBOOK.md](TESTING_PLAYBOOK.md) — testing playbook.
 - [QA_APP_STORE_FINAL_RELEASE.md](QA_APP_STORE_FINAL_RELEASE.md) — App Store final-release QA checklist.
+- [APP_STORE_WORKFLOW_QA_CHECKLIST.md](APP_STORE_WORKFLOW_QA_CHECKLIST.md) — top-level "are we ready to submit" checklist; App Store Connect / Apple Review workflow gaps not covered elsewhere.
 - [QA_BUILD29_LOCATION_GEOFENCE_REGRESSION.md](QA_BUILD29_LOCATION_GEOFENCE_REGRESSION.md) — location/geofence regression QA.
 - [QA_INVITATION_AND_HOUSEHOLD.md](QA_INVITATION_AND_HOUSEHOLD.md) — invitation & household QA checklist.
 - [PROFESSIONAL_LOGO_SPEC.md](PROFESSIONAL_LOGO_SPEC.md) — logo suite spec.
