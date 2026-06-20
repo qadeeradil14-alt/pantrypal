@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import * as Linking from 'expo-linking';
+import * as Notifications from 'expo-notifications';
 import { Stack, usePathname, useRouter, useRootNavigationState, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as Updates from 'expo-updates';
@@ -100,6 +101,28 @@ export default function RootLayout() {
     });
     return () => linkSubscription.remove();
   }, [hydrateDurable, hydrateHousehold, hydrateSession]);
+
+  // Route arrival notification taps into Shopping. No store-detail route exists
+  // yet, so Shopping is the safest stable target for both local arrival
+  // notifications and household partner-arrival pushes.
+  useEffect(() => {
+    const notificationSubscription = Notifications.addNotificationResponseReceivedListener(
+      (response) => {
+        try {
+          const data = response?.notification?.request?.content?.data as
+            | { type?: string; storeName?: string }
+            | undefined;
+          if (!data) return;
+          if (data.type === 'partner_arrival' || typeof data.storeName === 'string') {
+            router.push('/(tabs)/shopping');
+          }
+        } catch {
+          // Defensive — never let a malformed notification payload crash the app
+        }
+      },
+    );
+    return () => notificationSubscription.remove();
+  }, [router]);
 
   // Cloud recovery: pull data back from Supabase on every sign-in so that
   // stores (logos) are restored even when items already exist locally.
