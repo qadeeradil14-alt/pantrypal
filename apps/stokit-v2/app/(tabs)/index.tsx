@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Animated,
   Keyboard,
   Pressable,
   ScrollView,
@@ -188,14 +187,6 @@ export default function PantryScreen() {
           </Text>
         </View>
 
-        <ActionCard
-          title="Add something to buy"
-          subtitle="Put it on your shopping list"
-          icon="cart-outline"
-          color={colors.primary}
-          background={colors.primarySoft}
-          onPress={() => setAddVisible(true)}
-        />
         <View style={styles.searchBar}>
           <Ionicons name="search" size={16} color={query ? colors.primary : colors.muted} style={{ marginRight: 8 }} />
           <TextInput
@@ -208,6 +199,12 @@ export default function PantryScreen() {
             clearButtonMode="while-editing"
             onSubmitEditing={handleAddCustom}
           />
+          <Pressable
+            onPress={() => setAddVisible(true)}
+            style={({ pressed }) => [styles.searchAddBtn, pressed && styles.pressed]}
+          >
+            <Ionicons name="add" size={20} color={colors.onPrimary} />
+          </Pressable>
         </View>
 
         {query ? (
@@ -304,7 +301,7 @@ export default function PantryScreen() {
               <Ionicons name="cart-outline" size={28} color={colors.muted} />
               <Text style={styles.emptyTitle}>{query ? 'No results' : 'Your list is empty'}</Text>
               <Text style={styles.emptyText}>
-                {query ? `No items match "${searchQuery}"` : 'Tap "Add something to buy" to get started.'}
+                {query ? `No items match "${searchQuery}"` : 'Use the search bar above to add your first item.'}
               </Text>
             </View>
           )}
@@ -507,66 +504,6 @@ function UseItOrLoseItWidget({ items, onUsed, onRestock }: {
   );
 }
 
-function ActionCard({
-  title,
-  subtitle,
-  icon,
-  color,
-  background,
-  tint,
-  onPress,
-}: {
-  title: string;
-  subtitle: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  color: string;
-  background: string;
-  tint?: string;
-  onPress: () => void;
-}) {
-  const { colors, isDark } = useTheme();
-  const s = useMemo(() => makeStyles(colors), [colors]);
-  const shimmer = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(shimmer, { toValue: 1, duration: 900, useNativeDriver: true }),
-        Animated.delay(2800),
-        Animated.timing(shimmer, { toValue: 0, duration: 0, useNativeDriver: true }),
-      ])
-    ).start();
-  }, [shimmer]);
-
-  const translateX = shimmer.interpolate({ inputRange: [0, 1], outputRange: [-120, 500] });
-
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [s.actionCard, tint ? { backgroundColor: tint } : null, pressed && s.pressed]}
-    >
-      <Animated.View
-        pointerEvents="none"
-        style={{
-          position: 'absolute', top: 0, bottom: 0, width: 100,
-          transform: [{ translateX }, { skewX: '-18deg' }],
-          backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.52)',
-        }}
-      />
-      <View style={s.actionGhost} pointerEvents="none">
-        <Ionicons name="nutrition-outline" size={82} color={color + '14'} />
-      </View>
-      <View style={[s.actionIcon, { backgroundColor: background }]}>
-        <Ionicons name={icon} size={20} color={color} />
-      </View>
-      <View style={s.actionCopy}>
-        <Text style={s.actionTitle}>{title}</Text>
-        <Text style={s.actionSubtitle}>{subtitle}</Text>
-      </View>
-    </Pressable>
-  );
-}
-
 function SectionTitle({ title, action, onAction }: { title: string; action: string; onAction: () => void }) {
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
@@ -665,12 +602,6 @@ function makeStyles(c: AppColors) {
     title:            { fontFamily: fonts.serifItalic, fontSize: 25, lineHeight: 30, color: c.ink, marginBottom: 4 },
     tagline:          { fontFamily: fonts.sans, fontSize: 15, color: c.muted },
     settings:         { width: 44, height: 44, borderRadius: 22, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, alignItems: 'center', justifyContent: 'center', ...shadow.card },
-    actionCard:       { marginBottom: spacing.md, paddingVertical: 14, paddingHorizontal: spacing.md, borderRadius: radii.lg, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.md, overflow: 'hidden', minHeight: 72, ...shadow.card },
-    actionGhost:      { position: 'absolute', right: -8, top: 0, bottom: 0, justifyContent: 'center', opacity: 1 },
-    actionIcon:       { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-    actionCopy:       { flex: 1 },
-    actionTitle:      { fontFamily: fonts.sansSemibold, fontSize: 15, color: c.ink },
-    actionSubtitle:   { fontFamily: fonts.sans, fontSize: 11, color: c.muted, marginTop: 2 },
     pressed:          { opacity: 0.76 },
     atHomeHeader:      { marginBottom: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.sm, borderBottomWidth: 1, borderBottomColor: c.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     atHomeTitle:       { fontFamily: fonts.sansSemibold, fontSize: 19, color: c.ink },
@@ -679,13 +610,14 @@ function makeStyles(c: AppColors) {
     moreTitle:         { fontFamily: fonts.sansSemibold, fontSize: 18, color: c.ink },
     searchBar:        { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: radii.md, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.md, paddingVertical: 10, marginTop: spacing.sm, marginBottom: spacing.xs },
     searchInput:      { flex: 1, fontFamily: fonts.sans, fontSize: 15, color: c.ink, padding: 0 },
+    searchAddBtn:     { width: 32, height: 32, borderRadius: radii.pill, backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center', marginLeft: spacing.sm, flexShrink: 0 },
     catalogDropdown:  { backgroundColor: c.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.md, marginBottom: spacing.md, overflow: 'hidden', ...shadow.card },
     catalogRow:       { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: 10, minHeight: 60 },
     catalogCopy:      { flex: 1 },
     catalogName:      { fontFamily: fonts.sansMedium, fontSize: 16, color: c.ink },
     catalogCategory:  { fontFamily: fonts.sans, fontSize: 12, color: c.muted, marginTop: 1 },
     catalogAddBtn:    { width: 32, height: 32, borderRadius: 10, borderWidth: 1, borderColor: c.border, alignItems: 'center', justifyContent: 'center' },
-    sectionTitleRow:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.lg, marginBottom: spacing.sm },
+    sectionTitleRow:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.sm, marginBottom: spacing.sm },
     sectionTitle:     { fontFamily: fonts.sansSemibold, fontSize: 22, color: c.ink },
     sectionActionButton: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingVertical: spacing.xs },
     sectionAction:    { fontFamily: fonts.sansSemibold, fontSize: 14, color: c.primary },
