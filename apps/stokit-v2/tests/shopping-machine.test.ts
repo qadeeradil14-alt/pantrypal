@@ -301,3 +301,88 @@ test('START_MANUAL_STORE cannot revisit a store already in the active trip', () 
   const unchanged = reduce(s, { type: 'START_MANUAL_STORE', storeId: 'aldi' });
   assert.equal(unchanged, s);
 });
+
+test('START_MANUAL_STORE inserts mid-queue without stranding an already-planned store', () => {
+  // Two planned stores: aldi, target. Finish aldi, then add an unplanned
+  // store ("whole-foods") instead of continuing straight to target.
+  let s = startTrip(); // storeQueue = ['aldi', 'target'], currentIndex = 0
+  s = reduce(s, { type: 'FINISH_STORE', now: 2 });
+  s = reduce(s, { type: 'SKIP_RECEIPT', now: 3 });
+  assert.equal(s.status, 'store_summary');
+
+  s = reduce(s, { type: 'START_MANUAL_STORE', storeId: 'whole-foods' });
+  assert.equal(s.status, 'shopping_store');
+  assert.equal(currentStoreId(s), 'whole-foods');
+  assert.deepEqual(s.storeQueue, ['aldi', 'whole-foods', 'target']);
+  // 'target' must still be pending — not stranded behind currentIndex.
+  assert.deepEqual(pendingStoreIds(s), ['target']);
+
+  s = reduce(s, { type: 'FINISH_STORE', now: 4 });
+  s = reduce(s, { type: 'SKIP_RECEIPT', now: 5 });
+  assert.equal(s.status, 'store_summary');
+
+  const continued = reduce(s, { type: 'CONTINUE_TRIP' });
+  assert.equal(continued.status, 'next_store_ready');
+  assert.deepEqual(pendingStoreIds(continued), ['target']);
+
+  const advanced = reduce(continued, { type: 'ADVANCE_STORE' });
+  assert.equal(currentStoreId(advanced), 'target');
+
+  let finalSession = reduce(advanced, { type: 'FINISH_STORE', now: 6 });
+  finalSession = reduce(finalSession, { type: 'SKIP_RECEIPT', now: 7 });
+  const finished = reduce(finalSession, { type: 'FINISH_TRIP', now: 8 });
+  assert.equal(finished.status, 'trip_summary');
+  // target was actually visited, not auto-skipped by the FINISH_TRIP gap.
+  assert.equal(finished.skippedStoreIds.includes('target'), false);
+  assert.deepEqual(finished.completedTrip?.storeIdsVisited, ['aldi', 'whole-foods', 'target']);
+});
+
+// ── ADD_ENTRY ("+ Add more" during an active trip) ─────────────────────────────
+
+test('ADD_ENTRY adds a brand-new item straight to the current store', () => {
+  let s = startTrip(); // currently shopping 'aldi'
+  s = reduce(s, { type: 'ADD_ENTRY', entry: entry('bread', 'aldi') });
+  assert.equal(currentStoreEntries(s).some((e) => e.itemId === 'bread'), true);
+  assert.equal(entriesForStoreCount(s, 'aldi'), 3);
+});
+
+test('ADD_ENTRY is a true no-op for an item already in the current store', () => {
+  let s = startTrip(); // 'milk' already in aldi
+  const before = s;
+  s = reduce(s, { type: 'ADD_ENTRY', entry: entry('milk', 'aldi') });
+  assert.equal(s, before);
+  assert.equal(entriesForStoreCount(s, 'aldi'), 2);
+});
+
+test('ADD_ENTRY re-homes an item already planned for a different store to the current one', () => {
+  // 'oil' starts out tied to target (stop 2), user is actively shopping aldi (stop 1)
+  // and taps "+ Add more" -> selects oil. It must move into aldi's list immediately,
+  // not be dropped, and must not leave a stray entry behind for target.
+  let s = startTrip();
+  assert.equal(currentStoreId(s), 'aldi');
+  assert.equal(entriesForStoreCount(s, 'target'), 1); // oil, pre-planned
+
+  s = reduce(s, { type: 'ADD_ENTRY', entry: entry('oil', 'aldi') });
+
+  assert.equal(currentStoreEntries(s).some((e) => e.itemId === 'oil'), true, 'oil now in current store list');
+  assert.equal(entriesForStoreCount(s, 'target'), 0, 'no leftover entry remains for target');
+  assert.equal(s.entries.filter((e) => e.itemId === 'oil').length, 1, 'exactly one entry for the item, not two');
+
+  // Pick it, finish the whole trip, and confirm it's accounted for at aldi, not target.
+  s = reduce(s, { type: 'SET_PICK', itemId: 'milk', picked: true });
+  s = reduce(s, { type: 'SET_PICK', itemId: 'oil', picked: true });
+  s = reduce(s, { type: 'FINISH_STORE', now: 2000 });
+  s = reduce(s, { type: 'SKIP_RECEIPT', now: 2100 });
+  s = reduce(s, { type: 'ACKNOWLEDGE_SUMMARY' });
+  s = reduce(s, { type: 'FINISH_TRIP', now: 2200 }); // target never visited -> becomes skipped
+
+  assert.equal(s.status, 'trip_summary');
+  const trip = s.completedTrip!;
+  assert.equal(trip.itemsBought, 2, 'milk + oil both counted as bought at aldi');
+  assert.equal(trip.breakdown.find((b) => b.storeId === 'aldi')?.itemsBought, 2);
+  assert.equal(trip.breakdown.find((b) => b.storeId === 'target')?.itemsBought, 0, 'target has nothing left to buy');
+});
+
+function entriesForStoreCount(s: ShoppingSession, storeId: string): number {
+  return s.entries.filter((e) => e.storeId === storeId).length;
+}

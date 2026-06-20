@@ -262,9 +262,20 @@ export function reduce(
 
     case 'ADD_ENTRY': {
       if (session.status !== 'shopping_store') return session;
-      // Prevent duplicates
-      if (session.entries.some(e => e.itemId === event.entry.itemId)) return session;
-      return { ...session, entries: [...session.entries, { ...event.entry, picked: false }] };
+      const existingIdx = session.entries.findIndex((e) => e.itemId === event.entry.itemId);
+      if (existingIdx === -1) {
+        return { ...session, entries: [...session.entries, { ...event.entry, picked: false }] };
+      }
+      const existing = session.entries[existingIdx];
+      // True duplicate — already in this store's list. Keep the no-op.
+      if (existing.storeId === event.entry.storeId) return session;
+      // Already an entry for this item, but tied to a different store (e.g. planned
+      // for another stop before the trip started) — re-home it to the current store
+      // instead of silently dropping the add.
+      const entries = session.entries.map((e, i) =>
+        i === existingIdx ? { ...event.entry, picked: false } : e,
+      );
+      return { ...session, entries };
     }
 
     case 'FINISH_STORE': {
@@ -304,10 +315,19 @@ export function reduce(
     case 'START_MANUAL_STORE': {
       if (session.status !== 'store_summary' && session.status !== 'continue_prompt' && session.status !== 'next_store_ready') return session;
       if (session.storeQueue.includes(event.storeId)) return session;
+      // Insert right after the current position (like promoteStore) so any
+      // already-queued, not-yet-visited store stays ahead of currentIndex and
+      // still counts as pending — instead of being stranded behind it.
+      const insertAt = session.currentIndex + 1;
+      const storeQueue = [
+        ...session.storeQueue.slice(0, insertAt),
+        event.storeId,
+        ...session.storeQueue.slice(insertAt),
+      ];
       return {
         ...session,
-        storeQueue: [...session.storeQueue, event.storeId],
-        currentIndex: session.storeQueue.length,
+        storeQueue,
+        currentIndex: insertAt,
         status: 'shopping_store',
       };
     }
