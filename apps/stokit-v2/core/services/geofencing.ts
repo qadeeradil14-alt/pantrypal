@@ -28,7 +28,7 @@ import Constants from 'expo-constants';
 import { notifyArrival, requestNotificationPermission } from './notifications';
 import type { PantryItem, Store } from '../../types';
 import { loadDurable } from '../repositories/durableRepository';
-import { arrivalItemCount, geofenceableStores } from './geofencingLogic';
+import { arrivalItemCount, geofenceableStores, isNearestStore } from './geofencingLogic';
 
 // ── Constants (match V1 values) ───────────────────────────────────────────────
 
@@ -40,23 +40,18 @@ export const DEBOUNCE_MS = 3 * 60 * 1000;
 /** Geofence radius around each store in metres. */
 export const GEOFENCE_RADIUS_M = 150;
 
+/**
+ * Confirmation delay before treating a geofence Enter as a real arrival (drive-by guard).
+ * Kept short because this runs inside the iOS background geofence task callback,
+ * which has a limited execution window — a long sleep risks the OS suspending the
+ * task before it resolves, which would silently drop a genuine arrival.
+ */
+export const DWELL_CONFIRM_MS = 10 * 1000;
+
 /** Maximum geofences iOS supports. */
 const MAX_GEOFENCES_IOS = 20;
 
 const LAST_ENTER_KEY = 'stokit:v2:geofence:last-enter';
-
-// ── Haversine distance ────────────────────────────────────────────────────────
-
-/** Straight-line distance between two GPS coordinates in metres. */
-function haversineMetres(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6_371_000;
-  const φ1 = (lat1 * Math.PI) / 180;
-  const φ2 = (lat2 * Math.PI) / 180;
-  const Δφ = ((lat2 - lat1) * Math.PI) / 180;
-  const Δλ = ((lng2 - lng1) * Math.PI) / 180;
-  const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
 
 // ── Expo Go detection ─────────────────────────────────────────────────────────
 
@@ -98,15 +93,8 @@ export function defineGeofenceTask(
       const pos = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
-      const withCoords = stores.filter((s) => s.lat != null && s.lng != null);
-      if (withCoords.length > 0) {
-        const { latitude, longitude } = pos.coords;
-        const nearest = withCoords.reduce((best, s) => {
-          const d = haversineMetres(latitude, longitude, s.lat!, s.lng!);
-          const dBest = haversineMetres(latitude, longitude, best.lat!, best.lng!);
-          return d < dBest ? s : best;
-        });
-        if (nearest.id !== storeId) return; // physically closer to a different store — abort
+      if (!isNearestStore(storeId, stores, pos.coords.latitude, pos.coords.longitude)) {
+        return; // physically closer to a different store — abort
       }
     } catch {
       // Location unavailable — proceed without verification rather than silently dropping
@@ -122,6 +110,23 @@ export function defineGeofenceTask(
       await AsyncStorage.setItem(LAST_ENTER_KEY, JSON.stringify(record));
     } catch {
       // Non-fatal — continue
+    }
+
+    // Dwell confirmation — ignore quick drive-bys. Wait, then re-check that this
+    // store is still the closest before treating the Enter as a real arrival.
+    await new Promise((resolve) => setTimeout(resolve, DWELL_CONFIRM_MS));
+    try {
+      const confirmPos = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      if (
+        !isNearestStore(storeId, stores, confirmPos.coords.latitude, confirmPos.coords.longitude)
+      ) {
+        return; // user moved away from this store during the confirmation window — abort
+      }
+    } catch {
+      // Confirmation GPS read failed — abort rather than notify on uncertain location
+      return;
     }
 
     // Count low items at this store
