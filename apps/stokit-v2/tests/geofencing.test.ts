@@ -1,8 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
-import { arrivalItemCount, geofenceableStores } from '../core/services/geofencingLogic';
+import { arrivalItemCount, decideStoreArrival, geofenceableStores } from '../core/services/geofencingLogic';
 import type { PantryItem, Store } from '../types';
+
+const NYC = { lat: 40.7128, lng: -74.006 };
+/** ~50m north of NYC — well within a 150m radius. */
+const NYC_NEAR = { lat: 40.71325, lng: -74.006 };
+/** ~50km away — well outside any geofence radius. */
+const NYC_FAR = { lat: 41.16, lng: -74.006 };
 
 const store = (id: string, lat?: number, lng?: number): Store => ({
   id,
@@ -49,6 +55,102 @@ test('arrival reminders count only low and expiring items for the entered store'
     item('other', 'low'),
   ];
   assert.equal(arrivalItemCount(items, 'aldi'), 2);
+});
+
+test('decideStoreArrival accepts an assigned store within radius', () => {
+  const stores = [store('walmart', NYC.lat, NYC.lng)];
+  const items = [item('walmart', 'low')];
+
+  const decision = decideStoreArrival({
+    lat: NYC_NEAR.lat,
+    lng: NYC_NEAR.lng,
+    stores,
+    items,
+    radiusMetres: 150,
+    cooldownMs: 60_000,
+    lastArrivalAt: {},
+  });
+
+  assert.equal(decision.accepted, true);
+  assert.equal(decision.storeId, 'walmart');
+});
+
+test('decideStoreArrival rejects an assigned store outside radius', () => {
+  const stores = [store('walmart', NYC.lat, NYC.lng)];
+  const items = [item('walmart', 'low')];
+
+  const decision = decideStoreArrival({
+    lat: NYC_FAR.lat,
+    lng: NYC_FAR.lng,
+    stores,
+    items,
+    radiusMetres: 150,
+    cooldownMs: 60_000,
+    lastArrivalAt: {},
+  });
+
+  assert.equal(decision.accepted, false);
+  assert.equal(decision.reason, 'out_of_radius');
+});
+
+test('decideStoreArrival rejects a store with no assigned items', () => {
+  const stores = [store('walmart', NYC.lat, NYC.lng)];
+  const items = [item('walmart', 'stocked')];
+
+  const decision = decideStoreArrival({
+    lat: NYC_NEAR.lat,
+    lng: NYC_NEAR.lng,
+    stores,
+    items,
+    radiusMetres: 150,
+    cooldownMs: 60_000,
+    lastArrivalAt: {},
+  });
+
+  assert.equal(decision.accepted, false);
+  assert.equal(decision.reason, 'no_assigned_items');
+});
+
+test('decideStoreArrival cooldown blocks a duplicate arrival for the same store', () => {
+  const stores = [store('walmart', NYC.lat, NYC.lng)];
+  const items = [item('walmart', 'low')];
+  const now = 1_000_000;
+
+  const decision = decideStoreArrival({
+    lat: NYC_NEAR.lat,
+    lng: NYC_NEAR.lng,
+    stores,
+    items,
+    radiusMetres: 150,
+    cooldownMs: 60_000,
+    lastArrivalAt: { walmart: now - 1_000 },
+    now,
+  });
+
+  assert.equal(decision.accepted, false);
+  assert.equal(decision.reason, 'cooldown');
+});
+
+test('decideStoreArrival picks the nearest eligible assigned store over a farther one', () => {
+  const stores = [
+    store('far-assigned', NYC_FAR.lat, NYC_FAR.lng),
+    store('near-assigned', NYC.lat, NYC.lng),
+    store('nearest-unassigned', NYC_NEAR.lat, NYC_NEAR.lng),
+  ];
+  const items = [item('far-assigned', 'low'), item('near-assigned', 'expiring')];
+
+  const decision = decideStoreArrival({
+    lat: NYC_NEAR.lat,
+    lng: NYC_NEAR.lng,
+    stores,
+    items,
+    radiusMetres: 150,
+    cooldownMs: 60_000,
+    lastArrivalAt: {},
+  });
+
+  assert.equal(decision.accepted, true);
+  assert.equal(decision.storeId, 'near-assigned');
 });
 
 test('native config enables background location and notification permissions', () => {

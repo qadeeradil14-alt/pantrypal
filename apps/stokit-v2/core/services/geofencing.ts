@@ -28,7 +28,7 @@ import Constants from 'expo-constants';
 import { notifyArrival, requestNotificationPermission } from './notifications';
 import type { PantryItem, Store } from '../../types';
 import { loadDurable } from '../repositories/durableRepository';
-import { arrivalItemCount, geofenceableStores, isNearestStore } from './geofencingLogic';
+import { arrivalItemCount, decideStoreArrival, geofenceableStores } from './geofencingLogic';
 
 // ── Constants (match V1 values) ───────────────────────────────────────────────
 
@@ -52,6 +52,26 @@ export const DWELL_CONFIRM_MS = 10 * 1000;
 const MAX_GEOFENCES_IOS = 20;
 
 const LAST_ENTER_KEY = 'stokit:v2:geofence:last-enter';
+
+/** storeId -> ms timestamp of the last accepted arrival. */
+async function readLastArrivalAt(): Promise<Record<string, number>> {
+  try {
+    const raw = await AsyncStorage.getItem(LAST_ENTER_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+async function writeLastArrivalAt(storeId: string, at: number): Promise<void> {
+  try {
+    const record = await readLastArrivalAt();
+    record[storeId] = at;
+    await AsyncStorage.setItem(LAST_ENTER_KEY, JSON.stringify(record));
+  } catch {
+    // Non-fatal — a missed cooldown write just means the next debounce window resets
+  }
+}
 
 // ── Expo Go detection ─────────────────────────────────────────────────────────
 
@@ -82,59 +102,66 @@ export function defineGeofenceTask(
     const storeId = region?.identifier;
     if (!storeId) return;
 
-    // Load durable state once — used by both nearest-store check and notification
+    // Load durable state once — used by both the arrival decision and the notification
     const durable = await loadDurable();
     const items = durable?.items ?? getItems();
     const stores = durable?.stores ?? getStores();
+    const lastArrivalAt = await readLastArrivalAt();
 
-    // Nearest-store verification — reject bleed from adjacent stores (e.g. Walmart vs Sam's Club).
-    // Get a fresh GPS fix and confirm this store is physically the closest geofenceable store.
+    // Region identifier is only a wake-up signal here — decideStoreArrival is the single
+    // source of truth for which store (if any) actually wins, using a fresh GPS fix to
+    // confirm assignment, radius, and cooldown rather than trusting the region alone.
     try {
       const pos = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
-      if (!isNearestStore(storeId, stores, pos.coords.latitude, pos.coords.longitude)) {
-        return; // physically closer to a different store — abort
-      }
+      const initial = decideStoreArrival({
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        stores,
+        items,
+        radiusMetres: GEOFENCE_RADIUS_M,
+        cooldownMs: DEBOUNCE_MS,
+        lastArrivalAt,
+      });
+      if (!initial.accepted) return;
     } catch {
       // Location unavailable — proceed without verification rather than silently dropping
     }
 
-    // Debounce — ignore re-enters within 3 min
-    try {
-      const raw = await AsyncStorage.getItem(LAST_ENTER_KEY);
-      const record: Record<string, number> = raw ? JSON.parse(raw) : {};
-      const last = record[storeId] ?? 0;
-      if (Date.now() - last < DEBOUNCE_MS) return;
-      record[storeId] = Date.now();
-      await AsyncStorage.setItem(LAST_ENTER_KEY, JSON.stringify(record));
-    } catch {
-      // Non-fatal — continue
-    }
-
-    // Dwell confirmation — ignore quick drive-bys. Wait, then re-check that this
-    // store is still the closest before treating the Enter as a real arrival.
+    // Dwell confirmation — ignore quick drive-bys. Wait, then re-run the decision so a
+    // store the user only drove past doesn't get treated as a real arrival.
     await new Promise((resolve) => setTimeout(resolve, DWELL_CONFIRM_MS));
-    // Unlike the entry check above (which fails open on GPS error), this dwell
-    // re-check fails closed — an uncertain location here aborts the arrival.
+
+    let decision;
     try {
+      // Unlike the entry check above (which fails open on GPS error), this dwell
+      // re-check fails closed — an uncertain location here aborts the arrival.
       const confirmPos = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
-      if (
-        !isNearestStore(storeId, stores, confirmPos.coords.latitude, confirmPos.coords.longitude)
-      ) {
-        return; // user moved away from this store during the confirmation window — abort
-      }
+      decision = decideStoreArrival({
+        lat: confirmPos.coords.latitude,
+        lng: confirmPos.coords.longitude,
+        stores,
+        items,
+        radiusMetres: GEOFENCE_RADIUS_M,
+        cooldownMs: DEBOUNCE_MS,
+        lastArrivalAt,
+      });
     } catch {
-      // Confirmation GPS read failed — abort rather than notify on uncertain location
       return;
     }
 
-    // Count low items at this store
-    const store = stores.find((s) => s.id === storeId);
+    if (!decision.accepted || !decision.storeId) return;
+
+    // Cooldown is written only now, after the arrival is fully accepted — a failed
+    // dwell re-check or a notification error above never blocks a real future arrival.
+    await writeLastArrivalAt(decision.storeId, Date.now());
+
+    const store = stores.find((s) => s.id === decision.storeId);
     if (!store) return;
-    const lowCount = arrivalItemCount(items, storeId);
+    const lowCount = arrivalItemCount(items, decision.storeId);
     await notifyArrival(store.name, lowCount);
 
     // Insert store_arrivals row — DB trigger pushes notification to other household members
@@ -151,7 +178,7 @@ export function defineGeofenceTask(
           const me = parsed.members?.find((m) => m.isMe);
           await supabase.from('store_arrivals').insert({
             household_id: parsed.household.id,
-            store_id: storeId,
+            store_id: decision.storeId,
             arrived_by: user.id,
             arrived_by_name: me?.displayName ?? null,
           });
