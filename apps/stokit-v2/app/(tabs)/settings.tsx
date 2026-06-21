@@ -62,8 +62,9 @@ export default function SettingsScreen() {
   const [geofenceOn, setGeofenceOn] = useState(false);
   const [geofenceLoading, setGeofenceLoading] = useState(false);
   const gpsStores = stores.filter((s) => s.lat != null && s.lng != null);
-  const monitorableStores = geofenceableStores(stores, IOS_GEOFENCE_LIMIT);
-  const skippedStores = gpsStores.slice(monitorableStores.length);
+  const monitorableStores = geofenceableStores(stores, IOS_GEOFENCE_LIMIT, items);
+  const monitorableStoreIds = new Set(monitorableStores.map((store) => store.id));
+  const skippedStores = gpsStores.filter((store) => !monitorableStoreIds.has(store.id));
   const hasQualifyingItem = (storeId: string) => items.some(
     (item) => item.storeId === storeId && (item.status === 'low' || item.status === 'expiring'),
   );
@@ -87,7 +88,7 @@ export default function SettingsScreen() {
     setGeofenceLoading(true);
     try {
       if (value) {
-        const result = await startGeofencing(stores);
+        const result = await startGeofencing(stores, items);
         switch (result) {
           case 'ok':
             setGeofenceOn(true);
@@ -134,7 +135,7 @@ export default function SettingsScreen() {
     } finally {
       setGeofenceLoading(false);
     }
-  }, [stores, gpsStores.length, inExpoGo]);
+  }, [stores, items, gpsStores.length, inExpoGo]);
 
   const confirmReset = () => {
     if (household && !household.isPersonal && household.role !== 'owner') {

@@ -31,6 +31,16 @@ test('geofencing only registers coordinate-backed stores and respects platform l
   assert.deepEqual(geofenceableStores(stores, 1).map(({ id }) => id), ['zero']);
 });
 
+test('geofencing prioritizes stores with qualifying assigned items before applying limits', () => {
+  const stores = [store('first', 1, 1), store('second', 2, 2), store('walmart', 3, 3)];
+  const items = [item('walmart', 'low')];
+
+  assert.deepEqual(
+    geofenceableStores(stores, 2, items).map(({ id }) => id),
+    ['walmart', 'first'],
+  );
+});
+
 test('arrival reminders count only low and expiring items for the entered store', () => {
   const items = [
     item('aldi', 'low'),

@@ -202,6 +202,7 @@ export function stopSyncEngine(): void {
 export async function refreshGeofencedStoreData(): Promise<void> {
   const { isGeofencingRunning, startGeofencing } = await import('./geofencing');
   if (await isGeofencingRunning()) {
-    await startGeofencing((await durableStore()).getState().stores);
+    const { stores, items } = (await durableStore()).getState();
+    await startGeofencing(stores, items);
   }
 }

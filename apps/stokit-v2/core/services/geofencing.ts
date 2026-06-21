@@ -173,12 +173,14 @@ export function defineGeofenceTask(
  */
 export async function startGeofencing(
   stores: Store[],
+  items: PantryItem[] = [],
 ): Promise<'ok' | 'no_permission' | 'no_notification_permission' | 'no_stores' | 'expo_go'> {
   if (isExpoGo()) return 'expo_go';
 
   const geofenceable = geofenceableStores(
     stores,
     Platform.OS === 'ios' ? MAX_GEOFENCES_IOS : 100,
+    items,
   );
   if (geofenceable.length === 0) return 'no_stores';
 

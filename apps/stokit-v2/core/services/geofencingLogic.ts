@@ -1,9 +1,26 @@
 import type { PantryItem, Store } from '../../types';
 
-export function geofenceableStores(stores: Store[], limit: number): Store[] {
-  return stores
+export function geofenceableStores(
+  stores: Store[],
+  limit: number,
+  items: PantryItem[] = [],
+): Store[] {
+  const qualifyingStoreIds = new Set(
+    items
+      .filter((item) => item.storeId && (item.status === 'low' || item.status === 'expiring'))
+      .map((item) => item.storeId),
+  );
+  const withQualifyingItems: Store[] = [];
+  const withoutQualifyingItems: Store[] = [];
+
+  stores
     .filter((store) => store.lat != null && store.lng != null)
-    .slice(0, limit);
+    .forEach((store) => {
+      if (qualifyingStoreIds.has(store.id)) withQualifyingItems.push(store);
+      else withoutQualifyingItems.push(store);
+    });
+
+  return [...withQualifyingItems, ...withoutQualifyingItems].slice(0, limit);
 }
 
 export function arrivalItemCount(items: PantryItem[], storeId: string): number {
