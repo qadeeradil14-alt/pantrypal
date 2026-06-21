@@ -59,6 +59,7 @@ export default function SettingsScreen() {
   const [geofenceOn, setGeofenceOn] = useState(false);
   const [geofenceLoading, setGeofenceLoading] = useState(false);
   const gpsStores = stores.filter((s) => s.lat != null && s.lng != null);
+  const storesMissingLocation = stores.length - gpsStores.length;
   const inExpoGo = isExpoGo();
 
   useEffect(() => {
@@ -381,6 +382,12 @@ export default function SettingsScreen() {
           styles={styles}
           colors={colors}
         />
+        {storesMissingLocation > 0 && (
+          <Text style={styles.locationWarning}>
+            {storesMissingLocation} store{storesMissingLocation === 1 ? '' : 's'} need
+            {storesMissingLocation === 1 ? 's' : ''} a location before arrival alerts can work.
+          </Text>
+        )}
         <Text style={styles.privacyNote}>
           Your location is compared only against your saved stores' coordinates —
           Stokit doesn't track or save a history of where you've been. When you
@@ -558,6 +565,13 @@ function makeStyles(colors: AppColors) {
     },
     toggleLabel: { fontFamily: fonts.sansMedium, fontSize: 15, color: colors.ink },
     toggleDesc: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 2 },
+    locationWarning: {
+      fontFamily: fonts.sans,
+      fontSize: 12,
+      color: colors.warning,
+      lineHeight: 18,
+      marginTop: spacing.xs,
+    },
     privacyNote: {
       fontFamily: fonts.sans,
       fontSize: 12,
