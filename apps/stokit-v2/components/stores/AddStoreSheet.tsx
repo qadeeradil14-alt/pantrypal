@@ -53,9 +53,11 @@ export function AddStoreContent({
   const [suggestions, setSuggestions] = useState<AutocompleteSuggestion[]>([]);
   const [loadingSuggestion, setLoadingSuggestion] = useState(false);
   const [searchError, setSearchError] = useState('');
+  const [addResult, setAddResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   const userLocRef = useRef<{lat: number, lng: number} | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Cache NearbyStore details so selection doesn't need an extra Places API round-trip
   const nearbyStoreCache = useRef<Map<string, NearbyStore>>(new Map());
 
@@ -78,6 +80,12 @@ export function AddStoreContent({
       })
       .catch(() => { /* silently ignore */ });
   }, [isActive]);
+
+  useEffect(() => {
+    return () => {
+      if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
+    };
+  }, []);
 
   // Debounced autocomplete — runs 400ms after user stops typing
   const runAutocomplete = useCallback((currentName: string, currentZip: string) => {
@@ -134,7 +142,7 @@ export function AddStoreContent({
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setName(''); setZip(''); setColor(LOGO_COLORS[1]); setEmoji(undefined);
     setPlaceId(undefined); setAddress(undefined); setLat(undefined); setLng(undefined);
-    setSuggestions([]); setLoadingSuggestion(false); setSearchError('');
+    setSuggestions([]); setLoadingSuggestion(false); setSearchError(''); setAddResult(null);
     nearbyStoreCache.current.clear();
   };
 
@@ -194,21 +202,34 @@ export function AddStoreContent({
 
   const submit = () => {
     if (!name.trim()) return;
-    
-    const store = addStore({ 
-      name: name.trim(), 
-      logoColor: color, 
-      logoEmoji: emoji, 
-      placeId, 
-      address, 
-      lat, 
-      lng, 
+
+    const store = addStore({
+      name: name.trim(),
+      logoColor: color,
+      logoEmoji: emoji,
+      placeId,
+      address,
+      lat,
+      lng,
     });
-    reset();
-    onClose();
-    if (onStoreAdded) {
-      onStoreAdded(store.id);
-    }
+
+    const hasCoords = typeof store.lat === 'number' && !Number.isNaN(store.lat)
+      && typeof store.lng === 'number' && !Number.isNaN(store.lng);
+
+    setAddResult({
+      ok: hasCoords,
+      message: hasCoords
+        ? 'Arrival alerts ready — coordinates found.'
+        : 'No coordinates found — arrival alerts will not work for this store.',
+    });
+
+    closeTimeoutRef.current = setTimeout(() => {
+      reset();
+      onClose();
+      if (onStoreAdded) {
+        onStoreAdded(store.id);
+      }
+    }, 1200);
   };
 
   return (
@@ -302,10 +323,16 @@ export function AddStoreContent({
         {address ? 'Location linked ✓' : 'Select a suggestion above to link a real-world location.'}
       </Text>
 
+      {addResult ? (
+        <Text style={[styles.resultMessage, { color: addResult.ok ? colors.success : colors.danger }]}>
+          {addResult.message}
+        </Text>
+      ) : null}
+
       <Button
         label={loadingSuggestion ? 'Loading…' : 'Add store'}
         onPress={submit}
-        disabled={!name.trim() || loadingSuggestion}
+        disabled={!name.trim() || loadingSuggestion || addResult !== null}
         style={{ marginTop: spacing.lg }}
       />
     </>
@@ -349,5 +376,6 @@ function makeStyles(colors: AppColors) {
     emojiBtn:       { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
     emojiBtnActive: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
     hint: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: spacing.md },
+    resultMessage: { fontFamily: fonts.sansSemibold, fontSize: 13, marginTop: spacing.sm, textAlign: 'center' },
   });
 }
