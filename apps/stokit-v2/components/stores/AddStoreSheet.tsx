@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View, ScrollView } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View, ScrollView } from 'react-native';
 import * as Location from 'expo-location';
 import { Sheet } from '../shared/Sheet';
 import { TextField, FieldLabel } from '../shared/Field';
@@ -53,11 +53,9 @@ export function AddStoreContent({
   const [suggestions, setSuggestions] = useState<AutocompleteSuggestion[]>([]);
   const [loadingSuggestion, setLoadingSuggestion] = useState(false);
   const [searchError, setSearchError] = useState('');
-  const [addResult, setAddResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   const userLocRef = useRef<{lat: number, lng: number} | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Cache NearbyStore details so selection doesn't need an extra Places API round-trip
   const nearbyStoreCache = useRef<Map<string, NearbyStore>>(new Map());
 
@@ -80,12 +78,6 @@ export function AddStoreContent({
       })
       .catch(() => { /* silently ignore */ });
   }, [isActive]);
-
-  useEffect(() => {
-    return () => {
-      if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
-    };
-  }, []);
 
   // Debounced autocomplete — runs 400ms after user stops typing
   const runAutocomplete = useCallback((currentName: string, currentZip: string) => {
@@ -142,7 +134,7 @@ export function AddStoreContent({
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setName(''); setZip(''); setColor(LOGO_COLORS[1]); setEmoji(undefined);
     setPlaceId(undefined); setAddress(undefined); setLat(undefined); setLng(undefined);
-    setSuggestions([]); setLoadingSuggestion(false); setSearchError(''); setAddResult(null);
+    setSuggestions([]); setLoadingSuggestion(false); setSearchError('');
     nearbyStoreCache.current.clear();
   };
 
@@ -216,20 +208,23 @@ export function AddStoreContent({
     const hasCoords = typeof store.lat === 'number' && !Number.isNaN(store.lat)
       && typeof store.lng === 'number' && !Number.isNaN(store.lng);
 
-    setAddResult({
-      ok: hasCoords,
-      message: hasCoords
-        ? 'Arrival alerts ready — coordinates found.'
-        : 'No coordinates found — arrival alerts will not work for this store.',
-    });
-
-    closeTimeoutRef.current = setTimeout(() => {
-      reset();
-      onClose();
-      if (onStoreAdded) {
-        onStoreAdded(store.id);
-      }
-    }, 1200);
+    Alert.alert(
+      hasCoords ? 'Arrival alerts ready' : 'Location missing',
+      hasCoords
+        ? 'Coordinates found for this store.'
+        : 'Arrival alerts will not work for this store until a location is added.',
+      [{
+        text: 'OK',
+        onPress: () => {
+          reset();
+          onClose();
+          if (onStoreAdded) {
+            onStoreAdded(store.id);
+          }
+        },
+      }],
+      { cancelable: false },
+    );
   };
 
   return (
@@ -323,16 +318,10 @@ export function AddStoreContent({
         {address ? 'Location linked ✓' : 'Select a suggestion above to link a real-world location.'}
       </Text>
 
-      {addResult ? (
-        <Text style={[styles.resultMessage, { color: addResult.ok ? colors.success : colors.danger }]}>
-          {addResult.message}
-        </Text>
-      ) : null}
-
       <Button
         label={loadingSuggestion ? 'Loading…' : 'Add store'}
         onPress={submit}
-        disabled={!name.trim() || loadingSuggestion || addResult !== null}
+        disabled={!name.trim() || loadingSuggestion}
         style={{ marginTop: spacing.lg }}
       />
     </>
