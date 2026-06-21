@@ -327,14 +327,8 @@ export function getStoreBrand(
       ? (words[0][0] + words[1][0]).toUpperCase()
       : name.slice(0, 2).toUpperCase();
 
-  // Guess a .com domain for unknown stores.
-  // Google Favicon API will safely return a 404 for non-existent domains,
-  // and the StoreChip will fall back to the abbreviation.
-  const guessDomain = key.replace(/\s+/g, '') + '.com';
-
   return {
     color: fallbackColor ?? '#A4917A',
     abbr,
-    logoUrl: gf(guessDomain),
   };
 }
