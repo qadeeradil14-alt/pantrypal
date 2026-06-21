@@ -22,7 +22,10 @@ import {
   isGeofencingRunning,
   isExpoGo,
 } from '../../core/services/geofencing';
+import { geofenceableStores } from '../../core/services/geofencingLogic';
 import type { Unit } from '../../types';
+
+const IOS_GEOFENCE_LIMIT = 20;
 
 const UNIT_OPTIONS: { value: Unit; label: string }[] = [
   { value: 'unit', label: 'unit' },
@@ -59,6 +62,11 @@ export default function SettingsScreen() {
   const [geofenceOn, setGeofenceOn] = useState(false);
   const [geofenceLoading, setGeofenceLoading] = useState(false);
   const gpsStores = stores.filter((s) => s.lat != null && s.lng != null);
+  const monitorableStores = geofenceableStores(stores, IOS_GEOFENCE_LIMIT);
+  const skippedStores = gpsStores.slice(monitorableStores.length);
+  const hasQualifyingItem = (storeId: string) => items.some(
+    (item) => item.storeId === storeId && (item.status === 'low' || item.status === 'expiring'),
+  );
   const storesMissingLocation = stores.length - gpsStores.length;
   const inExpoGo = isExpoGo();
 
@@ -388,6 +396,53 @@ export default function SettingsScreen() {
             {storesMissingLocation === 1 ? 's' : ''} a location before arrival alerts can work.
           </Text>
         )}
+        <View style={styles.geofenceDiagnostics}>
+          <Text style={styles.geofenceDiagnosticsTitle}>Arrival alert diagnostics</Text>
+          <View style={styles.statRow}>
+            <Text style={styles.statLabel}>GPS-ready stores</Text>
+            <Text style={styles.statValue}>{gpsStores.length}</Text>
+          </View>
+          <View style={styles.statRow}>
+            <Text style={styles.statLabel}>iOS can monitor</Text>
+            <Text style={styles.statValue}>First {IOS_GEOFENCE_LIMIT}</Text>
+          </View>
+          <View style={styles.statRow}>
+            <Text style={styles.statLabel}>Stores over the limit</Text>
+            <Text style={styles.statValue}>{skippedStores.length}</Text>
+          </View>
+          <Text style={styles.geofenceDiagnosticsNote}>
+            Reminder: a store also needs at least one low or expiring assigned item before an
+            arrival notification can appear.
+          </Text>
+
+          <Text style={styles.geofenceDiagnosticsHeading}>Monitorable stores (first 20)</Text>
+          {monitorableStores.length === 0 ? (
+            <Text style={styles.geofenceDiagnosticsEmpty}>No GPS-ready stores.</Text>
+          ) : monitorableStores.map((store) => (
+            <Text key={store.id} style={styles.geofenceDiagnosticsStore}>
+              {store.name} — GPS ready — {hasQualifyingItem(store.id)
+                ? 'has shopping item'
+                : 'no qualifying item'}
+            </Text>
+          ))}
+
+          {skippedStores.length > 0 && (
+            <>
+              <Text
+                style={[styles.geofenceDiagnosticsHeading, { color: colors.danger }]}
+              >
+                Not monitored due to iOS 20-store limit
+              </Text>
+              {skippedStores.map((store) => (
+                <Text key={store.id} style={styles.geofenceDiagnosticsStore}>
+                  {store.name} — GPS ready — {hasQualifyingItem(store.id)
+                    ? 'has shopping item'
+                    : 'no qualifying item'}
+                </Text>
+              ))}
+            </>
+          )}
+        </View>
         <Text style={styles.privacyNote}>
           Your location is compared only against your saved stores' coordinates —
           Stokit doesn't track or save a history of where you've been. When you
@@ -571,6 +626,44 @@ function makeStyles(colors: AppColors) {
       color: colors.warning,
       lineHeight: 18,
       marginTop: spacing.xs,
+    },
+    geofenceDiagnostics: {
+      marginTop: spacing.md,
+      paddingTop: spacing.md,
+      borderTopWidth: 1,
+      borderTopColor: colors.borderSoft,
+    },
+    geofenceDiagnosticsTitle: {
+      fontFamily: fonts.sansSemibold,
+      fontSize: 15,
+      color: colors.ink,
+      marginBottom: spacing.xs,
+    },
+    geofenceDiagnosticsHeading: {
+      fontFamily: fonts.sansSemibold,
+      fontSize: 13,
+      color: colors.ink,
+      marginTop: spacing.md,
+      marginBottom: spacing.xs,
+    },
+    geofenceDiagnosticsNote: {
+      fontFamily: fonts.sans,
+      fontSize: 12,
+      color: colors.muted,
+      lineHeight: 18,
+      marginTop: spacing.sm,
+    },
+    geofenceDiagnosticsStore: {
+      fontFamily: fonts.sans,
+      fontSize: 12,
+      color: colors.inkSoft,
+      lineHeight: 18,
+    },
+    geofenceDiagnosticsEmpty: {
+      fontFamily: fonts.sans,
+      fontSize: 12,
+      color: colors.muted,
+      lineHeight: 18,
     },
     privacyNote: {
       fontFamily: fonts.sans,
