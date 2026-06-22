@@ -146,6 +146,7 @@ function makeStyles(colors: AppColors) {
       height: 50,
       fontFamily: fonts.sans,
       fontSize: 16,
+      letterSpacing: 0,
       color: colors.ink,
     },
     chipRow: { flexDirection: 'row', gap: spacing.sm, paddingVertical: 2 },
