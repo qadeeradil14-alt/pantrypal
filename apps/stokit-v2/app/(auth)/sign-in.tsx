@@ -8,7 +8,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Link, useRouter } from 'expo-router';
+import { Link, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Button, Card } from '../../components/shared/ui';
 import { Logo } from '../../components/shared/Logo';
@@ -20,13 +20,14 @@ export default function SignInScreen() {
   const { colors } = useTheme();
   const styles = React.useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
+  const params = useLocalSearchParams<{ message?: string }>();
   const signIn = useAuthStore((s) => s.signIn);
   const resetPassword = useAuthStore((s) => s.resetPassword);
   const loading = useAuthStore((s) => s.loading);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(typeof params.message === 'string' ? params.message : '');
 
   const submit = async () => {
     if (!email.trim() || !password) {

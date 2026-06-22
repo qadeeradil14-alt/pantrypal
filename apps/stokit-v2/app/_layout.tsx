@@ -1,6 +1,5 @@
 import React, { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import * as Linking from 'expo-linking';
 import * as Notifications from 'expo-notifications';
 import { Stack, usePathname, useRouter, useRootNavigationState, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -27,7 +26,6 @@ import { useDurableStore } from '../store/durable-store';
 import { useHouseholdStore } from '../store/household-store';
 import { useSessionStore } from '../store/session-store';
 import { setupNotifications, registerPushToken } from '../core/services/notifications';
-import { handleAuthLink } from '../lib/auth-links';
 import { isEmailVerified, useAuthStore } from '../store/auth-store';
 import { pullFromSupabase, startSyncEngine } from '../core/services/syncEngine';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -93,13 +91,6 @@ export default function RootLayout() {
     void hydrateHousehold();
     void hydrateSession();
     void setupNotifications();
-    void Linking.getInitialURL().then(async (url) => {
-      if (url) await handleAuthLink(url);
-    });
-    const linkSubscription = Linking.addEventListener('url', ({ url }) => {
-      void handleAuthLink(url);
-    });
-    return () => linkSubscription.remove();
   }, [hydrateDurable, hydrateHousehold, hydrateSession]);
 
   // Route arrival notification taps into Shopping. No store-detail route exists
@@ -163,6 +154,8 @@ export default function RootLayout() {
 
     // Add microtask delay to allow React state to settle before routing
     setTimeout(() => {
+      if (pathname === '/auth/callback') return;
+
       // Email verification check
       if (user && !verified && !guestMode && pathname !== '/verify-email' && pathname !== '/sign-up') {
         router.replace('/(auth)/verify-email');
@@ -170,7 +163,7 @@ export default function RootLayout() {
       }
 
       // Main auth routing
-      const authPaths = ['/welcome', '/sign-in', '/sign-up', '/join', '/verify-email', '/reset-password'];
+      const authPaths = ['/welcome', '/sign-in', '/sign-up', '/join', '/verify-email', '/reset-password', '/auth/callback'];
       const inAuthGroup = authPaths.includes(pathname);
 
       if (unlocked && inAuthGroup) {
@@ -181,7 +174,7 @@ export default function RootLayout() {
     }, 0);
   }, [pathname, segments, ready, router, user, verified, guestMode, unlocked]);
 
-  if (!ready) {
+  if (!ready && pathname !== '/auth/callback') {
     return (
       <View
         style={{
@@ -209,6 +202,7 @@ export default function RootLayout() {
         >
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="auth/callback" />
         </Stack>
       </SafeAreaProvider>
     </GestureHandlerRootView>

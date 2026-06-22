@@ -76,6 +76,7 @@ interface AuthStore {
   verifyResetCode: (email: string, token: string, newPassword: string) => Promise<AuthResult>;
   resendVerificationEmail: (email: string) => Promise<AuthResult>;
   refreshUser: () => Promise<AuthResult>;
+  clearConfirmationSession: () => Promise<void>;
   signOut: () => Promise<AuthResult>;
   clearError: () => void;
   enterGuestMode: () => void;
@@ -232,6 +233,14 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       loading: false,
     });
     return { ok: true };
+  },
+
+  clearConfirmationSession: async () => {
+    set({ session: null, user: null, loading: false, authError: null, pendingEmail: null });
+    await Promise.all([
+      AsyncStorage.removeItem(SESSION_BACKUP_KEY),
+      supabase.auth.signOut({ scope: 'local' }),
+    ]);
   },
 
   signOut: async () => {
