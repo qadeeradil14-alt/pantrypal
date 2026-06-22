@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { fonts, radii, spacing, type AppColors } from '../../theme';
 import { useTheme } from '../../hooks/useTheme';
 
@@ -26,7 +26,6 @@ export function Sheet({
   onClose: () => void;
   children: React.ReactNode;
 }) {
-  const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -41,8 +40,9 @@ export function Sheet({
         <Pressable style={styles.backdropTap} onPress={onClose} />
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.keyboardAvoider}
         >
-          <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing.lg }]}>
+          <SafeAreaView edges={['bottom']} style={styles.sheet}>
             <View style={styles.handle} />
             <View style={styles.header}>
               <Text style={styles.title}>{title}</Text>
@@ -56,7 +56,7 @@ export function Sheet({
             >
               {children}
             </ScrollView>
-          </View>
+          </SafeAreaView>
         </KeyboardAvoidingView>
       </View>
     </Modal>
@@ -67,6 +67,7 @@ function makeStyles(colors: AppColors) {
   return StyleSheet.create({
     backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' },
     backdropTap: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+    keyboardAvoider: { width: '100%' },
     sheet: {
       backgroundColor: colors.backgroundElevated,
       borderTopLeftRadius: radii.xl,
@@ -75,6 +76,7 @@ function makeStyles(colors: AppColors) {
       borderColor: colors.border,
       paddingHorizontal: spacing.xl,
       paddingTop: spacing.md,
+      paddingBottom: spacing.lg,
       maxHeight: '88%',
     },
     handle: {

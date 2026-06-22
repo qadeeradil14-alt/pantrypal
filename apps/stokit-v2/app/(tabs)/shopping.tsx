@@ -11,6 +11,7 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Image,
   KeyboardAvoidingView,
@@ -36,6 +37,7 @@ import { AddItemSheet } from '../../components/pantry/AddItemSheet';
 import { Sheet } from '../../components/shared/Sheet';
 import { ItemAvatar } from '../../components/shared/ItemAvatar';
 import { PricePromptSheet } from '../../components/shopping/PricePromptSheet';
+import { AddStoreContent } from '../../components/stores/AddStoreSheet';
 import { fonts, radii, spacing, type AppColors } from '../../theme';
 import { useDurableStore } from '../../store/durable-store';
 import { useSessionStore } from '../../store/session-store';
@@ -44,6 +46,8 @@ import { ROUTE_COLORS } from '../../core/services/storeBrands';
 import { classifyItem, categoryLabel } from '../../core/services/itemClassifier';
 import { cheapestRecentPrice, itemPriceHistory, lastPriceAtStore } from '../../core/services/priceHistory';
 import { normalizeItemName } from '../../core/services/pantryItems';
+import { receiptContinuationEvent, renameReviewItem, reviewReceiptItems, unplannedStores } from '../../core/services/shoppingUx';
+import type { ReceiptReviewItem } from '../../core/services/shoppingUx';
 import type { PantryItem, ShoppingEntry, Store } from '../../types';
 import { useTheme } from '../../hooks/useTheme';
 import { UNASSIGNED_STORE_ID, UNASSIGNED_STORE_NAME } from '../../constants/shopping';
@@ -728,8 +732,40 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
 
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [scanResult, setScanResult] = useState<any>(null);
+  const [scanStatus, setScanStatus] = useState<string | null>(null);
+  const [reviewRows, setReviewRows] = useState<ReceiptReviewItem<any>[]>([]);
+  const [editingScanIndex, setEditingScanIndex] = useState<number | null>(null);
+  const [editingScanText, setEditingScanText] = useState('');
   const addItem = useDurableStore((s) => s.addItem);
   const recordPrice = useDurableStore((s) => s.recordPrice);
+
+  // Rebuild the review rows whenever a fresh scan lands. Confirmed (clean) rows
+  // start selected; "Unclear" rows start unchecked so a bad scan can't silently
+  // import OCR junk into the pantry.
+  useEffect(() => {
+    setReviewRows(reviewReceiptItems(scanResult?.items ?? []));
+    setEditingScanIndex(null);
+  }, [scanResult]);
+  const selectedScanCount = reviewRows.filter((r) => r.selected).length;
+  const toggleScanItem = (i: number) =>
+    setReviewRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, selected: !r.selected } : r)));
+  const beginEditScanItem = (i: number) => {
+    setEditingScanIndex(i);
+    setEditingScanText(reviewRows[i]?.item?.name ?? '');
+  };
+  const cancelEditScanItem = () => setEditingScanIndex(null);
+  const commitEditScanItem = () => {
+    if (editingScanIndex === null) return;
+    const i = editingScanIndex;
+    setReviewRows((prev) => prev.map((r, idx) => (idx === i ? renameReviewItem(r, editingScanText) : r)));
+    setEditingScanIndex(null);
+  };
+
+  useEffect(() => {
+    if (scanStatus !== 'Extracting items and prices…') return;
+    const timer = setTimeout(() => setScanStatus('Almost done…'), 4000);
+    return () => clearTimeout(timer);
+  }, [scanStatus]);
 
   // Budget tracking
   const allTrips = useDurableStore((s) => s.trips);
@@ -768,6 +804,37 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
 
   const skip = () => dispatch({ type: 'SKIP_RECEIPT', now: Date.now() });
 
+  const continueAfterScan = () => {
+    setScanResult(null);
+    dispatch(receiptContinuationEvent(parsed, imageUri, Date.now()));
+  };
+
+  const skipScanItems = () => continueAfterScan();
+
+  const addScanItems = () => {
+    const items = reviewRows.filter((r) => r.selected).map((r) => r.item);
+    if (items.length === 0) return;
+    items.forEach((item: any) => {
+      const pantryItem = addItem({
+        name: item.name,
+        quantity: item.quantity,
+        unit: item.unit || 'unit',
+        storeId,
+        status: 'stocked',
+      });
+      if (item.price > 0) {
+        recordPrice({
+          itemId: pantryItem.id,
+          itemName: pantryItem.name,
+          storeId,
+          price: item.price,
+        });
+      }
+    });
+    Alert.alert('Added to pantry', `${items.length} item${items.length === 1 ? '' : 's'} added.`);
+    continueAfterScan();
+  };
+
   const pickImage = async (source: 'camera' | 'library') => {
     const ImagePicker = await import('expo-image-picker');
     const permFn = source === 'camera'
@@ -800,11 +867,13 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
     if (result.canceled || !result.assets[0]) return;
 
     const asset = result.assets[0];
+    setScanStatus('Reading receipt…');
     const { persistReceiptImage } = await import('../../core/services/receiptImages');
     const durableImageUri = await persistReceiptImage(asset.uri);
     setImageUri(durableImageUri);
 
     if (!asset.base64) {
+      setScanStatus(null);
       Alert.alert('Scan failed', 'Could not read image data. Please try again.');
       return;
     }
@@ -813,6 +882,7 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
     const { hasOpenAiKey } = await import('../../lib/config');
 
     if (!hasOpenAiKey()) {
+      setScanStatus(null);
       Alert.alert(
         'Receipt Scan Unavailable',
         'AI receipt scanning is not configured for this build. You can still enter the total manually.',
@@ -825,6 +895,7 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
     const mimeType = asset.mimeType ?? (asset.uri.toLowerCase().includes('.png') ? 'image/png' : 'image/jpeg');
 
     setSaving(true);
+    setScanStatus('Extracting items and prices…');
     try {
       const aiResult = await extractReceiptItems(asset.base64, mimeType);
       if (aiResult && aiResult.items && aiResult.items.length > 0) {
@@ -838,6 +909,7 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
       Alert.alert('Scan failed', e?.message ?? 'An unexpected error occurred while parsing the receipt.');
     } finally {
       setSaving(false);
+      setScanStatus(null);
     }
   };
 
@@ -925,13 +997,20 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
             </View>
           )}
 
+          {scanStatus && (
+            <View style={rStyles.scanStatus}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={rStyles.scanStatusText}>{scanStatus}</Text>
+            </View>
+          )}
+
           <Pressable
             onPress={save}
             disabled={parsed <= 0 || saving}
             style={({ pressed }) => [rStyles.saveBtn, (parsed <= 0 || saving) && { opacity: 0.45 }, pressed && { opacity: 0.85 }]}
           >
             <Text style={rStyles.saveBtnText}>
-              {saving ? (imageUri && parsed === 0 ? 'Reading receipt…' : 'Saving…') : parsed > 0 ? `Save  ·  $${parsed.toFixed(2)}` : 'Save amount'}
+              {scanStatus ?? (saving ? 'Saving…' : parsed > 0 ? `Save  ·  $${parsed.toFixed(2)}` : 'Save amount')}
             </Text>
           </Pressable>
 
@@ -954,60 +1033,102 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
         </ScrollView>
       </Screen>
 
-      <Sheet visible={!!scanResult} title="Receipt Scanned!" onClose={() => setScanResult(null)}>
-        <Text style={{ fontFamily: fonts.sans, fontSize: 15, color: colors.ink, marginBottom: spacing.md }}>
-          Found {scanResult?.items?.length} items. Add them to your pantry?
+      <Sheet visible={!!scanResult} title="Receipt scanned" onClose={skipScanItems}>
+        <Text style={{ fontFamily: fonts.sans, fontSize: 15, color: colors.ink, marginBottom: spacing.xs }}>
+          Found {scanResult?.items?.length} possible items. Review before saving.
+        </Text>
+        <Text style={{ fontFamily: fonts.sans, fontSize: 13, color: colors.muted, marginBottom: spacing.lg }}>
+          Unchecked items will be skipped. Select only the items you recognize.
         </Text>
         <ScrollView style={{ maxHeight: 300, marginBottom: spacing.lg }}>
-          {scanResult?.items?.map((item: any, i: number) => {
+          {reviewRows.map((row, i: number) => {
+            const item = row.item;
             const cat = item.item_category ?? 'food';
             const iconName =
               cat === 'household'    ? 'home-outline' :
               cat === 'personal_care'? 'person-outline' :
               cat === 'non_grocery'  ? 'bag-outline' :
                                        'nutrition-outline';
+            const isSelected = row.selected;
+            const needsReview = row.needsReview;
+            const isEditing = editingScanIndex === i;
             return (
-              <View key={i} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm, padding: spacing.sm, backgroundColor: colors.surfaceRaised, borderRadius: radii.md }}>
-                <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' }}>
+              <Pressable
+                key={i}
+                onPress={() => toggleScanItem(i)}
+                disabled={isEditing}
+                style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm, padding: spacing.sm, backgroundColor: colors.surfaceRaised, borderRadius: radii.md }}
+              >
+                <Ionicons
+                  name={isSelected ? 'checkbox' : 'square-outline'}
+                  size={22}
+                  color={isSelected ? colors.primary : colors.muted}
+                />
+                <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', marginLeft: spacing.sm }}>
                   <Ionicons name={iconName as any} size={20} color={colors.primary} />
                 </View>
                 <View style={{ marginLeft: spacing.sm, flex: 1 }}>
-                  <Text style={{ fontFamily: fonts.sansMedium, fontSize: 15, color: colors.ink }}>{item.name}</Text>
-                  <Text style={{ fontFamily: fonts.mono, fontSize: 13, color: colors.muted }}>
-                    ×{item.quantity}{item.price ? ` · $${item.price.toFixed(2)}` : ''}
-                  </Text>
+                  {isEditing ? (
+                    <View>
+                      <TextInput
+                        value={editingScanText}
+                        onChangeText={setEditingScanText}
+                        placeholder="Item name"
+                        placeholderTextColor={colors.muted}
+                        autoFocus
+                        onSubmitEditing={commitEditScanItem}
+                        style={{ fontFamily: fonts.sansMedium, fontSize: 15, color: colors.ink, borderBottomWidth: 1, borderBottomColor: colors.primary, paddingVertical: 2 }}
+                      />
+                      <View style={{ flexDirection: 'row', marginTop: spacing.xs }}>
+                        <Pressable onPress={commitEditScanItem} hitSlop={8} style={{ marginRight: spacing.lg }}>
+                          <Text style={{ fontFamily: fonts.sansMedium, fontSize: 13, color: colors.primary }}>Save</Text>
+                        </Pressable>
+                        <Pressable onPress={cancelEditScanItem} hitSlop={8}>
+                          <Text style={{ fontFamily: fonts.sans, fontSize: 13, color: colors.muted }}>Cancel</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  ) : (
+                    <>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Pressable onPress={() => beginEditScanItem(i)} hitSlop={6} style={{ flexShrink: 1 }}>
+                          <Text style={{ fontFamily: fonts.sansMedium, fontSize: 15, color: colors.ink }}>{item.name}</Text>
+                        </Pressable>
+                        {needsReview && <Pill label="Unclear" tone="low" style={{ marginLeft: spacing.sm }} />}
+                      </View>
+                      <Text style={{ fontFamily: fonts.mono, fontSize: 13, color: colors.muted }}>
+                        ×{item.quantity}{item.price ? ` · $${item.price.toFixed(2)}` : ''}
+                      </Text>
+                      {needsReview && (
+                        <Text style={{ fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 2 }}>
+                          Looks like receipt text. Skipped unless selected.
+                        </Text>
+                      )}
+                      <Pressable onPress={() => beginEditScanItem(i)} hitSlop={6} style={{ marginTop: 2 }}>
+                        <Text style={{ fontFamily: fonts.sansMedium, fontSize: 12, color: colors.primary }}>Edit</Text>
+                      </Pressable>
+                    </>
+                  )}
                 </View>
-              </View>
+              </Pressable>
             );
           })}
         </ScrollView>
-        <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-          <Pressable
-            onPress={() => setScanResult(null)}
-            style={{ flex: 1, paddingVertical: 14, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
-          >
-            <Text style={{ fontFamily: fonts.sansMedium, fontSize: 15, color: colors.muted }}>Skip</Text>
-          </Pressable>
-          <View style={{ flex: 2 }}>
-            <Button
-              label={`Add ${scanResult?.items?.length} to Pantry`}
-              onPress={() => {
-                scanResult?.items?.forEach((item: any) => {
-                  const pantryItem = addItem({ name: item.name, quantity: item.quantity, unit: item.unit || 'unit', storeId: storeId, status: 'stocked' });
-                  if (item.price > 0) {
-                    recordPrice({
-                      itemId: pantryItem.id,
-                      itemName: pantryItem.name,
-                      storeId,
-                      price: item.price,
-                    });
-                  }
-                });
-                setScanResult(null);
-              }}
-            />
-          </View>
-        </View>
+        <Button
+          label={
+            selectedScanCount === 0
+              ? 'Select items to add'
+              : `Add ${selectedScanCount} confirmed item${selectedScanCount === 1 ? '' : 's'}`
+          }
+          disabled={selectedScanCount === 0}
+          onPress={addScanItems}
+        />
+        <Button
+          label="Skip for now"
+          variant="ghost"
+          onPress={skipScanItems}
+          style={{ marginTop: spacing.sm, marginBottom: spacing.lg }}
+        />
       </Sheet>
     </KeyboardAvoidingView>
   );
@@ -1240,9 +1361,14 @@ function NextStoreSelector({ session, dispatch, storeById, styles, nsStyles, col
   const allStores = useDurableStore((s) => s.stores);
   const [skipping, setSkipping] = useState<string | null>(null);
   const [showAddStore, setShowAddStore] = useState(false);
+  const [addStoreMode, setAddStoreMode] = useState<'choose' | 'create'>('choose');
 
   // Saved stores the user hasn't planned into this trip yet
-  const unplannedStores = allStores.filter((s) => !session.storeQueue.includes(s.id));
+  const availableStores = unplannedStores(allStores, session.storeQueue);
+  const closeAddStore = () => {
+    setShowAddStore(false);
+    setAddStoreMode('choose');
+  };
 
   return (
     <Screen>
@@ -1325,7 +1451,7 @@ function NextStoreSelector({ session, dispatch, storeById, styles, nsStyles, col
           )}
 
           {/* Add an unplanned store mid-trip */}
-          <Pressable onPress={() => setShowAddStore(true)} style={nsStyles.addStoreBtn}>
+          <Pressable onPress={() => { setAddStoreMode('choose'); setShowAddStore(true); }} style={nsStyles.addStoreBtn}>
             <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
             <Text style={nsStyles.addStoreBtnText}>Add another stop</Text>
           </Pressable>
@@ -1349,22 +1475,39 @@ function NextStoreSelector({ session, dispatch, storeById, styles, nsStyles, col
       </Pressable>
 
       {/* Sheet: pick an unplanned store to add mid-trip */}
-      <Sheet visible={showAddStore} title="Add another stop" onClose={() => setShowAddStore(false)}>
-        {unplannedStores.length === 0 ? (
-          <Text style={{ fontFamily: fonts.sans, fontSize: 14, color: colors.muted, textAlign: 'center', paddingVertical: spacing.xl }}>
-            All your saved stores are already on this trip.
-          </Text>
+      <Sheet
+        visible={showAddStore}
+        title={addStoreMode === 'create' ? 'Add a new store' : 'Add another stop'}
+        onClose={closeAddStore}
+      >
+        {addStoreMode === 'create' ? (
+          <AddStoreContent
+            isActive={showAddStore}
+            onClose={() => setAddStoreMode('choose')}
+            onStoreAdded={(storeId) => {
+              dispatch({ type: 'START_MANUAL_STORE', storeId });
+              closeAddStore();
+            }}
+          />
+        ) : availableStores.length === 0 ? (
+          <View>
+            <Text style={nsStyles.noStoresText}>
+              All saved stores are already on this trip.
+            </Text>
+            <Button label="Add a new store" onPress={() => setAddStoreMode('create')} />
+            <Button label="Close" variant="ghost" onPress={closeAddStore} style={{ marginTop: spacing.sm }} />
+          </View>
         ) : (
           <>
             <Text style={{ fontFamily: fonts.sans, fontSize: 13, color: colors.muted, marginBottom: spacing.lg }}>
               Pick a store to add to your current trip. You can add items once you're there.
             </Text>
-            {unplannedStores.map((store) => (
+            {availableStores.map((store) => (
               <Pressable
                 key={store.id}
                 onPress={() => {
                   dispatch({ type: 'START_MANUAL_STORE', storeId: store.id });
-                  setShowAddStore(false);
+                  closeAddStore();
                 }}
                 style={({ pressed }) => [nsStyles.addStoreRow, pressed && { opacity: 0.7 }]}
               >
@@ -1373,6 +1516,12 @@ function NextStoreSelector({ session, dispatch, storeById, styles, nsStyles, col
                 <Ionicons name="chevron-forward" size={18} color={colors.muted} />
               </Pressable>
             ))}
+            <Button
+              label="Add a new store"
+              variant="ghost"
+              onPress={() => setAddStoreMode('create')}
+              style={{ marginTop: spacing.lg }}
+            />
           </>
         )}
       </Sheet>
@@ -1739,6 +1888,17 @@ function makeStyles(colors: AppColors) {
       color: colors.muted,
       marginTop: 2,
     },
+    scanStatus: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      marginHorizontal: spacing.sm,
+      marginBottom: spacing.md,
+      padding: spacing.md,
+      borderRadius: radii.md,
+      backgroundColor: colors.surfaceRaised,
+    },
+    scanStatusText: { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.ink },
     removeBtn: {
       padding: spacing.xs,
     },
@@ -1784,6 +1944,7 @@ function makeStyles(colors: AppColors) {
     finishBtnText:{ fontFamily: fonts.sansMedium, fontSize: 14, color: colors.muted },
     addStoreBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, paddingVertical: spacing.lg, marginTop: spacing.sm, borderWidth: 1.5, borderColor: colors.primary, borderStyle: 'dashed', borderRadius: radii.lg },
     addStoreBtnText: { fontFamily: fonts.sansMedium, fontSize: 15, color: colors.primary },
+    noStoresText: { fontFamily: fonts.sans, fontSize: 14, lineHeight: 20, color: colors.muted, textAlign: 'center', marginBottom: spacing.xl },
     addStoreRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
     addStoreRowName: { flex: 1, fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
   });
