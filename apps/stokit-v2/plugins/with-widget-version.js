@@ -8,7 +8,7 @@ module.exports = function withWidgetVersion(config) {
     for (const value of Object.values(buildSettings)) {
       if (String(value?.buildSettings?.PRODUCT_BUNDLE_IDENTIFIER).replaceAll('"', '') === widgetBundleIdentifier) {
         value.buildSettings.MARKETING_VERSION = `"${config.version}"`;
-        value.buildSettings.CURRENT_PROJECT_VERSION = `"${config.ios.buildNumber ?? '1'}"`;
+        value.buildSettings.CURRENT_PROJECT_VERSION = `"${config.ios.buildNumber ?? '73'}"`;
       }
     }
 
