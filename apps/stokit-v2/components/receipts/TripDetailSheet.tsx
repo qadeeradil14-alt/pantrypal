@@ -5,7 +5,7 @@
  * (spent, stores, items, duration) and a per-store breakdown (amount, items
  * bought, skipped). Read-only over committed durable `Trip` data.
  */
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -17,6 +17,10 @@ import { useTheme } from '../../hooks/useTheme';
 import { useDurableStore } from '../../store/durable-store';
 import type { Trip } from '../../types';
 import { UNASSIGNED_STORE_ID, UNASSIGNED_STORE_NAME } from '../../constants/shopping';
+
+const ITEMS_PREVIEW_LIMIT = 4;
+
+type PurchasedItemRow = { id: string; itemName: string; price: number };
 
 export function TripDetailSheet({
   trip,
@@ -31,19 +35,45 @@ export function TripDetailSheet({
   const receipts = useDurableStore((s) => s.receipts);
   const updateReceipt = useDurableStore((s) => s.updateReceipt);
   const priceHistory = useDurableStore((s) => s.priceHistory);
+  const [expandedStores, setExpandedStores] = useState<Record<string, boolean>>({});
 
-  const itemsBought = useMemo(() => {
-    if (!trip) return [];
-    const entries = priceHistory.filter(
-      (p) => p.paidAt >= trip.startedAt && p.paidAt <= trip.completedAt,
-    );
-    // dedupe by itemName, keeping highest price entry
-    const byName = new Map<string, typeof entries[0]>();
-    for (const e of entries) {
-      const existing = byName.get(e.itemName);
-      if (!existing || e.price > existing.price) byName.set(e.itemName, e);
+  const itemsByStore = useMemo(() => {
+    const grouped = new Map<string, PurchasedItemRow[]>();
+    const addItem = (storeId: string, row: PurchasedItemRow) => {
+      const list = grouped.get(storeId) ?? [];
+      list.push(row);
+      grouped.set(storeId, list);
+    };
+    if (!trip) return grouped;
+
+    // Trips recorded before purchasedItems existed: fall back to the old
+    // priceHistory-window heuristic so older trip receipts don't go blank.
+    if (!trip.purchasedItems || trip.purchasedItems.length === 0) {
+      const entries = priceHistory.filter(
+        (p) => p.paidAt >= trip.startedAt && p.paidAt <= trip.completedAt,
+      );
+      const byName = new Map<string, typeof entries[0]>();
+      for (const e of entries) {
+        const existing = byName.get(e.itemName);
+        if (!existing || e.price > existing.price) byName.set(e.itemName, e);
+      }
+      for (const e of byName.values()) addItem(e.storeId, { id: e.id, itemName: e.itemName, price: e.price });
+    } else {
+      // Every item actually picked during the trip, with a logged price
+      // attached if one exists for that item/store within the trip window.
+      const pricesInWindow = priceHistory.filter(
+        (p) => p.paidAt >= trip.startedAt && p.paidAt <= trip.completedAt,
+      );
+      for (const item of trip.purchasedItems) {
+        const logged = pricesInWindow.find(
+          (p) => p.itemId === item.itemId && p.storeId === item.storeId,
+        );
+        addItem(item.storeId, { id: item.itemId, itemName: item.name, price: logged?.price ?? item.price });
+      }
     }
-    return Array.from(byName.values()).sort((a, b) => a.itemName.localeCompare(b.itemName));
+
+    for (const list of grouped.values()) list.sort((a, b) => a.itemName.localeCompare(b.itemName));
+    return grouped;
   }, [trip, priceHistory]);
 
   const storeById = (id: string) => id === UNASSIGNED_STORE_ID
@@ -73,12 +103,16 @@ export function TripDetailSheet({
         <Stat value={durationStr} label="Duration" />
       </View>
 
-      {/* Per-store breakdown */}
+      {/* Per-store breakdown, with that store's purchased items listed underneath */}
       <Text style={styles.sectionTitle}>Store breakdown</Text>
       {trip.breakdown.map((b) => {
         const store = storeById(b.storeId);
         const receipt = b.receiptId ? receipts.find((r) => r.id === b.receiptId) : null;
         const canAddPhoto = !b.skipped && receipt && receipt.status === 'skipped';
+        const storeItems = itemsByStore.get(b.storeId) ?? [];
+        const expanded = expandedStores[b.storeId] ?? false;
+        const visibleItems = expanded ? storeItems : storeItems.slice(0, ITEMS_PREVIEW_LIMIT);
+        const hiddenCount = storeItems.length - visibleItems.length;
 
         async function pickReceiptPhoto() {
           const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -96,51 +130,67 @@ export function TripDetailSheet({
         }
 
         return (
-          <View key={b.storeId} style={[styles.storeRow, b.skipped && { opacity: 0.6 }]}>
-            <StoreChip store={store} name={store?.name ?? '?'} size={40} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.storeName}>{store?.name ?? 'Store'}</Text>
-              <Text style={styles.storeMeta}>
-                {b.skipped
-                  ? 'Skipped'
-                  : `${b.itemsBought} item${b.itemsBought === 1 ? '' : 's'} bought`}
-              </Text>
+          <View key={b.storeId} style={styles.storeBlock}>
+            <View style={[styles.storeRow, b.skipped && { opacity: 0.6 }]}>
+              <StoreChip store={store} name={store?.name ?? '?'} size={40} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.storeName}>{store?.name ?? 'Store'}</Text>
+                <Text style={styles.storeMeta}>
+                  {b.skipped
+                    ? 'Skipped'
+                    : `${b.itemsBought} item${b.itemsBought === 1 ? '' : 's'} bought`}
+                </Text>
+              </View>
+              {b.skipped ? (
+                <Pill label="Skipped" tone="muted" />
+              ) : canAddPhoto ? (
+                <Pressable onPress={() => { void pickReceiptPhoto(); }} style={styles.addPhotoBtn}>
+                  <Ionicons name="camera-outline" size={14} color={colors.primary} />
+                  <Text style={styles.addPhotoText}>Add photo</Text>
+                </Pressable>
+              ) : receipt?.imageUri ? (
+                <Ionicons name="image-outline" size={20} color={colors.success} />
+              ) : (
+                <Text style={styles.storeAmount}>
+                  {b.amount > 0 ? `$${b.amount.toFixed(2)}` : '—'}
+                </Text>
+              )}
             </View>
-            {b.skipped ? (
-              <Pill label="Skipped" tone="muted" />
-            ) : canAddPhoto ? (
-              <Pressable onPress={() => { void pickReceiptPhoto(); }} style={styles.addPhotoBtn}>
-                <Ionicons name="camera-outline" size={14} color={colors.primary} />
-                <Text style={styles.addPhotoText}>Add photo</Text>
-              </Pressable>
-            ) : receipt?.imageUri ? (
-              <Ionicons name="image-outline" size={20} color={colors.success} />
-            ) : (
-              <Text style={styles.storeAmount}>
-                {b.amount > 0 ? `$${b.amount.toFixed(2)}` : '—'}
-              </Text>
+
+            {!b.skipped && visibleItems.length > 0 && (
+              <View style={styles.storeItemsList}>
+                {visibleItems.map((entry) => (
+                  <View key={entry.id} style={styles.itemRow}>
+                    <ItemAvatar name={entry.itemName} size={28} />
+                    <Text style={styles.itemName}>{entry.itemName}</Text>
+                    {entry.price > 0 ? (
+                      <Text style={styles.itemPrice}>${entry.price.toFixed(2)}</Text>
+                    ) : (
+                      <Text style={styles.itemPriceMuted}>—</Text>
+                    )}
+                  </View>
+                ))}
+                {hiddenCount > 0 && (
+                  <Pressable
+                    onPress={() => setExpandedStores((prev) => ({ ...prev, [b.storeId]: true }))}
+                    style={styles.showMoreBtn}
+                  >
+                    <Text style={styles.showMoreText}>Show {hiddenCount} more</Text>
+                  </Pressable>
+                )}
+                {expanded && storeItems.length > ITEMS_PREVIEW_LIMIT && (
+                  <Pressable
+                    onPress={() => setExpandedStores((prev) => ({ ...prev, [b.storeId]: false }))}
+                    style={styles.showMoreBtn}
+                  >
+                    <Text style={styles.showMoreText}>Show less</Text>
+                  </Pressable>
+                )}
+              </View>
             )}
           </View>
         );
       })}
-
-      {/* Items purchased */}
-      {itemsBought.length > 0 && (
-        <>
-          <Text style={[styles.sectionTitle, { marginTop: spacing.xl }]}>Items purchased</Text>
-          {itemsBought.map((entry) => (
-            <View key={entry.id} style={styles.itemRow}>
-              <ItemAvatar name={entry.itemName} size={36} />
-              <Text style={styles.itemName}>{entry.itemName}</Text>
-              {entry.price > 0 ? (
-                <Text style={styles.itemPrice}>${entry.price.toFixed(2)}</Text>
-              ) : (
-                <Text style={styles.itemPriceMuted}>—</Text>
-              )}
-            </View>
-          ))}
-        </>
-      )}
 
       {/* Time footer */}
       <View style={styles.timeRow}>
@@ -196,27 +246,33 @@ function makeStyles(colors: AppColors) {
       color: colors.ink,
       marginBottom: spacing.md,
     },
+    storeBlock: {
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderSoft,
+    },
     storeRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.md,
       paddingVertical: spacing.md,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.borderSoft,
     },
     storeName: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
     storeMeta: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
     storeAmount: { fontFamily: fonts.monoMedium, fontSize: 16, color: colors.ink, fontVariant: ['tabular-nums'] },
     addPhotoBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
     addPhotoText: { fontFamily: fonts.sansMedium, fontSize: 12, color: colors.primary },
+    storeItemsList: {
+      paddingLeft: 52,
+      paddingBottom: spacing.sm,
+    },
     itemRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.md,
-      paddingVertical: 8,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.borderSoft,
+      gap: spacing.sm,
+      paddingVertical: 6,
     },
+    showMoreBtn: { paddingVertical: 6 },
+    showMoreText: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.primary },
     itemName: { flex: 1, fontFamily: fonts.sansMedium, fontSize: 15, color: colors.ink },
     itemPrice: { fontFamily: fonts.monoMedium, fontSize: 15, color: colors.ink, fontVariant: ['tabular-nums'] },
     itemPriceMuted: { fontFamily: fonts.mono, fontSize: 15, color: colors.muted, fontVariant: ['tabular-nums'] },

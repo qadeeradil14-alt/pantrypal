@@ -102,6 +102,14 @@ export interface TripStoreBreakdown {
   skipped: boolean;
 }
 
+export interface TripPurchasedItem {
+  itemId: string;
+  name: string;
+  storeId: string;
+  /** 0 when the user didn't separately log a per-item price for this trip. */
+  price: number;
+}
+
 export interface Trip {
   id: string;
   storeIdsVisited: string[];
@@ -113,6 +121,8 @@ export interface Trip {
   receiptIds: string[];
   totalSpent: number;
   breakdown: TripStoreBreakdown[];
+  /** Every item the user checked off as picked during this trip, regardless of whether a price was logged. */
+  purchasedItems: TripPurchasedItem[];
   startedAt: number;
   completedAt: number;
   /** Trip duration in milliseconds. */

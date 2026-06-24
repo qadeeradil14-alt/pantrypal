@@ -99,6 +99,11 @@ test('full multi-store flow: shop→receipt→summary→next→shop→summary→
   assert.equal(trip.breakdown[0].itemsBought, 2);
   assert.equal(trip.breakdown[1].itemsBought, 1);
   assert.equal(trip.skippedStoreIds.length, 0);
+  // Every picked item must show up in the trip record even though none of
+  // them had a per-item price logged (only a per-store receipt total).
+  assert.equal(trip.purchasedItems.length, 3);
+  assert.deepEqual(trip.purchasedItems.map((i) => i.itemId).sort(), ['eggs', 'milk', 'oil']);
+  assert.ok(trip.purchasedItems.every((i) => i.price === 0));
 });
 
 test('skipping a receipt advances exactly like saving (never blocks)', () => {

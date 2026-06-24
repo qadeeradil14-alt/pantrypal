@@ -31,6 +31,7 @@ import type {
   ReceiptStatus,
   ShoppingEntry,
   Trip,
+  TripPurchasedItem,
   TripStoreBreakdown,
 } from '../../types';
 
@@ -184,11 +185,20 @@ function buildTrip(session: ShoppingSession, now: number): Trip {
     };
   });
 
-  const itemsBought = session.entries.filter((e) => e.picked).length;
+  const pickedEntries = session.entries.filter((e) => e.picked);
+  const itemsBought = pickedEntries.length;
   const itemsOutOfStock = session.entries.filter((e) => e.outOfStock && !e.picked).length;
   const itemsRemaining = session.entries.filter((e) => !e.picked && !e.outOfStock).length;
   const totalSpent = breakdown.reduce((sum, b) => sum + b.amount, 0);
   const startedAt = session.startedAt ?? now;
+  // Price is filled in at display time from priceHistory (this reducer has no
+  // access to it); 0 here just means "no price was logged for this item".
+  const purchasedItems: TripPurchasedItem[] = pickedEntries.map((e) => ({
+    itemId: e.itemId,
+    name: e.name,
+    storeId: e.storeId,
+    price: 0,
+  }));
 
   return {
     id: session.tripId ?? `t_${now}`,
@@ -204,6 +214,7 @@ function buildTrip(session: ShoppingSession, now: number): Trip {
       .map((r) => r.id),
     totalSpent,
     breakdown,
+    purchasedItems,
     startedAt,
     completedAt: now,
     duration: now - startedAt,
