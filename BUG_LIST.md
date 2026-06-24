@@ -8,7 +8,7 @@
 
 | # | Bug | Priority | Status |
 |---|-----|----------|--------|
-| - | No pending bugs right now | - | - |
+| 1 | Transient "Private Pantry" flash during auth/household refresh — household/session state briefly shows the private household before server household status resolves. Verified: backend leave-guard works correctly, no data loss, household stays intact. Client-side loading/resync issue only. | P2 | Deferred — investigate if it repeats consistently on fresh launch/sign-in. Note: Investigate transient Private Pantry flash during auth/household refresh. Confirm loading state does not show private household before server household status resolves. |
 
 ---
 

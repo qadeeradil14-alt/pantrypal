@@ -269,7 +269,7 @@ export default function ShoppingScreen() {
             const store = storeById(storeId);
             return (
               <View key={storeId}>
-                <SectionHeader title={store?.name ?? 'Unknown Store'} action={`${list.length}`} />
+                <PlanStoreHeader store={store} count={list.length} styles={styles} />
                 <Card style={{ paddingVertical: spacing.xs }}>
                   {list.map((e, idx) => (
                     <View key={e.itemId}>
@@ -473,6 +473,20 @@ function PriceMemoryIntro({ count, styles, colors }: { count: number; styles: an
         </View>
       </View>
     </Card>
+  );
+}
+
+function PlanStoreHeader({ store, count, styles }: { store?: Store; count: number; styles: any }) {
+  const isOpen = store?.isOpen;
+  return (
+    <View style={styles.planStoreHeader}>
+      <StoreChip store={store} name={store?.name ?? 'Unknown Store'} size={32} />
+      <Text style={styles.planStoreTitle}>{store?.name ?? 'Unknown Store'}</Text>
+      {isOpen !== undefined ? (
+        <Pill label={isOpen ? 'Open' : 'Closed'} tone={isOpen ? 'stocked' : 'muted'} />
+      ) : null}
+      <Text style={styles.planStoreCount}>{count}</Text>
+    </View>
   );
 }
 
@@ -924,7 +938,7 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
         <View style={rStyles.header}>
           <View>
             <Text style={rStyles.storeName} numberOfLines={1}>{store?.name ?? 'Store'}</Text>
-            <Text style={rStyles.stopLabel}>Stop complete</Text>
+            <Text style={rStyles.stopLabel}>Stop completed</Text>
           </View>
           <Pressable onPress={skip} style={rStyles.checkBadge}>
             <Ionicons name="checkmark" size={20} color={colors.primary} />
@@ -1153,7 +1167,7 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
 
   return (
     <Screen>
-      <PageTitle eyebrow="Stop complete" title={store?.name ?? 'Store'} />
+      <PageTitle eyebrow="Stop completed" title={store?.name ?? 'Store'} />
 
       {/* Summary card */}
       <Card style={ssStyles.card}>
@@ -1192,7 +1206,7 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
       ) : (
         <View style={ssStyles.nextHint}>
           <Ionicons name="checkmark-circle-outline" size={16} color={colors.success} />
-          <Text style={[ssStyles.nextHintText, { color: colors.success }]}>All stops complete!</Text>
+          <Text style={[ssStyles.nextHintText, { color: colors.success }]}>All stops completed!</Text>
         </View>
       )}
 
@@ -1255,7 +1269,7 @@ function ContinuePrompt({ session, dispatch, storeById, styles, colors }: SubPro
   return (
     <Screen>
       <PageTitle
-        eyebrow="Store visit complete"
+        eyebrow="Store visit completed"
         title={hasOptions ? 'Shopping somewhere else?' : 'All done here?'}
       />
 
@@ -1773,13 +1787,16 @@ function makeStyles(colors: AppColors) {
     priceMemoryIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
     priceMemoryTitle: { fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink },
     priceMemoryBody: { fontFamily: fonts.sans, fontSize: 12, lineHeight: 18, color: colors.muted, marginTop: 2 },
-    summaryBig:   { fontFamily: fonts.mono, fontSize: 48, color: colors.primary },
-    summarySub:   { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.muted, marginTop: 2 },
+    summaryBig:   { fontFamily: fonts.mono, fontSize: 48, color: colors.primary, fontVariant: ['tabular-nums'] },
+    summarySub:   { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
     firstDestLabel: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
+    planStoreHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.lg, marginBottom: spacing.sm },
+    planStoreTitle: { flex: 1, fontFamily: fonts.sansSemibold, fontSize: 18, color: colors.ink },
+    planStoreCount: { fontFamily: fonts.monoMedium, fontSize: 13, color: colors.primary, fontVariant: ['tabular-nums'] },
     rowDivider:   { height: 1, backgroundColor: colors.borderSoft, marginLeft: spacing.lg },
     planRow:      { flexDirection: 'row', alignItems: 'center', gap: spacing.md, justifyContent: 'space-between', paddingVertical: spacing.md },
     planName:     { fontFamily: fonts.sansMedium, fontSize: 16, color: colors.ink },
-    planMeta:     { fontFamily: fonts.mono, fontSize: 12, color: colors.muted },
+    planMeta:     { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, fontVariant: ['tabular-nums'] },
     unassignedMeta: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 2 },
     assignAllRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm },
     assignAllHint: { flex: 1, fontFamily: fonts.sans, fontSize: 13, color: colors.muted, lineHeight: 18 },
@@ -1795,11 +1812,11 @@ function makeStyles(colors: AppColors) {
     progressWrap: { marginTop: spacing.xl },
     progressTrack:{ height: 8, borderRadius: 4, backgroundColor: colors.surfaceRaised },
     progressFill: { height: 8, borderRadius: 4, backgroundColor: colors.primary },
-    progressText: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: spacing.sm },
+    progressText: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: spacing.sm, fontVariant: ['tabular-nums'] },
     pickRow:      { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md },
     pickName:     { flex: 1, fontFamily: fonts.sansMedium, fontSize: 16, color: colors.ink },
     pickNameDone: { color: colors.muted, textDecorationLine: 'line-through' },
-    priceHint:    { fontFamily: fonts.sans, fontSize: 11, color: colors.primary, marginTop: 3 },
+    priceHint:    { fontFamily: fonts.sans, fontSize: 11, color: colors.primary, marginTop: 3, fontVariant: ['tabular-nums'] },
     addPriceButton: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 8 },
     addPriceText: { fontFamily: fonts.sansSemibold, fontSize: 11, color: colors.primary },
     emptyNote:    { fontFamily: fonts.sans, fontSize: 14, color: colors.muted, textAlign: 'center', paddingVertical: spacing.lg },
@@ -1812,13 +1829,13 @@ function makeStyles(colors: AppColors) {
     manualStoreMeta: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 2 },
     firstStoreRow:  { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
     firstStoreName: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
-    firstStoreMeta: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: 2 },
+    firstStoreMeta: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
     firstStoreGoBtn:{ borderWidth: 1.5, borderRadius: radii.md, paddingHorizontal: 12, paddingVertical: 6 },
     firstStoreGoBtnText: { fontFamily: fonts.sansSemibold, fontSize: 13 },
     routeStrip:     { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md },
     routeDot:       { width: 26, height: 26, borderRadius: 13, borderWidth: 1.5, borderColor: colors.borderSoft, alignItems: 'center', justifyContent: 'center' },
     routeDotActive: { backgroundColor: colors.ink, borderColor: colors.ink },
-    routeDotText:   { fontFamily: fonts.sansSemibold, fontSize: 12, color: colors.muted },
+    routeDotText:   { fontFamily: fonts.sansSemibold, fontSize: 12, color: colors.muted, fontVariant: ['tabular-nums'] },
     routeDotTextActive: { color: colors.surface },
     routeLine:      { flex: 1, height: 1, borderStyle: 'dashed', borderWidth: 1, borderColor: colors.borderSoft },
     directionsBtn:  { padding: 4 },
@@ -1830,11 +1847,11 @@ function makeStyles(colors: AppColors) {
     stopLabel: { fontFamily: fonts.sansSemibold, fontSize: 13, color: colors.primary, marginTop: 4 },
     checkBadge:{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
     amountRow: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: colors.border, marginHorizontal: spacing.sm, paddingBottom: spacing.md, marginBottom: spacing.md },
-    currency:  { fontFamily: fonts.mono, fontSize: 36, color: colors.primary, marginRight: spacing.sm },
-    amountInput:{ flex: 1, fontFamily: fonts.mono, fontSize: 48, color: colors.ink, padding: 0 },
+    currency:  { fontFamily: fonts.mono, fontSize: 36, color: colors.primary, marginRight: spacing.sm, fontVariant: ['tabular-nums'] },
+    amountInput:{ flex: 1, fontFamily: fonts.mono, fontSize: 48, color: colors.ink, padding: 0, fontVariant: ['tabular-nums'] },
     hint:      { fontFamily: fonts.sans, fontSize: 13, color: colors.muted, marginHorizontal: spacing.sm, marginBottom: spacing.xl, lineHeight: 19 },
     saveBtn:   { backgroundColor: colors.primary, borderRadius: radii.lg, paddingVertical: 16, alignItems: 'center', marginHorizontal: spacing.sm },
-    saveBtnText:{ fontFamily: fonts.sansSemibold, fontSize: 17, color: colors.onPrimary },
+    saveBtnText:{ fontFamily: fonts.sansSemibold, fontSize: 17, color: colors.onPrimary, fontVariant: ['tabular-nums'] },
     chipRow:   { flexDirection: 'row', gap: spacing.md, marginTop: spacing.lg, marginHorizontal: spacing.sm },
     chip:      { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, backgroundColor: colors.surfaceRaised, borderRadius: radii.md, borderWidth: 1.5, borderColor: colors.primary, paddingVertical: 12 },
     chipText:  { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.ink },
@@ -1908,11 +1925,11 @@ function makeStyles(colors: AppColors) {
     card:     { paddingVertical: spacing.xl },
     row:      { flexDirection: 'row', alignItems: 'center' },
     statBox:  { flex: 1, alignItems: 'center', gap: 4 },
-    statVal:  { fontFamily: fonts.mono, fontSize: 26, color: colors.ink },
+    statVal:  { fontFamily: fonts.mono, fontSize: 26, color: colors.ink, fontVariant: ['tabular-nums'] },
     statLbl:  { fontFamily: fonts.sans, fontSize: 11, color: colors.muted },
     divider:  { width: 1, height: 40, backgroundColor: colors.border },
     timeRow:  { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: spacing.lg, paddingTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.borderSoft },
-    timeText: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted },
+    timeText: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, fontVariant: ['tabular-nums'] },
     nextHint: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.lg, paddingHorizontal: spacing.sm },
     nextHintText: { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.primary },
     manualStore: {
@@ -1935,7 +1952,7 @@ function makeStyles(colors: AppColors) {
     logo:        { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
     logoAbbr:    { fontFamily: fonts.sansSemibold, fontSize: 15, color: '#fff' },
     storeName:   { fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink },
-    storeItems:  { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: 3 },
+    storeItems:  { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: 3, fontVariant: ['tabular-nums'] },
     startBtn:    { borderWidth: 1.5, borderRadius: radii.md, paddingHorizontal: 14, paddingVertical: 7 },
     startBtnText:{ fontFamily: fonts.sansSemibold, fontSize: 14 },
     skipStoreBtn:{ alignItems: 'center', paddingTop: spacing.md, marginTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.borderSoft },
@@ -1953,11 +1970,11 @@ function makeStyles(colors: AppColors) {
     scroll:       { padding: spacing.xl, gap: spacing.xl },
     header:       { alignItems: 'center', marginBottom: spacing.md },
     eyebrow:      { fontFamily: fonts.monoMedium, fontSize: 12, color: colors.muted, letterSpacing: 1, marginBottom: spacing.sm },
-    total:        { fontFamily: fonts.mono, fontSize: 48, color: colors.primary, lineHeight: 60 },
+    total:        { fontFamily: fonts.mono, fontSize: 48, color: colors.primary, lineHeight: 60, fontVariant: ['tabular-nums'] },
     totalLabel:  { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.muted, marginTop: 4 },
     statsRow:    { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.xl },
     statBox:     { flex: 1, backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, alignItems: 'center', paddingVertical: spacing.lg, gap: 4 },
-    statVal:     { fontSize: 22, color: colors.ink },
+    statVal:     { fontSize: 22, color: colors.ink, fontVariant: ['tabular-nums'] },
     statLbl:     { fontFamily: fonts.sans, fontSize: 11, color: colors.muted, textAlign: 'center' },
     sectionTitle:{ fontFamily: fonts.serifItalic, fontSize: 20, color: colors.ink, marginBottom: spacing.md, marginTop: spacing.sm },
     storeCard:   { marginBottom: spacing.md },
@@ -1966,21 +1983,21 @@ function makeStyles(colors: AppColors) {
     logo:        { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
     logoAbbr:    { fontFamily: fonts.sansSemibold, fontSize: 14, color: '#fff' },
     storeName:   { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
-    storeMeta:   { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: 3 },
+    storeMeta:   { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: 3, fontVariant: ['tabular-nums'] },
     itemsList:   { fontFamily: fonts.sans, fontSize: 11, color: colors.muted, marginTop: 3, fontStyle: 'italic' },
-    storeSpent:  { fontFamily: fonts.monoMedium, fontSize: 16 },
+    storeSpent:  { fontFamily: fonts.monoMedium, fontSize: 16, fontVariant: ['tabular-nums'] },
     timeRow:     { alignItems: 'center', marginTop: spacing.xl, paddingVertical: spacing.lg, borderTopWidth: 1, borderTopColor: colors.borderSoft },
-    timeText:    { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, textAlign: 'center' },
+    timeText:    { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, textAlign: 'center', fontVariant: ['tabular-nums'] },
     budgetCard:      { marginBottom: spacing.xl, gap: spacing.sm },
     budgetHeader:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     budgetTitleRow:  { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-    budgetTitle:     { fontFamily: fonts.mono, fontSize: 11, color: colors.muted, letterSpacing: 1.2 },
+    budgetTitle:     { fontFamily: fonts.mono, fontSize: 11, color: colors.muted, letterSpacing: 1.2, fontVariant: ['tabular-nums'] },
     budgetStatus:    { fontFamily: fonts.sansSemibold, fontSize: 13 },
     budgetOver:      { color: colors.danger },
     budgetUnder:     { color: colors.success },
     budgetAmounts:   { flexDirection: 'row', alignItems: 'baseline' },
-    budgetSpent:     { fontFamily: fonts.mono, fontSize: 28, color: colors.ink },
-    budgetOf:        { fontFamily: fonts.mono, fontSize: 16, color: colors.muted },
+    budgetSpent:     { fontFamily: fonts.mono, fontSize: 28, color: colors.ink, fontVariant: ['tabular-nums'] },
+    budgetOf:        { fontFamily: fonts.mono, fontSize: 16, color: colors.muted, fontVariant: ['tabular-nums'] },
     barTrack:        { height: 8, borderRadius: 4, backgroundColor: colors.border, overflow: 'hidden' },
     barFill:         { height: 8, borderRadius: 4 },
     barUnder:        { backgroundColor: colors.success },

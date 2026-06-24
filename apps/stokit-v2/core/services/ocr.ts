@@ -27,18 +27,18 @@ import { config, hasGoogleKey, hasOcrSpaceKey } from '../../lib/config';
  * Returns the amount in dollars, or null if extraction fails.
  */
 export async function extractReceiptTotal(imageUri: string): Promise<number | null> {
-  console.log('[OCR] Extracting from URI:', imageUri);
+  if (__DEV__) console.log('[OCR] Extracting from URI:', imageUri);
   try {
     const info = await FileSystem.getInfoAsync(imageUri);
-    console.log('[OCR] Image file info:', info);
+    if (__DEV__) console.log('[OCR] Image file info:', info);
   } catch (e) {
-    console.log('[OCR] Error getting file info:', e);
+    if (__DEV__) console.log('[OCR] Error getting file info:', e);
   }
 
   if (hasGoogleKey())     return extractWithGoogleVision(imageUri);
   if (hasOcrSpaceKey())   return extractWithOCRSpace(imageUri);
-  
-  console.log('[OCR] No API keys available');
+
+  if (__DEV__) console.log('[OCR] No API keys available');
   return null; // No keys — user types manually
 }
 
@@ -55,7 +55,7 @@ export function hasOcrCapability(): boolean {
  */
 export function parseTotal(text: string): number | null {
   if (!text) {
-    console.log('[OCR] parseTotal: text is empty');
+    if (__DEV__) console.log('[OCR] parseTotal: text is empty');
     return null;
   }
 
@@ -80,7 +80,7 @@ export function parseTotal(text: string): number | null {
         }
         if (amounts.length) {
           const matched = amounts[amounts.length - 1];
-          console.log('[OCR] parseTotal: Found by keyword', keywords[0], '->', matched);
+          if (__DEV__) console.log('[OCR] parseTotal: Found by keyword', keywords[0], '->', matched);
           return matched;
         }
       }
@@ -92,11 +92,11 @@ export function parseTotal(text: string): number | null {
   for (const line of lines) all.push(...extractAmounts(line));
   if (all.length) {
     const matched = Math.max(...all);
-    console.log('[OCR] parseTotal: Found by fallback max value ->', matched);
+    if (__DEV__) console.log('[OCR] parseTotal: Found by fallback max value ->', matched);
     return matched;
   }
-  
-  console.log('[OCR] parseTotal: No amounts found in text');
+
+  if (__DEV__) console.log('[OCR] parseTotal: No amounts found in text');
   return null;
 }
 
@@ -145,27 +145,27 @@ async function extractWithOCRSpace(imageUri: string): Promise<number | null> {
   formData.append('scale', 'true');
   formData.append('OCREngine', '2'); // Engine 2 is better for receipts
 
-  console.log('[OCR] Uploading to OCR.space...');
+  if (__DEV__) console.log('[OCR] Uploading to OCR.space...');
   try {
     const res = await fetch(OCR_SPACE_URL, { method: 'POST', body: formData });
     if (!res.ok) {
-      console.log('[OCR] Upload failed with status:', res.status, res.statusText);
+      if (__DEV__) console.log('[OCR] Upload failed with status:', res.status, res.statusText);
       return null;
     }
     const data = (await res.json()) as OcrSpaceResponse;
-    console.log('[OCR] OCR Space raw response snippet:', JSON.stringify(data).substring(0, 300));
-    
+    if (__DEV__) console.log('[OCR] OCR Space raw response snippet:', JSON.stringify(data).substring(0, 300));
+
     if (data.IsErroredOnProcessing) {
-      console.log('[OCR] Parser error reason:', data.ErrorMessage);
+      if (__DEV__) console.log('[OCR] Parser error reason:', data.ErrorMessage);
       return null;
     }
-    
+
     const text = data.ParsedResults?.[0]?.ParsedText ?? '';
     const total = parseTotal(text);
-    console.log('[OCR] Final parsed total:', total);
+    if (__DEV__) console.log('[OCR] Final parsed total:', total);
     return total;
   } catch (err) {
-    console.log('[OCR] Upload/Network error:', err);
+    if (__DEV__) console.log('[OCR] Upload/Network error:', err);
     return null;
   }
 }
@@ -181,7 +181,7 @@ async function extractWithGoogleVision(imageUri: string): Promise<number | null>
       encoding: FileSystem.EncodingType.Base64,
     });
   } catch (err) {
-    console.log('[OCR] File read error (Google Vision):', err);
+    if (__DEV__) console.log('[OCR] File read error (Google Vision):', err);
     return null;
   }
 
@@ -192,7 +192,7 @@ async function extractWithGoogleVision(imageUri: string): Promise<number | null>
     }],
   };
 
-  console.log('[OCR] Uploading to Google Vision...');
+  if (__DEV__) console.log('[OCR] Uploading to Google Vision...');
   try {
     const res = await fetch(`${VISION_URL}?key=${config.googleApiKey}`, {
       method: 'POST',
@@ -200,18 +200,18 @@ async function extractWithGoogleVision(imageUri: string): Promise<number | null>
       body: JSON.stringify(body),
     });
     if (!res.ok) {
-      console.log('[OCR] Google Vision Upload failed:', res.status, res.statusText);
+      if (__DEV__) console.log('[OCR] Google Vision Upload failed:', res.status, res.statusText);
       return null;
     }
     const data = (await res.json()) as GoogleVisionResponse;
-    console.log('[OCR] Google Vision raw response snippet:', JSON.stringify(data).substring(0, 300));
-    
+    if (__DEV__) console.log('[OCR] Google Vision raw response snippet:', JSON.stringify(data).substring(0, 300));
+
     const text = data.responses?.[0]?.fullTextAnnotation?.text ?? '';
     const total = parseTotal(text);
-    console.log('[OCR] Final parsed total (Google):', total);
+    if (__DEV__) console.log('[OCR] Final parsed total (Google):', total);
     return total;
   } catch (err) {
-    console.log('[OCR] Google Vision Upload/Network error:', err);
+    if (__DEV__) console.log('[OCR] Google Vision Upload/Network error:', err);
     return null;
   }
 }

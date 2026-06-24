@@ -231,7 +231,7 @@ function makeStyles(colors: AppColors) {
       justifyContent: 'center',
     },
     message: { fontFamily: fonts.sansMedium, fontSize: 15, color: colors.ink },
-    time: { fontFamily: fonts.mono, fontSize: 11, color: colors.muted, marginTop: 2 },
+    time: { fontFamily: fonts.mono, fontSize: 11, color: colors.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
 
     // Prominent trip card
     tripCard: {
@@ -256,6 +256,6 @@ function makeStyles(colors: AppColors) {
       justifyContent: 'center',
     },
     tripTitle: { fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink },
-    tripMessage: { fontFamily: fonts.mono, fontSize: 12, color: colors.inkSoft, marginTop: 3 },
+    tripMessage: { fontFamily: fonts.mono, fontSize: 12, color: colors.inkSoft, marginTop: 3, fontVariant: ['tabular-nums'] },
   });
 }

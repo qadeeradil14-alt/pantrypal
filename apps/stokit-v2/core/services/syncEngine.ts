@@ -46,7 +46,7 @@ async function uploadReceipt(householdId: string, receipt: Receipt): Promise<Rec
     );
     return error ? receipt : { ...receipt, imagePath };
   } catch (err) {
-    console.warn('[Sync Engine] Receipt upload failed', err);
+    if (__DEV__) console.warn('[Sync Engine] Receipt upload failed', err);
     return receipt;
   }
 }
@@ -63,7 +63,7 @@ export async function pushLocalState(state: DurableState): Promise<void> {
       state: snapshot,
       updated_at: snapshot.updatedAt,
     }, { onConflict: 'household_id' });
-    if (error) console.warn('[Sync Engine] Snapshot push failed:', error.message);
+    if (error && __DEV__) console.warn('[Sync Engine] Snapshot push failed:', error.message);
     if (!error) {
       const store = await durableStore();
       const uploadedById = new Map(receipts.map((receipt) => [receipt.id, receipt]));
@@ -76,7 +76,7 @@ export async function pushLocalState(state: DurableState): Promise<void> {
       store.getState().applyRemotePatch({ receipts: currentReceipts });
     }
   } catch (err) {
-    console.warn('[Sync Engine] Offline or push failed.', err);
+    if (__DEV__) console.warn('[Sync Engine] Offline or push failed.', err);
   }
 }
 

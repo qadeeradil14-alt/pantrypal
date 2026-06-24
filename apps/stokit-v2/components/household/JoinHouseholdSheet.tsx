@@ -32,11 +32,16 @@ export function JoinHouseholdSheet({
     const result = await joinHousehold(code, myName);
     setJoining(false);
     if (!result.ok && result.invalidCode) {
-      setError('Invalid invite code. Check the code and try again.');
+      setError(result.message);
       return;
     }
     if (!result.ok) {
       setError(result.message);
+      return;
+    }
+    if (result.alreadyMember) {
+      setCode('');
+      setError(result.message ?? 'This person is already in your household.');
       return;
     }
     setCode('');

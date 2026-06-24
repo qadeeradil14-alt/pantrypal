@@ -55,7 +55,7 @@ export async function loadDurable(): Promise<DurableState | null> {
   } catch (err) {
     // Corrupt / unreadable storage must never wipe the user's data. We return
     // null so the caller keeps whatever it already has in memory.
-    console.warn('[durableRepository] load failed; keeping in-memory state', err);
+    if (__DEV__) console.warn('[durableRepository] load failed; keeping in-memory state', err);
     return null;
   }
 }
@@ -65,7 +65,7 @@ export async function saveDurable(state: DurableState): Promise<boolean> {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     return true;
   } catch (err) {
-    console.warn('[durableRepository] save failed; data kept in memory', err);
+    if (__DEV__) console.warn('[durableRepository] save failed; data kept in memory', err);
     return false;
   }
 }
@@ -74,6 +74,6 @@ export async function clearDurable(): Promise<void> {
   try {
     await AsyncStorage.removeItem(STORAGE_KEY);
   } catch (err) {
-    console.warn('[durableRepository] clear failed', err);
+    if (__DEV__) console.warn('[durableRepository] clear failed', err);
   }
 }

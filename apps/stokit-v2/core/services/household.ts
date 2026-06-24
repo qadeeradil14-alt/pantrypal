@@ -15,6 +15,10 @@
 // Unambiguous character set — no 0/O, 1/I/L confusion (identical to V1).
 const CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 export const INVITE_CODE_RE = /^[A-Z0-9]{6,9}$/;
+export const ALREADY_IN_HOUSEHOLD_MESSAGE = 'This person is already in your household.';
+export const STALE_INVITE_CODE_MESSAGE = 'This invite code is no longer valid. Ask for a new invite.';
+export const LEAVE_CURRENT_HOUSEHOLD_FIRST_MESSAGE =
+  "You're already in another shared household. Leave it first, then enter this code again.";
 
 /** Generate a random 6-character invite code. */
 export function generateInviteCode(): string {
@@ -31,6 +35,17 @@ export function generateInviteCode(): string {
 export function normalizeInviteCode(raw: string): string | null {
   const normalized = raw.trim().toUpperCase().replace(/[\s-]/g, '');
   return INVITE_CODE_RE.test(normalized) ? normalized : null;
+}
+
+export function joinHouseholdErrorMessage(rawMessage: string): { message: string; invalidCode: boolean } {
+  const message = rawMessage.toLowerCase();
+  if (message.includes('invalid invite code') || message.includes('expired') || message.includes('no longer valid')) {
+    return { message: STALE_INVITE_CODE_MESSAGE, invalidCode: true };
+  }
+  if (message.includes('leave your current shared household')) {
+    return { message: LEAVE_CURRENT_HOUSEHOLD_FIRST_MESSAGE, invalidCode: false };
+  }
+  return { message: rawMessage, invalidCode: false };
 }
 
 /** Format a code for display with a dash: "ABC-123". */

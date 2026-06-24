@@ -6,6 +6,7 @@ import { useDurableStore } from './durable-store';
 import { useHouseholdStore } from './household-store';
 import { useSessionStore } from './session-store';
 import { stopSyncEngine } from '../core/services/syncEngine';
+import { isExistingAccountSignUpResponse } from '../core/services/authResponses';
 
 type AuthResult =
   | { ok: true; next?: 'VERIFY_EMAIL' | 'SIGN_IN' }
@@ -120,6 +121,12 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       const message = friendlyAuthError(error);
       set({ loading: false, authError: message, pendingEmail: null });
       return { ok: false, message, code: authErrorCode(error) };
+    }
+    if (isExistingAccountSignUpResponse(data)) {
+      _signUpInProgress = false;
+      const message = 'An account with this email already exists. Sign in or reset your password.';
+      set({ loading: false, authError: message, pendingEmail: null });
+      return { ok: false, message, code: 'EMAIL_EXISTS' };
     }
 
     if (data.session) {

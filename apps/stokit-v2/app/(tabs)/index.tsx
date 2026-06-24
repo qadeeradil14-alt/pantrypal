@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Logo } from '../../components/shared/Logo';
+import { EmptyState } from '../../components/shared/EmptyState';
 import { AddItemSheet } from '../../components/pantry/AddItemSheet';
 import { ItemActionSheet } from '../../components/pantry/ItemActionSheet';
 import { StorePickerSheet } from '../../components/pantry/StorePickerSheet';
@@ -297,13 +298,11 @@ export default function PantryScreen() {
               />
             </View>
           )) : (
-            <View style={styles.empty}>
-              <Ionicons name="cart-outline" size={28} color={colors.muted} />
-              <Text style={styles.emptyTitle}>{query ? 'No results' : 'Your list is empty'}</Text>
-              <Text style={styles.emptyText}>
-                {query ? `No items match "${searchQuery}"` : 'Use the search bar above to add your first item.'}
-              </Text>
-            </View>
+            <EmptyState
+              icon={query ? 'search-outline' : 'cart-outline'}
+              title={query ? 'No results' : 'Your list is empty'}
+              body={query ? `No items match "${searchQuery}"` : 'Use the search bar above to add your first item.'}
+            />
           )}
         </View>
 
@@ -351,9 +350,11 @@ export default function PantryScreen() {
                     />
                   </View>
                 )) : (
-                  <View style={styles.empty}>
-                    <Text style={styles.emptyTitle}>Nothing at home yet</Text>
-                  </View>
+                  <EmptyState
+                    icon="home-outline"
+                    title="Nothing at home yet"
+                    body="Items you mark stocked will show up here."
+                  />
                 )}
               </View>
             ) : null}
@@ -597,15 +598,15 @@ function makeStyles(c: AppColors) {
     wordmark:         { flexDirection: 'row', alignItems: 'center', gap: 7 },
     wordmarkText:     { fontFamily: fonts.sansSemibold, fontSize: 18, color: c.ink, letterSpacing: -0.3 },
     syncPill:         { backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
-    syncPillText:     { fontFamily: fonts.mono, fontSize: 10, color: c.muted },
+    syncPillText:     { fontFamily: fonts.mono, fontSize: 10, color: c.muted, fontVariant: ['tabular-nums'] },
     greeting:         { fontFamily: fonts.sans, fontSize: 14, color: c.muted, marginBottom: 2 },
     title:            { fontFamily: fonts.serifItalic, fontSize: 25, lineHeight: 30, color: c.ink, marginBottom: 4 },
-    tagline:          { fontFamily: fonts.sans, fontSize: 15, color: c.muted },
+    tagline:          { fontFamily: fonts.sans, fontSize: 15, color: c.muted, fontVariant: ['tabular-nums'] },
     settings:         { width: 44, height: 44, borderRadius: 22, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, alignItems: 'center', justifyContent: 'center', ...shadow.card },
     pressed:          { opacity: 0.76 },
     atHomeHeader:      { marginBottom: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.sm, borderBottomWidth: 1, borderBottomColor: c.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     atHomeTitle:       { fontFamily: fonts.sansSemibold, fontSize: 19, color: c.ink },
-    atHomeCount:       { fontFamily: fonts.sans, fontSize: 13, color: c.muted, marginTop: 2 },
+    atHomeCount:       { fontFamily: fonts.sans, fontSize: 13, color: c.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
     moreHeader:        { marginTop: spacing.xl, paddingVertical: spacing.lg, borderTopWidth: 1, borderTopColor: c.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     moreTitle:         { fontFamily: fonts.sansSemibold, fontSize: 18, color: c.ink },
     searchBar:        { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: radii.md, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.md, paddingVertical: 10, marginTop: spacing.sm, marginBottom: spacing.xs },
@@ -628,13 +629,10 @@ function makeStyles(c: AppColors) {
     itemEmoji:        { fontSize: 23 },
     itemCopy:         { flex: 1 },
     itemName:         { fontFamily: fonts.sansMedium, fontSize: 17, color: c.ink },
-    itemMeta:         { fontFamily: fonts.mono, fontSize: 12, lineHeight: 17, color: c.muted, marginTop: 3 },
+    itemMeta:         { fontFamily: fonts.mono, fontSize: 12, lineHeight: 17, color: c.muted, marginTop: 3, fontVariant: ['tabular-nums'] },
     itemAction:       { minHeight: 38, borderRadius: 19, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 3 },
     itemCartAction:   { width: 44, height: 44, borderRadius: 13, justifyContent: 'center', paddingHorizontal: 0, backgroundColor: c.surface },
     itemActionText:   { fontFamily: fonts.sansSemibold, fontSize: 12, color: c.primary },
-    empty:            { minHeight: 150, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.lg },
-    emptyTitle:       { fontFamily: fonts.sansSemibold, fontSize: 17, color: c.ink, marginTop: spacing.sm },
-    emptyText:        { fontFamily: fonts.sans, fontSize: 13, lineHeight: 19, color: c.muted, textAlign: 'center', marginTop: spacing.xs },
     frequentSection:  { marginTop: spacing.md, marginBottom: spacing.sm },
     frequentTitle:    { fontFamily: fonts.sansSemibold, fontSize: 15, color: c.muted, marginBottom: spacing.sm, paddingHorizontal: 4 },
     frequentScroll:   { gap: spacing.md, paddingRight: spacing.xl },

@@ -68,7 +68,7 @@ export async function extractReceiptItems(
   mimeType: string = 'image/jpeg'
 ): Promise<ReceiptScanResult | null> {
   if (!hasOpenAiKey()) {
-    console.warn('[AI] Receipt scan endpoint is not configured.');
+    if (__DEV__) console.warn('[AI] Receipt scan endpoint is not configured.');
     return null;
   }
 
@@ -106,7 +106,7 @@ export async function extractReceiptItems(
 
   if (!res!.ok) {
     const errorText = await res!.text();
-    console.error('[AI] OpenAI API Error:', res!.status, errorText);
+    if (__DEV__) console.error('[AI] OpenAI API Error:', res!.status, errorText);
     if (res!.status === 401) throw new Error('Receipt scan is not configured. Please contact support.');
     if (res!.status === 429) throw new Error('Too many requests. Please wait a moment and try again.');
     if (res!.status === 400) throw new Error('The image could not be processed. Try a clearer, well-lit photo.');
@@ -117,7 +117,7 @@ export async function extractReceiptItems(
   const text = typeof data === 'string' ? data : JSON.stringify(data);
 
   if (!text) {
-    console.error('[AI] No receipt scan result returned');
+    if (__DEV__) console.error('[AI] No receipt scan result returned');
     throw new Error('No response from AI. Please try again with a clearer photo.');
   }
 
@@ -127,7 +127,7 @@ export async function extractReceiptItems(
   try {
     parsed = JSON.parse(cleanText) as ReceiptScanResult;
   } catch {
-    console.error('[AI] Failed to parse OpenAI JSON:', cleanText);
+    if (__DEV__) console.error('[AI] Failed to parse OpenAI JSON:', cleanText);
     throw new Error('Could not read the receipt data. Please try a clearer photo.');
   }
 

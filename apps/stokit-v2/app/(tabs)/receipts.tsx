@@ -145,7 +145,7 @@ export default function ReceiptsScreen() {
 }
 
 function ReceiptStatusPill({ status, hasPhoto }: { status: Receipt['status']; hasPhoto?: boolean }) {
-  if (status === 'logged') return <Pill label="Complete" tone="stocked" />;
+  if (status === 'logged') return <Pill label="Completed" tone="stocked" />;
   if (status === 'photo_pending') return <Pill label={hasPhoto ? 'Photo saved' : 'Amount saved'} tone="muted" />;
   return <Pill label="Skipped" tone="muted" />;
 }
@@ -160,16 +160,16 @@ function makeStyles(colors: AppColors) {
       marginBottom: spacing.md,
     },
     tripTitle: { fontFamily: fonts.serifItalic, fontSize: 20, color: colors.ink },
-    tripMeta: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: 3 },
+    tripMeta: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: 3, fontVariant: ['tabular-nums'] },
     tripRight: { alignItems: 'flex-end', gap: 4 },
-    tripTotal: { fontFamily: fonts.monoMedium, fontSize: 18, color: colors.primary },
+    tripTotal: { fontFamily: fonts.monoMedium, fontSize: 18, color: colors.primary, fontVariant: ['tabular-nums'] },
     tripChevron: { flexDirection: 'row', alignItems: 'center', gap: 4 },
     totalCard: { alignItems: 'center', paddingVertical: spacing.xl },
-    totalValue: { fontFamily: fonts.mono, fontSize: 44, color: colors.primary },
-    totalLabel: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.muted, marginTop: 2 },
+    totalValue: { fontFamily: fonts.mono, fontSize: 44, color: colors.primary, fontVariant: ['tabular-nums'] },
+    totalLabel: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
     row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
     divider: { height: 1, backgroundColor: colors.borderSoft, marginBottom: spacing.md },
     storeName: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink, marginBottom: 4 },
-    amount: { fontFamily: fonts.monoMedium, fontSize: 16, color: colors.ink },
+    amount: { fontFamily: fonts.monoMedium, fontSize: 16, color: colors.ink, fontVariant: ['tabular-nums'] },
   });
 }

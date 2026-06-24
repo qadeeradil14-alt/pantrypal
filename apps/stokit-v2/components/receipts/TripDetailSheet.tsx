@@ -171,7 +171,7 @@ function Stat({ value, label }: { value: string | number; label: string }) {
 function makeStyles(colors: AppColors) {
   return StyleSheet.create({
     totalBox: { alignItems: 'center', paddingBottom: spacing.lg },
-    totalValue: { fontFamily: fonts.mono, fontSize: 48, color: colors.primary },
+    totalValue: { fontFamily: fonts.mono, fontSize: 48, color: colors.primary, fontVariant: ['tabular-nums'] },
     totalLabel: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.muted, marginTop: 2 },
     statRow: {
       flexDirection: 'row',
@@ -188,11 +188,11 @@ function makeStyles(colors: AppColors) {
       paddingVertical: spacing.md,
       gap: 2,
     },
-    statVal: { fontFamily: fonts.mono, fontSize: 18, color: colors.ink },
+    statVal: { fontFamily: fonts.mono, fontSize: 18, color: colors.ink, fontVariant: ['tabular-nums'] },
     statLbl: { fontFamily: fonts.sans, fontSize: 10, color: colors.muted, textAlign: 'center' },
     sectionTitle: {
       fontFamily: fonts.serifItalic,
-      fontSize: 18,
+      fontSize: 21,
       color: colors.ink,
       marginBottom: spacing.md,
     },
@@ -205,8 +205,8 @@ function makeStyles(colors: AppColors) {
       borderBottomColor: colors.borderSoft,
     },
     storeName: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
-    storeMeta: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: 2 },
-    storeAmount: { fontFamily: fonts.monoMedium, fontSize: 16, color: colors.ink },
+    storeMeta: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
+    storeAmount: { fontFamily: fonts.monoMedium, fontSize: 16, color: colors.ink, fontVariant: ['tabular-nums'] },
     addPhotoBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
     addPhotoText: { fontFamily: fonts.sansMedium, fontSize: 12, color: colors.primary },
     itemRow: {
@@ -218,8 +218,8 @@ function makeStyles(colors: AppColors) {
       borderBottomColor: colors.borderSoft,
     },
     itemName: { flex: 1, fontFamily: fonts.sansMedium, fontSize: 15, color: colors.ink },
-    itemPrice: { fontFamily: fonts.monoMedium, fontSize: 15, color: colors.ink },
-    itemPriceMuted: { fontFamily: fonts.mono, fontSize: 15, color: colors.muted },
+    itemPrice: { fontFamily: fonts.monoMedium, fontSize: 15, color: colors.ink, fontVariant: ['tabular-nums'] },
+    itemPriceMuted: { fontFamily: fonts.mono, fontSize: 15, color: colors.muted, fontVariant: ['tabular-nums'] },
     timeRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -227,6 +227,6 @@ function makeStyles(colors: AppColors) {
       gap: 6,
       marginTop: spacing.xl,
     },
-    timeText: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted },
+    timeText: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, fontVariant: ['tabular-nums'] },
   });
 }

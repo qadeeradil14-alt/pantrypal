@@ -43,17 +43,17 @@ export async function findNearbyStores(
   lng: number,
   radiusMetres = 8000,
 ): Promise<NearbyStore[]> {
-  console.log('[Places] findNearbyStores called', { lat, lng, radiusMetres });
+  if (__DEV__) console.log('[Places] findNearbyStores called', { lat, lng, radiusMetres });
   if (hasGoogleKey()) {
     return findNearbyStoresGoogle(lat, lng, radiusMetres);
   }
   if (hasGeoapifyKey()) {
-    console.log('[Places] Using Geoapify');
+    if (__DEV__) console.log('[Places] Using Geoapify');
     const results = await findNearbyStoresGeoapify(lat, lng, radiusMetres);
     if (results.length > 0) return results;
-    console.log('[Places] Geoapify returned 0 results, falling back to OSM');
+    if (__DEV__) console.log('[Places] Geoapify returned 0 results, falling back to OSM');
   }
-  console.log('[Places] Using OSM fallback');
+  if (__DEV__) console.log('[Places] Using OSM fallback');
   return findNearbyStoresOSM(lat, lng, radiusMetres);
 }
 
@@ -67,16 +67,16 @@ export async function searchNearbyStoresByName(
   name: string,
   radiusMetres = 20000,
 ): Promise<NearbyStore[]> {
-  console.log('[Places] searchNearbyStoresByName called', { lat, lng, name, radiusMetres });
+  if (__DEV__) console.log('[Places] searchNearbyStoresByName called', { lat, lng, name, radiusMetres });
   if (!name.trim()) return [];
   if (hasGoogleKey()) return searchByNameGoogle(lat, lng, name, radiusMetres);
   if (hasGeoapifyKey()) {
-    console.log('[Places] Using Geoapify search');
+    if (__DEV__) console.log('[Places] Using Geoapify search');
     const results = await searchByNameGeoapify(lat, lng, name, radiusMetres);
     if (results.length > 0) return results;
-    console.log('[Places] Geoapify returned 0 results, falling back to OSM');
+    if (__DEV__) console.log('[Places] Geoapify returned 0 results, falling back to OSM');
   }
-  console.log('[Places] Using OSM fallback search');
+  if (__DEV__) console.log('[Places] Using OSM fallback search');
   return searchByNameOSM(lat, lng, name, radiusMetres);
 }
 
@@ -287,12 +287,12 @@ async function findNearbyStoresOSM(
     });
     if (!res.ok) {
       const errText = await res.text();
-      console.error('[Places] OSM findNearbyStores failed with status:', res.status, errText);
+      if (__DEV__) console.error('[Places] OSM findNearbyStores failed with status:', res.status, errText);
       return [];
     }
     data = (await res.json()) as OverpassResponse;
   } catch (err) {
-    console.error('[Places] OSM findNearbyStores exception:', err);
+    if (__DEV__) console.error('[Places] OSM findNearbyStores exception:', err);
     return [];
   }
 
@@ -336,12 +336,12 @@ async function searchByNameOSM(
     });
     if (!res.ok) {
       const errText = await res.text();
-      console.error('[Places] OSM searchByName failed with status:', res.status, errText);
+      if (__DEV__) console.error('[Places] OSM searchByName failed with status:', res.status, errText);
       return [];
     }
     data = (await res.json()) as OverpassResponse;
   } catch (err) {
-    console.error('[Places] OSM searchByName exception:', err);
+    if (__DEV__) console.error('[Places] OSM searchByName exception:', err);
     return [];
   }
 
@@ -382,7 +382,7 @@ async function searchByNameGoogle(
       { headers: { 'X-Ios-Bundle-Identifier': 'com.hewadadil.pantrypal' } }
     );
     if (!res.ok) {
-      console.log('[Places] Google textsearch failed:', res.status, await res.text());
+      if (__DEV__) console.log('[Places] Google textsearch failed:', res.status, await res.text());
       return [];
     }
     const data = (await res.json()) as GooglePlacesResponse;
@@ -424,7 +424,7 @@ export async function autocompleteGooglePlaces(query: string, lat?: number, lng?
       headers: { 'X-Ios-Bundle-Identifier': 'com.hewadadil.pantrypal' }
     });
     if (!res.ok) {
-      console.log('[Places] Google autocomplete failed:', res.status, await res.text());
+      if (__DEV__) console.log('[Places] Google autocomplete failed:', res.status, await res.text());
       return [];
     }
     const data = await res.json();
@@ -452,7 +452,7 @@ export async function getPlaceDetailsGoogle(placeId: string): Promise<NearbyStor
       headers: { 'X-Ios-Bundle-Identifier': 'com.hewadadil.pantrypal' }
     });
     if (!res.ok) {
-      console.log('[Places] Google details failed:', res.status, await res.text());
+      if (__DEV__) console.log('[Places] Google details failed:', res.status, await res.text());
       return null;
     }
     const data = await res.json();
@@ -500,7 +500,7 @@ async function findNearbyStoresGoogle(
       headers: { 'X-Ios-Bundle-Identifier': 'com.hewadadil.pantrypal' }
     });
     if (!res.ok) {
-      console.log('[Places] Google nearbysearch failed:', res.status, await res.text());
+      if (__DEV__) console.log('[Places] Google nearbysearch failed:', res.status, await res.text());
       return [];
     }
     data = (await res.json()) as GooglePlacesResponse;
@@ -595,10 +595,10 @@ async function searchByNameGeoapify(
     `&apiKey=${config.geoapifyApiKey}`;
 
   try {
-    console.log('[Geoapify] Fetching URL:', url);
+    if (__DEV__) console.log('[Geoapify] Fetching URL:', url);
     const res = await fetchWithTimeout(url, { headers: { Accept: 'application/json' } });
     if (!res.ok) {
-      console.log('[Geoapify] API Error:', res.status);
+      if (__DEV__) console.log('[Geoapify] API Error:', res.status);
       return [];
     }
     const data = await res.json();
@@ -626,10 +626,10 @@ async function searchByNameGeoapify(
       })
       .sort((a: NearbyStore, b: NearbyStore) => (a.distanceMetres || 0) - (b.distanceMetres || 0));
 
-    console.log('[Geoapify] Mapped results count:', mapped.length);
+    if (__DEV__) console.log('[Geoapify] Mapped results count:', mapped.length);
     return mapped;
   } catch (err) {
-    console.error('[Geoapify] searchByName exception:', err);
+    if (__DEV__) console.error('[Geoapify] searchByName exception:', err);
     return [];
   }
 }

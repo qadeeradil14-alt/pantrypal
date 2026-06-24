@@ -13,7 +13,7 @@
       "supportsTablet": false,
       "icon": "./assets/icon-dark.png",
       "bundleIdentifier": "com.hewadadil.pantrypal",
-      "buildNumber": "73",
+      "buildNumber": "74",
       "deploymentTarget": "16.4",
       "appleTeamId": "4AJ8TH5QF7",
       "infoPlist": {
@@ -80,11 +80,11 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/splash.png",
-          "backgroundColor": "#15110C",
+          "backgroundColor": "#0F1117",
           "resizeMode": "contain"
         }
       ],
+      "./plugins/with-widget-version",
       [
         "expo-widgets",
         {
@@ -113,12 +113,11 @@
           ]
         }
       ],
-      "./plugins/with-widget-version",
       "./plugins/with-ios-scene-lifecycle",
       [
         "./plugins/with-ios-xcode27-build-settings",
         {
-          "buildNumber": "73",
+          "buildNumber": "74",
           "deploymentTarget": "16.4"
         }
       ]

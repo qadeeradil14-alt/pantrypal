@@ -1,14 +1,23 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
-import { avatarColor, initials, normalizeInviteCode, type SyncStatus } from '../core/services/household';
+import {
+  ALREADY_IN_HOUSEHOLD_MESSAGE,
+  avatarColor,
+  initials,
+  joinHouseholdErrorMessage,
+  normalizeInviteCode,
+  type SyncStatus,
+} from '../core/services/household';
 import type { HouseholdIdentity, HouseholdMember } from '../types';
 
 const STORAGE_KEY = 'stokit:v2:household';
 let householdChannel: ReturnType<typeof supabase.channel> | null = null;
 let subscribedHouseholdId: string | null = null;
 
-type Result = { ok: true } | { ok: false; message: string; invalidCode?: boolean };
+type Result =
+  | { ok: true; message?: string; alreadyMember?: boolean }
+  | { ok: false; message: string; invalidCode?: boolean };
 type HouseholdPayload = HouseholdIdentity & {
   members: Array<Pick<HouseholdMember, 'id' | 'displayName' | 'role' | 'joinedAt'>>;
 };
@@ -153,15 +162,20 @@ export const useHouseholdStore = create<HouseholdState>((set, get) => ({
     if (!code) return { ok: false, invalidCode: true, message: 'Invalid invite code.' };
     set({ syncStatus: 'syncing' });
     try {
-      await applyPayload(await rpc('join_household_by_code', {
+      const currentHouseholdId = get().household?.id;
+      const payload = await rpc('join_household_by_code', {
         p_invite_code: code,
         p_display_name: myName.trim() || 'Me',
-      }), set);
+      });
+      const alreadyMember = Boolean(currentHouseholdId && payload.id === currentHouseholdId && !payload.isPersonal);
+      await applyPayload(payload, set);
+      if (alreadyMember) return { ok: true, alreadyMember: true, message: ALREADY_IN_HOUSEHOLD_MESSAGE };
       await reloadSharedState();
       return { ok: true };
     } catch (error) {
       set({ syncStatus: 'error' });
-      return { ok: false, invalidCode: message(error).includes('Invalid invite code'), message: message(error) };
+      const mapped = joinHouseholdErrorMessage(message(error));
+      return { ok: false, invalidCode: mapped.invalidCode, message: mapped.message };
     }
   },
 
