@@ -23,6 +23,7 @@ import {
   isExpoGo,
 } from '../../core/services/geofencing';
 import { geofenceableStores } from '../../core/services/geofencingLogic';
+import { registerPushToken } from '../../core/services/notifications';
 import type { Unit } from '../../types';
 
 const IOS_GEOFENCE_LIMIT = 20;
@@ -90,9 +91,15 @@ export default function SettingsScreen() {
       if (value) {
         const result = await startGeofencing(stores, items);
         switch (result) {
-          case 'ok':
+          case 'ok': {
             setGeofenceOn(true);
+            // Re-attempt push-token registration now that notification
+            // permission is freshly granted — the login-time attempt in
+            // _layout.tsx almost always runs before this permission exists.
+            const currentUser = useAuthStore.getState().user;
+            if (currentUser) void registerPushToken(currentUser.id);
             break;
+          }
           case 'no_permission':
             Alert.alert(
               'Location permission needed',
