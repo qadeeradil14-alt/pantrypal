@@ -163,7 +163,7 @@ export default function PantryScreen() {
           {/* Top row: logo + sync pill + settings */}
           <View style={styles.topRow}>
             <View style={styles.wordmark}>
-              <Logo size={22} color={colors.ink} />
+              <Logo size={28} color={colors.ink} />
               <Text style={styles.wordmarkText}>Stokit</Text>
             </View>
             <View style={styles.topRowRight}>
