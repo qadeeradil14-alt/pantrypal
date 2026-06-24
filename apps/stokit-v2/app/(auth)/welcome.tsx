@@ -381,7 +381,7 @@ export default function WelcomeScreen() {
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <Animated.View style={[styles.safe, { opacity }]}>
           <View style={styles.wordmark}>
-            <Logo size={u(110)} color={colors.ink} />
+            <Logo size={u(140)} color={colors.ink} />
             <Text style={styles.brand}>Stokit</Text>
           </View>
           <View style={styles.carousel}>
