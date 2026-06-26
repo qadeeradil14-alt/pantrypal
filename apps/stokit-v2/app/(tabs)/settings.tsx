@@ -16,6 +16,7 @@ import { JoinHouseholdSheet } from '../../components/household/JoinHouseholdShee
 import { InviteCodeCard } from '../../components/household/InviteCodeCard';
 import { MemberList } from '../../components/household/MemberList';
 import { useTheme } from '../../hooks/useTheme';
+import { useThemeStore } from '../../store/theme';
 import { clearLocalAppData } from '../../lib/local-data';
 import { OTA_SEQ } from '../../constants/version';
 import {
@@ -77,7 +78,8 @@ function stageColor(stage: NotificationLogEntry['stage'], colors: AppColors): st
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { isDark, toggle: toggleDark, colors } = useTheme();
+  const { isDark, colors } = useTheme();
+  const { isDark: storedTheme, setIsDark } = useThemeStore();
   const prefs = useDurableStore((s) => s.prefs);
   const updatePrefs = useDurableStore((s) => s.updatePrefs);
   const items = useDurableStore((s) => s.items);
@@ -423,15 +425,7 @@ export default function SettingsScreen() {
       {/* ── APPEARANCE ────────────────────────────────────────────────────── */}
       <SectionHeader title="Appearance" />
       <Card>
-        <ToggleRow
-          icon="moon-outline"
-          label="Dark mode"
-          description="Switch to a dark background"
-          value={isDark}
-          onValueChange={toggleDark}
-          styles={styles}
-          colors={colors}
-        />
+        <AppearancePicker stored={storedTheme} setIsDark={setIsDark} styles={styles} colors={colors} />
       </Card>
 
       {/* ── PREFERENCES ───────────────────────────────────────────────────── */}
@@ -851,6 +845,62 @@ export default function SettingsScreen() {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
+type AppearanceOption = 'system' | 'light' | 'dark';
+
+function AppearancePicker({
+  stored,
+  setIsDark,
+  styles,
+  colors,
+}: {
+  stored: boolean | null;
+  setIsDark: (v: boolean | null) => void;
+  styles: any;
+  colors: AppColors;
+}) {
+  const current: AppearanceOption = stored === null ? 'system' : stored ? 'dark' : 'light';
+  const options: { value: AppearanceOption; label: string }[] = [
+    { value: 'system', label: 'System' },
+    { value: 'light', label: 'Light' },
+    { value: 'dark', label: 'Dark' },
+  ];
+  const descriptions: Record<AppearanceOption, string> = {
+    system: 'Follows iOS system appearance',
+    light: 'Always use light mode',
+    dark: 'Always use dark mode',
+  };
+  const handle = (v: AppearanceOption) => {
+    if (v === 'system') setIsDark(null);
+    else if (v === 'light') setIsDark(false);
+    else setIsDark(true);
+  };
+  return (
+    <View style={styles.appearanceRow}>
+      <Ionicons name="contrast-outline" size={20} color={colors.primary} style={{ marginTop: 2 }} />
+      <View style={{ flex: 1 }}>
+        <Text style={styles.appearanceLabel}>Appearance</Text>
+        <View style={styles.appearanceChips}>
+          {options.map((opt) => (
+            <Pressable
+              key={opt.value}
+              style={[styles.appearanceChip, current === opt.value && styles.appearanceChipActive]}
+              onPress={() => handle(opt.value)}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: current === opt.value }}
+              accessibilityLabel={opt.label + (opt.value === 'system' ? ' (Recommended)' : '')}
+            >
+              <Text style={[styles.appearanceChipText, current === opt.value && styles.appearanceChipTextActive]}>
+                {opt.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        <Text style={styles.appearanceDesc}>{descriptions[current]}</Text>
+      </View>
+    </View>
+  );
+}
+
 function ToggleRow({
   icon,
   label,
@@ -1007,6 +1057,27 @@ function makeStyles(colors: AppColors) {
       paddingVertical: 2,
     },
     devModeBadgeText: { fontFamily: fonts.sansSemibold, fontSize: 10, color: '#fff', letterSpacing: 0.5 },
+    appearanceRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: spacing.md,
+      paddingVertical: spacing.sm,
+    },
+    appearanceLabel: { fontFamily: fonts.sansMedium, fontSize: 15, color: colors.ink, marginBottom: spacing.sm },
+    appearanceChips: { flexDirection: 'row', gap: spacing.sm },
+    appearanceChip: {
+      flex: 1,
+      paddingVertical: 8,
+      paddingHorizontal: spacing.sm,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+    },
+    appearanceChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+    appearanceChipText: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.ink },
+    appearanceChipTextActive: { color: '#fff' },
+    appearanceDesc: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: spacing.xs },
     toggleRow: {
       flexDirection: 'row',
       alignItems: 'flex-start',
