@@ -6,7 +6,7 @@
     "owner": "qadeeradil14-alt",
     "orientation": "portrait",
     "scheme": "pantrypal",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "automatic",
     "icon": "./assets/icon-dark.png",
     "backgroundColor": "#15110C",
     "ios": {

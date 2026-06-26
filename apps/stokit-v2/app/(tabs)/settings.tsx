@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, Platform, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, Platform, StyleSheet, Switch, Text, TextInput, View, useColorScheme } from 'react-native';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -80,6 +80,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { isDark, colors } = useTheme();
   const { isDark: storedTheme, setIsDark } = useThemeStore();
+  const systemScheme = useColorScheme();
   const prefs = useDurableStore((s) => s.prefs);
   const updatePrefs = useDurableStore((s) => s.updatePrefs);
   const items = useDurableStore((s) => s.items);
@@ -552,6 +553,12 @@ export default function SettingsScreen() {
           <DiagRow label="iOS version" value={String(Platform.Version)} colors={colors} styles={styles} />
           <DiagRow label="Build type" value={inExpoGo ? 'Expo Go' : 'Standalone'} colors={colors} styles={styles} />
           <DiagRow label="OTA build" value={`OTA ${OTA_SEQ}`} colors={colors} styles={styles} />
+
+          {/* Theme */}
+          <Text style={styles.geofenceDiagnosticsHeading}>Theme</Text>
+          <DiagRow label="Stored preference" value={storedTheme === null ? 'null (system)' : storedTheme ? 'true (dark)' : 'false (light)'} colors={colors} styles={styles} />
+          <DiagRow label="useColorScheme()" value={systemScheme ?? 'null'} colors={colors} styles={styles} />
+          <DiagRow label="Effective isDark" value={String(isDark)} highlight={!isDark} danger={isDark} colors={colors} styles={styles} />
 
           {/* Permissions */}
           <Text style={styles.geofenceDiagnosticsHeading}>Permissions</Text>
