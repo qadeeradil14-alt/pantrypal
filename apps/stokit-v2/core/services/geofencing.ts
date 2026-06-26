@@ -66,6 +66,22 @@ export const ARRIVAL_RADIUS_M = 150;
  */
 export const DWELL_CONFIRM_MS = 10 * 1000;
 
+/**
+ * Speed above which an arrival is rejected as a drive-by (metres per second).
+ * 5 m/s ≈ 18 km/h — faster than parking/walking but slower than driving past.
+ * iOS reports speed as -1 when unavailable; that case is treated as passing
+ * (no rejection) so a missing speed fix never silently drops a real arrival.
+ */
+export const ARRIVAL_SPEED_THRESHOLD_MPS = 5;
+
+/**
+ * Maximum GPS horizontal accuracy (metres) accepted during dwell confirmation.
+ * A fix worse than this is too imprecise to confidently confirm the user is
+ * inside the store's lot rather than on a nearby road. Rejected to avoid false
+ * positives when GPS is reflecting off buildings or sheltered in a parking structure.
+ */
+export const ARRIVAL_MAX_GPS_ACCURACY_M = 60;
+
 /** Maximum geofences iOS supports. */
 const MAX_GEOFENCES_IOS = 20;
 
@@ -147,6 +163,19 @@ export interface GeofenceDiagnostics {
    * mutation specifically to keep this from happening.
    */
   registrationOutOfDate: boolean;
+  // ── Arrival confidence diagnostics ─────────────────────────────────────────
+  /** GPS horizontal accuracy (metres) at the dwell-confirmation fix. null if no arrival yet. */
+  lastDwellAccuracy: number | null;
+  /** Movement speed (m/s) at the dwell-confirmation fix. -1 means iOS reported unavailable. null if no arrival yet. */
+  lastDwellSpeed: number | null;
+  /**
+   * Why the arrival confidence check passed or failed:
+   *   'passed'           — speed and accuracy both within thresholds
+   *   'rejected_speed'   — moving too fast (drive-by)
+   *   'rejected_accuracy'— GPS fix too imprecise to confirm location
+   *   null               — no dwell confirmation attempted yet
+   */
+  lastConfidenceResult: 'passed' | 'rejected_speed' | 'rejected_accuracy' | null;
 }
 
 const emptyDiagnostics: GeofenceDiagnostics = {
@@ -178,6 +207,9 @@ const emptyDiagnostics: GeofenceDiagnostics = {
   lastNotificationStoreId: null,
   lastNotificationStoreName: null,
   registrationOutOfDate: false,
+  lastDwellAccuracy: null,
+  lastDwellSpeed: null,
+  lastConfidenceResult: null,
 };
 
 /** storeId -> ms timestamp of the last accepted arrival. */
@@ -484,6 +516,34 @@ export function defineGeofenceTask(
       const confirmPos = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
+
+      // Arrival confidence checks — reject drive-bys before deciding store.
+      const dwellSpeed = confirmPos.coords.speed ?? -1;
+      const dwellAccuracy = confirmPos.coords.accuracy ?? 999;
+      if (dwellAccuracy > ARRIVAL_MAX_GPS_ACCURACY_M) {
+        await patchDiagnostics({
+          lastDwellAccuracy: dwellAccuracy,
+          lastDwellSpeed: dwellSpeed,
+          lastConfidenceResult: 'rejected_accuracy',
+          lastError: `confidence:gps_accuracy_${dwellAccuracy.toFixed(0)}m`,
+        });
+        return;
+      }
+      if (dwellSpeed >= 0 && dwellSpeed > ARRIVAL_SPEED_THRESHOLD_MPS) {
+        await patchDiagnostics({
+          lastDwellAccuracy: dwellAccuracy,
+          lastDwellSpeed: dwellSpeed,
+          lastConfidenceResult: 'rejected_speed',
+          lastError: `confidence:speed_${dwellSpeed.toFixed(1)}mps`,
+        });
+        return;
+      }
+      await patchDiagnostics({
+        lastDwellAccuracy: dwellAccuracy,
+        lastDwellSpeed: dwellSpeed,
+        lastConfidenceResult: 'passed',
+      });
+
       decision = decideStoreArrival({
         lat: confirmPos.coords.latitude,
         lng: confirmPos.coords.longitude,

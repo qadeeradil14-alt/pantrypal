@@ -247,6 +247,14 @@ export default function ShoppingScreen() {
   if (session.status === 'next_store_ready') return <NextStoreSelector session={session} dispatch={dispatch} storeById={storeById} styles={styles} nsStyles={nsStyles} colors={colors} />;
   if (session.status === 'trip_summary')    return <TripSummary     session={session} dispatch={dispatch} storeById={storeById} tsStyles={tsStyles} colors={colors} />;
 
+  // Geofence arrival deep-link: arrivalStoreId is present and the store has items
+  // → the useEffect is about to call startTripAt. Show a blank screen instead of
+  // the idle planner so the user never sees a flash of "Start shopping" before
+  // the trip begins automatically.
+  if (arrivalStoreId && !arrivalHandledRef.current && plan.has(arrivalStoreId)) {
+    return <Screen><View style={{ flex: 1 }} /></Screen>;
+  }
+
   // ── Idle ───────────────────────────────────────────────────────────────────
   const planEntries = Array.from(plan.entries());
   const totalItems  = planEntries.reduce((n, [, list]) => n + list.length, 0);

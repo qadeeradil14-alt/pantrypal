@@ -37,9 +37,12 @@ import {
   type NotificationLogEntry,
   type NotificationDiagnostics,
 } from '../../core/services/notifications';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Unit } from '../../types';
 
 const IOS_GEOFENCE_LIMIT = 20;
+const DEV_MODE_KEY = 'stokit:v2:developer_mode';
+const DEV_MODE_TAP_TARGET = 7;
 
 function formatDiagnosticTime(value: number | null): string {
   return value ? new Date(value).toLocaleString() : 'unavailable';
@@ -94,6 +97,9 @@ export default function SettingsScreen() {
   const [joinVisible, setJoinVisible] = useState(false);
   const [renameVisible, setRenameVisible] = useState(false);
   const [draftName, setDraftName] = useState('');
+  const [devMode, setDevMode] = useState(false);
+  const [devTapCount, setDevTapCount] = useState(0);
+  const devTapTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Geofence toggle state ──────────────────────────────────────────────────
   const [geofenceOn, setGeofenceOn] = useState(false);
@@ -128,7 +134,25 @@ export default function SettingsScreen() {
 
   useEffect(() => {
     void refreshDiagnostics();
+    void AsyncStorage.getItem(DEV_MODE_KEY).then((v) => setDevMode(v === 'true'));
   }, [refreshDiagnostics]);
+
+  const handleDevTap = useCallback(() => {
+    setDevTapCount((prev) => {
+      const next = prev + 1;
+      if (devTapTimerRef.current) clearTimeout(devTapTimerRef.current);
+      devTapTimerRef.current = setTimeout(() => setDevTapCount(0), 2000);
+      if (next >= DEV_MODE_TAP_TARGET) {
+        setDevMode((current) => {
+          const toggled = !current;
+          void AsyncStorage.setItem(DEV_MODE_KEY, String(toggled));
+          return toggled;
+        });
+        return 0;
+      }
+      return next;
+    });
+  }, []);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -525,8 +549,8 @@ export default function SettingsScreen() {
           ) : null}
         </View>
 
-        {/* ── DIAGNOSTICS ───────────────────────────────────────────────── */}
-        <View style={styles.geofenceDiagnostics}>
+        {/* ── DIAGNOSTICS (Developer Mode only) ────────────────────────── */}
+        {devMode && <View style={styles.geofenceDiagnostics}>
           <Text style={styles.geofenceDiagnosticsTitle}>Arrival alert diagnostics</Text>
 
           {/* System */}
@@ -619,6 +643,40 @@ export default function SettingsScreen() {
             colors={colors}
             styles={styles}
           />
+
+          {/* Arrival confidence */}
+          <Text style={styles.geofenceDiagnosticsHeading}>Arrival confidence</Text>
+          <DiagRow
+            label="GPS accuracy"
+            value={geofenceDiagnostics?.lastDwellAccuracy != null
+              ? `${geofenceDiagnostics.lastDwellAccuracy.toFixed(0)} m`
+              : '—'}
+            highlight={geofenceDiagnostics?.lastDwellAccuracy != null && geofenceDiagnostics.lastDwellAccuracy <= 60}
+            danger={geofenceDiagnostics?.lastDwellAccuracy != null && geofenceDiagnostics.lastDwellAccuracy > 60}
+            colors={colors}
+            styles={styles}
+          />
+          <DiagRow
+            label="Movement speed"
+            value={geofenceDiagnostics?.lastDwellSpeed != null
+              ? geofenceDiagnostics.lastDwellSpeed < 0
+                ? 'unavailable'
+                : `${geofenceDiagnostics.lastDwellSpeed.toFixed(1)} m/s (${(geofenceDiagnostics.lastDwellSpeed * 3.6).toFixed(0)} km/h)`
+              : '—'}
+            highlight={geofenceDiagnostics?.lastDwellSpeed != null && geofenceDiagnostics.lastDwellSpeed >= 0 && geofenceDiagnostics.lastDwellSpeed <= 5}
+            danger={geofenceDiagnostics?.lastDwellSpeed != null && geofenceDiagnostics.lastDwellSpeed > 5}
+            colors={colors}
+            styles={styles}
+          />
+          <DiagRow
+            label="Confidence result"
+            value={geofenceDiagnostics?.lastConfidenceResult ?? '—'}
+            highlight={geofenceDiagnostics?.lastConfidenceResult === 'passed'}
+            danger={geofenceDiagnostics?.lastConfidenceResult?.startsWith('rejected') ?? false}
+            colors={colors}
+            styles={styles}
+          />
+
           {(geofenceDiagnostics?.lastNearbyCandidates?.length ?? 0) > 0 ? (
             <Text style={styles.geofenceDiagnosticsStore}>
               Nearby candidates:{'\n'}
@@ -701,10 +759,10 @@ export default function SettingsScreen() {
             <Ionicons name="refresh-outline" size={13} color={colors.primary} />
             <Text style={styles.cooldownResetText}>Reset arrival cooldown (3 min)</Text>
           </Pressable>
-        </View>
+        </View>}
 
-        {/* ── NOTIFICATION PIPELINE LOG ─────────────────────────────────── */}
-        <View style={styles.notifLogSection}>
+        {/* ── NOTIFICATION PIPELINE LOG (Developer Mode only) ───────────── */}
+        {devMode && <View style={styles.notifLogSection}>
           <View style={styles.notifLogHeader}>
             <Text style={styles.geofenceDiagnosticsTitle}>Notification pipeline log</Text>
             <Pressable
@@ -732,7 +790,7 @@ export default function SettingsScreen() {
               </View>
             ))
           )}
-        </View>
+        </View>}
 
         <Text style={styles.privacyNote}>
           Your location is compared only against your saved stores' coordinates —
@@ -765,10 +823,17 @@ export default function SettingsScreen() {
           <Text style={styles.statLabel}>App</Text>
           <Text style={styles.statValue}>Stokit V2</Text>
         </View>
-        <View style={styles.statRow}>
+        <Pressable style={styles.statRow} onPress={handleDevTap} accessibilityRole="button" accessibilityLabel="Version info">
           <Text style={styles.statLabel}>Version</Text>
-          <Text style={styles.statValue}>{Constants.expoConfig?.version ?? '0.1.0'} (OTA {OTA_SEQ})</Text>
-        </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={styles.statValue}>{Constants.expoConfig?.version ?? '0.1.0'} (OTA {OTA_SEQ})</Text>
+            {devMode && (
+              <View style={styles.devModeBadge}>
+                <Text style={styles.devModeBadgeText}>DEV</Text>
+              </View>
+            )}
+          </View>
+        </Pressable>
         <View style={styles.statRow}>
           <Text style={styles.statLabel}>Build</Text>
           <Text style={styles.statValue}>
@@ -935,6 +1000,13 @@ function makeStyles(colors: AppColors) {
     },
     statLabel: { fontFamily: fonts.sans, fontSize: 15, color: colors.inkSoft, flex: 1, flexShrink: 1 },
     statValue: { fontFamily: fonts.monoMedium, fontSize: 14, color: colors.ink, flexShrink: 1, textAlign: 'right' },
+    devModeBadge: {
+      backgroundColor: colors.primary,
+      borderRadius: 4,
+      paddingHorizontal: 5,
+      paddingVertical: 2,
+    },
+    devModeBadgeText: { fontFamily: fonts.sansSemibold, fontSize: 10, color: '#fff', letterSpacing: 0.5 },
     toggleRow: {
       flexDirection: 'row',
       alignItems: 'flex-start',
