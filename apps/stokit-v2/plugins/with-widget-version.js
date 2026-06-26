@@ -39,6 +39,8 @@ module.exports = function withWidgetVersion(config) {
       parsed.CFBundlePackageType = 'XPC!';
       parsed.CFBundleName = '$(PRODUCT_NAME)';
       parsed.CFBundleDisplayName = 'Low Stock';
+      parsed.CFBundleShortVersionString = config.version ?? '1.0.0';
+      parsed.CFBundleVersion = String(config.ios?.buildNumber ?? '73');
       fs.writeFileSync(infoPlistPath, plist.build(parsed));
       return modConfig;
     },

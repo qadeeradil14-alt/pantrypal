@@ -55,3 +55,7 @@ graphify-out/
 
 # QA / build artifacts
 *.pdf
+apps/**/*.ipa
+
+# screenshot/photo drop folder (Shortcuts automation target)
+/.inbox/

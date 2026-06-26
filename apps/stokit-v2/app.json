@@ -13,7 +13,7 @@
       "supportsTablet": false,
       "icon": "./assets/icon-dark.png",
       "bundleIdentifier": "com.hewadadil.pantrypal",
-      "buildNumber": "74",
+      "buildNumber": "107",
       "deploymentTarget": "16.4",
       "appleTeamId": "4AJ8TH5QF7",
       "infoPlist": {
@@ -117,7 +117,7 @@
       [
         "./plugins/with-ios-xcode27-build-settings",
         {
-          "buildNumber": "74",
+          "buildNumber": "107",
           "deploymentTarget": "16.4"
         }
       ]
@@ -131,7 +131,10 @@
       "enabled": true,
       "url": "https://u.expo.dev/3d19b1e1-1003-4e33-8929-2d27e7fd7f3c",
       "fallbackToCacheTimeout": 10000,
-      "checkAutomatically": "ON_LOAD"
+      "checkAutomatically": "ON_LOAD",
+      "requestHeaders": {
+        "expo-channel-name": "production"
+      }
     },
     "runtimeVersion": {
       "policy": "appVersion"
