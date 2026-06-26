@@ -778,6 +778,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
 // ── 2. Receipt input (V1 spend-sheet style) ───────────────────────────────────
 
 function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubProps) {
+  const { isDark } = useTheme();
   const storeId   = currentStoreId(session)!;
   const store     = storeById(storeId);
   const [amount, setAmount] = useState('');
@@ -1000,7 +1001,7 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
               placeholder="0.00"
               placeholderTextColor={colors.muted}
               keyboardType="decimal-pad"
-              keyboardAppearance="dark"
+              keyboardAppearance={isDark ? 'dark' : 'light'}
               returnKeyType="done"
               onSubmitEditing={save}
               style={rStyles.amountInput}
