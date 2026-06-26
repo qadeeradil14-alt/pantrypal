@@ -1,38 +1,57 @@
 import type { PantryItem, Store } from '../../types';
 
+/**
+ * True while a pantry item still keeps its assigned store "needed" for arrival
+ * reminders — i.e. it is assigned to a store and has not yet been purchased /
+ * picked up.
+ *
+ * Low/expiring status is pantry *intelligence* (restock hints, suggestions) and
+ * must NOT be a geofence requirement: a normal `stocked` item the user manually
+ * assigned to a store (e.g. "ice cream" at 7-Eleven) is a real shopping
+ * intention and should still trigger an arrival reminder. Only `purchased`
+ * (completed / picked up) drops a store from eligibility.
+ */
+export function isActivePantryItem(item: PantryItem): boolean {
+  return item.storeId != null && item.status !== 'purchased';
+}
+
 export function geofenceableStores(
   stores: Store[],
   limit: number,
   items: PantryItem[] = [],
 ): Store[] {
-  const qualifyingStoreIds = new Set(
-    items
-      .filter((item) => item.storeId && (item.status === 'low' || item.status === 'expiring'))
-      .map((item) => item.storeId),
+  const activeStoreIds = new Set(
+    items.filter(isActivePantryItem).map((item) => item.storeId),
   );
-  const withQualifyingItems: Store[] = [];
-  const withoutQualifyingItems: Store[] = [];
-
-  stores
-    .filter((store) => store.lat != null && store.lng != null)
-    .forEach((store) => {
-      if (qualifyingStoreIds.has(store.id)) withQualifyingItems.push(store);
-      else withoutQualifyingItems.push(store);
-    });
-
-  return [...withQualifyingItems, ...withoutQualifyingItems].slice(0, limit);
+  return stores
+    .filter((store) =>
+      Number.isFinite(store.lat) &&
+      Number.isFinite(store.lng) &&
+      activeStoreIds.has(store.id)
+    )
+    .slice(0, limit);
 }
 
 export function arrivalItemCount(items: PantryItem[], storeId: string): number {
   return items.filter(
-    (item) =>
-      item.storeId === storeId &&
-      (item.status === 'low' || item.status === 'expiring'),
+    (item) => item.storeId === storeId && item.status !== 'purchased',
   ).length;
 }
 
+/**
+ * Names of the active (non-purchased) items assigned to a single store, in
+ * pantry order. Uses the exact same predicate as arrivalItemCount so the names
+ * shown in an arrival notification always match its count — and only ever
+ * describe the ONE matched store, never an aggregate across stores.
+ */
+export function arrivalItemNames(items: PantryItem[], storeId: string): string[] {
+  return items
+    .filter((item) => item.storeId === storeId && item.status !== 'purchased')
+    .map((item) => item.name);
+}
+
 /** Straight-line distance between two GPS coordinates in metres. */
-function haversineMetres(lat1: number, lng1: number, lat2: number, lng2: number): number {
+export function haversineMetres(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6_371_000;
   const φ1 = (lat1 * Math.PI) / 180;
   const φ2 = (lat2 * Math.PI) / 180;
@@ -58,7 +77,33 @@ export function isNearestStore(storeId: string, stores: Store[], lat: number, ln
   return nearest.id === storeId;
 }
 
-export type ArrivalRejectionReason = 'no_assigned_items' | 'out_of_radius' | 'cooldown';
+/**
+ * Minimum distance advantage (metres) the closest eligible store must have
+ * over the second-closest before we consider the match unambiguous.
+ *
+ * Rationale: Sam's Club and Walmart Supercenter can share a parking lot.
+ * Their centroids are typically 100–300 m apart, but GPS accuracy under
+ * canopy can be ±50 m. A 50 m margin prevents the wrong store winning when
+ * both are inside the 200 m geofence radius and the GPS fix might snap to
+ * the wrong centroid.
+ *
+ * If the gap between #1 and #2 is < AMBIGUITY_MARGIN_M the notification is
+ * suppressed and `ambiguous: true` is returned instead.
+ */
+export const AMBIGUITY_MARGIN_M = 50;
+
+export type ArrivalRejectionReason =
+  | 'no_assigned_items'
+  | 'out_of_radius'
+  | 'cooldown'
+  | 'ambiguous_nearby_store';
+
+/** A single candidate store with its computed distance. */
+export interface StoreCandidate {
+  storeId: string;
+  storeName: string;
+  distanceMetres: number;
+}
 
 export interface ArrivalDecision {
   accepted: boolean;
@@ -66,6 +111,16 @@ export interface ArrivalDecision {
   storeName?: string;
   distanceMetres?: number;
   reason?: ArrivalRejectionReason;
+  /**
+   * All eligible assigned stores within radius, sorted by distance (nearest first).
+   * Populated on every call regardless of accepted/rejected to enable diagnostics.
+   */
+  nearbyCandidates: StoreCandidate[];
+  /**
+   * True when two or more eligible stores are so close together that picking
+   * one over the other is not reliable. Notification is suppressed.
+   */
+  ambiguous: boolean;
 }
 
 export interface ArrivalDecisionInput {
@@ -85,48 +140,91 @@ export interface ArrivalDecisionInput {
  * Shared by the native background geofence path and any foreground/app-resume
  * fallback, so both triggers agree on assignment, radius, and cooldown rules
  * instead of drifting apart with their own ad hoc checks.
+ *
+ * Ambiguity guard: if two or more eligible stores are within `radiusMetres`
+ * AND the distance gap between the nearest and second-nearest is less than
+ * AMBIGUITY_MARGIN_M, we return `accepted: false, reason: 'ambiguous_nearby_store'`
+ * rather than risking a wrong store notification (the Sam's Club / Walmart bug).
  */
 export function decideStoreArrival(input: ArrivalDecisionInput): ArrivalDecision {
   const { lat, lng, stores, items, radiusMetres, cooldownMs, lastArrivalAt, now = Date.now() } = input;
 
   const assignedStoreIds = new Set(
-    items
-      .filter((item) => item.storeId && (item.status === 'low' || item.status === 'expiring'))
-      .map((item) => item.storeId as string),
+    items.filter(isActivePantryItem).map((item) => item.storeId as string),
   );
 
-  const nearest = stores
+  // Build a sorted list of all eligible (assigned + coordinates) stores within radius.
+  const candidates: StoreCandidate[] = stores
     .filter((s) => s.lat != null && s.lng != null && assignedStoreIds.has(s.id))
-    .map((s) => ({ store: s, distance: haversineMetres(lat, lng, s.lat!, s.lng!) }))
-    .sort((a, b) => a.distance - b.distance)[0];
+    .map((s) => ({
+      storeId: s.id,
+      storeName: s.name,
+      distanceMetres: haversineMetres(lat, lng, s.lat!, s.lng!),
+    }))
+    .sort((a, b) => a.distanceMetres - b.distanceMetres);
 
-  if (!nearest) return { accepted: false, reason: 'no_assigned_items' };
+  // No eligible stores at all.
+  if (candidates.length === 0) {
+    return { accepted: false, reason: 'no_assigned_items', nearbyCandidates: [], ambiguous: false };
+  }
 
-  if (nearest.distance > radiusMetres) {
+  const nearest = candidates[0];
+
+  // Nearest eligible store is outside the geofence radius.
+  if (nearest.distanceMetres > radiusMetres) {
     return {
       accepted: false,
       reason: 'out_of_radius',
-      storeId: nearest.store.id,
-      storeName: nearest.store.name,
-      distanceMetres: nearest.distance,
+      storeId: nearest.storeId,
+      storeName: nearest.storeName,
+      distanceMetres: nearest.distanceMetres,
+      nearbyCandidates: candidates,
+      ambiguous: false,
     };
   }
 
-  const lastArrival = lastArrivalAt[nearest.store.id] ?? 0;
+  // Collect all candidates actually inside the radius (the ones that could plausibly
+  // be the store the user has arrived at given GPS uncertainty).
+  const withinRadius = candidates.filter((c) => c.distanceMetres <= radiusMetres);
+
+  // Ambiguity check: if a second eligible store is also within radius AND its distance
+  // advantage over the nearest is less than AMBIGUITY_MARGIN_M, we cannot reliably
+  // tell which store the user arrived at. Suppress the notification.
+  if (withinRadius.length >= 2) {
+    const gap = withinRadius[1].distanceMetres - nearest.distanceMetres;
+    if (gap < AMBIGUITY_MARGIN_M) {
+      return {
+        accepted: false,
+        reason: 'ambiguous_nearby_store',
+        storeId: nearest.storeId,
+        storeName: nearest.storeName,
+        distanceMetres: nearest.distanceMetres,
+        nearbyCandidates: candidates,
+        ambiguous: true,
+      };
+    }
+  }
+
+  // Cooldown check.
+  const lastArrival = lastArrivalAt[nearest.storeId] ?? 0;
   if (now - lastArrival < cooldownMs) {
     return {
       accepted: false,
       reason: 'cooldown',
-      storeId: nearest.store.id,
-      storeName: nearest.store.name,
-      distanceMetres: nearest.distance,
+      storeId: nearest.storeId,
+      storeName: nearest.storeName,
+      distanceMetres: nearest.distanceMetres,
+      nearbyCandidates: candidates,
+      ambiguous: false,
     };
   }
 
   return {
     accepted: true,
-    storeId: nearest.store.id,
-    storeName: nearest.store.name,
-    distanceMetres: nearest.distance,
+    storeId: nearest.storeId,
+    storeName: nearest.storeName,
+    distanceMetres: nearest.distanceMetres,
+    nearbyCandidates: candidates,
+    ambiguous: false,
   };
 }

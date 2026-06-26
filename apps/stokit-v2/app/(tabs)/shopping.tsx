@@ -47,6 +47,7 @@ import { classifyItem, categoryLabel } from '../../core/services/itemClassifier'
 import { cheapestRecentPrice, itemPriceHistory, lastPriceAtStore } from '../../core/services/priceHistory';
 import { normalizeItemName } from '../../core/services/pantryItems';
 import { receiptContinuationEvent, renameReviewItem, reviewReceiptItems, unplannedStores } from '../../core/services/shoppingUx';
+import { isGeofencingRunning, startGeofencing } from '../../core/services/geofencing';
 import type { ReceiptReviewItem } from '../../core/services/shoppingUx';
 import type { PantryItem, ShoppingEntry, Store } from '../../types';
 import { useTheme } from '../../hooks/useTheme';
@@ -83,7 +84,8 @@ export default function ShoppingScreen() {
   const [showFirstStorePicker, setShowFirstStorePicker] = useState(false);
   const [reassignItem, setReassignItem] = useState<PantryItem | null>(null);
 
-  const { action } = useLocalSearchParams<{ action?: string }>();
+  const { action, arrivalStoreId } = useLocalSearchParams<{ action?: string; arrivalStoreId?: string }>();
+  const arrivalHandledRef = useRef(false);
   const [quickScanStorePicker, setQuickScanStorePicker] = useState(false);
   // Holds the storeId we want to skip to receipt once START_TRIP settles
   const [pendingQuickScanStore, setPendingQuickScanStore] = useState<string | null>(null);
@@ -163,15 +165,17 @@ export default function ShoppingScreen() {
     if (url) void Linking.openURL(url);
   };
 
-  const startTripAt = (firstStoreId: string) => {
+  const startTripAt = async (firstStoreId: string) => {
     setShowFirstStorePicker(false);
-    // Build entries in memory — never rely on post-updateItem Zustand timing.
     const shoppable = items.filter((i) => i.status === 'low' || i.status === 'expiring');
-    // Persist store assignment for previously unassigned items.
     shoppable
       .filter((i) => !i.storeId)
       .forEach((i) => updateItem(i.id, { storeId: firstStoreId }));
-    // Build a normalized list immediately (storeId ?? firstStoreId), don't wait for Zustand.
+    const nextItems = items.map((item) =>
+      shoppable.some((candidate) => candidate.id === item.id && !candidate.storeId)
+        ? { ...item, storeId: firstStoreId, updatedAt: Date.now() }
+        : item
+    );
     const byStore = new Map<string, ShoppingEntry[]>();
     for (const item of shoppable) {
       const sid = item.storeId ?? firstStoreId;
@@ -184,7 +188,35 @@ export default function ShoppingScreen() {
       if (sid !== firstStoreId) entries.push(...list);
     });
     dispatch({ type: 'START_TRIP', entries, now: Date.now() });
+    if (await isGeofencingRunning()) {
+      const result = await startGeofencing(stores, nextItems);
+      if (result === 'no_permission') {
+        Alert.alert('Location permission needed', 'Allow "Always" location access in Settings to enable store arrival reminders.');
+      } else if (result === 'no_notification_permission') {
+        Alert.alert('Notification permission needed', 'Allow notifications in Settings so Stokit can remind you when you arrive at a store.');
+      } else if (result === 'no_stores') {
+        Alert.alert('Arrival reminders paused', 'No stores in this trip have both GPS coordinates and assigned shopping items.');
+      } else if (result === 'expo_go') {
+        Alert.alert('Not available in Expo Go', 'Store arrival reminders need TestFlight or a device build.');
+      }
+    }
   };
+
+  // Geofence "hybrid" flow: a store_arrival notification tap deep-links here with
+  // arrivalStoreId. Auto-start the trip at that store via the SAME startTripAt
+  // engine (no duplicate logic) and skip the planning-mode picker. One-shot, and
+  // only when idle with shoppable items there — never hijack an active trip, and
+  // never start an empty trip (which would focus a different store).
+  useEffect(() => {
+    if (!arrivalStoreId || arrivalHandledRef.current) return;
+    arrivalHandledRef.current = true;
+    // Clear the param so back-nav / re-render never re-triggers the auto-start.
+    router.setParams({ arrivalStoreId: undefined });
+    if (session.status !== 'idle') return;            // don't hijack an in-progress trip
+    if (!plan.has(arrivalStoreId)) return;            // no low/expiring items there → land on idle
+    void startTripAt(arrivalStoreId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arrivalStoreId, session.status]);
 
   const handleResetShopping = () => {
     const shoppingItems = items.filter((i) => i.status === 'low' || i.status === 'expiring');
@@ -410,7 +442,7 @@ export default function ShoppingScreen() {
             return (
               <Pressable
                 key={storeId}
-                onPress={() => startTripAt(storeId)}
+                onPress={() => { void startTripAt(storeId); }}
                 style={({ pressed }) => [styles.firstStoreRow, pressed && { opacity: 0.7 }]}
               >
                 <StoreChip store={store} name={store?.name ?? 'Unknown Store'} size={44} />

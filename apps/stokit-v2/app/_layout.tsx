@@ -25,7 +25,7 @@ import { useTheme } from '../hooks/useTheme';
 import { useDurableStore } from '../store/durable-store';
 import { useHouseholdStore } from '../store/household-store';
 import { useSessionStore } from '../store/session-store';
-import { setupNotifications, registerPushToken } from '../core/services/notifications';
+import { setupNotifications, registerPushToken, appendNotificationLog } from '../core/services/notifications';
 import { isEmailVerified, useAuthStore } from '../store/auth-store';
 import { pullFromSupabase, startSyncEngine } from '../core/services/syncEngine';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -38,6 +38,11 @@ defineGeofenceTask(
   () => useDurableStore.getState().items,
   () => useDurableStore.getState().stores,
 );
+
+// Notification handler must also be registered at module level so it is active
+// during cold headless background launches (when React never mounts). This is
+// idempotent — calling it again from the useEffect below is safe.
+setupNotifications();
 
 // Eager OTA catch-up: runs while the loading spinner is visible.
 // If the native loader missed a new update (timeout or no network at boot),
@@ -101,11 +106,22 @@ export default function RootLayout() {
       (response) => {
         try {
           const data = response?.notification?.request?.content?.data as
-            | { type?: string; storeName?: string }
+            | { type?: string; storeName?: string; storeId?: string }
             | undefined;
           if (!data) return;
-          if (data.type === 'partner_arrival' || typeof data.storeName === 'string') {
-            router.push('/(tabs)/shopping');
+          if (data.type === 'store_arrival' || data.type === 'partner_arrival' || typeof data.storeName === 'string') {
+            const title = response?.notification?.request?.content?.title ?? 'unknown';
+            void appendNotificationLog('tapped', `title="${title}" type=${data.type ?? 'unknown'}`);
+            // Geofence "hybrid" flow: a local store_arrival carries the matched
+            // storeId, so open Shopping focused on that exact store and skip the
+            // planning-mode "where first?" picker. Partner-arrival pushes (no
+            // local storeId / not our own trip) still land on plain Shopping.
+            if (data.type === 'store_arrival' && typeof data.storeId === 'string') {
+              router.push({ pathname: '/(tabs)/shopping', params: { arrivalStoreId: data.storeId } });
+            } else {
+              router.push('/(tabs)/shopping');
+            }
+            void appendNotificationLog('shopping_opened', `navigated from notification tap`);
           }
         } catch {
           // Defensive — never let a malformed notification payload crash the app

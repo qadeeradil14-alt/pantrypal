@@ -185,6 +185,9 @@ export const useDurableStore = create<DurableStore>((set, get) => {
           pushActivity('marked_low', `${updated.name} marked low`, { itemId: updated.id });
         }
         persist();
+        // Merge can change storeId/status (e.g. re-adding an item with a new
+        // store assignment) — geofence eligibility is item-driven, so refresh.
+        void refreshGeofencedStoreData();
         return updated;
       }
       const item: PantryItem = {
@@ -205,6 +208,9 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         pushActivity('marked_low', `${item.name} marked low`, { itemId: item.id });
       }
       persist();
+      // A newly added item may be assigned to a store at creation, making
+      // that store newly eligible for arrival reminders.
+      void refreshGeofencedStoreData();
       return item;
     },
 
@@ -215,6 +221,9 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         ),
       }));
       persist();
+      // patch may change storeId and/or status — both affect geofence
+      // eligibility (assignment, status change, marking purchased, etc.).
+      void refreshGeofencedStoreData();
     },
 
     setItemStatus: (id, status) => {
@@ -228,11 +237,17 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         pushActivity('marked_low', `${item.name} marked low`, { itemId: id });
       }
       persist();
+      // Status changes (including marking purchased, or restoring to stocked)
+      // can add or remove a store from geofence eligibility.
+      void refreshGeofencedStoreData();
     },
 
     deleteItem: (id) => {
       set((s) => ({ items: s.items.filter((it) => it.id !== id) }));
       persist();
+      // Deleting the last active item assigned to a store removes that
+      // store's eligibility — re-register so it stops being monitored.
+      void refreshGeofencedStoreData();
     },
 
     addStore: (input) => {

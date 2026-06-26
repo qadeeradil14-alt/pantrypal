@@ -5,28 +5,51 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../../components/shared/Screen';
 import { Button, Card, PageTitle, SectionHeader } from '../../components/shared/ui';
-import { TextField, ChipSelect } from '../../components/shared/Field';
+import { ChipSelect } from '../../components/shared/Field';
 import { fonts, spacing, type AppColors } from '../../theme';
 import { useDurableStore } from '../../store/durable-store';
 import { useAuthStore } from '../../store/auth-store';
 import { useHouseholdStore } from '../../store/household-store';
+import { useSessionStore } from '../../store/session-store';
 import { CreateHouseholdSheet } from '../../components/household/CreateHouseholdSheet';
 import { JoinHouseholdSheet } from '../../components/household/JoinHouseholdSheet';
 import { InviteCodeCard } from '../../components/household/InviteCodeCard';
 import { MemberList } from '../../components/household/MemberList';
 import { useTheme } from '../../hooks/useTheme';
 import { clearLocalAppData } from '../../lib/local-data';
+import { OTA_SEQ } from '../../constants/version';
 import {
   startGeofencing,
   stopGeofencing,
-  isGeofencingRunning,
   isExpoGo,
+  isGeofencingRunning,
+  getGeofenceDiagnostics,
+  clearArrivalCooldown,
+  type GeofenceDiagnostics,
 } from '../../core/services/geofencing';
 import { geofenceableStores } from '../../core/services/geofencingLogic';
-import { registerPushToken } from '../../core/services/notifications';
+import {
+  notifyArrival,
+  registerPushToken,
+  getNotificationLog,
+  clearNotificationLog,
+  getNotificationDiagnostics,
+  type NotificationLogEntry,
+  type NotificationDiagnostics,
+} from '../../core/services/notifications';
 import type { Unit } from '../../types';
 
 const IOS_GEOFENCE_LIMIT = 20;
+
+function formatDiagnosticTime(value: number | null): string {
+  return value ? new Date(value).toLocaleString() : 'unavailable';
+}
+
+function formatRegistrationStatus(status: string): string {
+  if (status === 'running_existing') return 'active';
+  if (status === 'not_running') return 'not running';
+  return status;
+}
 
 const UNIT_OPTIONS: { value: Unit; label: string }[] = [
   { value: 'unit', label: 'unit' },
@@ -36,6 +59,19 @@ const UNIT_OPTIONS: { value: Unit; label: string }[] = [
   { value: 'pack', label: 'pack' },
 ];
 
+/** Map a notification log stage to a badge colour. */
+function stageColor(stage: NotificationLogEntry['stage'], colors: AppColors): string {
+  switch (stage) {
+    case 'requested': return colors.muted;
+    case 'scheduled': return colors.primary;
+    case 'schedule_error': return colors.danger;
+    case 'delivered': return colors.success;
+    case 'tapped': return colors.warning;
+    case 'shopping_opened': return colors.success;
+    default: return colors.muted;
+  }
+}
+
 export default function SettingsScreen() {
   const router = useRouter();
   const { isDark, toggle: toggleDark, colors } = useTheme();
@@ -44,6 +80,7 @@ export default function SettingsScreen() {
   const items = useDurableStore((s) => s.items);
   const stores = useDurableStore((s) => s.stores);
   const trips = useDurableStore((s) => s.trips);
+  const session = useSessionStore((s) => s.session);
   const household = useHouseholdStore((s) => s.household);
   const members = useHouseholdStore((s) => s.members);
   const syncStatus = useHouseholdStore((s) => s.syncStatus);
@@ -52,7 +89,6 @@ export default function SettingsScreen() {
 
   const myDisplayName = members.find((m) => m.isMe)?.displayName ?? 'Me';
 
-  const [name, setName] = useState(prefs.householdName);
   const [signingOut, setSigningOut] = useState(false);
   const [createVisible, setCreateVisible] = useState(false);
   const [joinVisible, setJoinVisible] = useState(false);
@@ -62,19 +98,37 @@ export default function SettingsScreen() {
   // ── Geofence toggle state ──────────────────────────────────────────────────
   const [geofenceOn, setGeofenceOn] = useState(false);
   const [geofenceLoading, setGeofenceLoading] = useState(false);
+  const [geofenceDiagnostics, setGeofenceDiagnostics] = useState<GeofenceDiagnostics | null>(null);
+  const [geofencingRunningNow, setGeofencingRunningNow] = useState<boolean | null>(null);
   const gpsStores = stores.filter((s) => s.lat != null && s.lng != null);
   const monitorableStores = geofenceableStores(stores, IOS_GEOFENCE_LIMIT, items);
-  const monitorableStoreIds = new Set(monitorableStores.map((store) => store.id));
-  const skippedStores = gpsStores.filter((store) => !monitorableStoreIds.has(store.id));
-  const hasQualifyingItem = (storeId: string) => items.some(
-    (item) => item.storeId === storeId && (item.status === 'low' || item.status === 'expiring'),
-  );
   const storesMissingLocation = stores.length - gpsStores.length;
   const inExpoGo = isExpoGo();
+  const activeShoppingTrip = session.status !== 'idle' && session.status !== 'trip_summary';
+
+  // ── Notification diagnostics state ────────────────────────────────────────
+  const [notifDiagnostics, setNotifDiagnostics] = useState<NotificationDiagnostics | null>(null);
+  const [notifLog, setNotifLog] = useState<NotificationLogEntry[]>([]);
+  const [testNotifStatus, setTestNotifStatus] = useState<string | null>(null);
+  const [testNotifLoading, setTestNotifLoading] = useState(false);
+
+  const refreshDiagnostics = useCallback(async () => {
+    const [diagnostics, running, nd, log] = await Promise.all([
+      getGeofenceDiagnostics(stores, items, activeShoppingTrip),
+      isGeofencingRunning(),
+      getNotificationDiagnostics(),
+      getNotificationLog(),
+    ]);
+    setGeofenceDiagnostics(diagnostics);
+    setGeofenceOn(diagnostics.storeArrivalRemindersOn);
+    setGeofencingRunningNow(running);
+    setNotifDiagnostics(nd);
+    setNotifLog(log);
+  }, [stores, items, activeShoppingTrip]);
 
   useEffect(() => {
-    isGeofencingRunning().then(setGeofenceOn).catch(() => {});
-  }, []);
+    void refreshDiagnostics();
+  }, [refreshDiagnostics]);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -141,8 +195,44 @@ export default function SettingsScreen() {
       }
     } finally {
       setGeofenceLoading(false);
+      void refreshDiagnostics();
     }
-  }, [stores, items, gpsStores.length, inExpoGo]);
+  }, [stores, items, gpsStores.length, refreshDiagnostics]);
+
+  // ── Test notification handler ─────────────────────────────────────────────
+  const sendTestArrivalNotification = useCallback(async () => {
+    setTestNotifLoading(true);
+    setTestNotifStatus(null);
+    try {
+      // Pick first eligible store, or fall back to a placeholder so the test
+      // exercises the exact same code path as a real geofence arrival.
+      const targetStore = monitorableStores[0];
+      const storeName = targetStore?.name ?? 'Test Store';
+      const itemNames = targetStore
+        ? items
+            .filter((i) => i.storeId === targetStore.id && i.status !== 'purchased')
+            .map((i) => i.name)
+        : ['Test item'];
+      const itemCount = Math.max(1, itemNames.length);
+      // notifyArrival with source='test' — identical code path to geofence arrival,
+      // including the store-specific item names and storeId payload.
+      const result = await notifyArrival(storeName, itemCount, 'test', {
+        storeId: targetStore?.id,
+        itemNames,
+      });
+      if (result.ok) {
+        setTestNotifStatus(`✓ Scheduled — ${result.result}`);
+      } else {
+        setTestNotifStatus(`✗ Failed — ${result.result}`);
+      }
+    } catch (err) {
+      setTestNotifStatus(`✗ Error — ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setTestNotifLoading(false);
+      // Refresh diagnostics so pending count updates
+      void refreshDiagnostics();
+    }
+  }, [monitorableStores, items, refreshDiagnostics]);
 
   const confirmReset = () => {
     if (household && !household.isPersonal && household.role !== 'owner') {
@@ -389,7 +479,7 @@ export default function SettingsScreen() {
               ? 'Coming soon'
               : gpsStores.length === 0
               ? `Add stores via "Find nearby" to enable`
-              : `Active for ${gpsStores.length} store${gpsStores.length === 1 ? '' : 's'}`
+              : `Ready for ${monitorableStores.length} assigned store${monitorableStores.length === 1 ? '' : 's'}`
           }
           value={geofenceOn}
           onValueChange={toggleGeofence}
@@ -404,58 +494,250 @@ export default function SettingsScreen() {
             {storesMissingLocation === 1 ? 's' : ''} a location before arrival alerts can work.
           </Text>
         )}
+
+        {/* ── TEST ARRIVAL NOTIFICATION BUTTON ─────────────────────────── */}
+        <View style={styles.testNotifSection}>
+          <Text style={styles.testNotifHeading}>Test arrival notification</Text>
+          <Text style={styles.testNotifNote}>
+            Fires the exact same notification as a real geofence arrival. Lock your screen first — if the banner appears, the notification pipeline works.
+          </Text>
+          <Pressable
+            style={[styles.testNotifButton, testNotifLoading && { opacity: 0.6 }]}
+            onPress={() => void sendTestArrivalNotification()}
+            disabled={testNotifLoading}
+            accessibilityRole="button"
+            accessibilityLabel="Send test arrival notification"
+          >
+            <Ionicons name="notifications-outline" size={16} color="#fff" />
+            <Text style={styles.testNotifButtonText}>
+              {testNotifLoading ? 'Sending…' : 'Send Test Arrival Notification'}
+            </Text>
+          </Pressable>
+          {testNotifStatus ? (
+            <Text
+              style={[
+                styles.testNotifResult,
+                testNotifStatus.startsWith('✓') ? { color: colors.success } : { color: colors.danger },
+              ]}
+            >
+              {testNotifStatus}
+            </Text>
+          ) : null}
+        </View>
+
+        {/* ── DIAGNOSTICS ───────────────────────────────────────────────── */}
         <View style={styles.geofenceDiagnostics}>
           <Text style={styles.geofenceDiagnosticsTitle}>Arrival alert diagnostics</Text>
-          <View style={styles.statRow}>
-            <Text style={styles.statLabel}>GPS-ready stores</Text>
-            <Text style={styles.statValue}>{gpsStores.length}</Text>
-          </View>
-          <View style={styles.statRow}>
-            <Text style={styles.statLabel}>iOS can monitor</Text>
-            <Text style={styles.statValue}>First {IOS_GEOFENCE_LIMIT}</Text>
-          </View>
-          <View style={styles.statRow}>
-            <Text style={styles.statLabel}>Stores over the limit</Text>
-            <Text style={styles.statValue}>{skippedStores.length}</Text>
-          </View>
+
+          {/* System */}
+          <Text style={styles.geofenceDiagnosticsHeading}>System</Text>
+          <DiagRow label="iOS version" value={String(Platform.Version)} colors={colors} styles={styles} />
+          <DiagRow label="Build type" value={inExpoGo ? 'Expo Go' : 'Standalone'} colors={colors} styles={styles} />
+          <DiagRow label="OTA build" value={`OTA ${OTA_SEQ}`} colors={colors} styles={styles} />
+
+          {/* Permissions */}
+          <Text style={styles.geofenceDiagnosticsHeading}>Permissions</Text>
+          <DiagRow
+            label="Location (FG / BG)"
+            value={`${geofenceDiagnostics?.foregroundPermission ?? '…'} / ${geofenceDiagnostics?.backgroundPermission ?? '…'}`}
+            colors={colors}
+            styles={styles}
+          />
+          <DiagRow label="Notifications" value={geofenceDiagnostics?.notificationPermission ?? '…'} colors={colors} styles={styles} />
+
+          {/* Geofencing */}
+          <Text style={styles.geofenceDiagnosticsHeading}>Geofencing</Text>
+          <DiagRow
+            label="Running now (live)"
+            value={geofencingRunningNow === null ? '…' : geofencingRunningNow ? 'YES' : 'NO'}
+            highlight={geofencingRunningNow === true}
+            colors={colors}
+            styles={styles}
+          />
+          <DiagRow label="Store Arrival Reminders" value={geofenceDiagnostics?.storeArrivalRemindersOn ? 'On' : 'Off'} colors={colors} styles={styles} />
+          <DiagRow label="Active shopping trip" value={geofenceDiagnostics?.activeShoppingTrip ? 'Yes' : 'No'} colors={colors} styles={styles} />
+          {geofenceDiagnostics?.storeArrivalRemindersOn && !geofenceDiagnostics?.activeShoppingTrip && (
+            <Text style={styles.geofenceDiagnosticsEmpty}>
+              Shopping trip inactive — arrival reminders still active.
+            </Text>
+          )}
+          <DiagRow label="Monitored stores" value={String(geofenceDiagnostics?.monitoredStoresCount ?? 0)} colors={colors} styles={styles} />
+          <DiagRow label="Stores considered / eligible" value={`${geofenceDiagnostics?.storesConsideredCount ?? 0} / ${geofenceDiagnostics?.eligibleStoresCount ?? 0}`} colors={colors} styles={styles} />
+          {geofenceDiagnostics?.registrationOutOfDate && (
+            <Text style={styles.locationWarning}>Geofence registration may be out of date.</Text>
+          )}
+
+          {/* Registration — values written during last startGeofencing() call */}
+          <Text style={styles.geofenceDiagnosticsHeading}>Registration (last attempt)</Text>
+          <DiagRow
+            label="startGeofencingAsync called"
+            value={geofenceDiagnostics?.startGeofencingCalled ? 'yes' : 'no'}
+            colors={colors}
+            styles={styles}
+          />
+          <DiagRow label="Regions passed" value={String(geofenceDiagnostics?.regionsPassedCount ?? 0)} colors={colors} styles={styles} />
+          <DiagRow label="Result" value={geofenceDiagnostics?.registrationResult ?? 'not_attempted'} colors={colors} styles={styles} />
+          <DiagRow label="Last attempt at" value={formatDiagnosticTime(geofenceDiagnostics?.lastRegistrationAttemptAt ?? null)} colors={colors} styles={styles} />
+          {geofenceDiagnostics?.registrationError ? (
+            <DiagRow label="Error" value={geofenceDiagnostics.registrationError} danger colors={colors} styles={styles} />
+          ) : null}
+
+          {/* Arrival precision — populated after each geofence Enter event */}
+          <Text style={styles.geofenceDiagnosticsHeading}>Last arrival event</Text>
+          <DiagRow
+            label="Entered region ID"
+            value={geofenceDiagnostics?.lastEnteredRegionId ?? '—'}
+            colors={colors}
+            styles={styles}
+          />
+          <DiagRow
+            label="Matched store"
+            value={geofenceDiagnostics?.lastMatchedStoreName ?? '—'}
+            colors={colors}
+            styles={styles}
+          />
+          <DiagRow
+            label="Distance to match"
+            value={geofenceDiagnostics?.lastMatchedDistanceM != null
+              ? `${geofenceDiagnostics.lastMatchedDistanceM.toFixed(0)} m`
+              : '—'}
+            colors={colors}
+            styles={styles}
+          />
+          <DiagRow
+            label="Ambiguity decision"
+            value={geofenceDiagnostics?.lastAmbiguityDecision ?? '—'}
+            highlight={geofenceDiagnostics?.lastAmbiguityDecision === 'clear'}
+            danger={geofenceDiagnostics?.lastAmbiguityDecision === 'ambiguous'}
+            colors={colors}
+            styles={styles}
+          />
+          <DiagRow
+            label="Notification store"
+            value={geofenceDiagnostics?.lastNotificationStoreName ?? '—'}
+            highlight={geofenceDiagnostics?.lastNotificationStoreName != null}
+            colors={colors}
+            styles={styles}
+          />
+          {(geofenceDiagnostics?.lastNearbyCandidates?.length ?? 0) > 0 ? (
+            <Text style={styles.geofenceDiagnosticsStore}>
+              Nearby candidates:{'\n'}
+              {geofenceDiagnostics!.lastNearbyCandidates.map(
+                (c) => `  ${c.storeName}: ${c.distanceMetres.toFixed(0)} m`,
+              ).join('\n')}
+            </Text>
+          ) : (
+            <Text style={styles.geofenceDiagnosticsEmpty}>No arrival events recorded yet.</Text>
+          )}
+
+          {/* Notification handler */}
+          <Text style={styles.geofenceDiagnosticsHeading}>Notification handler</Text>
+          <DiagRow label="shouldShowBanner" value={notifDiagnostics?.handlerShouldShowBanner ? 'true' : 'false'} highlight={notifDiagnostics?.handlerShouldShowBanner} colors={colors} styles={styles} />
+          <DiagRow label="shouldPlaySound" value={notifDiagnostics?.handlerShouldPlaySound ? 'true' : 'false'} highlight={notifDiagnostics?.handlerShouldPlaySound} colors={colors} styles={styles} />
+          <DiagRow label="shouldShowList" value={notifDiagnostics?.handlerShouldShowList ? 'true' : 'false'} colors={colors} styles={styles} />
+          <DiagRow label="interruptionLevel" value="active" highlight colors={colors} styles={styles} />
+
+          {/* Notification counts */}
+          <Text style={styles.geofenceDiagnosticsHeading}>Notification counts</Text>
+          <DiagRow label="Pending" value={notifDiagnostics !== null ? String(notifDiagnostics.pendingCount) : '…'} colors={colors} styles={styles} />
+          <DiagRow label="Delivered (iOS)" value={notifDiagnostics !== null ? String(notifDiagnostics.deliveredCount) : '…'} colors={colors} styles={styles} />
+
+          {/* Last notification response */}
+          {notifDiagnostics?.lastResponseTitle ? (
+            <>
+              <Text style={styles.geofenceDiagnosticsHeading}>Last tapped notification</Text>
+              <DiagRow label="Title" value={notifDiagnostics.lastResponseTitle} colors={colors} styles={styles} />
+              <DiagRow label="Body" value={notifDiagnostics.lastResponseBody ?? '—'} colors={colors} styles={styles} />
+              <DiagRow label="At" value={formatDiagnosticTime(notifDiagnostics.lastResponseTs)} colors={colors} styles={styles} />
+            </>
+          ) : null}
+
           <Text style={styles.geofenceDiagnosticsNote}>
-            Reminder: a store also needs at least one low or expiring assigned item before an
-            arrival notification can appear.
+            iOS can monitor up to {IOS_GEOFENCE_LIMIT} regions. Stores need coordinates and at least one assigned active item (not yet purchased).
           </Text>
 
-          <Text style={styles.geofenceDiagnosticsHeading}>Monitorable stores (first 20)</Text>
-          {monitorableStores.length === 0 ? (
-            <Text style={styles.geofenceDiagnosticsEmpty}>No GPS-ready stores.</Text>
-          ) : monitorableStores.map((store) => (
-            <Text key={store.id} style={styles.geofenceDiagnosticsStore}>
-              {store.name} — GPS ready — {hasQualifyingItem(store.id)
-                ? 'has shopping item'
-                : 'no qualifying item'}
-            </Text>
-          ))}
-
-          {skippedStores.length > 0 && (
-            <>
-              <Text
-                style={[styles.geofenceDiagnosticsHeading, { color: colors.danger }]}
-              >
-                Not monitored due to iOS 20-store limit
+          {/* Monitored stores detail */}
+          <Text style={styles.geofenceDiagnosticsHeading}>Monitored stores</Text>
+          {(geofenceDiagnostics?.stores.length ?? 0) === 0 ? (
+            <Text style={styles.geofenceDiagnosticsEmpty}>No assigned GPS-ready stores.</Text>
+          ) : geofenceDiagnostics?.stores.map((store) => {
+            const now = Date.now();
+            const inCooldown = store.cooldownEndsAt != null && store.cooldownEndsAt > now;
+            return (
+              <Text key={store.id} style={styles.geofenceDiagnosticsStore}>
+                {store.name} · eligible {store.eligible ? 'yes' : 'no'}{inCooldown ? ' ⏱ COOLDOWN' : ''}{`\n`}
+                {store.itemCount} item{store.itemCount === 1 ? '' : 's'} · {store.latitude?.toFixed(5) ?? 'invalid'}, {store.longitude?.toFixed(5) ?? 'invalid'} · {store.radius}m{`\n`}
+                {formatRegistrationStatus(store.registrationStatus)} · registered {formatDiagnosticTime(store.lastRegisteredAt)}{`\n`}
+                enter {store.lastEnterAt ? new Date(store.lastEnterAt).toLocaleString() : 'never'} · exit {store.lastExitAt ? new Date(store.lastExitAt).toLocaleString() : 'never'}{`\n`}
+                notification {store.lastNotificationResult ?? 'none'}{store.lastNotificationAt ? ` @ ${new Date(store.lastNotificationAt).toLocaleString()}` : ''}{store.lastNotificationAppState ? ` [${store.lastNotificationAppState}]` : ''}{`\n`}
+                {inCooldown ? `cooldown ends ${new Date(store.cooldownEndsAt!).toLocaleTimeString()}` : 'no cooldown'}
               </Text>
-              {skippedStores.map((store) => (
-                <Text key={store.id} style={styles.geofenceDiagnosticsStore}>
-                  {store.name} — GPS ready — {hasQualifyingItem(store.id)
-                    ? 'has shopping item'
-                    : 'no qualifying item'}
+            );
+          })}
+
+          {(geofenceDiagnostics?.skippedStores.length ?? 0) > 0 && (
+            <>
+              <Text style={[styles.geofenceDiagnosticsHeading, { color: colors.danger }]}>Not monitored</Text>
+              {geofenceDiagnostics?.skippedStores.map((store) => (
+                <Text key={`diagnostic-${store.id}`} style={styles.geofenceDiagnosticsStore}>
+                  {store.name} — {store.skippedReason}
                 </Text>
               ))}
             </>
           )}
+          {geofenceDiagnostics?.lastError ? (
+            <Text style={[styles.geofenceDiagnosticsStore, { color: colors.danger }]}>
+              Last error: {geofenceDiagnostics.lastError}
+            </Text>
+          ) : null}
+
+          {/* ── RESET COOLDOWN ──────────────────────────────────────── */}
+          <Pressable
+            style={styles.cooldownResetButton}
+            onPress={() => void clearArrivalCooldown().then(() => void refreshDiagnostics())}
+            accessibilityRole="button"
+            accessibilityLabel="Reset arrival cooldown"
+          >
+            <Ionicons name="refresh-outline" size={13} color={colors.primary} />
+            <Text style={styles.cooldownResetText}>Reset arrival cooldown (3 min)</Text>
+          </Pressable>
         </View>
+
+        {/* ── NOTIFICATION PIPELINE LOG ─────────────────────────────────── */}
+        <View style={styles.notifLogSection}>
+          <View style={styles.notifLogHeader}>
+            <Text style={styles.geofenceDiagnosticsTitle}>Notification pipeline log</Text>
+            <Pressable
+              onPress={() => void clearNotificationLog().then(() => setNotifLog([]))}
+              accessibilityRole="button"
+              accessibilityLabel="Clear notification log"
+            >
+              <Text style={styles.notifLogClear}>Clear</Text>
+            </Pressable>
+          </View>
+          {notifLog.length === 0 ? (
+            <Text style={styles.geofenceDiagnosticsEmpty}>
+              No log entries yet. Send a test notification or trigger a geofence arrival.
+            </Text>
+          ) : (
+            [...notifLog].reverse().map((entry, i) => (
+              <View key={i} style={styles.notifLogEntry}>
+                <View style={[styles.notifLogBadge, { backgroundColor: stageColor(entry.stage, colors) }]}>
+                  <Text style={styles.notifLogBadgeText}>{entry.stage}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.notifLogTs}>{new Date(entry.ts).toLocaleTimeString()}</Text>
+                  <Text style={styles.notifLogDetail} numberOfLines={3}>{entry.detail}</Text>
+                </View>
+              </View>
+            ))
+          )}
+        </View>
+
         <Text style={styles.privacyNote}>
           Your location is compared only against your saved stores' coordinates —
           Stokit doesn't track or save a history of where you've been. When you
-          arrive somewhere on your list, you'll get a reminder, and if you share a
-          household, other members may also be notified that you've arrived.
+          arrive somewhere on your list, you'll get a reminder on this device.
         </Text>
       </Card>
 
@@ -485,7 +767,7 @@ export default function SettingsScreen() {
         </View>
         <View style={styles.statRow}>
           <Text style={styles.statLabel}>Version</Text>
-          <Text style={styles.statValue}>{Constants.expoConfig?.version ?? '0.1.0'}</Text>
+          <Text style={styles.statValue}>{Constants.expoConfig?.version ?? '0.1.0'} (OTA {OTA_SEQ})</Text>
         </View>
         <View style={styles.statRow}>
           <Text style={styles.statLabel}>Build</Text>
@@ -540,6 +822,38 @@ function ToggleRow({
         thumbColor={colors.ink}
         ios_backgroundColor={colors.border}
       />
+    </View>
+  );
+}
+
+/** A single label/value diagnostic row with optional highlight and danger states. */
+function DiagRow({
+  label,
+  value,
+  highlight,
+  danger,
+  colors,
+  styles,
+}: {
+  label: string;
+  value: string;
+  highlight?: boolean;
+  danger?: boolean;
+  colors: AppColors;
+  styles: any;
+}) {
+  return (
+    <View style={styles.statRow}>
+      <Text style={styles.statLabel}>{label}</Text>
+      <Text
+        style={[
+          styles.statValue,
+          highlight && { color: colors.success },
+          danger && { color: colors.danger },
+        ]}
+      >
+        {value}
+      </Text>
     </View>
   );
 }
@@ -616,10 +930,11 @@ function makeStyles(colors: AppColors) {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
+      gap: spacing.sm,
       paddingVertical: spacing.sm,
     },
-    statLabel: { fontFamily: fonts.sans, fontSize: 15, color: colors.inkSoft },
-    statValue: { fontFamily: fonts.monoMedium, fontSize: 14, color: colors.ink },
+    statLabel: { fontFamily: fonts.sans, fontSize: 15, color: colors.inkSoft, flex: 1, flexShrink: 1 },
+    statValue: { fontFamily: fonts.monoMedium, fontSize: 14, color: colors.ink, flexShrink: 1, textAlign: 'right' },
     toggleRow: {
       flexDirection: 'row',
       alignItems: 'flex-start',
@@ -635,6 +950,48 @@ function makeStyles(colors: AppColors) {
       lineHeight: 18,
       marginTop: spacing.xs,
     },
+    // ── Test notification section ──────────────────────────────────────────
+    testNotifSection: {
+      marginTop: spacing.md,
+      paddingTop: spacing.md,
+      borderTopWidth: 1,
+      borderTopColor: colors.borderSoft,
+    },
+    testNotifHeading: {
+      fontFamily: fonts.sansSemibold,
+      fontSize: 14,
+      color: colors.ink,
+      marginBottom: spacing.xs,
+    },
+    testNotifNote: {
+      fontFamily: fonts.sans,
+      fontSize: 12,
+      color: colors.muted,
+      lineHeight: 18,
+      marginBottom: spacing.md,
+    },
+    testNotifButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      backgroundColor: colors.primary,
+      borderRadius: 10,
+      paddingVertical: 10,
+      paddingHorizontal: spacing.md,
+      alignSelf: 'flex-start',
+    },
+    testNotifButtonText: {
+      fontFamily: fonts.sansSemibold,
+      fontSize: 14,
+      color: '#fff',
+    },
+    testNotifResult: {
+      fontFamily: fonts.monoMedium,
+      fontSize: 12,
+      marginTop: spacing.sm,
+      lineHeight: 18,
+    },
+    // ── Diagnostics ───────────────────────────────────────────────────────
     geofenceDiagnostics: {
       marginTop: spacing.md,
       paddingTop: spacing.md,
@@ -673,6 +1030,68 @@ function makeStyles(colors: AppColors) {
       color: colors.muted,
       lineHeight: 18,
     },
+    // ── Notification pipeline log ─────────────────────────────────────────
+    notifLogSection: {
+      marginTop: spacing.md,
+      paddingTop: spacing.md,
+      borderTopWidth: 1,
+      borderTopColor: colors.borderSoft,
+    },
+    notifLogHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: spacing.sm,
+    },
+    notifLogClear: {
+      fontFamily: fonts.sansSemibold,
+      fontSize: 13,
+      color: colors.primary,
+    },
+    notifLogEntry: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+      paddingVertical: spacing.xs,
+    },
+    notifLogBadge: {
+      borderRadius: 4,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      alignSelf: 'flex-start',
+      marginTop: 2,
+    },
+    notifLogBadgeText: {
+      fontFamily: fonts.monoMedium,
+      fontSize: 10,
+      color: '#fff',
+    },
+    notifLogTs: {
+      fontFamily: fonts.mono,
+      fontSize: 11,
+      color: colors.muted,
+      marginBottom: 1,
+    },
+    notifLogDetail: {
+      fontFamily: fonts.sans,
+      fontSize: 12,
+      color: colors.inkSoft,
+      lineHeight: 17,
+    },
+    // ── Cooldown reset ────────────────────────────────────────────────────
+    cooldownResetButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      marginTop: spacing.sm,
+      paddingVertical: 6,
+      alignSelf: 'flex-start',
+    },
+    cooldownResetText: {
+      fontFamily: fonts.sans,
+      fontSize: 12,
+      color: colors.primary,
+    },
+    // ── Privacy footer ─────────────────────────────────────────────────────
     privacyNote: {
       fontFamily: fonts.sans,
       fontSize: 12,
