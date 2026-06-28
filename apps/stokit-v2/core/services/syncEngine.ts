@@ -2,6 +2,7 @@ import { File } from 'expo-file-system';
 import { decode } from 'base64-arraybuffer';
 import { supabase } from '../../lib/supabase';
 import type { DurableState, Receipt } from '../../types';
+import { shouldApplyRemote, markRemoteApplied, resetSyncWatermark } from './syncWatermark';
 
 const CLOUD_TABLE = 'household_snapshots';
 const RECEIPT_BUCKET = 'receipts';
@@ -152,10 +153,11 @@ export async function pullFromSupabase(): Promise<void> {
     return;
   }
 
-  const local = store.getState();
   const remote = data.state as DurableState;
-  if ((remote.updatedAt ?? data.updated_at ?? 0) <= local.updatedAt) return;
+  const remoteUpdatedAt = (remote.updatedAt ?? data.updated_at ?? 0) as number;
+  if (!shouldApplyRemote(remoteUpdatedAt)) return;
   store.getState().applyRemotePatch(await withSignedReceiptUrls(remote));
+  markRemoteApplied(remoteUpdatedAt);
 }
 
 export async function clearCloudState(): Promise<void> {
@@ -197,6 +199,7 @@ export function stopSyncEngine(): void {
   if (syncChannel) void supabase.removeChannel(syncChannel);
   syncChannel = null;
   activeHouseholdId = null;
+  resetSyncWatermark();
 }
 
 export async function refreshGeofencedStoreData(): Promise<void> {
