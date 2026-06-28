@@ -1312,6 +1312,10 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
   const hasOptions = pending.length > 0 || manualStores.length > 0;
   const spent   = receipt && receipt.status !== 'skipped' ? receipt.amount : 0;
   const completedAt = receipt?.createdAt ?? Date.now();
+  const finishTrip = () => {
+    dispatch({ type: 'FINISH_TRIP', now: Date.now() });
+    if (!hasOptions) dispatch({ type: 'END_TRIP' });
+  };
 
   return (
     <Screen>
@@ -1386,7 +1390,7 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
       <Button
         label={hasOptions ? 'Finish trip' : 'Done'}
         variant={hasOptions ? 'ghost' : 'primary'}
-        onPress={() => dispatch({ type: 'FINISH_TRIP', now: Date.now() })}
+        onPress={finishTrip}
         style={{ marginTop: spacing.md }}
       />
       <CancelTripLink dispatch={dispatch} colors={colors} />
@@ -1766,6 +1770,26 @@ function TripSummary({ session, dispatch, storeById, tsStyles, colors }: SubProp
         </View>
       </View>
       <ScrollView contentContainerStyle={tsStyles.scroll}>
+        {canResume && (
+          <Card style={{ marginBottom: spacing.lg }}>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink }}>Forgot something?</Text>
+                <Text style={{ fontFamily: fonts.sans, fontSize: 14, color: colors.muted, marginTop: spacing.xs }}>Reopen this trip and add missed items.</Text>
+              </View>
+              <View style={{ backgroundColor: colors.surfaceRaised, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: radii.sm }}>
+                <Text style={{ fontFamily: fonts.sansMedium, fontSize: 12, color: colors.muted }}>{Math.floor(secsLeft / 60)} min left</Text>
+              </View>
+            </View>
+            <Button
+              label="Reopen trip"
+              variant="ghost"
+              onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); dispatch({ type: 'RESUME_TRIP' }); }}
+              style={{ marginTop: spacing.md }}
+            />
+          </Card>
+        )}
+
         {/* Header */}
         <View style={tsStyles.header}>
           <Text style={tsStyles.total}>${trip.totalSpent.toFixed(2)}</Text>
@@ -1885,27 +1909,6 @@ function TripSummary({ session, dispatch, storeById, tsStyles, colors }: SubProp
             {new Date(trip.completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </Text>
         </View>
-
-        {/* Reopen trip */}
-        {canResume && (
-          <Card style={{ marginTop: spacing.xl }}>
-            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md }}>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink }}>Forgot something?</Text>
-                <Text style={{ fontFamily: fonts.sans, fontSize: 14, color: colors.muted, marginTop: spacing.xs }}>Reopen this trip and add missed items.</Text>
-              </View>
-              <View style={{ backgroundColor: colors.surfaceRaised, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: radii.sm }}>
-                <Text style={{ fontFamily: fonts.sansMedium, fontSize: 12, color: colors.muted }}>{Math.floor(secsLeft / 60)} min left</Text>
-              </View>
-            </View>
-            <Button
-              label="Reopen trip"
-              variant="ghost"
-              onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); dispatch({ type: 'RESUME_TRIP' }); }}
-              style={{ marginTop: spacing.md }}
-            />
-          </Card>
-        )}
 
         {/* Done */}
         <Button

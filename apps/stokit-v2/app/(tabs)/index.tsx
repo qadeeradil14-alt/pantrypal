@@ -61,6 +61,7 @@ export default function PantryScreen() {
   const [pickerItem, setPickerItem] = useState<PantryItem | null>(null);
   const [addedBatch, setAddedBatch] = useState<PantryItem[]>([]);
   const [showIndividualAssign, setShowIndividualAssign] = useState(false);
+  const openingIndividualAssignRef = useRef(false);
   const [recipes, setRecipes] = useState<RecipeSuggestion[]>([]);
   const [selectedRecipe, setSelectedRecipe] = useState<RecipeSuggestion | null>(null);
   const rawMealsRef = useRef<RawMealData[]>([]);
@@ -397,7 +398,13 @@ export default function PantryScreen() {
       <StorePickerSheet item={pickerItem} onClose={() => setPickerItem(null)} />
       <StorePickerSheet
         visible={addedBatch.length > 0}
-        onClose={() => setAddedBatch([])}
+        onClose={() => {
+          if (openingIndividualAssignRef.current) {
+            openingIndividualAssignRef.current = false;
+            return;
+          }
+          setAddedBatch([]);
+        }}
         title={`${addedBatch.length} item${addedBatch.length === 1 ? '' : 's'} added`}
         subtitle="Optional: assign the whole batch to one store."
         onSelect={(storeId) => {
@@ -405,7 +412,10 @@ export default function PantryScreen() {
           setAddedBatch([]);
         }}
         secondaryActionLabel="Assign to individual stores"
-        onSecondaryAction={() => { setShowIndividualAssign(true); }}
+        onSecondaryAction={() => {
+          openingIndividualAssignRef.current = true;
+          setShowIndividualAssign(true);
+        }}
       />
       <IndividualAssignSheet
         visible={showIndividualAssign}
