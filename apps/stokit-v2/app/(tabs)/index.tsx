@@ -316,12 +316,15 @@ export default function PantryScreen() {
           onPress={() => setShowMore((value) => !value)}
           style={({ pressed }) => [styles.moreHeader, pressed && styles.pressed]}
         >
-          <Text style={styles.moreTitle}>More for you</Text>
-          <Ionicons name={showMore ? 'chevron-up' : 'chevron-down'} size={20} color={colors.primary} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.moreTitle}>Home dashboard</Text>
+            <Text style={styles.moreSubtitle}>Household and pantry status</Text>
+          </View>
+          <Ionicons name={showMore ? 'chevron-up' : 'chevron-down'} size={20} color={colors.muted} />
         </Pressable>
 
         {showMore ? (
-          <>
+          <View style={styles.dashboardSection}>
             <HouseholdBanner />
             {atHomeItems.length > 0 ? (
               <UseItOrLoseItWidget
@@ -335,10 +338,10 @@ export default function PantryScreen() {
               style={({ pressed }) => [styles.atHomeHeader, pressed && styles.pressed]}
             >
               <View>
-                <Text style={styles.atHomeTitle}>At home</Text>
+                <Text style={styles.atHomeTitle}>Pantry status</Text>
                 <Text style={styles.atHomeCount}>{atHomeItems.length} item{atHomeItems.length === 1 ? '' : 's'}</Text>
               </View>
-              <Ionicons name={showAtHome ? 'chevron-up' : 'chevron-down'} size={20} color={colors.primary} />
+              <Ionicons name={showAtHome ? 'chevron-up' : 'chevron-down'} size={20} color={colors.muted} />
             </Pressable>
             {showAtHome ? (
               <View style={styles.list}>
@@ -385,7 +388,7 @@ export default function PantryScreen() {
                 </ScrollView>
               </View>
             ) : null}
-          </>
+          </View>
         ) : null}
         <View style={{ height: 110 }} />
       </ScrollView>
@@ -432,24 +435,41 @@ function HouseholdBanner() {
   const { colors } = useTheme();
   const household = useHouseholdStore((s) => s.household);
   const members = useHouseholdStore((s) => s.members);
-  const router = useRouter();
+  const householdStyles = useMemo(() => stylesHousehold(colors), [colors]);
 
-  // Only show when the user is actually in a household with others
-  const otherMembers = members.filter((m) => !m.isMe);
-  if (!household || otherMembers.length === 0) return null;
+  if (!household || members.length === 0) return null;
 
   return (
-    <Pressable
-      onPress={() => router.push('/settings')}
-      style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primarySoft, padding: spacing.md, borderRadius: radii.md, marginBottom: spacing.md, borderWidth: 1, borderColor: colors.primary + '30' }}
-    >
-      <Ionicons name="people-outline" size={16} color={colors.primary} style={{ marginRight: 8 }} />
-      <Text style={{ flex: 1, fontFamily: fonts.sansMedium, color: colors.primary, fontSize: 14 }}>
-        {household.name} · {members.length} member{members.length !== 1 ? 's' : ''}
-      </Text>
-      <Ionicons name="chevron-forward" color={colors.primary} size={16} />
-    </Pressable>
+    <View style={householdStyles.card}>
+      <View style={householdStyles.header}>
+        <Ionicons name="people-outline" size={17} color={colors.primary} />
+        <Text style={householdStyles.title}>{household.name}</Text>
+        <Text style={householdStyles.count}>{members.length} member{members.length !== 1 ? 's' : ''}</Text>
+      </View>
+      {members.slice(0, 4).map((member, index) => (
+        <View key={member.id}>
+          {index > 0 ? <View style={householdStyles.divider} /> : null}
+          <View style={householdStyles.memberRow}>
+            <Text style={householdStyles.memberName} numberOfLines={1}>{member.displayName}</Text>
+            <Text style={householdStyles.memberRole}>{member.role === 'owner' ? 'Owner' : 'Member'}</Text>
+          </View>
+        </View>
+      ))}
+    </View>
   );
+}
+
+function stylesHousehold(colors: AppColors) {
+  return StyleSheet.create({
+    card: { backgroundColor: colors.surfaceRaised, padding: spacing.md, borderRadius: radii.lg, marginBottom: spacing.md, borderWidth: 1, borderColor: colors.border },
+    header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.xs },
+    title: { flex: 1, fontFamily: fonts.sansSemibold, color: colors.ink, fontSize: 15 },
+    count: { fontFamily: fonts.mono, color: colors.muted, fontSize: 12, fontVariant: ['tabular-nums'] },
+    divider: { height: 1, backgroundColor: colors.borderSoft },
+    memberRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, paddingVertical: 8 },
+    memberName: { flex: 1, fontFamily: fonts.sansMedium, color: colors.ink, fontSize: 14 },
+    memberRole: { fontFamily: fonts.sansSemibold, color: colors.muted, fontSize: 12 },
+  });
 }
 
 function UseItOrLoseItWidget({ items, onUsed, onRestock }: {
@@ -601,11 +621,13 @@ function makeStyles(c: AppColors) {
     tagline:          { fontFamily: fonts.sans, fontSize: 15, color: c.muted, fontVariant: ['tabular-nums'] },
     settings:         { width: 44, height: 44, borderRadius: 22, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, alignItems: 'center', justifyContent: 'center', ...shadow.card },
     pressed:          { opacity: 0.76 },
-    atHomeHeader:      { marginBottom: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.sm, borderBottomWidth: 1, borderBottomColor: c.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    atHomeHeader:      { marginBottom: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.sm, borderBottomWidth: 1, borderBottomColor: c.borderSoft, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     atHomeTitle:       { fontFamily: fonts.sansSemibold, fontSize: 19, color: c.ink },
     atHomeCount:       { fontFamily: fonts.sans, fontSize: 13, color: c.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
-    moreHeader:        { marginTop: spacing.xl, paddingVertical: spacing.lg, borderTopWidth: 1, borderTopColor: c.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    moreHeader:        { marginTop: spacing.xl, paddingVertical: spacing.lg, borderTopWidth: 1, borderTopColor: c.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
     moreTitle:         { fontFamily: fonts.sansSemibold, fontSize: 18, color: c.ink },
+    moreSubtitle:      { fontFamily: fonts.sans, fontSize: 13, color: c.muted, marginTop: 2 },
+    dashboardSection:  { backgroundColor: c.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: c.border, padding: spacing.md, ...shadow.card },
     searchBar:        { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: radii.md, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.md, paddingVertical: 10, marginTop: spacing.sm, marginBottom: spacing.xs },
     searchInput:      { flex: 1, fontFamily: fonts.sans, fontSize: 15, color: c.ink, padding: 0 },
     searchAddBtn:     { width: 32, height: 32, borderRadius: radii.pill, backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center', marginLeft: spacing.sm, flexShrink: 0 },
