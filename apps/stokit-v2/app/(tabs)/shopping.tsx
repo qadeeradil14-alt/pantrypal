@@ -750,7 +750,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                 Need anything else?
               </Text>
               <Text style={{ fontFamily: fonts.sans, fontSize: 13, color: colors.muted, lineHeight: 18 }}>
-                {"Send a quick alert so they can add last-minute items to your "}
+                {"Let your household add last-minute items to your "}
                 <Text style={{ fontFamily: fonts.sansMedium, color: colors.inkSoft }}>
                   {storeById(storeId)?.name ?? 'this store'}
                 </Text>
@@ -1085,7 +1085,7 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
           <View style={{ paddingTop: spacing.xl }}>
             <Button label="Done" onPress={skip} />
             <Button
-              label="Log spend (optional)"
+              label="Add receipt or total"
               variant="ghost"
               onPress={() => setShowSpendEntry(true)}
               style={{ marginTop: spacing.md }}
