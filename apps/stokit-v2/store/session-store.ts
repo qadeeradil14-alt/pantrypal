@@ -31,8 +31,8 @@ interface SessionStore {
 }
 
 function persistSession(session: ShoppingSession): void {
-  if (session.status === 'idle') {
-    // No point storing idle — clear any stale data
+  if (session.status === 'idle' || session.status === 'trip_summary') {
+    // trip_summary is never restored on hydration, so don't keep stale data.
     AsyncStorage.removeItem(SESSION_KEY).catch(() => {});
   } else {
     AsyncStorage.setItem(SESSION_KEY, JSON.stringify(session)).catch(() => {});
@@ -87,6 +87,16 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     if (event.type === 'RESUME_TRIP' && prev.completedTrip) {
       const trip = prev.completedTrip;
       durable.removeTrip(trip.id, trip.receiptIds);
+    }
+
+    // Eagerly mark each store's picked items as stocked when the store visit
+    // completes. This prevents items from lingering as "low" in the pantry
+    // while the user is still in store_summary / deciding to continue.
+    if (next.status === 'store_summary' && prev.status !== 'store_summary') {
+      const completedStoreId = next.storeQueue[next.currentIndex];
+      next.entries
+        .filter((e) => e.storeId === completedStoreId && e.picked)
+        .forEach((e) => durable.setItemStatus(e.itemId, 'stocked'));
     }
 
     // Commit to durable state exactly once when trip_summary is reached.

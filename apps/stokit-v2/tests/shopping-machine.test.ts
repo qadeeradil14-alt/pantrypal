@@ -391,3 +391,35 @@ test('ADD_ENTRY re-homes an item already planned for a different store to the cu
 function entriesForStoreCount(s: ShoppingSession, storeId: string): number {
   return s.entries.filter((e) => e.storeId === storeId).length;
 }
+
+// ── Regression: lingering items after store completion ────────────────────────
+// store_summary must carry picked entries so the session-store side-effect
+// can immediately mark those items stocked in the durable store — rather than
+// waiting until trip_summary. Without this, items showed as "low" even after
+// the user had picked them off the shelf.
+
+test('store_summary entries retain picked=true for the completed store', () => {
+  let s = startTrip();
+  s = reduce(s, { type: 'SET_PICK', itemId: 'milk', picked: true });
+  s = reduce(s, { type: 'FINISH_STORE', now: 2000 });
+  s = reduce(s, { type: 'SKIP_RECEIPT', now: 2100 });
+
+  assert.equal(s.status, 'store_summary');
+  const aldiEntries = s.entries.filter((e) => e.storeId === 'aldi');
+  assert.equal(aldiEntries.find((e) => e.itemId === 'milk')?.picked, true,  'picked item must be picked=true at store_summary');
+  assert.equal(aldiEntries.find((e) => e.itemId === 'eggs')?.picked, false, 'unpicked item stays picked=false');
+});
+
+test('picked items at store_summary are in completedTrip.purchasedItems after FINISH_TRIP', () => {
+  let s = startTrip();
+  s = reduce(s, { type: 'SET_PICK', itemId: 'milk', picked: true });
+  s = reduce(s, { type: 'FINISH_STORE', now: 2000 });
+  s = reduce(s, { type: 'SKIP_RECEIPT', now: 2100 });
+  // Finish trip directly from store_summary (single-stop equivalent)
+  s = reduce(s, { type: 'FINISH_TRIP', now: 2200 });
+
+  assert.equal(s.status, 'trip_summary');
+  const purchased = s.completedTrip!.purchasedItems.map((i) => i.itemId);
+  assert.ok(purchased.includes('milk'), 'picked item appears in purchasedItems');
+  assert.ok(!purchased.includes('eggs'), 'unpicked item is not in purchasedItems');
+});
