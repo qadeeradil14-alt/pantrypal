@@ -1760,16 +1760,6 @@ function TripSummary({ session, dispatch, storeById, tsStyles, colors }: SubProp
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', rowGap: spacing.xs, paddingHorizontal: spacing.xl, paddingTop: spacing.xl, paddingBottom: spacing.sm }}>
         <Text style={tsStyles.eyebrow}>Trip complete</Text>
         <View style={{ flexDirection: 'row', gap: spacing.sm, marginLeft: 'auto' }}>
-          {canResume && (
-            <Pressable
-              onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); dispatch({ type: 'RESUME_TRIP' }); }}
-              style={{ backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20 }}
-            >
-              <Text style={{ fontFamily: fonts.sansMedium, fontSize: 13, color: colors.muted }}>
-                ↩ Forgot something? ({Math.floor(secsLeft / 60)}:{String(secsLeft % 60).padStart(2, '0')})
-              </Text>
-            </Pressable>
-          )}
           <Pressable onPress={() => dispatch({ type: 'END_TRIP' })} style={{ backgroundColor: colors.surfaceRaised, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 }}>
             <Text style={{ fontFamily: fonts.sansMedium, fontSize: 14, color: colors.primary }}>Done</Text>
           </Pressable>
@@ -1895,6 +1885,27 @@ function TripSummary({ session, dispatch, storeById, tsStyles, colors }: SubProp
             {new Date(trip.completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </Text>
         </View>
+
+        {/* Reopen trip */}
+        {canResume && (
+          <Card style={{ marginTop: spacing.xl }}>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink }}>Forgot something?</Text>
+                <Text style={{ fontFamily: fonts.sans, fontSize: 14, color: colors.muted, marginTop: spacing.xs }}>Reopen this trip and add missed items.</Text>
+              </View>
+              <View style={{ backgroundColor: colors.surfaceRaised, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: radii.sm }}>
+                <Text style={{ fontFamily: fonts.sansMedium, fontSize: 12, color: colors.muted }}>{Math.floor(secsLeft / 60)} min left</Text>
+              </View>
+            </View>
+            <Button
+              label="Reopen trip"
+              variant="ghost"
+              onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); dispatch({ type: 'RESUME_TRIP' }); }}
+              style={{ marginTop: spacing.md }}
+            />
+          </Card>
+        )}
 
         {/* Done */}
         <Button
