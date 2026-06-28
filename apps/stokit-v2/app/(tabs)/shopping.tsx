@@ -734,6 +734,77 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
           <Button label="+ Add more" variant="subtle" onPress={() => setAddSheetVisible(true)} style={{ marginTop: spacing.md }} />
       )}
 
+      {isSharedHousehold && (
+        <Card style={{ marginTop: spacing.xl }}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, marginBottom: spacing.md }}>
+            <View style={{
+              width: 40, height: 40, borderRadius: 20,
+              backgroundColor: colors.primarySoft,
+              alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0,
+            }}>
+              <Ionicons name="people-outline" size={20} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink, marginBottom: 3 }}>
+                Shopping for the household?
+              </Text>
+              <Text style={{ fontFamily: fonts.sans, fontSize: 13, color: colors.muted, lineHeight: 18 }}>
+                {"Let your household know you're at "}
+                <Text style={{ fontFamily: fonts.sansMedium, color: colors.inkSoft }}>
+                  {storeById(storeId)?.name ?? 'this store'}
+                </Text>
+                {" so they can add last-minute items."}
+              </Text>
+            </View>
+          </View>
+          <Pressable
+            onPress={() => { void handleNotifyHousehold(); }}
+            disabled={notifyState === 'sending' || notifyState === 'sent'}
+            style={({ pressed }) => [{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: spacing.sm,
+              backgroundColor: notifyState === 'sent'  ? colors.successSoft
+                             : notifyState === 'error'  ? colors.dangerSoft
+                             : colors.primarySoft,
+              borderRadius: radii.md,
+              paddingVertical: spacing.md,
+              opacity: pressed ? 0.8 : 1,
+            }]}
+          >
+            <Ionicons
+              name={
+                notifyState === 'sent'    ? 'checkmark-circle' :
+                notifyState === 'error'   ? 'alert-circle-outline' :
+                notifyState === 'sending' ? 'time-outline' :
+                                            'notifications'
+              }
+              size={18}
+              color={
+                notifyState === 'sent'  ? colors.success :
+                notifyState === 'error' ? colors.danger  :
+                                          colors.primary
+              }
+            />
+            <Text style={{
+              fontFamily: fonts.sansSemibold,
+              fontSize: 14,
+              color: notifyState === 'sent'  ? colors.success
+                   : notifyState === 'error' ? colors.danger
+                   : colors.primary,
+            }}>
+              {notifyState === 'sending'   ? 'Sending alert…'
+             : notifyState === 'sent'      ? 'Household notified'
+             : notifyState === 'no_tokens' ? 'Household member has notifications off'
+             : notifyState === 'error'     ? "Couldn't send alert. Try again."
+             :                               'Notify household'}
+            </Text>
+          </Pressable>
+        </Card>
+      )}
+
       <Button
         label="Done at this store"
         onPress={() => {
@@ -757,30 +828,8 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
           void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           dispatch({ type: 'FINISH_STORE', now: Date.now() });
         }}
-        style={{ marginTop: spacing.xl }}
+        style={{ marginTop: spacing.md }}
       />
-      
-      {isSharedHousehold && (
-        <Pressable
-          onPress={() => { void handleNotifyHousehold(); }}
-          disabled={notifyState === 'sending'}
-          style={{ alignItems: 'center', paddingVertical: spacing.sm, marginTop: spacing.xs }}
-        >
-          <Text style={{
-            fontFamily: fonts.sansMedium,
-            fontSize: 13,
-            color: notifyState === 'sent' ? colors.success
-                 : notifyState === 'error' ? colors.danger
-                 : colors.primary,
-          }}>
-            {notifyState === 'sending'   ? 'Notifying household…'
-           : notifyState === 'sent'      ? 'Household notified ✓'
-           : notifyState === 'no_tokens' ? 'Members have notifications off'
-           : notifyState === 'error'     ? 'Notify failed — try again'
-           :                               'Notify household'}
-          </Text>
-        </Pressable>
-      )}
       <CancelTripLink dispatch={dispatch} colors={colors} />
       <AddItemSheet
         visible={addSheetVisible}
