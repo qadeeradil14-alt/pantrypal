@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import {
   shouldApplyRemote,
   markRemoteApplied,
+  markPushed,
+  isSelfEcho,
   resetSyncWatermark,
 } from '../core/services/syncWatermark';
 
@@ -50,4 +52,57 @@ test('Wife local edit does not block Owner remote update arriving above the wate
   // Wife local updatedAt is now, say, 10. Owner then pushes T=4.
   // Under the old `local.updatedAt` guard, 4 ≤ 10 → blocked. Under the watermark guard, 4 > 3 → applies.
   assert.ok(shouldApplyRemote(4), 'Owner T=4 snapshot must apply despite Wife local updatedAt being 10');
+});
+
+// --- Self-echo detection (new: markPushed / isSelfEcho) ---
+
+test('isSelfEcho: markPushed(T) makes isSelfEcho(T) return true', () => {
+  setup();
+  markPushed(100);
+  assert.ok(isSelfEcho(100), 'remoteUpdatedAt matching lastPushedAt is a self-echo');
+});
+
+test('isSelfEcho: a different timestamp is not a self-echo', () => {
+  setup();
+  markPushed(100);
+  assert.equal(isSelfEcho(101), false, 'T+1 is not a self-echo');
+  assert.equal(isSelfEcho(99), false, 'T-1 is not a self-echo');
+});
+
+test('resetSyncWatermark also clears lastPushedAt', () => {
+  setup();
+  markPushed(50);
+  resetSyncWatermark();
+  assert.equal(isSelfEcho(50), false, 'after reset, previously pushed timestamp is no longer a self-echo');
+});
+
+test('self-echo does not advance watermark: Owner out-of-order update still applies', () => {
+  setup();
+  // Both devices joined and synced: watermark at T=10 (Owner's snapshot).
+  markRemoteApplied(10);
+
+  // Wife writes and pushes at T=20; marks that she pushed T=20.
+  markPushed(20);
+
+  // Self-echo arrives at T=20 — caller uses isSelfEcho to skip markRemoteApplied.
+  // Simulate the correct pullFromSupabase behavior:
+  if (shouldApplyRemote(20) && !isSelfEcho(20)) {
+    markRemoteApplied(20);
+  }
+  // Watermark should still be 10 because the self-echo was not applied.
+  assert.ok(shouldApplyRemote(15), 'Owner T=15 (concurrent, out-of-order) must still apply after self-echo at T=20');
+});
+
+test('true remote from Owner advances watermark normally', () => {
+  setup();
+  markRemoteApplied(10);
+  markPushed(20);
+
+  // Owner pushes T=25 — not a self-echo.
+  if (shouldApplyRemote(25) && !isSelfEcho(25)) {
+    markRemoteApplied(25);
+  }
+  // Watermark is now 25. Stale event at T=15 must be skipped.
+  assert.equal(shouldApplyRemote(15), false, 'stale T=15 skipped after Owner T=25 applied');
+  assert.ok(shouldApplyRemote(26), 'next Owner push at T=26 applies normally');
 });

@@ -2,7 +2,7 @@ import { File } from 'expo-file-system';
 import { decode } from 'base64-arraybuffer';
 import { supabase } from '../../lib/supabase';
 import type { DurableState, Receipt } from '../../types';
-import { shouldApplyRemote, markRemoteApplied, resetSyncWatermark } from './syncWatermark';
+import { shouldApplyRemote, markRemoteApplied, markPushed, isSelfEcho, resetSyncWatermark } from './syncWatermark';
 
 const CLOUD_TABLE = 'household_snapshots';
 const RECEIPT_BUCKET = 'receipts';
@@ -66,6 +66,7 @@ export async function pushLocalState(state: DurableState): Promise<void> {
     }, { onConflict: 'household_id' });
     if (error && __DEV__) console.warn('[Sync Engine] Snapshot push failed:', error.message);
     if (!error) {
+      markPushed(snapshot.updatedAt);
       const store = await durableStore();
       const uploadedById = new Map(receipts.map((receipt) => [receipt.id, receipt]));
       const currentReceipts = store.getState().receipts.map((receipt) => {
@@ -157,7 +158,9 @@ export async function pullFromSupabase(): Promise<void> {
   const remoteUpdatedAt = (remote.updatedAt ?? data.updated_at ?? 0) as number;
   if (!shouldApplyRemote(remoteUpdatedAt)) return;
   store.getState().applyRemotePatch(await withSignedReceiptUrls(remote));
-  markRemoteApplied(remoteUpdatedAt);
+  if (!isSelfEcho(remoteUpdatedAt)) {
+    markRemoteApplied(remoteUpdatedAt);
+  }
 }
 
 export async function clearCloudState(): Promise<void> {

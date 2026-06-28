@@ -44,18 +44,12 @@ test('shopping UI exposes receipt review and new-store actions', () => {
   assert.match(source, /<AddStoreContent/);
 });
 
-test('batch assignment opens individual store assignment without stacked modals', () => {
+test('post-add flow uses StorePickerSheet, not IndividualAssignSheet', () => {
   const indexSource = readFileSync(join(process.cwd(), 'app/(tabs)/index.tsx'), 'utf8');
-  const assignSource = readFileSync(join(process.cwd(), 'components/pantry/IndividualAssignSheet.tsx'), 'utf8');
-
-  assert.match(indexSource, /onItemsAdded=\{\(items\) => \{\s*setAddedBatch\(items\);\s*setShowIndividualAssign\(items\.length > 0\);/);
-  assert.doesNotMatch(indexSource, /secondaryActionLabel="Assign to individual stores"/);
-  assert.doesNotMatch(assignSource, /StorePickerSheet/);
-  assert.match(assignSource, /label="Assign to individual stores"/);
-  assert.match(assignSource, /const \[mode, setMode\] = useState<'bulk' \| 'individual' \| 'item'>\('bulk'\)/);
-  assert.match(assignSource, /const assignAll = \(storeId: string\) => \{\s*liveBatch\.forEach\(\(item\) => updateItem\(item\.id, \{ storeId \}\)\);\s*setMode\('individual'\);/);
-  assert.match(assignSource, /onPress=\{\(\) => \{\s*setPickingItem\(item\);\s*setMode\('item'\);/);
-  assert.match(assignSource, /const assignOne = \(storeId: string \| null\) => \{/);
+  assert.doesNotMatch(indexSource, /IndividualAssignSheet/);
+  assert.doesNotMatch(indexSource, /showIndividualAssign/);
+  assert.doesNotMatch(indexSource, /addedBatch/);
+  assert.match(indexSource, /StorePickerSheet/);
 });
 
 test('clean items are selected by default, code-like and duplicate items are not', () => {

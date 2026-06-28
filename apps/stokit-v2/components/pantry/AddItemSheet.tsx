@@ -170,6 +170,8 @@ export function AddItemSheet({
           placeholder="Search groceries, kitchen, cleaning…"
           placeholderTextColor={colors.muted}
           style={styles.searchInput}
+          returnKeyType="done"
+          onSubmitEditing={addCustomItem}
         />
         {query ? (
           <Pressable onPress={() => setQuery('')} hitSlop={8}>
@@ -242,7 +244,7 @@ export function AddItemSheet({
         />
       ) : null}
 
-      {!quickAdd && selectedItems.length ? (
+      {selectedItems.length ? (
         <>
           <View style={styles.selectedHeader}>
             <Text style={styles.sectionTitle}>Selected items</Text>

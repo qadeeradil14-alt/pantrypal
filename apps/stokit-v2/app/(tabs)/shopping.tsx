@@ -257,8 +257,13 @@ export default function ShoppingScreen() {
   };
 
   const handleStartShopping = () => {
-    const total = (planItemsFull.length) + unassignedCount;
+    const total = planItemsFull.length + unassignedCount;
     if (total === 0) return;
+    const entries = Array.from(plan.entries());
+    if (entries.length === 1 && unassignedCount === 0) {
+      void startTripAt(entries[0][0]);
+      return;
+    }
     setShowFirstStorePicker(true);
   };
 
@@ -1136,11 +1141,11 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
 
         {!showSpendEntry ? (
           <View style={{ paddingTop: spacing.xl }}>
-            <Button label="Done" onPress={skip} />
+            <Button label="Add receipt or total" onPress={() => setShowSpendEntry(true)} />
             <Button
-              label="Add receipt or total"
+              label="Done"
               variant="ghost"
-              onPress={() => setShowSpendEntry(true)}
+              onPress={skip}
               style={{ marginTop: spacing.md }}
             />
             <CancelTripLink dispatch={dispatch} colors={colors} />
@@ -1417,7 +1422,7 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
 
       {pending.length > 0 ? (
         <Button
-          label="Continue to next store →"
+          label={`Head to ${storeById(pending[0])?.name ?? 'next store'} →`}
           onPress={() => dispatch({ type: 'CONTINUE_TRIP' })}
           style={{ marginTop: spacing.xl }}
         />
@@ -1479,7 +1484,7 @@ function ContinuePrompt({ session, dispatch, storeById, styles, colors }: SubPro
         {/* Case A: planned stops remain — one-tap advance */}
         {pending.length > 0 && (
           <Button
-            label="Continue to next store →"
+            label={`Head to ${storeById(pending[0])?.name ?? 'next store'} →`}
             onPress={() => dispatch({ type: 'CONTINUE_TRIP' })}
             style={{ marginTop: spacing.lg }}
           />

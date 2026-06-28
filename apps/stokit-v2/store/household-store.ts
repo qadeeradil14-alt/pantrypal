@@ -90,12 +90,11 @@ async function rpc(name: string, args?: Record<string, string>): Promise<Househo
 }
 
 async function reloadSharedState() {
-  const { stopSyncEngine, pullFromSupabase, pushLocalState, startSyncEngine } = await import('../core/services/syncEngine');
+  const { stopSyncEngine, pullFromSupabase, startSyncEngine } = await import('../core/services/syncEngine');
   const { useDurableStore } = await import('./durable-store');
   stopSyncEngine();
   await useDurableStore.getState().resetLocalOnly();
   await pullFromSupabase();
-  await pushLocalState(useDurableStore.getState());
   await startSyncEngine();
 }
 

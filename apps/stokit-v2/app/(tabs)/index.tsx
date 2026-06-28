@@ -18,7 +18,6 @@ import { EmptyState } from '../../components/shared/EmptyState';
 import { AddItemSheet } from '../../components/pantry/AddItemSheet';
 import { ItemActionSheet } from '../../components/pantry/ItemActionSheet';
 import { StorePickerSheet } from '../../components/pantry/StorePickerSheet';
-import { IndividualAssignSheet } from '../../components/pantry/IndividualAssignSheet';
 import { JoinHouseholdSheet } from '../../components/household/JoinHouseholdSheet';
 import { fonts, radii, shadow, spacing, type AppColors } from '../../theme';
 import { useDurableStore } from '../../store/durable-store';
@@ -59,8 +58,6 @@ export default function PantryScreen() {
   const [showAtHome, setShowAtHome] = useState(false);
   const [actionItem, setActionItem] = useState<PantryItem | null>(null);
   const [pickerItem, setPickerItem] = useState<PantryItem | null>(null);
-  const [addedBatch, setAddedBatch] = useState<PantryItem[]>([]);
-  const [showIndividualAssign, setShowIndividualAssign] = useState(false);
   const [recipes, setRecipes] = useState<RecipeSuggestion[]>([]);
   const [selectedRecipe, setSelectedRecipe] = useState<RecipeSuggestion | null>(null);
   const rawMealsRef = useRef<RawMealData[]>([]);
@@ -230,8 +227,9 @@ export default function PantryScreen() {
                         <Text style={styles.catalogName}>{c.name}</Text>
                         <Text style={styles.catalogCategory}>{c.category}</Text>
                       </View>
-                      <View style={styles.catalogAddBtn}>
-                        <Ionicons name="add" size={20} color={colors.primary} />
+                      <View style={styles.searchActionBtn}>
+                        <Ionicons name="add" size={14} color={colors.primary} />
+                        <Text style={styles.searchActionText}>Add</Text>
                       </View>
                     </Pressable>
                   </View>
@@ -252,21 +250,26 @@ export default function PantryScreen() {
                   <Text style={styles.catalogName}>{item.name}</Text>
                   <Text style={styles.catalogCategory}>On your list</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+                <View style={styles.searchStatePill}>
+                  <Text style={styles.searchStatePillText}>Shopping</Text>
+                </View>
               </Pressable>
             ))}
             {filteredAtHomeItems.map((item) => (
               <Pressable
                 key={item.id}
                 style={({ pressed }) => [styles.catalogRow, pressed && styles.pressed]}
-                onPress={() => { setSearchQuery(''); Keyboard.dismiss(); setActionItem(item); }}
+                onPress={() => { setSearchQuery(''); Keyboard.dismiss(); setItemStatus(item.id, 'low'); }}
               >
                 <ItemAvatar name={item.name} size={40} />
                 <View style={styles.catalogCopy}>
                   <Text style={styles.catalogName}>{item.name}</Text>
                   <Text style={styles.catalogCategory}>At home</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+                <View style={styles.searchActionBtn}>
+                  <Ionicons name="cart-outline" size={13} color={colors.primary} />
+                  <Text style={styles.searchActionText}>Add to list</Text>
+                </View>
               </Pressable>
             ))}
             {catalogSuggestions.length === 0 && filteredListItems.length === 0 && filteredAtHomeItems.length === 0 && (
@@ -400,18 +403,10 @@ export default function PantryScreen() {
         quickAdd
         title="Add something to buy"
         subtitle="Select everything you need, then add it all at once."
-        onItemsAdded={(items) => {
-          setAddedBatch(items);
-          setShowIndividualAssign(items.length > 0);
-        }}
       />
       <ItemActionSheet item={actionItem} store={storeById(actionItem?.storeId ?? null)} onClose={() => setActionItem(null)} onAssignStore={setPickerItem} />
       <StorePickerSheet item={pickerItem} onClose={() => setPickerItem(null)} />
-      <IndividualAssignSheet
-        visible={showIndividualAssign}
-        onClose={() => { setShowIndividualAssign(false); setAddedBatch([]); }}
-        items={addedBatch}
-      />
+
       <JoinHouseholdSheet
         visible={joinVisible}
         onClose={() => {
@@ -660,5 +655,9 @@ function makeStyles(c: AppColors) {
     frequentAddBtn:   { position: 'absolute', top: 0, right: 2, width: 20, height: 20, borderRadius: 10, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, alignItems: 'center', justifyContent: 'center' },
     swipeActionLeft:  { backgroundColor: c.success, justifyContent: 'center', alignItems: 'flex-start', paddingLeft: 20, flex: 1 },
     swipeActionRight: { backgroundColor: c.danger, justifyContent: 'center', alignItems: 'flex-end', paddingRight: 20, flex: 1 },
+    searchActionBtn:  { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: spacing.sm, paddingVertical: 5, borderRadius: radii.sm, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface },
+    searchActionText: { fontFamily: fonts.sansSemibold, fontSize: 11, color: c.primary },
+    searchStatePill:  { paddingHorizontal: spacing.sm, paddingVertical: 4, borderRadius: radii.sm, backgroundColor: c.primarySoft },
+    searchStatePillText: { fontFamily: fonts.sansSemibold, fontSize: 11, color: c.primary },
   });
 }
