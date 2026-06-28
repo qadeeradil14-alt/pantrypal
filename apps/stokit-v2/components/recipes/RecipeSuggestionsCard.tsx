@@ -16,7 +16,10 @@ export function RecipeSuggestionsCard({ recipes, onPress }: { recipes: RecipeSug
     <View style={s.container}>
       <View style={s.header}>
         <Ionicons name="restaurant-outline" size={20} color={colors.primary} />
-        <Text style={s.title}>Make it tonight</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={s.title}>Cook with what you have</Text>
+          <Text style={s.subtitle}>Recipe ideas from your pantry.</Text>
+        </View>
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.scrollContent}>
         {recipes.map(recipe => (
@@ -62,6 +65,12 @@ function makeStyles(c: AppColors, isDark: boolean) {
       fontFamily: fonts.sansSemibold,
       fontSize: 18,
       color: c.ink,
+    },
+    subtitle: {
+      fontFamily: fonts.sans,
+      fontSize: 13,
+      color: c.muted,
+      marginTop: 2,
     },
     scrollContent: {
       gap: spacing.md,

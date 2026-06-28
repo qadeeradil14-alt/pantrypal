@@ -35,11 +35,44 @@ function normalize(name: string): string {
   return name.toLowerCase().trim();
 }
 
+function isSafeYoutubeUrl(url: string): boolean {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    return ['youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be'].includes(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function cleanInstructions(instructions: string, title: string): string {
+  const cleaned = instructions
+    .replace(/\r\n/g, '\n')
+    .split(/\n+|(?<=[.!?])\s+(?=[A-Z0-9])/)
+    .map((step) => step.trim())
+    .filter(Boolean)
+    .join('\n');
+
+  return cleaned || [
+    `Prep the ingredients for ${title}.`,
+    'Cook everything until hot and tender.',
+    'Taste, season, and serve.',
+  ].join('\n');
+}
+
+function recipeMatchesPantry(raw: RawMealData, availableNames: string[]): boolean {
+  return raw.ingredientNames.some((ing) => {
+    const req = normalize(ing);
+    return availableNames.some((a) => a.includes(req) || req.includes(a));
+  });
+}
+
 /** Recomputes have/missing flags from cached raw meal data — no API call. */
 export function reEvaluateRecipes(raws: RawMealData[], pantryItems: PantryItem[]): RecipeSuggestion[] {
   const availableNames = pantryItems.map((item) => normalize(item.name));
 
   return raws
+    .filter((raw) => recipeMatchesPantry(raw, availableNames))
     .map((raw) => {
       const matched: string[] = [];
       const missing: string[] = [];
@@ -61,12 +94,13 @@ export function reEvaluateRecipes(raws: RawMealData[], pantryItems: PantryItem[]
         missingIngredients: missing,
         matchScore: total > 0 ? matched.length / total : 0,
         imageUrl: raw.imageUrl,
-        instructions: raw.instructions,
+        instructions: cleanInstructions(raw.instructions, raw.title),
         ingredientLines,
-        youtubeUrl: raw.youtubeUrl,
+        youtubeUrl: isSafeYoutubeUrl(raw.youtubeUrl) ? raw.youtubeUrl : '',
       } satisfies RecipeSuggestion;
     })
-    .sort((a, b) => b.matchScore - a.matchScore);
+    .sort((a, b) => b.matchScore - a.matchScore)
+    .slice(0, 3);
 }
 
 const LOCAL_FALLBACK_RAWS: RawMealData[] = [
@@ -90,6 +124,16 @@ const LOCAL_FALLBACK_RAWS: RawMealData[] = [
     ingredientNames: ['chicken', 'soy sauce', 'garlic', 'ginger', 'broccoli', 'rice'],
     ingredientMeasures: ['300g', '3 tbsp', '2 cloves', '1 tsp', '1 cup', '1 cup'],
   },
+  {
+    id: 'f3',
+    title: 'Loaded Baked Potato',
+    description: 'A flexible dinner with pantry toppings.',
+    imageUrl: 'https://images.unsplash.com/photo-1607532941433-304659e8198a?w=400&q=80',
+    instructions: 'Bake potato until tender.\nWarm beans or vegetables in a small pan.\nSplit potato and fluff the inside.\nTop with butter, cheese, beans, or vegetables.\nSeason and serve hot.',
+    youtubeUrl: '',
+    ingredientNames: ['potato', 'butter', 'cheese', 'beans'],
+    ingredientMeasures: ['1 large', '1 tbsp', '30g', '1/2 cup'],
+  },
 ];
 
 /**
@@ -102,20 +146,30 @@ export async function fetchRawRecipes(pantryItems: PantryItem[]): Promise<RawMea
     if (availableNames.length === 0) return [];
 
     const mains = ['chicken', 'beef', 'pork', 'fish', 'salmon', 'egg', 'pasta', 'rice', 'potato', 'beans'];
-    let searchIngredient = availableNames.find((name) => mains.some((m) => name.includes(m)));
-    if (!searchIngredient) searchIngredient = availableNames[0];
-    const queryTerm = searchIngredient.replace(/\s+/g, '_');
+    const prioritized = [
+      ...availableNames.filter((name) => mains.some((m) => name.includes(m))),
+      ...availableNames,
+    ];
+    const queryTerms = Array.from(new Set(prioritized))
+      .slice(0, 5)
+      .map((name) => name.replace(/\s+/g, '_'));
+    const candidates = new Map<string, any>();
 
-    const filterRes = await fetch(`https://www.themealdb.com/api/json/v1/1/filter.php?i=${queryTerm}`);
-    if (!filterRes.ok) throw new Error('API down');
-    const filterData = await filterRes.json();
-    if (!filterData.meals || filterData.meals.length === 0) return LOCAL_FALLBACK_RAWS;
+    for (const queryTerm of queryTerms) {
+      const filterRes = await fetch(`https://www.themealdb.com/api/json/v1/1/filter.php?i=${queryTerm}`);
+      if (!filterRes.ok) continue;
+      const filterData = await filterRes.json();
+      (filterData.meals ?? []).forEach((meal: any) => candidates.set(meal.idMeal, meal));
+      if (candidates.size >= 12) break;
+    }
 
-    const shuffled = [...filterData.meals].sort(() => 0.5 - Math.random());
-    const topMeals = shuffled.slice(0, 3);
+    if (candidates.size === 0) return LOCAL_FALLBACK_RAWS;
+
+    const shuffled = Array.from(candidates.values()).sort(() => 0.5 - Math.random());
     const raws: RawMealData[] = [];
 
-    for (const meal of topMeals) {
+    for (const meal of shuffled) {
+      if (raws.length >= 3) break;
       const lookupRes = await fetch(`https://www.themealdb.com/api/json/v1/1/lookup.php?i=${meal.idMeal}`);
       if (!lookupRes.ok) continue;
       const lookupData = await lookupRes.json();
@@ -137,8 +191,8 @@ export async function fetchRawRecipes(pantryItems: PantryItem[]): Promise<RawMea
         title: d.strMeal,
         description: `${d.strArea || 'Global'} • ${d.strCategory || 'Dinner'}`,
         imageUrl: d.strMealThumb ?? '',
-        instructions: d.strInstructions ?? '',
-        youtubeUrl: d.strYoutube ?? '',
+        instructions: cleanInstructions(d.strInstructions ?? '', d.strMeal),
+        youtubeUrl: isSafeYoutubeUrl(d.strYoutube ?? '') ? d.strYoutube : '',
         ingredientNames,
         ingredientMeasures,
       });

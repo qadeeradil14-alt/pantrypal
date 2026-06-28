@@ -64,6 +64,7 @@ export default function PantryScreen() {
   const [recipes, setRecipes] = useState<RecipeSuggestion[]>([]);
   const [selectedRecipe, setSelectedRecipe] = useState<RecipeSuggestion | null>(null);
   const rawMealsRef = useRef<RawMealData[]>([]);
+  const rawMealsKeyRef = useRef('');
   const [searchQuery, setSearchQuery] = useState('');
 
   const myName = members.find((m) => m.isMe)?.displayName ?? '';
@@ -135,8 +136,12 @@ export default function PantryScreen() {
   useEffect(() => {
     let active = true;
     if (atHomeItems.length === 0) { setRecipes([]); return; }
+    const recipeKey = atHomeItems
+      .map((item) => item.name.trim().toLowerCase())
+      .sort()
+      .join('|');
 
-    if (rawMealsRef.current.length > 0) {
+    if (rawMealsRef.current.length > 0 && rawMealsKeyRef.current === recipeKey) {
       // Re-evaluate locally — same recipes, updated have/missing flags, no API call
       const updated = reEvaluateRecipes(rawMealsRef.current, atHomeItems);
       setRecipes(updated);
@@ -150,6 +155,7 @@ export default function PantryScreen() {
       fetchRawRecipes(atHomeItems).then((raws) => {
         if (!active) return;
         rawMealsRef.current = raws;
+        rawMealsKeyRef.current = recipeKey;
         setRecipes(reEvaluateRecipes(raws, atHomeItems));
       });
     }

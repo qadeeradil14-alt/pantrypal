@@ -94,7 +94,9 @@ function RecipeDetailContent({ recipe, onClose, onAddMissing }: { recipe: Recipe
           <Ionicons name="logo-youtube" size={18} color="#FF0000" />
           <Text style={s.youtubeBtnText}>Watch on YouTube</Text>
         </Pressable>
-      ) : null}
+      ) : (
+        <Text style={s.noVideoText}>No video available for this recipe.</Text>
+      )}
     </ScrollView>
   );
 }
@@ -116,5 +118,6 @@ function makeStyles(colors: AppColors) {
     stepText: { flex: 1, fontFamily: fonts.sans, fontSize: 14, color: colors.ink, lineHeight: 20 },
     youtubeBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.lg, paddingVertical: spacing.sm },
     youtubeBtnText: { fontFamily: fonts.sansSemibold, fontSize: 14, color: colors.ink },
+    noVideoText: { fontFamily: fonts.sans, fontSize: 13, color: colors.muted, marginTop: spacing.lg },
   });
 }
