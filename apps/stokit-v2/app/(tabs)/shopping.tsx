@@ -286,7 +286,7 @@ export default function ShoppingScreen() {
           <EmptyState
             icon="cart-outline"
             title="No trip planned"
-            body="Add something to buy and it will be ready for your next trip."
+            body="Mark items low in Pantry and they'll show up here."
             steps={['Add items from Pantry', 'Assign a store only when useful', 'Start shopping anywhere']}
           />
         </>
@@ -605,7 +605,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
 
   return (
     <Screen>
-      <PageTitle eyebrow={total > 1 ? `Stop ${stepNo} of ${total}` : undefined} title="Shopping" />
+      <PageTitle eyebrow={total > 1 ? `Stop ${stepNo} of ${total}` : (storeById(storeId)?.name ? `At ${storeById(storeId)!.name}` : undefined)} title="Shopping" />
       <Card>
         <StoreHeader store={storeById(storeId)} eyebrow="Now shopping" styles={styles} />
         <View style={styles.progressWrap}>
@@ -1321,7 +1321,7 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
       <Card style={ssStyles.card}>
         <View style={ssStyles.row}>
           <View style={ssStyles.statBox}>
-            <Text style={ssStyles.statVal}>${spent.toFixed(2)}</Text>
+            <Text style={ssStyles.statVal}>{spent > 0 ? `$${spent.toFixed(2)}` : '—'}</Text>
             <Text style={ssStyles.statLbl}>Spent</Text>
           </View>
           <View style={ssStyles.divider} />
@@ -1384,19 +1384,11 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
       ) : null}
 
       <Button
-        label="Finish trip"
+        label={hasOptions ? 'Finish trip' : 'Done'}
         variant={hasOptions ? 'ghost' : 'primary'}
         onPress={() => dispatch({ type: 'FINISH_TRIP', now: Date.now() })}
         style={{ marginTop: spacing.md }}
       />
-      {!hasOptions ? (
-        <Button
-          label="Add a store for next time"
-          variant="subtle"
-          onPress={() => router.push('/(tabs)/stores')}
-          style={{ marginTop: spacing.sm }}
-        />
-      ) : null}
       <CancelTripLink dispatch={dispatch} colors={colors} />
     </Screen>
   );
@@ -1766,7 +1758,7 @@ function TripSummary({ session, dispatch, storeById, tsStyles, colors }: SubProp
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', rowGap: spacing.xs, paddingHorizontal: spacing.xl, paddingTop: spacing.xl, paddingBottom: spacing.sm }}>
-        <Text style={tsStyles.eyebrow}>TRIP COMPLETE</Text>
+        <Text style={tsStyles.eyebrow}>Trip complete</Text>
         <View style={{ flexDirection: 'row', gap: spacing.sm, marginLeft: 'auto' }}>
           {canResume && (
             <Pressable
