@@ -60,6 +60,7 @@ export default function PantryScreen() {
   const [actionItem, setActionItem] = useState<PantryItem | null>(null);
   const [pickerItem, setPickerItem] = useState<PantryItem | null>(null);
   const [addedBatch, setAddedBatch] = useState<PantryItem[]>([]);
+  const [showBatchAssign, setShowBatchAssign] = useState(false);
   const [showIndividualAssign, setShowIndividualAssign] = useState(false);
   const openingIndividualAssignRef = useRef(false);
   const [recipes, setRecipes] = useState<RecipeSuggestion[]>([]);
@@ -392,13 +393,17 @@ export default function PantryScreen() {
         quickAdd
         title="Add something to buy"
         subtitle="Select everything you need, then add it all at once."
-        onItemsAdded={setAddedBatch}
+        onItemsAdded={(items) => {
+          setAddedBatch(items);
+          setShowBatchAssign(items.length > 0);
+        }}
       />
       <ItemActionSheet item={actionItem} store={storeById(actionItem?.storeId ?? null)} onClose={() => setActionItem(null)} onAssignStore={setPickerItem} />
       <StorePickerSheet item={pickerItem} onClose={() => setPickerItem(null)} />
       <StorePickerSheet
-        visible={addedBatch.length > 0}
+        visible={showBatchAssign && addedBatch.length > 0}
         onClose={() => {
+          setShowBatchAssign(false);
           if (openingIndividualAssignRef.current) {
             openingIndividualAssignRef.current = false;
             return;
@@ -409,11 +414,13 @@ export default function PantryScreen() {
         subtitle="Optional: assign the whole batch to one store."
         onSelect={(storeId) => {
           addedBatch.forEach((item) => useDurableStore.getState().updateItem(item.id, { storeId }));
+          setShowBatchAssign(false);
           setAddedBatch([]);
         }}
         secondaryActionLabel="Assign to individual stores"
         onSecondaryAction={() => {
           openingIndividualAssignRef.current = true;
+          setShowBatchAssign(false);
           setShowIndividualAssign(true);
         }}
       />
