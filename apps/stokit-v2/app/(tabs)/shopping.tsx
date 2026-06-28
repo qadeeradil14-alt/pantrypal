@@ -806,7 +806,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
       )}
 
       <Button
-        label="Done at this store"
+        label="Finish store"
         onPress={() => {
           if (picked === 0 && entries.length > 0) {
             Alert.alert(
@@ -877,6 +877,7 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
   const store     = storeById(storeId);
   const [amount, setAmount] = useState('');
   const [saving, setSaving] = useState(false);
+  const [showSpendEntry, setShowSpendEntry] = useState(false);
   const parsed = Math.round((parseFloat(amount.replace(/[^0-9.]/g, '')) || 0) * 100) / 100;
 
   const [imageUri, setImageUri] = useState<string | null>(null);
@@ -1080,7 +1081,18 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
           </Pressable>
         </View>
 
-        {/* Scrollable body — amount input + buttons stay reachable when keyboard is up */}
+        {!showSpendEntry ? (
+          <View style={{ paddingTop: spacing.xl }}>
+            <Button label="Done" onPress={skip} />
+            <Button
+              label="Log spend (optional)"
+              variant="ghost"
+              onPress={() => setShowSpendEntry(true)}
+              style={{ marginTop: spacing.md }}
+            />
+            <CancelTripLink dispatch={dispatch} colors={colors} />
+          </View>
+        ) : (
         <ScrollView
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -1180,6 +1192,7 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
 
           <CancelTripLink dispatch={dispatch} colors={colors} />
         </ScrollView>
+        )}
       </Screen>
 
       <Sheet visible={!!scanResult} title="Receipt scanned" onClose={skipScanItems}>
