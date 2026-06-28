@@ -40,6 +40,7 @@ import { PricePromptSheet } from '../../components/shopping/PricePromptSheet';
 import { AddStoreContent } from '../../components/stores/AddStoreSheet';
 import { fonts, radii, spacing, type AppColors } from '../../theme';
 import { useDurableStore } from '../../store/durable-store';
+import { useHouseholdStore } from '../../store/household-store';
 import { useSessionStore } from '../../store/session-store';
 import { currentStoreEntries, currentStoreId, pendingStoreIds } from '../../core/shopping-machine';
 import { ROUTE_COLORS } from '../../core/services/storeBrands';
@@ -48,6 +49,7 @@ import { cheapestRecentPrice, itemPriceHistory, lastPriceAtStore } from '../../c
 import { normalizeItemName } from '../../core/services/pantryItems';
 import { receiptContinuationEvent, renameReviewItem, reviewReceiptItems, unplannedStores } from '../../core/services/shoppingUx';
 import { isGeofencingRunning, startGeofencing } from '../../core/services/geofencing';
+import { sendHouseholdShoppingAlert } from '../../core/services/notifications';
 import type { ReceiptReviewItem } from '../../core/services/shoppingUx';
 import type { PantryItem, ShoppingEntry, Store } from '../../types';
 import { useTheme } from '../../hooks/useTheme';
@@ -212,6 +214,14 @@ export default function ShoppingScreen() {
     arrivalHandledRef.current = true;
     // Clear the param so back-nav / re-render never re-triggers the auto-start.
     router.setParams({ arrivalStoreId: undefined });
+    if (session.status === 'next_store_ready') {
+      // Arrived at a store already pending in an active trip → advance to it directly.
+      const pending = session.storeQueue.slice(session.currentIndex + 1);
+      if (pending.includes(arrivalStoreId)) {
+        dispatch({ type: 'CHOOSE_NEXT_STORE', storeId: arrivalStoreId });
+      }
+      return;
+    }
     if (session.status !== 'idle') return;            // don't hijack an in-progress trip
     if (!plan.has(arrivalStoreId)) return;            // no low/expiring items there → land on idle
     void startTripAt(arrivalStoreId);
@@ -532,6 +542,8 @@ function PlanStoreHeader({ store, count, styles }: { store?: Store; count: numbe
 
 // ── 1. Shopping at current store ──────────────────────────────────────────────
 
+type NotifyState = 'idle' | 'sending' | 'sent' | 'no_tokens' | 'error';
+
 function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubProps) {
   const storeId = currentStoreId(session)!;
   const entries = currentStoreEntries(session);
@@ -541,8 +553,20 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
   const [addSheetVisible, setAddSheetVisible] = useState(false);
   const [priceEntry, setPriceEntry] = useState<ShoppingEntry | null>(null);
   const [quantityStepperId, setQuantityStepperId] = useState<string | null>(null);
+  const [notifyState, setNotifyState] = useState<NotifyState>('idle');
   const priceHistory = useDurableStore((s) => s.priceHistory);
   const recordPrice = useDurableStore((s) => s.recordPrice);
+  const members = useHouseholdStore((s) => s.members);
+  const isSharedHousehold = members.length > 1;
+
+  const handleNotifyHousehold = async () => {
+    const store = storeById(storeId);
+    if (!store || notifyState === 'sending') return;
+    setNotifyState('sending');
+    const { ok, sent } = await sendHouseholdShoppingAlert(store.name, storeId);
+    setNotifyState(!ok ? 'error' : sent > 0 ? 'sent' : 'no_tokens');
+    setTimeout(() => setNotifyState('idle'), 3000);
+  };
 
   // Build per-item price index once per priceHistory change instead of scanning
   // the full array 3× per list row per render.
@@ -736,6 +760,27 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
         style={{ marginTop: spacing.xl }}
       />
       
+      {isSharedHousehold && (
+        <Pressable
+          onPress={() => { void handleNotifyHousehold(); }}
+          disabled={notifyState === 'sending'}
+          style={{ alignItems: 'center', paddingVertical: spacing.sm, marginTop: spacing.xs }}
+        >
+          <Text style={{
+            fontFamily: fonts.sansMedium,
+            fontSize: 13,
+            color: notifyState === 'sent' ? colors.success
+                 : notifyState === 'error' ? colors.danger
+                 : colors.primary,
+          }}>
+            {notifyState === 'sending'   ? 'Notifying household…'
+           : notifyState === 'sent'      ? 'Household notified ✓'
+           : notifyState === 'no_tokens' ? 'Members have notifications off'
+           : notifyState === 'error'     ? 'Notify failed — try again'
+           :                               'Notify household'}
+          </Text>
+        </Pressable>
+      )}
       <CancelTripLink dispatch={dispatch} colors={colors} />
       <AddItemSheet
         visible={addSheetVisible}

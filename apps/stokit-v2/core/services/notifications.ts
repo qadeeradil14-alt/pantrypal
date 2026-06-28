@@ -155,6 +155,32 @@ export async function registerPushToken(userId: string): Promise<void> {
   }
 }
 
+// ── Household shopping alert ──────────────────────────────────────────────────
+
+export { buildShoppingPayload } from './shoppingAlertPayload';
+export type { ShoppingAlertMessage } from './shoppingAlertPayload';
+
+/**
+ * Invoke the notify-shopping Edge Function to push a shopping alert to all
+ * other household members. Non-fatal — returns { ok: false } on any failure.
+ */
+export async function sendHouseholdShoppingAlert(
+  storeName: string,
+  storeId?: string,
+): Promise<{ ok: boolean; sent: number; result: string }> {
+  try {
+    const { data, error } = await supabase.functions.invoke('notify-shopping', {
+      body: { storeName, ...(storeId ? { storeId } : {}) },
+    });
+    if (error) return { ok: false, sent: 0, result: `failed:${error.message}` };
+    const sent = (data as { sent?: number } | null)?.sent ?? 0;
+    return { ok: true, sent, result: sent > 0 ? 'sent' : 'no_tokens' };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, sent: 0, result: `failed:${message}` };
+  }
+}
+
 // ── Arrival notification ──────────────────────────────────────────────────────
 
 /**
