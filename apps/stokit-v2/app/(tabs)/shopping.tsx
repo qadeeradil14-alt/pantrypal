@@ -747,7 +747,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{ fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink, marginBottom: 3 }}>
-                Ask your household if they need anything
+                Need anything else?
               </Text>
               <Text style={{ fontFamily: fonts.sans, fontSize: 13, color: colors.muted, lineHeight: 18 }}>
                 {"Send a quick alert so they can add last-minute items to your "}
