@@ -60,9 +60,7 @@ export default function PantryScreen() {
   const [actionItem, setActionItem] = useState<PantryItem | null>(null);
   const [pickerItem, setPickerItem] = useState<PantryItem | null>(null);
   const [addedBatch, setAddedBatch] = useState<PantryItem[]>([]);
-  const [showBatchAssign, setShowBatchAssign] = useState(false);
   const [showIndividualAssign, setShowIndividualAssign] = useState(false);
-  const openingIndividualAssignRef = useRef(false);
   const [recipes, setRecipes] = useState<RecipeSuggestion[]>([]);
   const [selectedRecipe, setSelectedRecipe] = useState<RecipeSuggestion | null>(null);
   const rawMealsRef = useRef<RawMealData[]>([]);
@@ -395,35 +393,11 @@ export default function PantryScreen() {
         subtitle="Select everything you need, then add it all at once."
         onItemsAdded={(items) => {
           setAddedBatch(items);
-          setShowBatchAssign(items.length > 0);
+          setShowIndividualAssign(items.length > 0);
         }}
       />
       <ItemActionSheet item={actionItem} store={storeById(actionItem?.storeId ?? null)} onClose={() => setActionItem(null)} onAssignStore={setPickerItem} />
       <StorePickerSheet item={pickerItem} onClose={() => setPickerItem(null)} />
-      <StorePickerSheet
-        visible={showBatchAssign && addedBatch.length > 0}
-        onClose={() => {
-          setShowBatchAssign(false);
-          if (openingIndividualAssignRef.current) {
-            openingIndividualAssignRef.current = false;
-            return;
-          }
-          setAddedBatch([]);
-        }}
-        title={`${addedBatch.length} item${addedBatch.length === 1 ? '' : 's'} added`}
-        subtitle="Optional: assign the whole batch to one store."
-        onSelect={(storeId) => {
-          addedBatch.forEach((item) => useDurableStore.getState().updateItem(item.id, { storeId }));
-          setShowBatchAssign(false);
-          setAddedBatch([]);
-        }}
-        secondaryActionLabel="Assign to individual stores"
-        onSecondaryAction={() => {
-          openingIndividualAssignRef.current = true;
-          setShowBatchAssign(false);
-          setShowIndividualAssign(true);
-        }}
-      />
       <IndividualAssignSheet
         visible={showIndividualAssign}
         onClose={() => { setShowIndividualAssign(false); setAddedBatch([]); }}
