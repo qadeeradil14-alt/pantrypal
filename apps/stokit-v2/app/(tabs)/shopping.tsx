@@ -747,14 +747,14 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{ fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink, marginBottom: 3 }}>
-                Shopping for the household?
+                Ask your household if they need anything
               </Text>
               <Text style={{ fontFamily: fonts.sans, fontSize: 13, color: colors.muted, lineHeight: 18 }}>
-                {"Let your household know you're at "}
+                {"Send a quick alert so they can add last-minute items to your "}
                 <Text style={{ fontFamily: fonts.sansMedium, color: colors.inkSoft }}>
                   {storeById(storeId)?.name ?? 'this store'}
                 </Text>
-                {" so they can add last-minute items."}
+                {" list."}
               </Text>
             </View>
           </View>
@@ -799,7 +799,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
              : notifyState === 'sent'      ? 'Household notified'
              : notifyState === 'no_tokens' ? 'Household member has notifications off'
              : notifyState === 'error'     ? "Couldn't send alert. Try again."
-             :                               'Notify household'}
+             :                               'Send alert'}
             </Text>
           </Pressable>
         </Card>

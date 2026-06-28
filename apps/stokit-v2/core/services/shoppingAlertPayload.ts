@@ -17,8 +17,8 @@ export function buildShoppingPayload(
   return {
     to: pushToken,
     sound: 'default',
-    title: `${senderName} is shopping at ${storeName} 🛒`,
-    body: "Add anything you need now — they're picking items live.",
+    title: `Need anything from ${storeName}?`,
+    body: `${senderName} says they're shopping at ${storeName}. Add anything you need now.`,
     data: { type: 'partner_arrival', storeName, ...(storeId ? { storeId } : {}) },
   };
 }

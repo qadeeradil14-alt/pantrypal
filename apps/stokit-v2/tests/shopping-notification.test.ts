@@ -11,8 +11,12 @@ test('buildShoppingPayload: correct title, body, data shape', () => {
   const msg = buildShoppingPayload('Hewad', 'Walmart', 'ExponentPushToken[abc123]', 'store-id-1');
   assert.equal(msg.to, 'ExponentPushToken[abc123]');
   assert.equal(msg.sound, 'default');
-  assert.ok(msg.title.includes('Hewad'), 'title must include sender name');
+  // Title is store-focused: "Need anything from {storeName}?"
   assert.ok(msg.title.includes('Walmart'), 'title must include store name');
+  assert.ok(!msg.title.includes('Hewad'), 'sender name must not appear in title');
+  // Body carries sender name and store context
+  assert.ok(msg.body.includes('Hewad'), 'body must include sender name');
+  assert.ok(msg.body.includes('Walmart'), 'body must include store name');
   assert.equal(msg.data.type, 'partner_arrival');
   assert.equal(msg.data.storeName, 'Walmart');
   assert.equal(msg.data.storeId, 'store-id-1');
