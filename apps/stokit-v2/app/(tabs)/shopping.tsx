@@ -86,9 +86,13 @@ export default function ShoppingScreen() {
   const [showFirstStorePicker, setShowFirstStorePicker] = useState(false);
   const [reassignItem, setReassignItem] = useState<PantryItem | null>(null);
 
-  const { action, arrivalStoreId } = useLocalSearchParams<{ action?: string; arrivalStoreId?: string }>();
+  const { action, arrivalStoreId, partnerStoreId, partnerStoreName } = useLocalSearchParams<{ action?: string; arrivalStoreId?: string; partnerStoreId?: string; partnerStoreName?: string }>();
   const arrivalHandledRef = useRef(false);
+  const partnerHandledRef = useRef(false);
   const [quickScanStorePicker, setQuickScanStorePicker] = useState(false);
+  const [partnerAddStoreId, setPartnerAddStoreId] = useState<string | null>(null);
+  const [partnerAddStoreName, setPartnerAddStoreName] = useState<string | null>(null);
+  const [partnerAddSheetVisible, setPartnerAddSheetVisible] = useState(false);
   // Holds the storeId we want to skip to receipt once START_TRIP settles
   const [pendingQuickScanStore, setPendingQuickScanStore] = useState<string | null>(null);
 
@@ -228,6 +232,14 @@ export default function ShoppingScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [arrivalStoreId, session.status]);
 
+  useEffect(() => {
+    if (!partnerStoreId || partnerHandledRef.current) return;
+    partnerHandledRef.current = true;
+    setPartnerAddStoreId(partnerStoreId);
+    setPartnerAddStoreName(typeof partnerStoreName === 'string' && partnerStoreName.length > 0 ? partnerStoreName : null);
+    router.setParams({ partnerStoreId: undefined, partnerStoreName: undefined });
+  }, [partnerStoreId, partnerStoreName, router]);
+
   const handleResetShopping = () => {
     const shoppingItems = items.filter((i) => i.status === 'low' || i.status === 'expiring');
     Alert.alert(
@@ -276,6 +288,18 @@ export default function ShoppingScreen() {
     planEntries.length === 0
       ? stores.map((s) => [s.id, plan.get(s.id) ?? []] as [string, ShoppingEntry[]])
       : planEntries;
+  const partnerStore = partnerAddStoreId ? storeById(partnerAddStoreId) : undefined;
+  const partnerStoreLabel = partnerStore?.name ?? partnerAddStoreName ?? 'this store';
+  const partnerContext = partnerAddStoreId ? (
+    <Card style={styles.partnerContextCard}>
+      <StoreChip store={partnerStore} name={partnerStore?.name ?? partnerAddStoreName ?? 'Store'} size={40} />
+      <View style={{ flex: 1 }}>
+        <Text style={styles.partnerContextTitle}>Add something for {partnerStoreLabel}</Text>
+        <Text style={styles.partnerContextText}>It will go straight onto the shared shopping list.</Text>
+      </View>
+      <Button label="Add item" onPress={() => setPartnerAddSheetVisible(true)} />
+    </Card>
+  ) : null;
 
   return (
     <Screen>
@@ -283,6 +307,7 @@ export default function ShoppingScreen() {
       {shoppableCount === 0 ? (
         <>
           <PriceMemoryIntro count={priceHistory.length} styles={styles} colors={colors} />
+          {partnerContext}
           <EmptyState
             icon="cart-outline"
             title="No trip planned"
@@ -293,6 +318,7 @@ export default function ShoppingScreen() {
       ) : (
         <>
           <PriceMemoryIntro count={priceHistory.length} styles={styles} colors={colors} />
+          {partnerContext}
           <Card style={styles.summaryCard}>
             {singleStore && (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md }}>
@@ -396,6 +422,16 @@ export default function ShoppingScreen() {
         visible={quickScanStorePicker}
         onClose={() => setQuickScanStorePicker(false)}
         onSelect={(storeId) => handleQuickScanStoreSelect(storeId)}
+      />
+
+      <AddItemSheet
+        visible={partnerAddSheetVisible}
+        onClose={() => setPartnerAddSheetVisible(false)}
+        defaultStatus="low"
+        defaultStoreId={partnerAddStoreId}
+        hideStorePicker={true}
+        title={`Add to ${partnerStoreLabel}`}
+        subtitle="Add items your household should pick up here."
       />
 
       {/* Tap any item row to change its store */}
@@ -557,7 +593,24 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
   const priceHistory = useDurableStore((s) => s.priceHistory);
   const recordPrice = useDurableStore((s) => s.recordPrice);
   const members = useHouseholdStore((s) => s.members);
+  const items = useDurableStore((s) => s.items);
   const isSharedHousehold = members.length > 1;
+
+  useEffect(() => {
+    const entryIds = new Set(session.entries.map((entry) => entry.itemId));
+    items
+      .filter((item) =>
+        item.storeId === storeId &&
+        (item.status === 'low' || item.status === 'expiring') &&
+        !entryIds.has(item.id)
+      )
+      .forEach((item) => {
+        dispatch({
+          type: 'ADD_ENTRY',
+          entry: { itemId: item.id, name: item.name, quantity: item.quantity, unit: item.unit, storeId, picked: false },
+        });
+      });
+  }, [items, storeId, session.entries, dispatch]);
 
   const handleNotifyHousehold = async () => {
     const store = storeById(storeId);
@@ -1941,6 +1994,9 @@ function makeStyles(colors: AppColors) {
     priceMemoryIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
     priceMemoryTitle: { fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink },
     priceMemoryBody: { fontFamily: fonts.sans, fontSize: 12, lineHeight: 18, color: colors.muted, marginTop: 2 },
+    partnerContextCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.lg, borderColor: colors.primary + '55' },
+    partnerContextTitle: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
+    partnerContextText: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, lineHeight: 18, marginTop: 2 },
     summaryBig:   { fontFamily: fonts.mono, fontSize: 48, color: colors.primary, fontVariant: ['tabular-nums'] },
     summarySub:   { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
     firstDestLabel: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },

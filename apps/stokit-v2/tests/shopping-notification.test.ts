@@ -63,6 +63,35 @@ test('shoppingAlertPayload.ts has no location/geofencing import', () => {
   assert.ok(!src.includes('requestForegroundPermissions'), 'must not request location permission');
 });
 
+test('partner arrival tap routes to Shopping with store context on warm and cold start', () => {
+  const layoutPath = path.join(__dirname, '../app/_layout.tsx');
+  const src = fs.readFileSync(layoutPath, 'utf-8');
+  assert.ok(src.includes('Notifications.getLastNotificationResponseAsync()'), 'cold-start notification tap must be handled');
+  assert.ok(src.includes("data.type === 'partner_arrival'"), 'partner arrival payload must be recognized');
+  assert.ok(src.includes('partnerStoreId: data.storeId'), 'partner store id must be routed to Shopping');
+  assert.ok(src.includes('partnerStoreName: data.storeName'), 'partner store name must be routed to Shopping');
+});
+
+test('partner arrival Shopping context adds item directly to that store', () => {
+  const shoppingPath = path.join(__dirname, '../app/(tabs)/shopping.tsx');
+  const src = fs.readFileSync(shoppingPath, 'utf-8');
+  assert.ok(src.includes('partnerAddStoreId'), 'Shopping must persist partner store context');
+  assert.ok(src.includes('partnerAddStoreName'), 'Shopping must preserve partner store name after params are cleared');
+  assert.ok(src.includes('Add something for {partnerStoreLabel}'), 'Shopping must visibly show the partner store context');
+  assert.ok(src.includes('defaultStatus="low"'), 'partner add sheet must create shopping-list items');
+  assert.ok(src.includes('defaultStoreId={partnerAddStoreId}'), 'partner add sheet must assign to the alerted store');
+  assert.ok(src.includes('hideStorePicker={true}'), 'partner add sheet must not let the item lose store context');
+});
+
+test('active shopping session ingests live household items for current store', () => {
+  const shoppingPath = path.join(__dirname, '../app/(tabs)/shopping.tsx');
+  const src = fs.readFileSync(shoppingPath, 'utf-8');
+  assert.ok(src.includes('const items = useDurableStore((s) => s.items);'), 'active trip must observe durable synced items');
+  assert.ok(src.includes('item.storeId === storeId'), 'live ingest must be scoped to the active store');
+  assert.ok(src.includes("item.status === 'low' || item.status === 'expiring'"), 'live ingest must only add shopping items');
+  assert.ok(src.includes("type: 'ADD_ENTRY'"), 'live synced items must be added into the active session');
+});
+
 // ── 5. v183 sync watermark is unaffected ─────────────────────────────────────
 // Import and exercise the watermark module to confirm it still works correctly
 // after the notification changes (no shared module-state pollution).

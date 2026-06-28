@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { Stack, usePathname, useRouter, useRootNavigationState, useSegments } from 'expo-router';
@@ -90,6 +90,12 @@ export default function RootLayout() {
   const router = useRouter();
   const pathname = usePathname();
   const { colors, isDark } = useTheme();
+  const handledNotificationIdRef = useRef<string | null>(null);
+  const verified = isEmailVerified(user);
+  const unlocked = verified || guestMode;
+  const ready = fontsLoaded && hydratedDurable && hydratedHousehold && !authInitializing;
+  const rootNavigationState = useRootNavigationState();
+  const segments = useSegments();
 
   useEffect(() => {
     void hydrateDurable();
@@ -102,34 +108,40 @@ export default function RootLayout() {
   // yet, so Shopping is the safest stable target for both local arrival
   // notifications and household partner-arrival pushes.
   useEffect(() => {
-    const notificationSubscription = Notifications.addNotificationResponseReceivedListener(
-      (response) => {
-        try {
-          const data = response?.notification?.request?.content?.data as
-            | { type?: string; storeName?: string; storeId?: string }
-            | undefined;
-          if (!data) return;
-          if (data.type === 'store_arrival' || data.type === 'partner_arrival' || typeof data.storeName === 'string') {
-            const title = response?.notification?.request?.content?.title ?? 'unknown';
-            void appendNotificationLog('tapped', `title="${title}" type=${data.type ?? 'unknown'}`);
-            // Geofence "hybrid" flow: a local store_arrival carries the matched
-            // storeId, so open Shopping focused on that exact store and skip the
-            // planning-mode "where first?" picker. Partner-arrival pushes (no
-            // local storeId / not our own trip) still land on plain Shopping.
-            if (data.type === 'store_arrival' && typeof data.storeId === 'string') {
-              router.push({ pathname: '/(tabs)/shopping', params: { arrivalStoreId: data.storeId } });
-            } else {
-              router.push('/(tabs)/shopping');
-            }
-            void appendNotificationLog('shopping_opened', `navigated from notification tap`);
+    if (!ready || !rootNavigationState?.key) return;
+    const handleNotificationResponse = (response: Notifications.NotificationResponse | null | undefined) => {
+      try {
+        const notificationId = response?.notification?.request?.identifier ?? null;
+        if (notificationId && handledNotificationIdRef.current === notificationId) return;
+        const data = response?.notification?.request?.content?.data as
+          | { type?: string; storeName?: string; storeId?: string }
+          | undefined;
+        if (!data) return;
+        if (notificationId) handledNotificationIdRef.current = notificationId;
+        if (data.type === 'store_arrival' || data.type === 'partner_arrival' || typeof data.storeName === 'string') {
+          const title = response?.notification?.request?.content?.title ?? 'unknown';
+          void appendNotificationLog('tapped', `title="${title}" type=${data.type ?? 'unknown'}`);
+          // Geofence opens the current shopper into that store. Partner alerts
+          // open a read-only Walmart/Target/etc context so the recipient can
+          // add an item directly to that shared store list.
+          if (data.type === 'store_arrival' && typeof data.storeId === 'string') {
+            router.push({ pathname: '/(tabs)/shopping', params: { arrivalStoreId: data.storeId } });
+          } else if (data.type === 'partner_arrival' && typeof data.storeId === 'string') {
+            router.push({ pathname: '/(tabs)/shopping', params: { partnerStoreId: data.storeId, partnerStoreName: data.storeName ?? '' } });
+          } else {
+            router.push('/(tabs)/shopping');
           }
-        } catch {
-          // Defensive — never let a malformed notification payload crash the app
+          void appendNotificationLog('shopping_opened', `navigated from notification tap`);
         }
-      },
-    );
+      } catch {
+        // Defensive — never let a malformed notification payload crash the app
+      }
+    };
+
+    void Notifications.getLastNotificationResponseAsync().then(handleNotificationResponse).catch(() => {});
+    const notificationSubscription = Notifications.addNotificationResponseReceivedListener(handleNotificationResponse);
     return () => notificationSubscription.remove();
-  }, [router]);
+  }, [router, ready, rootNavigationState?.key]);
 
   // Cloud recovery: pull data back from Supabase on every sign-in so that
   // stores (logos) are restored even when items already exist locally.
@@ -157,13 +169,6 @@ export default function RootLayout() {
   }, [user, hydratedDurable, hydratedHousehold, ensureHousehold]);
 
 
-
-  const verified = isEmailVerified(user);
-  const unlocked = verified || guestMode;
-  const ready = fontsLoaded && hydratedDurable && hydratedHousehold && !authInitializing;
-
-  const rootNavigationState = useRootNavigationState();
-  const segments = useSegments();
 
   useEffect(() => {
     if (!ready || !rootNavigationState?.key) return;
