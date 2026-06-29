@@ -146,12 +146,37 @@ export async function registerPushToken(userId: string): Promise<void> {
     const { status } = await Notifications.getPermissionsAsync();
     if (status !== 'granted') return;
     const tokenData = await Notifications.getExpoPushTokenAsync();
-    await supabase
+
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('household_id')
+      .eq('id', userId)
+      .maybeSingle();
+    if (profileError) throw profileError;
+
+    const householdId = (profile as { household_id?: string | null } | null)?.household_id;
+    if (!householdId) throw new Error('No active household for push token registration');
+
+    const { count, error } = await supabase
       .from('household_members')
-      .update({ push_token: tokenData.data })
-      .eq('user_id', userId);
-  } catch {
-    // Non-fatal — push degrades gracefully
+      .update({ push_token: tokenData.data }, { count: 'exact' })
+      .eq('user_id', userId)
+      .eq('household_id', householdId);
+    if (error) throw error;
+    if (count === 0) throw new Error(`No household_members row updated for household ${householdId}`);
+
+    const { data: verified, error: verifyError } = await supabase
+      .from('household_members')
+      .select('push_token')
+      .eq('user_id', userId)
+      .eq('household_id', householdId)
+      .maybeSingle();
+    if (verifyError) throw verifyError;
+    if ((verified as { push_token?: string | null } | null)?.push_token !== tokenData.data) {
+      throw new Error(`Token was not persisted for household ${householdId}`);
+    }
+  } catch (err) {
+    console.warn('Push token registration failed', err);
   }
 }
 

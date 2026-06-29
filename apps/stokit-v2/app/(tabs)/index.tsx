@@ -449,7 +449,7 @@ function HouseholdBanner() {
         <View key={member.id}>
           {index > 0 ? <View style={householdStyles.divider} /> : null}
           <View style={householdStyles.memberRow}>
-            <Text style={householdStyles.memberName} numberOfLines={1}>{member.displayName}</Text>
+            <Text style={householdStyles.memberName} numberOfLines={1}>{member.isMe ? 'You' : member.displayName}</Text>
             <Text style={householdStyles.memberRole}>{member.role === 'owner' ? 'Owner' : 'Member'}</Text>
           </View>
         </View>
