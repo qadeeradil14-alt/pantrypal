@@ -152,15 +152,17 @@ export default function RootLayout() {
     void (async () => {
       await ensureHousehold();
 
-      // Apply a pending household join from the /join sign-up flow
+      // Apply a pending household join from the /join sign-up flow.
+      // Key is cleared only after a confirmed successful join so transient
+      // network failures can be retried on the next sign-in.
       const pendingJoinRaw = await AsyncStorage.getItem(PENDING_JOIN_KEY);
       if (pendingJoinRaw) {
-        await AsyncStorage.removeItem(PENDING_JOIN_KEY);
         try {
           const { inviteCode, displayName } = JSON.parse(pendingJoinRaw) as { inviteCode: string; displayName: string };
-          await useHouseholdStore.getState().joinHousehold(inviteCode, displayName);
+          const joinResult = await useHouseholdStore.getState().joinHousehold(inviteCode, displayName);
+          if (joinResult.ok) await AsyncStorage.removeItem(PENDING_JOIN_KEY);
         } catch {
-          // Invalid stored data — ignore, user can join manually from settings
+          // Non-fatal — key stays so the next sign-in can retry
         }
       }
 
@@ -177,7 +179,10 @@ export default function RootLayout() {
   useEffect(() => {
     if (!user) return;
     const sub = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'active') void registerPushToken(user.id);
+      if (nextState === 'active') {
+        void registerPushToken(user.id);
+        void pullFromSupabase();
+      }
     });
     return () => sub.remove();
   }, [user]);

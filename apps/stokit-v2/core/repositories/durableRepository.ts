@@ -27,6 +27,7 @@ export const emptyDurableState: DurableState = {
   trips: [],
   activity: [],
   prefs: defaultPrefs,
+  activeSession: null,
   updatedAt: 0,
 };
 
@@ -42,6 +43,7 @@ function normalize(parsed: unknown): DurableState {
     trips: Array.isArray(p.trips) ? p.trips : [],
     activity: Array.isArray(p.activity) ? p.activity : [],
     prefs: { ...defaultPrefs, ...(p.prefs ?? {}) },
+    activeSession: p.activeSession ?? null,
     updatedAt: typeof p.updatedAt === 'number' ? p.updatedAt : 0,
   };
 }

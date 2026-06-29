@@ -129,6 +129,25 @@ export interface Trip {
   duration: number;
 }
 
+export interface SharedShoppingSession {
+  status:
+    | 'idle'
+    | 'shopping_store'
+    | 'receipt_prompt'
+    | 'store_summary'
+    | 'continue_prompt'
+    | 'next_store_ready'
+    | 'trip_summary';
+  tripId: string | null;
+  startedAt: number | null;
+  storeQueue: string[];
+  currentIndex: number;
+  skippedStoreIds: string[];
+  entries: ShoppingEntry[];
+  receipts: Receipt[];
+  completedTrip: Trip | null;
+}
+
 export type ActivityType =
   | 'item_added'
   | 'marked_low'
@@ -200,5 +219,6 @@ export interface DurableState {
   trips: Trip[];
   activity: ActivityEvent[];
   prefs: HouseholdPrefs;
+  activeSession: SharedShoppingSession | null;
   updatedAt: number;
 }

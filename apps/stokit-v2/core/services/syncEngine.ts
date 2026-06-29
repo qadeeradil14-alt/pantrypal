@@ -11,6 +11,15 @@ const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24 * 7;
 let syncChannel: ReturnType<typeof supabase.channel> | null = null;
 let activeHouseholdId: string | null = null;
 
+function activeSessionStats(state: DurableState): { itemCount: number; pickedCount: number; sessionId: string } {
+  const entries = state.activeSession?.entries ?? [];
+  return {
+    itemCount: entries.length,
+    pickedCount: entries.filter((entry) => entry.picked).length,
+    sessionId: state.activeSession?.tripId ?? 'none',
+  };
+}
+
 async function durableStore() {
   return (await import('../../store/durable-store')).useDurableStore;
 }
@@ -67,6 +76,8 @@ export async function pushLocalState(state: DurableState): Promise<void> {
     if (error && __DEV__) console.warn('[Sync Engine] Snapshot push failed:', error.message);
     if (!error) {
       markPushed(snapshot.updatedAt);
+      const { itemCount, pickedCount, sessionId } = activeSessionStats(snapshot);
+      console.log(`[Shopping Sync] active_session_snapshot_written version/updatedAt=${snapshot.updatedAt} itemCount=${itemCount} pickedCount=${pickedCount} sessionId=${sessionId}`);
       const store = await durableStore();
       const uploadedById = new Map(receipts.map((receipt) => [receipt.id, receipt]));
       const currentReceipts = store.getState().receipts.map((receipt) => {
@@ -156,8 +167,18 @@ export async function pullFromSupabase(): Promise<void> {
 
   const remote = data.state as DurableState;
   const remoteUpdatedAt = (remote.updatedAt ?? data.updated_at ?? 0) as number;
-  if (!shouldApplyRemote(remoteUpdatedAt)) return;
+  const hasActiveSession = 'activeSession' in remote;
+  if (!shouldApplyRemote(remoteUpdatedAt)) {
+    console.log(`[Shopping Sync] active_session_reconcile_skipped reason=${isSelfEcho(remoteUpdatedAt) ? 'local_origin' : 'older'} version/updatedAt=${remoteUpdatedAt}`);
+    return;
+  }
+  if (hasActiveSession) {
+    const { itemCount, pickedCount, sessionId } = activeSessionStats(remote);
+    console.log(`[Shopping Sync] remote_active_session_snapshot_received version/updatedAt=${remoteUpdatedAt} itemCount=${itemCount} pickedCount=${pickedCount} sessionId=${sessionId}`);
+  }
+  if (hasActiveSession && !remote.activeSession) console.log('[Shopping Sync] remote_trip_end_received');
   store.getState().applyRemotePatch(await withSignedReceiptUrls(remote));
+  if (hasActiveSession) console.log('[Shopping Sync] local_state_reconciled');
   if (!isSelfEcho(remoteUpdatedAt)) {
     markRemoteApplied(remoteUpdatedAt);
   }

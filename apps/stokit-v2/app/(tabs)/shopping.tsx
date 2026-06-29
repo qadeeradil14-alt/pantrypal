@@ -86,11 +86,14 @@ export default function ShoppingScreen() {
 
   const { action, arrivalStoreId, partnerStoreId, partnerStoreName } = useLocalSearchParams<{ action?: string; arrivalStoreId?: string; partnerStoreId?: string; partnerStoreName?: string }>();
   const arrivalHandledRef = useRef(false);
-  const partnerHandledRef = useRef(false);
+  const partnerHandledRef = useRef<string | null>(null);
+  const previousSessionStatusRef = useRef(session.status);
   const [quickScanStorePicker, setQuickScanStorePicker] = useState(false);
   const [partnerAddStoreId, setPartnerAddStoreId] = useState<string | null>(null);
   const [partnerAddStoreName, setPartnerAddStoreName] = useState<string | null>(null);
   const [partnerAddSheetVisible, setPartnerAddSheetVisible] = useState(false);
+  const [neutralAddSheetVisible, setNeutralAddSheetVisible] = useState(false);
+  const [pendingPartnerFocusStoreId, setPendingPartnerFocusStoreId] = useState<string | null>(null);
   // Holds the storeId we want to skip to receipt once START_TRIP settles
   const [pendingQuickScanStore, setPendingQuickScanStore] = useState<string | null>(null);
   const [showStoreChooser, setShowStoreChooser] = useState(false);
@@ -150,6 +153,10 @@ export default function ShoppingScreen() {
     () => items.filter((i) => (i.status === 'low' || i.status === 'expiring') && !!i.storeId),
     [items],
   );
+  const planEntries = useMemo(() => Array.from(plan.entries()), [plan]);
+  const totalItems = useMemo(() => planEntries.reduce((n, [, list]) => n + list.length, 0), [planEntries]);
+  const shoppableCount = totalItems + unassignedCount;
+  const singleStore = planEntries.length === 1 ? storeById(planEntries[0][0]) : undefined;
 
   const startTripAt = async (firstStoreId: string) => {
     const shoppable = items.filter((i) => i.status === 'low' || i.status === 'expiring');
@@ -187,6 +194,12 @@ export default function ShoppingScreen() {
     }
   };
 
+  const clearPartnerAddContext = () => {
+    setPartnerAddStoreId(null);
+    setPartnerAddStoreName(null);
+    setPartnerAddSheetVisible(false);
+  };
+
   // Geofence "hybrid" flow: a store_arrival notification tap deep-links here with
   // arrivalStoreId. Auto-start the trip at that store via the SAME startTripAt
   // engine (no duplicate logic) and skip the planning-mode picker. One-shot, and
@@ -212,12 +225,96 @@ export default function ShoppingScreen() {
   }, [arrivalStoreId, session.status]);
 
   useEffect(() => {
-    if (!partnerStoreId || partnerHandledRef.current) return;
-    partnerHandledRef.current = true;
-    setPartnerAddStoreId(partnerStoreId);
-    setPartnerAddStoreName(typeof partnerStoreName === 'string' && partnerStoreName.length > 0 ? partnerStoreName : null);
-    router.setParams({ partnerStoreId: undefined, partnerStoreName: undefined });
-  }, [partnerStoreId, partnerStoreName, router]);
+    if (!partnerStoreId) {
+      partnerHandledRef.current = null;
+      return;
+    }
+    const partnerParamKey = `${partnerStoreId}:${typeof partnerStoreName === 'string' ? partnerStoreName : ''}`;
+    if (partnerHandledRef.current === partnerParamKey) return;
+    const partnerStoreLabel = typeof partnerStoreName === 'string' && partnerStoreName.length > 0 ? partnerStoreName : null;
+    const storeExists = Boolean(storeById(partnerStoreId));
+    const complete = () => {
+      partnerHandledRef.current = partnerParamKey;
+      setPartnerAddStoreId(partnerStoreId);
+      setPartnerAddStoreName(partnerStoreLabel);
+      router.setParams({ partnerStoreId: undefined, partnerStoreName: undefined });
+    };
+
+    if (!storeExists) {
+      if (stores.length > 0) {
+        partnerHandledRef.current = partnerParamKey;
+        clearPartnerAddContext();
+        router.setParams({ partnerStoreId: undefined, partnerStoreName: undefined });
+      }
+      return;
+    }
+
+    if (session.status === 'shopping_store' && currentStoreId(session) === partnerStoreId) {
+      complete();
+      return;
+    }
+
+    if (session.status === 'next_store_ready') {
+      const pending = session.storeQueue.slice(session.currentIndex + 1);
+      if (pending.includes(partnerStoreId)) {
+        complete();
+        dispatch({ type: 'CHOOSE_NEXT_STORE', storeId: partnerStoreId });
+        return;
+      }
+    }
+
+    if (session.status === 'idle') {
+      if (plan.has(partnerStoreId)) {
+        complete();
+        void startTripAt(partnerStoreId);
+        return;
+      }
+      if (storeExists) {
+        complete();
+        setPartnerAddSheetVisible(true);
+      }
+      return;
+    }
+
+    complete();
+    setPendingPartnerFocusStoreId(partnerStoreId);
+    dispatch({ type: 'END_TRIP' });
+    return;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [partnerStoreId, partnerStoreName, session.status, stores.length, plan]);
+
+  useEffect(() => {
+    if (!pendingPartnerFocusStoreId || session.status !== 'idle') return;
+    if (!storeById(pendingPartnerFocusStoreId)) {
+      setPendingPartnerFocusStoreId(null);
+      clearPartnerAddContext();
+      return;
+    }
+    setPendingPartnerFocusStoreId(null);
+    if (plan.has(pendingPartnerFocusStoreId)) {
+      void startTripAt(pendingPartnerFocusStoreId);
+      return;
+    }
+    setPartnerAddSheetVisible(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingPartnerFocusStoreId, session.status, stores.length, plan]);
+
+  useEffect(() => {
+    if (partnerAddStoreId && stores.length > 0 && !storeById(partnerAddStoreId)) {
+      clearPartnerAddContext();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [partnerAddStoreId, stores.length]);
+
+  useEffect(() => {
+    const previous = previousSessionStatusRef.current;
+    previousSessionStatusRef.current = session.status;
+    if (pendingPartnerFocusStoreId) return;
+    if ((previous !== session.status && (session.status === 'idle' || session.status === 'trip_summary')) || (session.status === 'idle' && shoppableCount === 0 && !partnerStoreId && !partnerAddSheetVisible)) {
+      clearPartnerAddContext();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.status, shoppableCount, partnerStoreId, partnerAddSheetVisible, pendingPartnerFocusStoreId]);
 
   // Skip the per-store "Stop completed / Head to X" screen and go directly to the
   // "Where next?" chooser. Only auto-advance when there are still pending stores
@@ -241,7 +338,11 @@ export default function ShoppingScreen() {
         {
           text: 'Reset',
           style: 'destructive',
-          onPress: () => shoppingItems.forEach((i) => updateItem(i.id, { status: 'stocked', storeId: null })),
+          onPress: () => {
+            clearPartnerAddContext();
+            setPendingPartnerFocusStoreId(null);
+            shoppingItems.forEach((i) => updateItem(i.id, { status: 'stocked', storeId: null }));
+          },
         },
       ],
     );
@@ -256,6 +357,12 @@ export default function ShoppingScreen() {
     }
     setShowStoreChooser(true);
   };
+
+  const activeTripStoreId = session.status === 'shopping_store' ? currentStoreId(session) : null;
+  const validActiveTripStoreId = activeTripStoreId && storeById(activeTripStoreId) ? activeTripStoreId : null;
+  const validNotificationStoreId = partnerStoreId && storeById(partnerStoreId) ? partnerStoreId : null;
+  const validExplicitAddStoreId = partnerAddStoreId && storeById(partnerAddStoreId) ? partnerAddStoreId : null;
+  const resolvedStoreContextId = validActiveTripStoreId ?? validNotificationStoreId ?? validExplicitAddStoreId ?? null;
 
   // ── Active states ──────────────────────────────────────────────────────────
   if (session.status === 'shopping_store')  return <ShoppingActive  session={session} dispatch={dispatch} storeById={storeById} styles={styles} colors={colors} />;
@@ -273,9 +380,6 @@ export default function ShoppingScreen() {
   }
 
   // ── Idle ───────────────────────────────────────────────────────────────────
-  const planEntries = Array.from(plan.entries());
-  const totalItems  = planEntries.reduce((n, [, list]) => n + list.length, 0);
-  const singleStore = planEntries.length === 1 ? storeById(planEntries[0][0]) : undefined;
 
   // ── First-store chooser (shown when ≥2 stores have items) ──────────────────
   if (showStoreChooser && planEntries.length > 1) {
@@ -309,10 +413,9 @@ export default function ShoppingScreen() {
       </Screen>
     );
   }
-  const shoppableCount = totalItems + unassignedCount;
-  const partnerStore = partnerAddStoreId ? storeById(partnerAddStoreId) : undefined;
+  const partnerStore = resolvedStoreContextId ? storeById(resolvedStoreContextId) : undefined;
   const partnerStoreLabel = partnerStore?.name ?? partnerAddStoreName ?? 'this store';
-  const partnerContext = partnerAddStoreId ? (
+  const partnerContext = partnerStore && shoppableCount > 0 ? (
     <Card style={styles.partnerContextCard}>
       <StoreChip store={partnerStore} name={partnerStore?.name ?? partnerAddStoreName ?? 'Store'} size={40} />
       <View style={{ flex: 1 }}>
@@ -320,6 +423,14 @@ export default function ShoppingScreen() {
         <Text style={styles.partnerContextText}>It will go straight onto the shared shopping list.</Text>
       </View>
       <Button label="Add item" onPress={() => setPartnerAddSheetVisible(true)} />
+    </Card>
+  ) : shoppableCount === 0 ? (
+    <Card style={styles.partnerContextCard}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.partnerContextTitle}>Add something to your shopping list</Text>
+        <Text style={styles.partnerContextText}>Pick a store only when it helps your household shop.</Text>
+      </View>
+      <Button label="Add item" onPress={() => setNeutralAddSheetVisible(true)} />
     </Card>
   ) : null;
 
@@ -414,13 +525,27 @@ export default function ShoppingScreen() {
       />
 
       <AddItemSheet
+        key={`partner-add-${partnerAddStoreId ?? 'none'}`}
         visible={partnerAddSheetVisible}
-        onClose={() => setPartnerAddSheetVisible(false)}
+        onClose={() => {
+          setPartnerAddSheetVisible(false);
+          if (session.status === 'idle' && shoppableCount === 0) clearPartnerAddContext();
+        }}
         defaultStatus="low"
         defaultStoreId={partnerAddStoreId}
         hideStorePicker={true}
         title={`Add to ${partnerStoreLabel}`}
         subtitle="Add items your household should pick up here."
+      />
+
+      <AddItemSheet
+        key="neutral-add"
+        visible={neutralAddSheetVisible}
+        onClose={() => setNeutralAddSheetVisible(false)}
+        defaultStatus="low"
+        defaultStoreId={null}
+        title="Add something to your shopping list"
+        subtitle="Choose a store if this item belongs to a specific stop."
       />
 
       {/* Tap any item row to change its store */}
@@ -792,6 +917,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
       />
       <CancelTripLink dispatch={dispatch} colors={colors} />
       <AddItemSheet
+        key={`active-add-${storeId}`}
         visible={addSheetVisible}
         onClose={() => setAddSheetVisible(false)}
         defaultStatus="low"

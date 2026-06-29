@@ -15,6 +15,7 @@ import type {
   PantryStatus,
   PriceEntry,
   Receipt,
+  SharedShoppingSession,
   Store,
   StorageLocation,
   Trip,
@@ -79,6 +80,7 @@ interface DurableStore extends DurableState {
   removeTrip: (tripId: string, receiptIds: string[]) => void;
   updateReceipt: (receiptId: string, patch: Partial<Receipt>) => void;
   recordPrice: (input: Omit<PriceEntry, 'id' | 'paidAt'>) => void;
+  setActiveSession: (session: SharedShoppingSession | null, eventType?: string) => void;
 
   // Preferences
   updatePrefs: (patch: Partial<HouseholdPrefs>) => void;
@@ -106,6 +108,7 @@ function snapshot(s: DurableState): DurableState {
     trips: s.trips,
     activity: s.activity,
     prefs: s.prefs,
+    activeSession: s.activeSession ?? null,
     updatedAt: s.updatedAt,
   };
 }
@@ -114,8 +117,10 @@ export const useDurableStore = create<DurableStore>((set, get) => {
   // is swallowed by the repository so the in-memory state stays authoritative.
   let persistQueue = Promise.resolve();
   let persistEpoch = 0;
+  let lastSnapshotAt = 0;
   const persist = () => {
-    const updatedAt = now();
+    const updatedAt = Math.max(now(), lastSnapshotAt + 1);
+    lastSnapshotAt = updatedAt;
     const epoch = persistEpoch;
     set({ updatedAt });
     const snap = snapshot(get());
@@ -355,6 +360,25 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       persist();
     },
 
+    setActiveSession: (session, eventType) => {
+      set({ activeSession: session });
+      const itemCount = session?.entries.length ?? 0;
+      const pickedCount = session?.entries.filter((entry) => entry.picked).length ?? 0;
+      const sessionId = session?.tripId ?? 'none';
+      const action =
+        eventType === 'TOGGLE_PICK' || eventType === 'SET_PICK' ? 'check' :
+        eventType === 'ADD_ENTRY' ? 'add' :
+        eventType === 'MARK_OUT_OF_STOCK' ? 'remove' :
+        eventType === 'FINISH_STORE' || eventType === 'FINISH_TRIP' || eventType === 'FINISH_TRIP_EARLY' || eventType === 'END_TRIP' ? 'finish' :
+        eventType ?? 'unknown';
+      console.log(`[Shopping Sync] active_session_mutation_local action=${action} itemCount=${itemCount} pickedCount=${pickedCount} sessionId=${sessionId}`);
+      console.log(`[Shopping Sync] active_session_snapshot_write_requested action=${action} itemCount=${itemCount} pickedCount=${pickedCount} sessionId=${sessionId}`);
+      if (eventType === 'START_TRIP') console.log('[Shopping Sync] trip_start synced', session?.tripId ?? 'none');
+      if (eventType === 'TOGGLE_PICK' || eventType === 'SET_PICK') console.log('[Shopping Sync] item_checked synced', session?.tripId ?? 'none');
+      if (eventType === 'END_TRIP' || eventType === 'FINISH_TRIP' || eventType === 'FINISH_TRIP_EARLY') console.log('[Shopping Sync] trip_end synced', session?.tripId ?? 'none');
+      persist();
+    },
+
     updatePrefs: (patch) => {
       set((s) => ({ prefs: { ...s.prefs, ...patch } }));
       persist();
@@ -394,7 +418,14 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         receipts:     Array.isArray(patch.receipts)     ? patch.receipts     : s.receipts,
         trips:        Array.isArray(patch.trips)        ? patch.trips        : s.trips,
         activity:     Array.isArray(patch.activity)     ? patch.activity     : s.activity,
+        activeSession: 'activeSession' in patch ? patch.activeSession ?? null : s.activeSession ?? null,
       }));
+      if ('activeSession' in patch) {
+        const remoteSession = patch.activeSession ?? null;
+        void import('./session-store').then(({ useSessionStore }) => {
+          useSessionStore.getState().applyRemoteSession(remoteSession);
+        });
+      }
       // Save to disk (AsyncStorage) so we have it offline, but do NOT call persist()
       // because persist() triggers the syncEngine push loop.
       void saveDurable(snapshot(get()));
