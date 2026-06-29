@@ -37,12 +37,16 @@ Deno.serve(async (req) => {
     return new Response('Bad request: storeName required', { status: 400 });
   }
 
-  // Look up the sender's household and display name.
-  const { data: senderRow } = await serviceSupabase
+  // Look up the sender's active household — prefer shared (is_personal=false) over personal.
+  // Use limit(1) rather than maybeSingle() to avoid a 406 if the user somehow has
+  // multiple rows (e.g. migration artefact); the ordering ensures the shared household wins.
+  const { data: senderRows } = await serviceSupabase
     .from('household_members')
     .select('household_id, display_name')
     .eq('user_id', user.id)
-    .maybeSingle();
+    .order('is_personal', { ascending: true })
+    .limit(1);
+  const senderRow = senderRows?.[0] ?? null;
 
   if (!senderRow?.household_id) {
     // Caller is not in a household — nothing to notify.

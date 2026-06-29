@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, AppState, View } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { Stack, usePathname, useRouter, useRootNavigationState, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -125,10 +125,12 @@ export default function RootLayout() {
           // open a read-only Walmart/Target/etc context so the recipient can
           // add an item directly to that shared store list.
           if (data.type === 'store_arrival' && typeof data.storeId === 'string') {
-            router.push({ pathname: '/(tabs)/shopping', params: { arrivalStoreId: data.storeId } });
+            if (pathname !== '/(tabs)/shopping') router.push({ pathname: '/(tabs)/shopping', params: { arrivalStoreId: data.storeId } });
+            else router.setParams({ arrivalStoreId: data.storeId });
           } else if (data.type === 'partner_arrival' && typeof data.storeId === 'string') {
-            router.push({ pathname: '/(tabs)/shopping', params: { partnerStoreId: data.storeId, partnerStoreName: data.storeName ?? '' } });
-          } else {
+            if (pathname !== '/(tabs)/shopping') router.push({ pathname: '/(tabs)/shopping', params: { partnerStoreId: data.storeId, partnerStoreName: data.storeName ?? '' } });
+            else router.setParams({ partnerStoreId: data.storeId, partnerStoreName: data.storeName ?? '' });
+          } else if (pathname !== '/(tabs)/shopping') {
             router.push('/(tabs)/shopping');
           }
           void appendNotificationLog('shopping_opened', `navigated from notification tap`);
@@ -168,6 +170,17 @@ export default function RootLayout() {
     })();
   }, [user, hydratedDurable, hydratedHousehold, ensureHousehold]);
 
+  // Re-attempt push token registration whenever the app returns to foreground.
+  // The startup attempt almost always runs before the user has granted
+  // notification permission; this ensures registration succeeds after they
+  // grant it in OS Settings and switch back.
+  useEffect(() => {
+    if (!user) return;
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') void registerPushToken(user.id);
+    });
+    return () => sub.remove();
+  }, [user]);
 
 
   useEffect(() => {

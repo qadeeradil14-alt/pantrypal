@@ -232,7 +232,7 @@ function buildArrivalContent(
 export async function notifyArrival(
   storeName: string,
   itemCount: number,
-  source: 'geofence' | 'test' = 'geofence',
+  source: 'geofence' | 'test' | 'manual' = 'geofence',
   opts?: { storeId?: string; itemNames?: string[] },
 ): Promise<{ ok: boolean; result: string }> {
   if (itemCount <= 0) return { ok: false, result: 'skipped:no_items' };

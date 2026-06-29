@@ -59,6 +59,7 @@ export function AddItemSheet({
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<typeof PANTRY_CATEGORIES[number]>('Produce');
   const [selected, setSelected] = useState<Record<string, SelectedItem>>({});
+  const [bulkStoreId, setBulkStoreId] = useState<string | null>(defaultStoreId);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -66,6 +67,7 @@ export function AddItemSheet({
     setQuery('');
     setCategory('Produce');
     setSelected({});
+    setBulkStoreId(defaultStoreId);
   };
 
   const submit = () => {
@@ -76,14 +78,15 @@ export function AddItemSheet({
       const existing = quickAdd
         ? items.find((item) => item.name.trim().toLowerCase() === catalog.name.trim().toLowerCase())
         : undefined;
+      const effectiveStoreId = storeId ?? bulkStoreId;
       const item = existing
         ? {
             ...existing,
             status,
-            storeId: storeId ?? existing.storeId,
+            storeId: effectiveStoreId ?? existing.storeId,
             updatedAt: Date.now(),
           }
-        : addItem({ name: catalog.name, quantity, unit, status, storeId });
+        : addItem({ name: catalog.name, quantity, unit, status, storeId: effectiveStoreId });
       if (existing) updateItem(existing.id, { status: item.status, storeId: item.storeId });
       addedItems.push(item);
     });
@@ -126,7 +129,7 @@ export function AddItemSheet({
           quantity: 1,
           unit: catalogItem.defaultUnit ?? 'unit',
           status: defaultStatus,
-          storeId: defaultStoreId,
+          storeId: bulkStoreId,
         },
       };
     });
@@ -137,6 +140,15 @@ export function AddItemSheet({
       ...current,
       [id]: { ...current[id], ...patch },
     }));
+  };
+
+  const applyBulkStore = (storeId: string | null) => {
+    setBulkStoreId(storeId);
+    setSelected((current) => {
+      const next = { ...current };
+      for (const k of Object.keys(next)) next[k] = { ...next[k], storeId };
+      return next;
+    });
   };
 
   const addCustomItem = () => {
@@ -152,15 +164,24 @@ export function AddItemSheet({
     toggle(custom);
   };
 
+  const bulkStoreName = bulkStoreId ? stores.find((s) => s.id === bulkStoreId)?.name : null;
+  const itemWord = selectedItems.length === 1 ? 'item' : 'items';
   const submitLabel = selectedItems.length === 0
     ? 'Select items'
-    : selectedItems.length === 1
-      ? 'Add 1 item'
-      : `Add ${selectedItems.length} items`;
+    : bulkStoreName
+      ? `Add ${selectedItems.length} ${itemWord} to ${bulkStoreName}`
+      : `Add ${selectedItems.length} ${itemWord}`;
 
   return (
     <Sheet visible={visible} title={title} onClose={close}>
-      <Text style={styles.subtitle}>{subtitle}</Text>
+      {!hideStorePicker && storeOptions.length ? (
+        <ChipSelect
+          label="Choose store for all"
+          options={storeOptions}
+          value={bulkStoreId}
+          onChange={applyBulkStore}
+        />
+      ) : null}
 
       <View style={styles.search}>
         <Ionicons name="search" size={18} color={colors.muted} />
@@ -170,8 +191,7 @@ export function AddItemSheet({
           placeholder="Search groceries, kitchen, cleaning…"
           placeholderTextColor={colors.muted}
           style={styles.searchInput}
-          returnKeyType="done"
-          onSubmitEditing={addCustomItem}
+          returnKeyType="search"
         />
         {query ? (
           <Pressable onPress={() => setQuery('')} hitSlop={8}>
@@ -304,13 +324,6 @@ export function AddItemSheet({
 
 function makeStyles(colors: AppColors) {
   return StyleSheet.create({
-    subtitle: {
-      fontFamily: fonts.sans,
-      fontSize: 13,
-      color: colors.muted,
-      marginTop: -spacing.md,
-      marginBottom: spacing.lg,
-    },
     search: {
       height: 48,
       borderRadius: radii.md,

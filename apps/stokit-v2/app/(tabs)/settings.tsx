@@ -226,13 +226,11 @@ export default function SettingsScreen() {
     }
   }, [stores, items, gpsStores.length, refreshDiagnostics]);
 
-  // ── Test notification handler ─────────────────────────────────────────────
-  const sendTestArrivalNotification = useCallback(async () => {
+  // ── Arrival notification handler ──────────────────────────────────────────
+  const sendArrivalNotification = useCallback(async (source: 'test' | 'manual') => {
     setTestNotifLoading(true);
     setTestNotifStatus(null);
     try {
-      // Pick first eligible store, or fall back to a placeholder so the test
-      // exercises the exact same code path as a real geofence arrival.
       const targetStore = monitorableStores[0];
       const storeName = targetStore?.name ?? 'Test Store';
       const itemNames = targetStore
@@ -241,9 +239,7 @@ export default function SettingsScreen() {
             .map((i) => i.name)
         : ['Test item'];
       const itemCount = Math.max(1, itemNames.length);
-      // notifyArrival with source='test' — identical code path to geofence arrival,
-      // including the store-specific item names and storeId payload.
-      const result = await notifyArrival(storeName, itemCount, 'test', {
+      const result = await notifyArrival(storeName, itemCount, source, {
         storeId: targetStore?.id,
         itemNames,
       });
@@ -256,7 +252,6 @@ export default function SettingsScreen() {
       setTestNotifStatus(`✗ Error — ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setTestNotifLoading(false);
-      // Refresh diagnostics so pending count updates
       void refreshDiagnostics();
     }
   }, [monitorableStores, items, refreshDiagnostics]);
@@ -514,22 +509,22 @@ export default function SettingsScreen() {
           </Text>
         )}
 
-        {/* ── TEST ARRIVAL NOTIFICATION BUTTON ─────────────────────────── */}
+        {/* ── ARRIVAL ALERT MANUAL FALLBACK ─────────────────────────── */}
         <View style={styles.testNotifSection}>
-          <Text style={styles.testNotifHeading}>Test arrival notification</Text>
+          <Text style={styles.testNotifHeading}>Arrival alert</Text>
           <Text style={styles.testNotifNote}>
-            Fires the exact same notification as a real geofence arrival. Lock your screen first — if the banner appears, the notification pipeline works.
+            Use this if geofencing didn{"'"}t fire when you arrived at a store.
           </Text>
           <Pressable
             style={[styles.testNotifButton, testNotifLoading && { opacity: 0.6 }]}
-            onPress={() => void sendTestArrivalNotification()}
+            onPress={() => void sendArrivalNotification('manual')}
             disabled={testNotifLoading}
             accessibilityRole="button"
-            accessibilityLabel="Send test arrival notification"
+            accessibilityLabel="Send arrival notification"
           >
             <Ionicons name="notifications-outline" size={16} color="#fff" />
             <Text style={styles.testNotifButtonText}>
-              {testNotifLoading ? 'Sending…' : 'Send Test Arrival Notification'}
+              {testNotifLoading ? 'Sending…' : 'Send Alert'}
             </Text>
           </Pressable>
           {testNotifStatus ? (
@@ -747,6 +742,31 @@ export default function SettingsScreen() {
           {geofenceDiagnostics?.lastError ? (
             <Text style={[styles.geofenceDiagnosticsStore, { color: colors.danger }]}>
               Last error: {geofenceDiagnostics.lastError}
+            </Text>
+          ) : null}
+
+          {/* ── TEST NOTIFICATION ───────────────────────────────────── */}
+          <Text style={styles.geofenceDiagnosticsHeading}>Notification test</Text>
+          <Pressable
+            style={[styles.testNotifButton, testNotifLoading && { opacity: 0.6 }]}
+            onPress={() => void sendArrivalNotification('test')}
+            disabled={testNotifLoading}
+            accessibilityRole="button"
+            accessibilityLabel="Send test arrival notification"
+          >
+            <Ionicons name="notifications-outline" size={16} color="#fff" />
+            <Text style={styles.testNotifButtonText}>
+              {testNotifLoading ? 'Sending…' : 'Send Test Arrival Notification'}
+            </Text>
+          </Pressable>
+          {testNotifStatus ? (
+            <Text
+              style={[
+                styles.testNotifResult,
+                testNotifStatus.startsWith('✓') ? { color: colors.success } : { color: colors.danger },
+              ]}
+            >
+              {testNotifStatus}
             </Text>
           ) : null}
 

@@ -29,7 +29,8 @@ import type { PantryCatalogItem } from '../../constants/pantryCatalog';
 import { fetchRawRecipes, reEvaluateRecipes } from '../../core/services/recipes';
 import { RecipeSuggestionsCard } from '../../components/recipes/RecipeSuggestionsCard';
 import { RecipeDetailSheet } from '../../components/recipes/RecipeDetailSheet';
-import type { PantryItem, } from '../../types';
+import type { PantryItem, Store } from '../../types';
+import { StoreChip } from '../../components/shared/ui';
 import type { RecipeSuggestion, RawMealData } from '../../core/services/recipes';
 import { ItemAvatar } from '../../components/shared/ItemAvatar';
 import * as Updates from 'expo-updates';
@@ -50,6 +51,7 @@ export default function PantryScreen() {
   const setItemStatus = useDurableStore((state) => state.setItemStatus);
   const deleteItem = useDurableStore((state) => state.deleteItem);
   const addItem = useDurableStore((state) => state.addItem);
+  const updateItem = useDurableStore((state) => state.updateItem);
   const household = useHouseholdStore((s) => s.household);
   const members = useHouseholdStore((s) => s.members);
   const [addVisible, setAddVisible] = useState(false);
@@ -304,6 +306,8 @@ export default function PantryScreen() {
                 onPress={() => { setSearchQuery(''); Keyboard.dismiss(); setActionItem(item); }}
                 action="cart"
                 onSwipeLeft={() => deleteItem(item.id)}
+                storeOptions={stores}
+                onAssignStore={(storeId) => updateItem(item.id, { storeId })}
               />
             </View>
           )) : (
@@ -539,6 +543,8 @@ function SimpleItemRow({
   onAction,
   onSwipeLeft,
   onSwipeRight,
+  storeOptions,
+  onAssignStore,
 }: {
   item: PantryItem;
   store?: { name: string };
@@ -547,6 +553,8 @@ function SimpleItemRow({
   onAction?: () => void;
   onSwipeLeft?: () => void;
   onSwipeRight?: () => void;
+  storeOptions?: Store[];
+  onAssignStore?: (storeId: string) => void;
 }) {
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
@@ -579,23 +587,35 @@ function SimpleItemRow({
       }}
       containerStyle={{ overflow: 'hidden' }}
     >
-      <Pressable onPress={onPress} style={s.itemRow}>
-        <ItemAvatar name={item.name} size={44} />
-        <View style={s.itemCopy}>
-          <Text style={s.itemName}>{item.name}</Text>
-          <Text style={s.itemMeta}>
-            ×{item.quantity}{store ? ` · ${store.name}` : ''}
-          </Text>
-        </View>
-        {action ? (
-          <Pressable onPress={onAction ?? onPress} style={[s.itemAction, action === 'cart' && s.itemCartAction]}>
-            <Ionicons name={action === 'cart' ? 'cart-outline' : 'add'} size={action === 'cart' ? 23 : 17} color={colors.primary} />
-            {action === 'cart' ? null : <Text style={s.itemActionText}>{action}</Text>}
-          </Pressable>
-        ) : (
-          <Ionicons name="chevron-forward" size={20} color={colors.muted} />
-        )}
-      </Pressable>
+      <View>
+        <Pressable onPress={onPress} style={s.itemRow}>
+          <ItemAvatar name={item.name} size={44} />
+          <View style={s.itemCopy}>
+            <Text style={s.itemName}>{item.name}</Text>
+            <Text style={s.itemMeta}>
+              {item.quantity > 1 ? `×${item.quantity}${store ? ' · ' : ''}` : ''}{store?.name ?? ''}
+            </Text>
+          </View>
+          {action ? (
+            <Pressable onPress={onAction ?? onPress} style={[s.itemAction, action === 'cart' && s.itemCartAction]}>
+              <Ionicons name={action === 'cart' ? 'cart-outline' : 'add'} size={action === 'cart' ? 23 : 17} color={colors.primary} />
+              {action === 'cart' ? null : <Text style={s.itemActionText}>{action}</Text>}
+            </Pressable>
+          ) : (
+            <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+          )}
+        </Pressable>
+        {!item.storeId && storeOptions && storeOptions.length > 0 && onAssignStore ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.storeChipRow}>
+            {storeOptions.map((st) => (
+              <Pressable key={st.id} onPress={() => onAssignStore(st.id)} style={s.storeChipBtn}>
+                <StoreChip store={st} size={32} />
+                <Text style={s.storeChipName} numberOfLines={1}>{st.name}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        ) : null}
+      </View>
     </Swipeable>
   );
 }
@@ -646,6 +666,9 @@ function makeStyles(c: AppColors) {
     itemMeta:         { fontFamily: fonts.mono, fontSize: 12, lineHeight: 17, color: c.muted, marginTop: 3, fontVariant: ['tabular-nums'] },
     itemAction:       { minHeight: 38, borderRadius: 19, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 3 },
     itemCartAction:   { width: 44, height: 44, borderRadius: 13, justifyContent: 'center', paddingHorizontal: 0, backgroundColor: c.surface },
+    storeChipRow:     { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+    storeChipBtn:     { alignItems: 'center', gap: 4, minWidth: 52 },
+    storeChipName:    { fontFamily: fonts.sans, fontSize: 10, color: c.muted, maxWidth: 60, textAlign: 'center' },
     itemActionText:   { fontFamily: fonts.sansSemibold, fontSize: 12, color: c.primary },
     frequentSection:  { marginTop: spacing.md, marginBottom: spacing.sm },
     frequentTitle:    { fontFamily: fonts.sansSemibold, fontSize: 15, color: c.muted, marginBottom: spacing.sm, paddingHorizontal: 4 },

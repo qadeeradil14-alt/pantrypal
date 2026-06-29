@@ -46,7 +46,7 @@ export function Sheet({
             <View style={styles.handle} />
             <View style={styles.header}>
               <Text style={styles.title}>{title}</Text>
-              <Pressable onPress={onClose} hitSlop={10} style={styles.close}>
+              <Pressable onPress={onClose} hitSlop={16} style={styles.close}>
                 <Ionicons name="close" size={20} color={colors.muted} />
               </Pressable>
             </View>
@@ -92,6 +92,7 @@ function makeStyles(colors: AppColors) {
       alignItems: 'center',
       justifyContent: 'space-between',
       marginBottom: spacing.lg,
+      zIndex: 1,
     },
     title: { fontFamily: fonts.serifItalic, fontSize: 24, color: colors.ink },
     close: {

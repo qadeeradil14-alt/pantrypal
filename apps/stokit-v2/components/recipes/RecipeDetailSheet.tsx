@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, ScrollView, Image, Pressable, StyleSheet, Linking } from 'react-native';
+import { View, Text, Image, Pressable, StyleSheet, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Sheet } from '../shared/Sheet';
 import { Button } from '../shared/ui';
@@ -36,7 +36,7 @@ function RecipeDetailContent({ recipe, onClose, onAddMissing }: { recipe: Recipe
   const missing = recipe.missingIngredients;
 
   return (
-    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: spacing.xl * 2 }}>
+    <View style={{ paddingBottom: spacing.xl * 2 }}>
       {recipe.imageUrl ? (
         <Image source={{ uri: recipe.imageUrl }} style={s.image} resizeMode="cover" />
       ) : null}
@@ -97,7 +97,7 @@ function RecipeDetailContent({ recipe, onClose, onAddMissing }: { recipe: Recipe
       ) : (
         <Text style={s.noVideoText}>No video available for this recipe.</Text>
       )}
-    </ScrollView>
+    </View>
   );
 }
 

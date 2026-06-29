@@ -17,6 +17,7 @@ export function unplannedStores<T extends { id: string }>(stores: T[], storeQueu
 export type ReceiptReviewReason = 'code' | 'duplicate' | null;
 
 export interface ReceiptReviewItem<T> {
+  rowId: string;
   item: T;
   needsReview: boolean;
   reviewReason: ReceiptReviewReason;
@@ -43,13 +44,14 @@ function looksLikeCode(name: string): boolean {
  */
 export function reviewReceiptItems<T extends { name: string }>(items: T[]): ReceiptReviewItem<T>[] {
   const seen = new Set<string>();
-  return items.map((item) => {
+  return items.map((item, index) => {
     const key = item.name.trim().toLowerCase();
     const isDuplicate = seen.has(key);
     seen.add(key);
     const isCodeLike = !isDuplicate && looksLikeCode(item.name);
     const needsReview = isDuplicate || isCodeLike;
     return {
+      rowId: `${index}-${key}`,
       item,
       needsReview,
       reviewReason: isDuplicate ? 'duplicate' : isCodeLike ? 'code' : null,
@@ -70,6 +72,7 @@ export function renameReviewItem<T extends { name: string }>(
   const name = newName.trim();
   if (!name) return row;
   return {
+    rowId: row.rowId,
     item: { ...row.item, name },
     needsReview: false,
     reviewReason: null,

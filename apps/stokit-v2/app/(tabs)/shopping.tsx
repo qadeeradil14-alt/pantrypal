@@ -82,8 +82,6 @@ export default function ShoppingScreen() {
   const session    = useSessionStore((s) => s.session);
   const dispatch   = useSessionStore((s) => s.dispatch);
   const router     = useRouter();
-  const [showAssignAllPicker, setShowAssignAllPicker] = useState(false);
-  const [showFirstStorePicker, setShowFirstStorePicker] = useState(false);
   const [reassignItem, setReassignItem] = useState<PantryItem | null>(null);
 
   const { action, arrivalStoreId, partnerStoreId, partnerStoreName } = useLocalSearchParams<{ action?: string; arrivalStoreId?: string; partnerStoreId?: string; partnerStoreName?: string }>();
@@ -95,6 +93,7 @@ export default function ShoppingScreen() {
   const [partnerAddSheetVisible, setPartnerAddSheetVisible] = useState(false);
   // Holds the storeId we want to skip to receipt once START_TRIP settles
   const [pendingQuickScanStore, setPendingQuickScanStore] = useState<string | null>(null);
+  const [showStoreChooser, setShowStoreChooser] = useState(false);
 
   useEffect(() => {
     if (action === 'scan' && session.status === 'idle') {
@@ -152,27 +151,7 @@ export default function ShoppingScreen() {
     [items],
   );
 
-  const openDirections = (store: Store) => {
-    const url = (() => {
-      if (store.lat && store.lng) {
-        return Platform.select({
-          ios: `maps://maps.apple.com/maps?daddr=${store.lat},${store.lng}`,
-          android: `geo:${store.lat},${store.lng}?q=${store.lat},${store.lng}(${encodeURIComponent(store.name)})`,
-        }) ?? `https://maps.google.com/maps?daddr=${store.lat},${store.lng}`;
-      }
-      if (store.address) {
-        return Platform.select({
-          ios: `maps://maps.apple.com/maps?daddr=${encodeURIComponent(store.address)}`,
-          android: `geo:0,0?q=${encodeURIComponent(store.address)}`,
-        }) ?? `https://maps.google.com/maps?q=${encodeURIComponent(store.address)}`;
-      }
-      return null;
-    })();
-    if (url) void Linking.openURL(url);
-  };
-
   const startTripAt = async (firstStoreId: string) => {
-    setShowFirstStorePicker(false);
     const shoppable = items.filter((i) => i.status === 'low' || i.status === 'expiring');
     shoppable
       .filter((i) => !i.storeId)
@@ -240,6 +219,18 @@ export default function ShoppingScreen() {
     router.setParams({ partnerStoreId: undefined, partnerStoreName: undefined });
   }, [partnerStoreId, partnerStoreName, router]);
 
+  // Skip the per-store "Stop completed / Head to X" screen and go directly to the
+  // "Where next?" chooser. Only auto-advance when there are still pending stores
+  // so the final-stop summary ("All stops completed!") still renders normally.
+  useEffect(() => {
+    if (
+      (session.status === 'store_summary' || session.status === 'continue_prompt') &&
+      pendingStoreIds(session).length > 0
+    ) {
+      dispatch({ type: 'CONTINUE_TRIP' });
+    }
+  }, [session.status, dispatch]);
+
   const handleResetShopping = () => {
     const shoppingItems = items.filter((i) => i.status === 'low' || i.status === 'expiring');
     Alert.alert(
@@ -257,14 +248,13 @@ export default function ShoppingScreen() {
   };
 
   const handleStartShopping = () => {
-    const total = planItemsFull.length + unassignedCount;
-    if (total === 0) return;
     const entries = Array.from(plan.entries());
-    if (entries.length === 1 && unassignedCount === 0) {
+    if (entries.length === 0) return;
+    if (entries.length === 1) {
       void startTripAt(entries[0][0]);
       return;
     }
-    setShowFirstStorePicker(true);
+    setShowStoreChooser(true);
   };
 
   // ── Active states ──────────────────────────────────────────────────────────
@@ -286,13 +276,40 @@ export default function ShoppingScreen() {
   const planEntries = Array.from(plan.entries());
   const totalItems  = planEntries.reduce((n, [, list]) => n + list.length, 0);
   const singleStore = planEntries.length === 1 ? storeById(planEntries[0][0]) : undefined;
+
+  // ── First-store chooser (shown when ≥2 stores have items) ──────────────────
+  if (showStoreChooser && planEntries.length > 1) {
+    return (
+      <Screen>
+        <PageTitle eyebrow="Starting your trip" title="Where are you shopping first?" />
+        {planEntries.map(([storeId, list], idx) => {
+          const store    = storeById(storeId);
+          const barColor = ROUTE_COLORS[idx % ROUTE_COLORS.length];
+          return (
+            <Card key={storeId} style={nsStyles.storeCard}>
+              <View style={nsStyles.storeRow}>
+                <StoreChip store={store} name={store?.name ?? '?'} size={48} />
+                <View style={{ flex: 1 }}>
+                  <Text style={nsStyles.storeName}>{store?.name ?? 'Unknown Store'}</Text>
+                  <Text style={nsStyles.storeItems}>{list.length} item{list.length !== 1 ? 's' : ''}</Text>
+                </View>
+                <Pressable
+                  onPress={() => { setShowStoreChooser(false); void startTripAt(storeId); }}
+                  style={({ pressed }) => [nsStyles.startBtn, { borderColor: barColor }, pressed && { opacity: 0.8 }]}
+                >
+                  <Text style={[nsStyles.startBtnText, { color: barColor }]}>Start here</Text>
+                </Pressable>
+              </View>
+            </Card>
+          );
+        })}
+        <Pressable onPress={() => setShowStoreChooser(false)} style={{ alignItems: 'center', paddingVertical: spacing.lg }}>
+          <Text style={{ fontFamily: fonts.sans, fontSize: 13, color: colors.muted }}>← Back to plan</Text>
+        </Pressable>
+      </Screen>
+    );
+  }
   const shoppableCount = totalItems + unassignedCount;
-  // No assigned items → show all stores so user can pick where unassigned items go.
-  // Otherwise → show only stores that already have items (unassigned join whichever is first).
-  const firstStoreOptions: Array<[string, ShoppingEntry[]]> =
-    planEntries.length === 0
-      ? stores.map((s) => [s.id, plan.get(s.id) ?? []] as [string, ShoppingEntry[]])
-      : planEntries;
   const partnerStore = partnerAddStoreId ? storeById(partnerAddStoreId) : undefined;
   const partnerStoreLabel = partnerStore?.name ?? partnerAddStoreName ?? 'this store';
   const partnerContext = partnerAddStoreId ? (
@@ -340,9 +357,12 @@ export default function ShoppingScreen() {
                 ? `${planEntries.length} stores${unassignedCount > 0 ? ` · ${unassignedCount} unassigned` : ''}`
                 : planEntries.length === 1
                 ? `${shoppableCount} item${shoppableCount !== 1 ? 's' : ''}${unassignedCount > 0 ? ` · ${unassignedCount} unassigned` : ''}`
-                : `${unassignedCount} item${unassignedCount !== 1 ? 's' : ''} · pick a store to start`}
+                : `${unassignedCount} item${unassignedCount !== 1 ? 's' : ''} · assign stores in Pantry`}
             </Text>
-            <Button label="Start shopping" onPress={handleStartShopping} style={{ marginTop: spacing.lg }} />
+            {unassignedCount === 0
+              ? <Button label="Start shopping" onPress={handleStartShopping} style={{ marginTop: spacing.lg }} />
+              : <Text style={styles.assignStoreHint}>Assign a store to each item in Pantry to start shopping.</Text>
+            }
           </Card>
 
           {/* Assigned items — tap any row to change its store */}
@@ -378,42 +398,6 @@ export default function ShoppingScreen() {
             );
           })}
 
-          {/* Unassigned items — tap a row to assign a store, or use Assign all */}
-          {unassignedCount > 0 && (
-            <>
-              <SectionHeader
-                title="No store yet"
-                action={`${unassignedCount}`}
-              />
-              <Card style={{ paddingVertical: spacing.xs }}>
-                <View style={styles.assignAllRow}>
-                  <Text style={styles.assignAllHint}>Tap an item to assign a store, or assign them all at once.</Text>
-                  <Pressable
-                    onPress={() => setShowAssignAllPicker(true)}
-                    style={({ pressed }) => [styles.assignAllBtn, pressed && { opacity: 0.7 }]}
-                  >
-                    <Text style={styles.assignAllBtnText}>Assign all</Text>
-                  </Pressable>
-                </View>
-                {unassigned.map((item, idx) => (
-                  <View key={item.id}>
-                    <View style={styles.rowDivider} />
-                    <Pressable
-                      onPress={() => setReassignItem(item)}
-                      style={({ pressed }) => [styles.planRow, pressed && { opacity: 0.6 }]}
-                    >
-                      <ItemAvatar name={item.name} size={32} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.planName}>{item.name}</Text>
-                        <Text style={styles.unassignedMeta}>Tap to assign a store</Text>
-                      </View>
-                      <Ionicons name="chevron-forward" size={16} color={colors.faintText} />
-                    </Pressable>
-                  </View>
-                ))}
-              </Card>
-            </>
-          )}
         </>
       )}
 
@@ -446,89 +430,7 @@ export default function ShoppingScreen() {
         onClose={() => setReassignItem(null)}
       />
 
-      {/* Assign all unassigned items to one store at once */}
-      <StorePickerSheet
-        visible={showAssignAllPicker}
-        onClose={() => setShowAssignAllPicker(false)}
-        title="Assign all to one store"
-        subtitle={`All ${unassignedCount} unassigned item${unassignedCount !== 1 ? 's' : ''} will go to this store.`}
-        onSelect={(storeId) => {
-          unassigned.forEach((item) => updateItem(item.id, { storeId }));
-          setShowAssignAllPicker(false);
-        }}
-      />
 
-      {/* First-store picker — always ask "Where are you shopping first?" */}
-      <Sheet visible={showFirstStorePicker} title="Where are you shopping first?" onClose={() => setShowFirstStorePicker(false)}>
-        {planEntries.length > 1 && unassignedCount === 0 && (
-          <View style={styles.routeStrip}>
-            {planEntries.map(([, ], idx) => (
-              <React.Fragment key={idx}>
-                <View style={[styles.routeDot, idx === 0 && styles.routeDotActive]}>
-                  <Text style={[styles.routeDotText, idx === 0 && styles.routeDotTextActive]}>{idx + 1}</Text>
-                </View>
-                {idx < planEntries.length - 1 && <View style={styles.routeLine} />}
-              </React.Fragment>
-            ))}
-          </View>
-        )}
-        <Text style={{ fontFamily: fonts.sans, fontSize: 13, color: colors.muted, marginBottom: spacing.lg }}>
-          {planEntries.length === 0
-            ? `All ${unassignedCount} item${unassignedCount !== 1 ? 's' : ''} will go to your first store. You can split them after.`
-            : unassignedCount > 0
-            ? `Pick your first stop. ${unassignedCount} unassigned item${unassignedCount !== 1 ? 's' : ''} will join it.`
-            : "Pick your first stop — we'll line up the rest."}
-        </Text>
-        {firstStoreOptions.length === 0 ? (
-          <View style={{ alignItems: 'center', paddingVertical: spacing.xl, gap: spacing.md }}>
-            <Text style={{ fontFamily: fonts.sans, fontSize: 14, color: colors.muted, textAlign: 'center' }}>
-              Add a store first to begin shopping.
-            </Text>
-            <Button
-              label="Add a store"
-              onPress={() => { setShowFirstStorePicker(false); router.push('/stores'); }}
-            />
-          </View>
-        ) : (
-          firstStoreOptions.map(([storeId, list], idx) => {
-            const store = storeById(storeId);
-            const barColor = ROUTE_COLORS[idx % ROUTE_COLORS.length];
-            const hasLocation = !!(store?.lat ?? store?.address);
-            const assignedCount = planEntries.length === 0 ? 0 : list.length;
-            // Whichever store the user taps receives all unassigned items.
-            const extraCount = unassignedCount;
-            const displayCount = assignedCount + extraCount;
-            return (
-              <Pressable
-                key={storeId}
-                onPress={() => { void startTripAt(storeId); }}
-                style={({ pressed }) => [styles.firstStoreRow, pressed && { opacity: 0.7 }]}
-              >
-                <StoreChip store={store} name={store?.name ?? 'Unknown Store'} size={44} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.firstStoreName}>{store?.name ?? 'Unknown Store'}</Text>
-                  <Text style={styles.firstStoreMeta}>
-                    {assignedCount} item{assignedCount !== 1 ? 's' : ''}
-                    {extraCount > 0 ? ` + ${extraCount} unassigned` : ''}
-                  </Text>
-                </View>
-                {hasLocation && (
-                  <Pressable
-                    onPress={(e) => { e.stopPropagation(); openDirections(store!); }}
-                    hitSlop={8}
-                    style={styles.directionsBtn}
-                  >
-                    <Ionicons name="navigate-outline" size={18} color={colors.muted} />
-                  </Pressable>
-                )}
-                <View style={[styles.firstStoreGoBtn, { borderColor: barColor }]}>
-                  <Text style={[styles.firstStoreGoBtnText, { color: barColor }]}>Go here first</Text>
-                </View>
-              </Pressable>
-            );
-          })
-        )}
-      </Sheet>
     </Screen>
   );
 }
@@ -855,7 +757,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
             }}>
               {notifyState === 'sending'   ? 'Sending alert…'
              : notifyState === 'sent'      ? 'Household notified'
-             : notifyState === 'no_tokens' ? 'Household member has notifications off'
+             : notifyState === 'no_tokens' ? 'Notifications off — check partner settings'
              : notifyState === 'error'     ? "Couldn't send alert. Try again."
              :                               'Send alert'}
             </Text>
@@ -1274,7 +1176,7 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
             const isEditing = editingScanIndex === i;
             return (
               <Pressable
-                key={i}
+                key={row.rowId}
                 onPress={() => toggleScanItem(i)}
                 disabled={isEditing}
                 style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm, padding: spacing.sm, backgroundColor: colors.surfaceRaised, borderRadius: radii.md }}
@@ -2012,11 +1914,7 @@ function makeStyles(colors: AppColors) {
     planRow:      { flexDirection: 'row', alignItems: 'center', gap: spacing.md, justifyContent: 'space-between', paddingVertical: spacing.md },
     planName:     { fontFamily: fonts.sansMedium, fontSize: 16, color: colors.ink },
     planMeta:     { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, fontVariant: ['tabular-nums'] },
-    unassignedMeta: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 2 },
-    assignAllRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm },
-    assignAllHint: { flex: 1, fontFamily: fonts.sans, fontSize: 13, color: colors.muted, lineHeight: 18 },
-    assignAllBtn: { paddingHorizontal: spacing.md, paddingVertical: 7, borderRadius: radii.sm, backgroundColor: colors.primary },
-    assignAllBtnText: { fontFamily: fonts.sansSemibold, fontSize: 13, color: colors.onPrimary },
+    assignStoreHint: { fontFamily: fonts.sans, fontSize: 13, color: colors.muted, textAlign: 'center', marginTop: spacing.lg, lineHeight: 18 },
     warnText:     { fontFamily: fonts.sans, fontSize: 13, color: colors.muted, lineHeight: 19 },
     routeNotReady:{ borderColor: colors.primary, borderWidth: 1, gap: spacing.sm },
     routeNotReadyHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
@@ -2042,18 +1940,6 @@ function makeStyles(colors: AppColors) {
     manualStoreRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
     manualStoreName: { fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink },
     manualStoreMeta: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 2 },
-    firstStoreRow:  { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
-    firstStoreName: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
-    firstStoreMeta: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
-    firstStoreGoBtn:{ borderWidth: 1.5, borderRadius: radii.md, paddingHorizontal: 12, paddingVertical: 6 },
-    firstStoreGoBtnText: { fontFamily: fonts.sansSemibold, fontSize: 13 },
-    routeStrip:     { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md },
-    routeDot:       { width: 26, height: 26, borderRadius: 13, borderWidth: 1.5, borderColor: colors.borderSoft, alignItems: 'center', justifyContent: 'center' },
-    routeDotActive: { backgroundColor: colors.ink, borderColor: colors.ink },
-    routeDotText:   { fontFamily: fonts.sansSemibold, fontSize: 12, color: colors.muted, fontVariant: ['tabular-nums'] },
-    routeDotTextActive: { color: colors.surface },
-    routeLine:      { flex: 1, height: 1, borderStyle: 'dashed', borderWidth: 1, borderColor: colors.borderSoft },
-    directionsBtn:  { padding: 4 },
   });
 
   const rStyles = StyleSheet.create({

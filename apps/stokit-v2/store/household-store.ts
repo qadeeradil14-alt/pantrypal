@@ -25,6 +25,8 @@ type HouseholdPayload = HouseholdIdentity & {
 interface HouseholdState {
   household: HouseholdIdentity | null;
   members: HouseholdMember[];
+  /** True when at least one non-me household member has a push token registered. */
+  partnerHasToken: boolean;
   syncStatus: SyncStatus;
   hydrated: boolean;
   hydrate: () => Promise<void>;
@@ -66,7 +68,19 @@ async function applyPayload(payload: HouseholdPayload | null, set: (state: Parti
     avatarColor: avatarColor(member.id),
     isMe: member.id === user?.id,
   }));
-  set({ household, members, syncStatus: 'synced' });
+
+  let partnerHasToken = false;
+  if (!payload.isPersonal) {
+    const { data: tokenRows } = await supabase
+      .from('household_members')
+      .select('user_id, push_token')
+      .eq('household_id', household.id);
+    partnerHasToken = ((tokenRows ?? []) as Array<{ user_id: string; push_token: string | null }>)
+      .filter((r) => r.user_id !== user?.id)
+      .some((r) => r.push_token !== null);
+  }
+
+  set({ household, members, partnerHasToken, syncStatus: 'synced' });
   persist({ household, members });
   if (subscribedHouseholdId !== household.id) {
     if (householdChannel) void supabase.removeChannel(householdChannel);
@@ -101,6 +115,7 @@ async function reloadSharedState() {
 export const useHouseholdStore = create<HouseholdState>((set, get) => ({
   household: null,
   members: [],
+  partnerHasToken: false,
   syncStatus: 'local',
   hydrated: false,
 
@@ -115,7 +130,12 @@ export const useHouseholdStore = create<HouseholdState>((set, get) => ({
   refresh: async () => {
     set({ syncStatus: 'syncing' });
     try {
+      const prevId = get().household?.id;
       await applyPayload(await rpc('my_household'), set);
+      const newId = get().household?.id;
+      if (prevId && newId && prevId !== newId) {
+        await reloadSharedState();
+      }
       return { ok: true };
     } catch (error) {
       set({ syncStatus: 'error' });
