@@ -329,7 +329,6 @@ export default function ShoppingScreen() {
       {shoppableCount === 0 ? (
         <>
           <PriceMemoryIntro count={priceHistory.length} styles={styles} colors={colors} />
-          {partnerContext}
           <EmptyState
             icon="cart-outline"
             title="No trip planned"
