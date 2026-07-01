@@ -221,27 +221,6 @@ export function AddItemSheet({
         />
       </View>
 
-      <View style={styles.formGroup}>
-        <Text style={styles.fieldLabel}>Quantity</Text>
-        <View style={styles.quantityControl}>
-          <Pressable
-            onPress={() => setDraftQuantity((current) => Math.max(1, current - 1))}
-            hitSlop={6}
-            style={styles.quantityButton}
-          >
-            <Ionicons name="remove" size={16} color={colors.ink} />
-          </Pressable>
-          <Text style={styles.draftQuantityValue}>{draftQuantity}</Text>
-          <Pressable
-            onPress={() => setDraftQuantity((current) => current + 1)}
-            hitSlop={6}
-            style={styles.quantityButton}
-          >
-            <Ionicons name="add" size={16} color={colors.ink} />
-          </Pressable>
-        </View>
-      </View>
-
       {!hideStorePicker && storeOptions.length ? (
         <ChipSelect
           label="Store"

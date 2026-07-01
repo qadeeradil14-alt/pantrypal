@@ -262,10 +262,6 @@ export default function PantryScreen() {
             <Ionicons name="add" size={20} color="#0B6B28" />
             <Text style={styles.secondaryActionText}>Add item</Text>
           </Pressable>
-          <Pressable onPress={() => router.push('/(tabs)/shopping')} style={({ pressed }) => [styles.primaryAction, pressed && styles.pressed]}>
-            <Ionicons name="cart" size={19} color="#FFF" />
-            <Text style={styles.primaryActionText}>Plan shopping</Text>
-          </Pressable>
         </View>
 
         <View style={styles.sectionTitleRow}>
