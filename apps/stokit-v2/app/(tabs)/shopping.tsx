@@ -80,6 +80,7 @@ export default function ShoppingScreen() {
   const priceHistory = useDurableStore((s) => s.priceHistory);
   const updateItem = useDurableStore((s) => s.updateItem);
   const resetShoppingList = useDurableStore((s) => s.resetShoppingList);
+  const assignItemsToStore = useDurableStore((s) => s.assignItemsToStore);
   const session    = useSessionStore((s) => s.session);
   const dispatch   = useSessionStore((s) => s.dispatch);
   const router     = useRouter();
@@ -89,6 +90,7 @@ export default function ShoppingScreen() {
   const arrivalHandledRef = useRef(false);
   const partnerHandledRef = useRef(false);
   const [quickScanStorePicker, setQuickScanStorePicker] = useState(false);
+  const [bulkAssignStorePicker, setBulkAssignStorePicker] = useState(false);
   const [partnerAddStoreId, setPartnerAddStoreId] = useState<string | null>(null);
   const [partnerAddStoreName, setPartnerAddStoreName] = useState<string | null>(null);
   const [partnerAddSheetVisible, setPartnerAddSheetVisible] = useState(false);
@@ -373,6 +375,20 @@ export default function ShoppingScreen() {
                 styles={styles}
               />
               <Card style={{ paddingVertical: spacing.xs }}>
+                <Pressable
+                  onPress={() => setBulkAssignStorePicker(true)}
+                  style={({ pressed }) => [styles.bulkAssignRow, pressed && { opacity: 0.75 }]}
+                >
+                  <View style={styles.bulkAssignIcon}>
+                    <Ionicons name="storefront-outline" size={18} color={colors.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.bulkAssignTitle}>Shop these at one store</Text>
+                    <Text style={styles.bulkAssignText}>Choose once for all {unassigned.length} item{unassigned.length === 1 ? '' : 's'}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+                </Pressable>
+                <View style={styles.rowDivider} />
                 {unassigned.map((item, idx) => (
                   <View key={item.id}>
                     {idx > 0 && <View style={styles.rowDivider} />}
@@ -443,6 +459,16 @@ export default function ShoppingScreen() {
         visible={quickScanStorePicker}
         onClose={() => setQuickScanStorePicker(false)}
         onSelect={(storeId) => handleQuickScanStoreSelect(storeId)}
+      />
+      <StorePickerSheet
+        visible={bulkAssignStorePicker}
+        onClose={() => setBulkAssignStorePicker(false)}
+        onSelect={(storeId) => {
+          assignItemsToStore(unassigned.map((item) => item.id), storeId);
+          setBulkAssignStorePicker(false);
+        }}
+        title="Shop at one store"
+        subtitle={`Choose a store for ${unassigned.length} item${unassigned.length === 1 ? '' : 's'}`}
       />
 
       <AddItemSheet
@@ -1766,15 +1792,15 @@ function TripSummary({ session, dispatch, storeById, tsStyles, colors }: SubProp
           <Card style={{ marginBottom: spacing.lg }}>
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md }}>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink }}>Forgot something?</Text>
-                <Text style={{ fontFamily: fonts.sans, fontSize: 14, color: colors.muted, marginTop: spacing.xs }}>Reopen this trip and add missed items.</Text>
+                <Text style={{ fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink }}>Forgot an item?</Text>
+                <Text style={{ fontFamily: fonts.sans, fontSize: 14, color: colors.muted, marginTop: spacing.xs }}>Reopen the last store and add it before closing out.</Text>
               </View>
               <View style={{ backgroundColor: colors.surfaceRaised, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: radii.sm }}>
                 <Text style={{ fontFamily: fonts.sansMedium, fontSize: 12, color: colors.muted }}>{Math.floor(secsLeft / 60)} min left</Text>
               </View>
             </View>
             <Button
-              label="Reopen trip"
+              label="Reopen last store"
               variant="ghost"
               onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); dispatch({ type: 'RESUME_TRIP' }); }}
               style={{ marginTop: spacing.md }}
@@ -1946,6 +1972,10 @@ function makeStyles(colors: AppColors) {
     planRow:      { flexDirection: 'row', alignItems: 'center', gap: spacing.md, justifyContent: 'space-between', paddingVertical: spacing.md },
     planName:     { fontFamily: fonts.sansMedium, fontSize: 16, color: colors.ink },
     planMeta:     { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, fontVariant: ['tabular-nums'] },
+    bulkAssignRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md },
+    bulkAssignIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
+    bulkAssignTitle: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
+    bulkAssignText: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 2 },
     chooseStorePill: { minHeight: 32, borderRadius: 16, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.sm, justifyContent: 'center', backgroundColor: colors.surface },
     chooseStorePillText: { fontFamily: fonts.sansSemibold, fontSize: 12, color: colors.primary },
     assignStoreHint: { fontFamily: fonts.sans, fontSize: 13, color: colors.muted, textAlign: 'center', marginTop: spacing.lg, lineHeight: 18 },

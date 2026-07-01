@@ -59,6 +59,7 @@ interface DurableStore extends DurableState {
   updateItem: (id: string, patch: Partial<PantryItem>) => void;
   setItemStatus: (id: string, status: PantryStatus) => void;
   clearShoppingEntries: (entries: ShoppingEntry[]) => void;
+  assignItemsToStore: (ids: string[], storeId: string) => void;
   resetShoppingList: () => void;
   deleteItem: (id: string) => void;
 
@@ -257,6 +258,20 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         items: s.items.map((item) =>
           entryIds.has(item.id)
             ? { ...item, status: 'stocked', storeId: null, updatedAt: now() }
+            : item
+        ),
+      }));
+      persist();
+      void refreshGeofencedStoreData();
+    },
+
+    assignItemsToStore: (ids, storeId) => {
+      if (!ids.length) return;
+      const idSet = new Set(ids);
+      set((s) => ({
+        items: s.items.map((item) =>
+          idSet.has(item.id)
+            ? { ...item, storeId, updatedAt: now() }
             : item
         ),
       }));
