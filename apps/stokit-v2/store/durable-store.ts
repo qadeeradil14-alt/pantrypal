@@ -15,6 +15,7 @@ import type {
   PantryStatus,
   PriceEntry,
   Receipt,
+  ShoppingEntry,
   SharedShoppingSession,
   Store,
   StorageLocation,
@@ -57,6 +58,7 @@ interface DurableStore extends DurableState {
   }) => PantryItem;
   updateItem: (id: string, patch: Partial<PantryItem>) => void;
   setItemStatus: (id: string, status: PantryStatus) => void;
+  clearShoppingEntries: (entries: ShoppingEntry[]) => void;
   deleteItem: (id: string) => void;
 
   // Stores
@@ -244,6 +246,20 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       persist();
       // Status changes (including marking purchased, or restoring to stocked)
       // can add or remove a store from geofence eligibility.
+      void refreshGeofencedStoreData();
+    },
+
+    clearShoppingEntries: (entries) => {
+      if (!entries.length) return;
+      const entryIds = new Set(entries.map((entry) => entry.itemId));
+      set((s) => ({
+        items: s.items.map((item) =>
+          entryIds.has(item.id)
+            ? { ...item, status: 'stocked', storeId: null, updatedAt: now() }
+            : item
+        ),
+      }));
+      persist();
       void refreshGeofencedStoreData();
     },
 

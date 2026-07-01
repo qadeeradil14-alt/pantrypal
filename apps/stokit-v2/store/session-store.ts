@@ -135,25 +135,15 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     // while the user is still in store_summary / deciding to continue.
     if (next.status === 'store_summary' && prev.status !== 'store_summary') {
       const completedStoreId = next.storeQueue[next.currentIndex];
-      next.entries
-        .filter((e) => e.storeId === completedStoreId && e.picked)
-        .forEach((e) => durable.setItemStatus(e.itemId, 'stocked'));
+      durable.clearShoppingEntries(
+        next.entries.filter((e) => e.storeId === completedStoreId && e.picked),
+      );
     }
 
     // Commit to durable state exactly once when trip_summary is reached.
     if (next.status === 'trip_summary' && prev.status !== 'trip_summary' && next.completedTrip) {
       durable.commitTrip(next.completedTrip, next.receipts);
-      // Return picked items to "stocked" (they've been bought).
-      next.entries
-        .filter((e) => e.picked)
-        .forEach((e) => durable.setItemStatus(e.itemId, 'stocked'));
-      // Unassign items from skipped stores so they don't immediately re-appear
-      // in the shopping plan as a full store row after the trip ends.
-      // The user can re-assign them before the next trip.
-      const skippedSet = new Set(next.skippedStoreIds);
-      next.entries
-        .filter((e) => !e.picked && skippedSet.has(e.storeId))
-        .forEach((e) => durable.updateItem(e.itemId, { storeId: null }));
+      durable.clearShoppingEntries(next.entries);
     }
 
     set({ session: next });

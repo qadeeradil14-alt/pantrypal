@@ -134,8 +134,7 @@ export default function PantryScreen() {
     let active = true;
     if (atHomeItems.length === 0) { setRecipes([]); return; }
     const recipeKey = atHomeItems
-      .map((item) => item.name.trim().toLowerCase())
-      .sort()
+      .map((item) => `${item.id}:${item.updatedAt}`)
       .join('|');
 
     if (rawMealsRef.current.length > 0 && rawMealsKeyRef.current === recipeKey) {
