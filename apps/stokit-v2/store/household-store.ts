@@ -36,6 +36,7 @@ interface HouseholdState {
   createHousehold: (name: string, myName: string) => Promise<Result>;
   joinHousehold: (rawCode: string, myName: string) => Promise<Result>;
   leaveHousehold: () => Promise<Result>;
+  removeMember: (targetUserId: string) => Promise<Result>;
   renameMe: (name: string) => Promise<Result>;
 }
 
@@ -97,10 +98,16 @@ async function applyPayload(payload: HouseholdPayload | null, set: (state: Parti
   }
 }
 
-async function rpc(name: string, args?: Record<string, string>): Promise<HouseholdPayload> {
+async function rpc(name: string, args?: Record<string, string>): Promise<HouseholdPayload | null> {
   const { data, error } = await supabase.rpc(name, args);
   if (error) throw error;
   return data as HouseholdPayload;
+}
+
+async function rpcRequired(name: string, args?: Record<string, string>): Promise<HouseholdPayload> {
+  const payload = await rpc(name, args);
+  if (!payload) throw new Error('Could not load household.');
+  return payload;
 }
 
 async function reloadSharedState() {
@@ -131,7 +138,12 @@ export const useHouseholdStore = create<HouseholdState>((set, get) => ({
     set({ syncStatus: 'syncing' });
     try {
       const prevId = get().household?.id;
-      await applyPayload(await rpc('my_household'), set);
+      const payload = await rpc('my_household');
+      if (payload) {
+        await applyPayload(payload, set);
+      } else {
+        await applyPayload(await rpcRequired('ensure_personal_household', { p_display_name: 'Me' }), set);
+      }
       const newId = get().household?.id;
       if (prevId && newId && prevId !== newId) {
         await reloadSharedState();
@@ -146,7 +158,7 @@ export const useHouseholdStore = create<HouseholdState>((set, get) => ({
   ensureHousehold: async () => {
     set({ syncStatus: 'syncing' });
     try {
-      await applyPayload(await rpc('ensure_personal_household', { p_display_name: 'Me' }), set);
+      await applyPayload(await rpcRequired('ensure_personal_household', { p_display_name: 'Me' }), set);
       return { ok: true };
     } catch (error) {
       set({ syncStatus: 'error' });
@@ -165,7 +177,7 @@ export const useHouseholdStore = create<HouseholdState>((set, get) => ({
   createHousehold: async (name, myName) => {
     set({ syncStatus: 'syncing' });
     try {
-      await applyPayload(await rpc('create_shared_household', {
+      await applyPayload(await rpcRequired('create_shared_household', {
         p_name: name.trim(),
         p_display_name: myName.trim() || 'Me',
       }), set);
@@ -182,7 +194,7 @@ export const useHouseholdStore = create<HouseholdState>((set, get) => ({
     set({ syncStatus: 'syncing' });
     try {
       const currentHouseholdId = get().household?.id;
-      const payload = await rpc('join_household_by_code', {
+      const payload = await rpcRequired('join_household_by_code', {
         p_invite_code: code,
         p_display_name: myName.trim() || 'Me',
       });
@@ -201,8 +213,19 @@ export const useHouseholdStore = create<HouseholdState>((set, get) => ({
   leaveHousehold: async () => {
     set({ syncStatus: 'syncing' });
     try {
-      await applyPayload(await rpc('leave_shared_household'), set);
+      await applyPayload(await rpcRequired('leave_shared_household'), set);
       await reloadSharedState();
+      return { ok: true };
+    } catch (error) {
+      set({ syncStatus: 'error' });
+      return { ok: false, message: message(error) };
+    }
+  },
+
+  removeMember: async (targetUserId) => {
+    set({ syncStatus: 'syncing' });
+    try {
+      await applyPayload(await rpcRequired('remove_household_member', { target_user_id: targetUserId }), set);
       return { ok: true };
     } catch (error) {
       set({ syncStatus: 'error' });

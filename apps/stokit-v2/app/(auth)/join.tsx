@@ -30,7 +30,7 @@ export default function JoinScreen() {
   const [nextStep, setNextStep] = useState<'VERIFY_EMAIL' | 'SIGN_IN' | null>(null);
   const [emailExists, setEmailExists] = useState(false);
 
-  // Pre-fill from deep link: pantrypal://join?invite=CODE
+  // Pre-fill invite code if routed here with a code param (e.g. from a future Universal Link).
   const { invite } = useLocalSearchParams<{ invite?: string }>();
   React.useEffect(() => {
     if (invite && !inviteCode) setInviteCode(invite.toUpperCase());
@@ -69,11 +69,12 @@ export default function JoinScreen() {
 
     const result = await signUp(email, password);
     if (!result.ok) {
-      await AsyncStorage.removeItem(PENDING_JOIN_KEY);
       if (result.code === 'EMAIL_EXISTS') {
+        // Keep PENDING_JOIN_KEY — user will sign in and _layout.tsx will apply it.
         setEmailExists(true);
         return;
       }
+      await AsyncStorage.removeItem(PENDING_JOIN_KEY);
       setError(result.message);
       return;
     }
@@ -208,7 +209,7 @@ function makeStyles(colors: AppColors) {
     body: { fontFamily: fonts.sans, fontSize: 15, lineHeight: 22, color: colors.muted, marginBottom: spacing.xl },
     card: { gap: spacing.md },
     input: { height: 50, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.lg, color: colors.ink, fontFamily: fonts.sans },
-    inputCode: { fontFamily: fonts.monoMedium, fontSize: 18, letterSpacing: 2, textAlign: 'center' },
+    inputCode: { fontFamily: fonts.monoMedium, fontSize: 18, textAlign: 'center' },
     error: { fontFamily: fonts.sansMedium, color: colors.danger, lineHeight: 20 },
     link: { marginTop: spacing.xl, textAlign: 'center', color: colors.primary, fontFamily: fonts.sansSemibold },
   });

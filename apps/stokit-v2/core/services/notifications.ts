@@ -8,9 +8,25 @@
  */
 
 import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import { AppState, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../../lib/supabase';
+
+/**
+ * Resolve the EAS projectId required by getExpoPushTokenAsync(). Auto-resolution
+ * from Constants is unreliable in OTA-loaded TestFlight bundles, so we resolve it
+ * explicitly with an env fallback. A missing projectId is the confirmed cause of
+ * getExpoPushTokenAsync() throwing silently and the token never being written.
+ */
+function resolveProjectId(): string | undefined {
+  return (
+    Constants.expoConfig?.extra?.eas?.projectId ??
+    (Constants as unknown as { easConfig?: { projectId?: string } }).easConfig?.projectId ??
+    process.env.EXPO_PUBLIC_PROJECT_ID ??
+    undefined
+  );
+}
 
 // ── Notification log ──────────────────────────────────────────────────────────
 
@@ -136,22 +152,147 @@ export async function requestNotificationPermission(): Promise<boolean> {
   return status === 'granted';
 }
 
+export type PushRegistrationResult =
+  | { ok: true; token: string }
+  | {
+      ok: false;
+      reason:
+        | 'web'
+        | 'no_permission'
+        | 'no_project_id'
+        | 'no_active_household'
+        | 'write_error'
+        | 'zero_rows'
+        | 'verify_error'
+        | 'token_error';
+      detail?: string;
+    };
+
 /**
- * Get an Expo push token and save it to this user's household_members row.
- * Called once after sign-in. Non-fatal if permissions not granted.
+ * Get an Expo push token and save it to this user's active household row.
+ *
+ * Requests permission rather than only reading it: a household RECIPIENT who
+ * never opens geofencing would otherwise never be prompted and never get a
+ * token — which is exactly why "Send Alert" returned no_tokens. iOS only shows
+ * the system prompt once, so calling this on every foreground is safe.
  */
-export async function registerPushToken(userId: string): Promise<void> {
-  if (Platform.OS === 'web') return;
+export async function registerPushToken(userId: string): Promise<PushRegistrationResult> {
+  if (Platform.OS === 'web') return { ok: false, reason: 'web' };
+  try {
+    const granted = await requestNotificationPermission();
+    if (!granted) return { ok: false, reason: 'no_permission' };
+
+    const projectId = resolveProjectId();
+    if (!projectId) return { ok: false, reason: 'no_project_id' };
+
+    const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
+    const token = tokenData.data;
+
+    // Write the token to EVERY household_members row for this user.
+    // Previously we only wrote to the row matching profiles.household_id, which
+    // meant a user who joined a shared household after their personal household
+    // was created would have the token in the wrong row — invisible to the
+    // notify-shopping Edge Function when it queries the shared household.
+    const { count, error } = await supabase
+      .from('household_members')
+      .update({ push_token: token }, { count: 'exact' })
+      .eq('user_id', userId);
+    if (error) return { ok: false, reason: 'write_error', detail: error.message };
+    if (count === 0) return { ok: false, reason: 'zero_rows', detail: `No household_members rows found for user ${userId}` };
+
+    return { ok: true, token };
+  } catch (err) {
+    return { ok: false, reason: 'token_error', detail: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+// ── Push diagnostics (QA / devMode) ───────────────────────────────────────────
+
+export interface MyPushDiagnostics {
+  permission: string;        // granted | denied | undetermined | web
+  projectIdPresent: boolean;
+  tokenPresent: boolean;
+  tokenTail: string | null;  // last 6 chars only — never the full token
+  error: string | null;
+}
+
+/** Local-only diagnostics for THIS device's push readiness. No DB calls. */
+export async function getMyPushDiagnostics(): Promise<MyPushDiagnostics> {
+  if (Platform.OS === 'web') {
+    return { permission: 'web', projectIdPresent: false, tokenPresent: false, tokenTail: null, error: null };
+  }
+  const projectId = resolveProjectId();
+  let permission = 'undetermined';
   try {
     const { status } = await Notifications.getPermissionsAsync();
-    if (status !== 'granted') return;
-    const tokenData = await Notifications.getExpoPushTokenAsync();
-    await supabase
-      .from('household_members')
-      .update({ push_token: tokenData.data })
-      .eq('user_id', userId);
+    permission = status;
   } catch {
-    // Non-fatal — push degrades gracefully
+    // keep default
+  }
+  if (permission !== 'granted') {
+    return { permission, projectIdPresent: Boolean(projectId), tokenPresent: false, tokenTail: null, error: null };
+  }
+  if (!projectId) {
+    return { permission, projectIdPresent: false, tokenPresent: false, tokenTail: null, error: 'no_project_id' };
+  }
+  try {
+    const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
+    const token = tokenData.data;
+    return {
+      permission,
+      projectIdPresent: true,
+      tokenPresent: Boolean(token),
+      tokenTail: token ? token.replace(/\]$/, '').slice(-6) : null,
+      error: null,
+    };
+  } catch (err) {
+    return {
+      permission,
+      projectIdPresent: true,
+      tokenPresent: false,
+      tokenTail: null,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+export interface HouseholdPushDiagnostics {
+  ok: boolean;
+  memberCount: number;
+  recipientsWithToken: number;
+  senderHasToken: boolean;
+  error: string | null;
+}
+
+/**
+ * Household-wide push readiness, via the notify-shopping Edge Function in
+ * diagnostic mode (service-role read, bypasses RLS so partner token presence is
+ * visible). Returns counts only — never the actual tokens.
+ */
+export async function getHouseholdPushDiagnostics(): Promise<HouseholdPushDiagnostics> {
+  try {
+    const { data, error } = await supabase.functions.invoke('notify-shopping', {
+      body: { diagnostic: true },
+    });
+    if (error) {
+      return { ok: false, memberCount: 0, recipientsWithToken: 0, senderHasToken: false, error: error.message };
+    }
+    const d = data as { memberCount?: number; recipientsWithToken?: number; senderHasToken?: boolean } | null;
+    return {
+      ok: true,
+      memberCount: d?.memberCount ?? 0,
+      recipientsWithToken: d?.recipientsWithToken ?? 0,
+      senderHasToken: Boolean(d?.senderHasToken),
+      error: null,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      memberCount: 0,
+      recipientsWithToken: 0,
+      senderHasToken: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
   }
 }
 
@@ -169,9 +310,24 @@ export async function sendHouseholdShoppingAlert(
   storeId?: string,
 ): Promise<{ ok: boolean; sent: number; result: string }> {
   try {
-    const { data, error } = await supabase.functions.invoke('notify-shopping', {
+    const response = await supabase.functions.invoke('notify-shopping', {
       body: { storeName, ...(storeId ? { storeId } : {}) },
     });
+    const { data, error } = response;
+
+    // TEMPORARY DIAGNOSTIC ALERT
+    const { Alert } = require('react-native');
+    Alert.alert(
+      "Edge Function Response",
+      JSON.stringify({
+        data,
+        errorName: error?.name,
+        errorMessage: error?.message,
+        context: error?.context,
+      }, null, 2)
+    );
+    console.log("NOTIFY_SHOPPING_RESPONSE", JSON.stringify({ data, error }, null, 2));
+
     if (error) return { ok: false, sent: 0, result: `failed:${error.message}` };
     const sent = (data as { sent?: number } | null)?.sent ?? 0;
     return { ok: true, sent, result: sent > 0 ? 'sent' : 'no_tokens' };

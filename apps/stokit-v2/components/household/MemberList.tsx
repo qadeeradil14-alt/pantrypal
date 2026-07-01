@@ -1,23 +1,46 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { fonts, radii, spacing, type AppColors } from '../../theme';
 import { useTheme } from '../../hooks/useTheme';
 import type { HouseholdMember } from '../../types';
 
-export function MemberList({ members }: { members: HouseholdMember[] }) {
+type MemberListProps = {
+  members: HouseholdMember[];
+  canRemove?: boolean;
+  removingMemberId?: string | null;
+  onRemove?: (member: HouseholdMember) => void;
+};
+
+export function MemberList({ members, canRemove = false, removingMemberId = null, onRemove }: MemberListProps) {
   const { colors } = useTheme();
   const styles = React.useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={styles.wrap}>
       {members.map((m) => (
-        <MemberRow key={m.id} member={m} />
+        <MemberRow
+          key={m.id}
+          member={m}
+          canRemove={canRemove && !m.isMe && m.role !== 'owner'}
+          removing={removingMemberId === m.id}
+          onRemove={onRemove}
+        />
       ))}
     </View>
   );
 }
 
-function MemberRow({ member }: { member: HouseholdMember }) {
+function MemberRow({
+  member,
+  canRemove,
+  removing,
+  onRemove,
+}: {
+  member: HouseholdMember;
+  canRemove: boolean;
+  removing: boolean;
+  onRemove?: (member: HouseholdMember) => void;
+}) {
   const { colors } = useTheme();
   const styles = React.useMemo(() => makeStyles(colors), [colors]);
   return (
@@ -41,7 +64,26 @@ function MemberRow({ member }: { member: HouseholdMember }) {
         </Text>
       </View>
 
-      <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+      {canRemove ? (
+        <Pressable
+          disabled={removing}
+          onPress={() => onRemove?.(member)}
+          style={({ pressed }) => [styles.removeButton, pressed && { opacity: 0.7 }, removing && { opacity: 0.5 }]}
+          accessibilityRole="button"
+          accessibilityLabel={`Remove ${member.displayName}`}
+        >
+          {removing ? (
+            <ActivityIndicator size="small" color={colors.danger} />
+          ) : (
+            <>
+              <Ionicons name="person-remove-outline" size={15} color={colors.danger} />
+              <Text style={styles.removeText}>Remove</Text>
+            </>
+          )}
+        </Pressable>
+      ) : (
+        <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+      )}
     </View>
   );
 }
@@ -75,5 +117,17 @@ function makeStyles(colors: AppColors) {
     },
     meText: { fontFamily: fonts.sansSemibold, fontSize: 11, color: colors.primary },
     role: { fontFamily: fonts.sans, fontSize: 13, color: colors.muted, marginTop: 2 },
+    removeButton: {
+      minHeight: 34,
+      paddingHorizontal: spacing.sm,
+      borderRadius: radii.sm,
+      borderWidth: 1,
+      borderColor: colors.danger + '55',
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 5,
+    },
+    removeText: { fontFamily: fonts.sansSemibold, fontSize: 12, color: colors.danger },
   });
 }

@@ -60,6 +60,8 @@ export function AddItemSheet({
   const [category, setCategory] = useState<typeof PANTRY_CATEGORIES[number]>('Produce');
   const [selected, setSelected] = useState<Record<string, SelectedItem>>({});
   const [bulkStoreId, setBulkStoreId] = useState<string | null>(defaultStoreId);
+  const [draftQuantity, setDraftQuantity] = useState(1);
+  const [showCatalog, setShowCatalog] = useState(false);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -68,10 +70,11 @@ export function AddItemSheet({
     setCategory('Produce');
     setSelected({});
     setBulkStoreId(defaultStoreId);
+    setDraftQuantity(1);
+    setShowCatalog(false);
   };
 
-  const submit = () => {
-    const chosen = Object.values(selected);
+  const commitItems = (chosen: SelectedItem[]) => {
     if (!chosen.length) return;
     const addedItems: PantryItem[] = [];
     chosen.forEach(({ catalog, quantity, unit, status, storeId }) => {
@@ -93,6 +96,10 @@ export function AddItemSheet({
     reset();
     onClose();
     if (onItemsAdded) onItemsAdded(addedItems);
+  };
+
+  const submit = () => {
+    commitItems(Object.values(selected));
   };
 
   const close = () => {
@@ -164,98 +171,158 @@ export function AddItemSheet({
     toggle(custom);
   };
 
+  const submitDraftItem = () => {
+    const name = query.trim();
+    if (!name) return;
+    const custom: PantryCatalogItem = {
+      id: `custom-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+      name,
+      category: 'Other',
+      icon: '📦',
+      defaultUnit: 'unit',
+    };
+    commitItems([{
+      catalog: custom,
+      quantity: draftQuantity,
+      unit: custom.defaultUnit,
+      status: defaultStatus,
+      storeId: bulkStoreId,
+    }]);
+  };
+
   const bulkStoreName = bulkStoreId ? stores.find((s) => s.id === bulkStoreId)?.name : null;
   const itemWord = selectedItems.length === 1 ? 'item' : 'items';
   const submitLabel = selectedItems.length === 0
-    ? 'Select items'
+    ? bulkStoreName
+      ? `Add to ${bulkStoreName}`
+      : 'Add'
     : bulkStoreName
       ? `Add ${selectedItems.length} ${itemWord} to ${bulkStoreName}`
       : `Add ${selectedItems.length} ${itemWord}`;
+  const canSubmit = selectedItems.length > 0 || query.trim().length > 0;
+  // Typing always surfaces matching catalog items live — the manual toggle is
+  // only needed to browse the catalog before typing anything.
+  const showResults = showCatalog || normalizedQuery.length > 0;
 
   return (
     <Sheet visible={visible} title={title} onClose={close}>
+      <View style={styles.formGroup}>
+        <Text style={styles.fieldLabel}>Item</Text>
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="What do you need?"
+          placeholderTextColor={colors.muted}
+          style={styles.itemInput}
+          returnKeyType="done"
+          onSubmitEditing={() => {
+            if (!selectedItems.length) submitDraftItem();
+          }}
+        />
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.fieldLabel}>Quantity</Text>
+        <View style={styles.quantityControl}>
+          <Pressable
+            onPress={() => setDraftQuantity((current) => Math.max(1, current - 1))}
+            hitSlop={6}
+            style={styles.quantityButton}
+          >
+            <Ionicons name="remove" size={16} color={colors.ink} />
+          </Pressable>
+          <Text style={styles.draftQuantityValue}>{draftQuantity}</Text>
+          <Pressable
+            onPress={() => setDraftQuantity((current) => current + 1)}
+            hitSlop={6}
+            style={styles.quantityButton}
+          >
+            <Ionicons name="add" size={16} color={colors.ink} />
+          </Pressable>
+        </View>
+      </View>
+
       {!hideStorePicker && storeOptions.length ? (
         <ChipSelect
-          label="Choose store for all"
+          label="Store"
           options={storeOptions}
           value={bulkStoreId}
           onChange={applyBulkStore}
         />
+      ) : bulkStoreName ? (
+        <View style={styles.storeSummary}>
+          <Text style={styles.fieldLabel}>Store</Text>
+          <Text style={styles.storeSummaryText}>{bulkStoreName}</Text>
+        </View>
       ) : null}
 
-      <View style={styles.search}>
-        <Ionicons name="search" size={18} color={colors.muted} />
-        <TextInput
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Search groceries, kitchen, cleaning…"
-          placeholderTextColor={colors.muted}
-          style={styles.searchInput}
-          returnKeyType="search"
-        />
-        {query ? (
-          <Pressable onPress={() => setQuery('')} hitSlop={8}>
-            <Ionicons name="close-circle" size={18} color={colors.muted} />
-          </Pressable>
-        ) : null}
-      </View>
+      {!normalizedQuery ? (
+        <Pressable onPress={() => setShowCatalog((current) => !current)} style={styles.catalogToggle}>
+          <Ionicons name={showCatalog ? 'chevron-up' : 'search'} size={16} color={colors.primary} />
+          <Text style={styles.catalogToggleText}>{showCatalog ? 'Hide catalog' : 'Browse catalog'}</Text>
+        </Pressable>
+      ) : null}
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categories}>
-        {PANTRY_CATEGORIES.map((option) => {
-          const active = category === option;
-          return (
-            <Pressable
-              key={option}
-              onPress={() => setCategory(option)}
-              style={[styles.categoryChip, active && styles.categoryChipActive]}
-            >
-              <Text style={[styles.categoryChipText, active && styles.categoryChipTextActive]}>{option}</Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+      {showResults ? (
+        <>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categories}>
+            {PANTRY_CATEGORIES.map((option) => {
+              const active = category === option;
+              return (
+                <Pressable
+                  key={option}
+                  onPress={() => setCategory(option)}
+                  style={[styles.categoryChip, active && styles.categoryChipActive]}
+                >
+                  <Text style={[styles.categoryChipText, active && styles.categoryChipTextActive]}>{option}</Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
 
-      <View style={styles.catalogHeader}>
-        <Text style={styles.sectionTitle}>{normalizedQuery ? 'Search results' : 'Catalog'}</Text>
-        <Text style={styles.count}>
-          {normalizedQuery && filteredCatalog.length === CATALOG_SEARCH_LIMIT
-            ? `Top ${CATALOG_SEARCH_LIMIT} of ${getExtendedCatalogSize().toLocaleString()}+`
-            : `${filteredCatalog.length} items`}
-        </Text>
-      </View>
-      {filteredCatalog.length ? (
-        <View style={styles.catalogGrid}>
-          {filteredCatalog.map((catalogItem) => {
-            const active = !!selected[catalogItem.id];
-            return (
-              <Pressable
-                key={catalogItem.id}
-                onPress={() => toggle(catalogItem)}
-                style={[styles.catalogItem, active && styles.catalogItemActive]}
-              >
-                <ItemAvatar name={catalogItem.name} icon={catalogItem.icon} size={40} />
-                <View style={styles.catalogText}>
-                  <Text style={styles.catalogName} numberOfLines={1}>{catalogItem.name}</Text>
-                  <Text style={styles.catalogCategory} numberOfLines={1}>{catalogItem.category}</Text>
-                </View>
-                <MaterialCommunityIcons
-                  name={active ? 'check-circle' : 'plus-circle-outline'}
-                  size={20}
-                  color={active ? colors.primary : colors.muted}
-                />
-              </Pressable>
-            );
-          })}
-        </View>
-      ) : (
-        <View style={styles.emptySearch}>
-          <Ionicons name="search-outline" size={26} color={colors.muted} />
-          <Text style={styles.emptyTitle}>No catalog matches</Text>
-          <Text style={styles.hint}>Try another search or add this as a custom item.</Text>
-        </View>
-      )}
+          <View style={styles.catalogHeader}>
+            <Text style={styles.sectionTitle}>{normalizedQuery ? 'Search results' : 'Catalog'}</Text>
+            <Text style={styles.count}>
+              {normalizedQuery && filteredCatalog.length === CATALOG_SEARCH_LIMIT
+                ? `Top ${CATALOG_SEARCH_LIMIT} of ${getExtendedCatalogSize().toLocaleString()}+`
+                : `${filteredCatalog.length} items`}
+            </Text>
+          </View>
+          {filteredCatalog.length ? (
+            <View style={styles.catalogGrid}>
+              {filteredCatalog.map((catalogItem) => {
+                const active = !!selected[catalogItem.id];
+                return (
+                  <Pressable
+                    key={catalogItem.id}
+                    onPress={() => toggle(catalogItem)}
+                    style={[styles.catalogItem, active && styles.catalogItemActive]}
+                  >
+                    <ItemAvatar name={catalogItem.name} icon={catalogItem.icon} size={40} />
+                    <View style={styles.catalogText}>
+                      <Text style={styles.catalogName} numberOfLines={1}>{catalogItem.name}</Text>
+                      <Text style={styles.catalogCategory} numberOfLines={1}>{catalogItem.category}</Text>
+                    </View>
+                    <MaterialCommunityIcons
+                      name={active ? 'check-circle' : 'plus-circle-outline'}
+                      size={20}
+                      color={active ? colors.primary : colors.muted}
+                    />
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : (
+            <View style={styles.emptySearch}>
+              <Ionicons name="search-outline" size={26} color={colors.muted} />
+              <Text style={styles.emptyTitle}>No catalog matches</Text>
+              <Text style={styles.hint}>Try another search or add this as a custom item.</Text>
+            </View>
+          )}
+        </>
+      ) : null}
 
-      {query.trim().length >= 3 && !exactMatch ? (
+      {showResults && query.trim().length >= 3 && !exactMatch ? (
         <Button
           label={`Add “${query.trim()}” as custom item`}
           variant="subtle"
@@ -314,8 +381,8 @@ export function AddItemSheet({
 
       <Button
         label={submitLabel}
-        onPress={submit}
-        disabled={!selectedItems.length}
+        onPress={selectedItems.length ? submit : submitDraftItem}
+        disabled={!canSubmit}
         style={styles.submit}
       />
     </Sheet>
@@ -324,6 +391,78 @@ export function AddItemSheet({
 
 function makeStyles(colors: AppColors) {
   return StyleSheet.create({
+    formGroup: {
+      marginBottom: spacing.md,
+      gap: spacing.sm,
+    },
+    fieldLabel: {
+      fontFamily: fonts.sansSemibold,
+      fontSize: 13,
+      color: colors.ink,
+    },
+    itemInput: {
+      minHeight: 48,
+      borderRadius: radii.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      paddingHorizontal: spacing.md,
+      color: colors.ink,
+      fontFamily: fonts.sans,
+      fontSize: 16,
+    },
+    quantityControl: {
+      width: 132,
+      height: 40,
+      borderRadius: radii.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: spacing.sm,
+    },
+    draftQuantityValue: {
+      minWidth: 34,
+      textAlign: 'center',
+      fontFamily: fonts.mono,
+      fontSize: 14,
+      color: colors.ink,
+    },
+    storeSummary: {
+      marginBottom: spacing.md,
+      gap: spacing.sm,
+    },
+    storeSummaryText: {
+      minHeight: 44,
+      borderRadius: radii.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      paddingHorizontal: spacing.md,
+      paddingVertical: 12,
+      fontFamily: fonts.sansSemibold,
+      fontSize: 14,
+      color: colors.ink,
+    },
+    catalogToggle: {
+      minHeight: 42,
+      borderRadius: radii.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surfaceRaised,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.sm,
+      marginBottom: spacing.md,
+    },
+    catalogToggleText: {
+      fontFamily: fonts.sansSemibold,
+      fontSize: 13,
+      color: colors.primary,
+    },
     search: {
       height: 48,
       borderRadius: radii.md,

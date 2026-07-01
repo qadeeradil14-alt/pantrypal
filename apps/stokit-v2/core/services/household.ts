@@ -56,13 +56,18 @@ export function formatInviteCode(code: string): string {
 /** Build the native share message for inviting a household member. */
 export function buildInviteMessage(householdName: string, inviteCode: string): string {
   const code = normalizeInviteCode(inviteCode) ?? inviteCode.toUpperCase();
-  const deepLink = `pantrypal://join?invite=${code}`;
   return [
     `Join "${householdName}" on Stokit 🛒`,
     ``,
-    `Tap to join: ${deepLink}`,
+    `Your invite code:`,
     ``,
-    `Or open Stokit → tap "Join a household" → enter code: ${formatInviteCode(inviteCode)}`,
+    formatInviteCode(code),
+    ``,
+    `To join:`,
+    ``,
+    `1. Open Stokit`,
+    `2. Tap "Join with invite code"`,
+    `3. Enter this invite code`,
   ].join('\n');
 }
 

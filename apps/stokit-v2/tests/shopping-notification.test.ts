@@ -92,6 +92,68 @@ test('active shopping session ingests live household items for current store', (
   assert.ok(src.includes("type: 'ADD_ENTRY'"), 'live synced items must be added into the active session');
 });
 
+test('active shopping session is included in household snapshot sync', () => {
+  const typesPath = path.join(__dirname, '../types/index.ts');
+  const durablePath = path.join(__dirname, '../store/durable-store.ts');
+  const sessionPath = path.join(__dirname, '../store/session-store.ts');
+  const syncPath = path.join(__dirname, '../core/services/syncEngine.ts');
+  const typesSrc = fs.readFileSync(typesPath, 'utf-8');
+  const durableSrc = fs.readFileSync(durablePath, 'utf-8');
+  const sessionSrc = fs.readFileSync(sessionPath, 'utf-8');
+  const syncSrc = fs.readFileSync(syncPath, 'utf-8');
+  assert.ok(typesSrc.includes('activeSession: SharedShoppingSession | null'), 'DurableState must carry shared active session');
+  assert.ok(durableSrc.includes('activeSession: s.activeSession ?? null'), 'snapshot must include active session');
+  assert.ok(sessionSrc.includes('durable.setActiveSession'), 'session dispatch must push active session into durable sync');
+  assert.ok(syncSrc.includes('remote_trip_end_received'), 'remote trip end must be logged during pull');
+});
+
+test('remote active session is reconciled into local shopping session', () => {
+  const durablePath = path.join(__dirname, '../store/durable-store.ts');
+  const sessionPath = path.join(__dirname, '../store/session-store.ts');
+  const durableSrc = fs.readFileSync(durablePath, 'utf-8');
+  const sessionSrc = fs.readFileSync(sessionPath, 'utf-8');
+  assert.ok(durableSrc.includes('applyRemoteSession(remoteSession)'), 'remote snapshot must update session store');
+  assert.ok(sessionSrc.includes('applyRemoteSession'), 'session store must expose remote reconciliation');
+  assert.ok(sessionSrc.includes('AsyncStorage.removeItem(SESSION_KEY)'), 'remote trip end must clear persisted active session');
+  assert.ok(sessionSrc.includes('local_state_reconciled'), 'local reconciliation must be logged');
+});
+
+test('local active session mutations publish full fresh snapshots', () => {
+  const durablePath = path.join(__dirname, '../store/durable-store.ts');
+  const sessionPath = path.join(__dirname, '../store/session-store.ts');
+  const syncPath = path.join(__dirname, '../core/services/syncEngine.ts');
+  const durableSrc = fs.readFileSync(durablePath, 'utf-8');
+  const sessionSrc = fs.readFileSync(sessionPath, 'utf-8');
+  const syncSrc = fs.readFileSync(syncPath, 'utf-8');
+  assert.ok(durableSrc.includes('Math.max(now(), lastSnapshotAt + 1)'), 'snapshot updatedAt must be monotonic for rapid activeSession writes');
+  assert.ok(sessionSrc.includes('durable.setActiveSession'), 'every session reducer mutation must request activeSession sync');
+  assert.ok(durableSrc.includes('active_session_snapshot_write_requested'), 'local activeSession write requests must be logged');
+  assert.ok(syncSrc.includes('active_session_snapshot_written'), 'successful household snapshot writes must be logged');
+});
+
+test('remote active session fully replaces local partial session and null clears storage', () => {
+  const sessionPath = path.join(__dirname, '../store/session-store.ts');
+  const sessionSrc = fs.readFileSync(sessionPath, 'utf-8');
+  assert.ok(sessionSrc.includes('set({ session: remoteSession as ShoppingSession })'), 'remote activeSession must replace local session, not merge');
+  assert.ok(sessionSrc.includes('remote_active_session_replaced_local'), 'replacement count log must be present');
+  assert.ok(sessionSrc.includes("AsyncStorage.removeItem(SESSION_KEY)"), 'remote null/end must clear persisted local active session');
+  assert.ok(sessionSrc.includes('active_session_storage_cleared_on_remote_end'), 'remote end storage clear must be logged');
+});
+
+test('stale AsyncStorage cannot override newer remote active session', () => {
+  const sessionPath = path.join(__dirname, '../store/session-store.ts');
+  const sessionSrc = fs.readFileSync(sessionPath, 'utf-8');
+  assert.ok(sessionSrc.includes('durableSession && (durableSession.startedAt ?? 0) > (saved.startedAt ?? 0)'), 'hydrate must prefer newer remote activeSession over stale storage');
+  assert.ok(sessionSrc.includes('active_session_storage_rehydrate_ignored reason=remote_newer'), 'ignored stale storage must be logged');
+});
+
+test('missed realtime event is corrected by foreground snapshot pull', () => {
+  const layoutPath = path.join(__dirname, '../app/_layout.tsx');
+  const layoutSrc = fs.readFileSync(layoutPath, 'utf-8');
+  assert.ok(layoutSrc.includes("nextState === 'active'"), 'foreground transition must be handled');
+  assert.ok(layoutSrc.includes('pullFromSupabase()'), 'foreground transition must pull latest household snapshot');
+});
+
 // ── 5. v183 sync watermark is unaffected ─────────────────────────────────────
 // Import and exercise the watermark module to confirm it still works correctly
 // after the notification changes (no shared module-state pollution).

@@ -1,0 +1,553 @@
+diff --git a/apps/stokit-v2/app.json b/apps/stokit-v2/app.json
+index a646017..6109f3c 100644
+--- a/apps/stokit-v2/app.json
++++ b/apps/stokit-v2/app.json
+@@ -13,7 +13,7 @@
+       "supportsTablet": false,
+       "icon": "./assets/icon-dark.png",
+       "bundleIdentifier": "com.hewadadil.pantrypal",
+-      "buildNumber": "73",
++      "buildNumber": "74",
+       "deploymentTarget": "16.4",
+       "appleTeamId": "4AJ8TH5QF7",
+       "infoPlist": {
+@@ -118,7 +118,7 @@
+       [
+         "./plugins/with-ios-xcode27-build-settings",
+         {
+-          "buildNumber": "73",
++          "buildNumber": "74",
+           "deploymentTarget": "16.4"
+         }
+       ]
+diff --git a/apps/stokit-v2/app/(tabs)/activity.tsx b/apps/stokit-v2/app/(tabs)/activity.tsx
+index c9593ca..e1bbfb1 100644
+--- a/apps/stokit-v2/app/(tabs)/activity.tsx
++++ b/apps/stokit-v2/app/(tabs)/activity.tsx
+@@ -231,7 +231,7 @@ function makeStyles(colors: AppColors) {
+       justifyContent: 'center',
+     },
+     message: { fontFamily: fonts.sansMedium, fontSize: 15, color: colors.ink },
+-    time: { fontFamily: fonts.mono, fontSize: 11, color: colors.muted, marginTop: 2 },
++    time: { fontFamily: fonts.mono, fontSize: 11, color: colors.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
+ 
+     // Prominent trip card
+     tripCard: {
+@@ -256,6 +256,6 @@ function makeStyles(colors: AppColors) {
+       justifyContent: 'center',
+     },
+     tripTitle: { fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink },
+-    tripMessage: { fontFamily: fonts.mono, fontSize: 12, color: colors.inkSoft, marginTop: 3 },
++    tripMessage: { fontFamily: fonts.mono, fontSize: 12, color: colors.inkSoft, marginTop: 3, fontVariant: ['tabular-nums'] },
+   });
+ }
+diff --git a/apps/stokit-v2/app/(tabs)/index.tsx b/apps/stokit-v2/app/(tabs)/index.tsx
+index 5129d17..0ed56d4 100644
+--- a/apps/stokit-v2/app/(tabs)/index.tsx
++++ b/apps/stokit-v2/app/(tabs)/index.tsx
+@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
+ import { SafeAreaView } from 'react-native-safe-area-context';
+ import AsyncStorage from '@react-native-async-storage/async-storage';
+ import { Logo } from '../../components/shared/Logo';
++import { EmptyState } from '../../components/shared/EmptyState';
+ import { AddItemSheet } from '../../components/pantry/AddItemSheet';
+ import { ItemActionSheet } from '../../components/pantry/ItemActionSheet';
+ import { StorePickerSheet } from '../../components/pantry/StorePickerSheet';
+@@ -297,13 +298,11 @@ export default function PantryScreen() {
+               />
+             </View>
+           )) : (
+-            <View style={styles.empty}>
+-              <Ionicons name="cart-outline" size={28} color={colors.muted} />
+-              <Text style={styles.emptyTitle}>{query ? 'No results' : 'Your list is empty'}</Text>
+-              <Text style={styles.emptyText}>
+-                {query ? `No items match "${searchQuery}"` : 'Use the search bar above to add your first item.'}
+-              </Text>
+-            </View>
++            <EmptyState
++              icon={query ? 'search-outline' : 'cart-outline'}
++              title={query ? 'No results' : 'Your list is empty'}
++              body={query ? `No items match "${searchQuery}"` : 'Use the search bar above to add your first item.'}
++            />
+           )}
+         </View>
+ 
+@@ -351,9 +350,11 @@ export default function PantryScreen() {
+                     />
+                   </View>
+                 )) : (
+-                  <View style={styles.empty}>
+-                    <Text style={styles.emptyTitle}>Nothing at home yet</Text>
+-                  </View>
++                  <EmptyState
++                    icon="home-outline"
++                    title="Nothing at home yet"
++                    body="Items you mark stocked will show up here."
++                  />
+                 )}
+               </View>
+             ) : null}
+@@ -597,15 +598,15 @@ function makeStyles(c: AppColors) {
+     wordmark:         { flexDirection: 'row', alignItems: 'center', gap: 7 },
+     wordmarkText:     { fontFamily: fonts.sansSemibold, fontSize: 18, color: c.ink, letterSpacing: -0.3 },
+     syncPill:         { backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
+-    syncPillText:     { fontFamily: fonts.mono, fontSize: 10, color: c.muted },
++    syncPillText:     { fontFamily: fonts.mono, fontSize: 10, color: c.muted, fontVariant: ['tabular-nums'] },
+     greeting:         { fontFamily: fonts.sans, fontSize: 14, color: c.muted, marginBottom: 2 },
+     title:            { fontFamily: fonts.serifItalic, fontSize: 25, lineHeight: 30, color: c.ink, marginBottom: 4 },
+-    tagline:          { fontFamily: fonts.sans, fontSize: 15, color: c.muted },
++    tagline:          { fontFamily: fonts.sans, fontSize: 15, color: c.muted, fontVariant: ['tabular-nums'] },
+     settings:         { width: 44, height: 44, borderRadius: 22, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, alignItems: 'center', justifyContent: 'center', ...shadow.card },
+     pressed:          { opacity: 0.76 },
+     atHomeHeader:      { marginBottom: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.sm, borderBottomWidth: 1, borderBottomColor: c.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+     atHomeTitle:       { fontFamily: fonts.sansSemibold, fontSize: 19, color: c.ink },
+-    atHomeCount:       { fontFamily: fonts.sans, fontSize: 13, color: c.muted, marginTop: 2 },
++    atHomeCount:       { fontFamily: fonts.sans, fontSize: 13, color: c.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
+     moreHeader:        { marginTop: spacing.xl, paddingVertical: spacing.lg, borderTopWidth: 1, borderTopColor: c.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+     moreTitle:         { fontFamily: fonts.sansSemibold, fontSize: 18, color: c.ink },
+     searchBar:        { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: radii.md, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.md, paddingVertical: 10, marginTop: spacing.sm, marginBottom: spacing.xs },
+@@ -628,13 +629,10 @@ function makeStyles(c: AppColors) {
+     itemEmoji:        { fontSize: 23 },
+     itemCopy:         { flex: 1 },
+     itemName:         { fontFamily: fonts.sansMedium, fontSize: 17, color: c.ink },
+-    itemMeta:         { fontFamily: fonts.mono, fontSize: 12, lineHeight: 17, color: c.muted, marginTop: 3 },
++    itemMeta:         { fontFamily: fonts.mono, fontSize: 12, lineHeight: 17, color: c.muted, marginTop: 3, fontVariant: ['tabular-nums'] },
+     itemAction:       { minHeight: 38, borderRadius: 19, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 3 },
+     itemCartAction:   { width: 44, height: 44, borderRadius: 13, justifyContent: 'center', paddingHorizontal: 0, backgroundColor: c.surface },
+     itemActionText:   { fontFamily: fonts.sansSemibold, fontSize: 12, color: c.primary },
+-    empty:            { minHeight: 150, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.lg },
+-    emptyTitle:       { fontFamily: fonts.sansSemibold, fontSize: 17, color: c.ink, marginTop: spacing.sm },
+-    emptyText:        { fontFamily: fonts.sans, fontSize: 13, lineHeight: 19, color: c.muted, textAlign: 'center', marginTop: spacing.xs },
+     frequentSection:  { marginTop: spacing.md, marginBottom: spacing.sm },
+     frequentTitle:    { fontFamily: fonts.sansSemibold, fontSize: 15, color: c.muted, marginBottom: spacing.sm, paddingHorizontal: 4 },
+     frequentScroll:   { gap: spacing.md, paddingRight: spacing.xl },
+diff --git a/apps/stokit-v2/app/(tabs)/receipts.tsx b/apps/stokit-v2/app/(tabs)/receipts.tsx
+index 41406bc..7f8823f 100644
+--- a/apps/stokit-v2/app/(tabs)/receipts.tsx
++++ b/apps/stokit-v2/app/(tabs)/receipts.tsx
+@@ -145,7 +145,7 @@ export default function ReceiptsScreen() {
+ }
+ 
+ function ReceiptStatusPill({ status, hasPhoto }: { status: Receipt['status']; hasPhoto?: boolean }) {
+-  if (status === 'logged') return <Pill label="Complete" tone="stocked" />;
++  if (status === 'logged') return <Pill label="Completed" tone="stocked" />;
+   if (status === 'photo_pending') return <Pill label={hasPhoto ? 'Photo saved' : 'Amount saved'} tone="muted" />;
+   return <Pill label="Skipped" tone="muted" />;
+ }
+@@ -160,16 +160,16 @@ function makeStyles(colors: AppColors) {
+       marginBottom: spacing.md,
+     },
+     tripTitle: { fontFamily: fonts.serifItalic, fontSize: 20, color: colors.ink },
+-    tripMeta: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: 3 },
++    tripMeta: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: 3, fontVariant: ['tabular-nums'] },
+     tripRight: { alignItems: 'flex-end', gap: 4 },
+-    tripTotal: { fontFamily: fonts.monoMedium, fontSize: 18, color: colors.primary },
++    tripTotal: { fontFamily: fonts.monoMedium, fontSize: 18, color: colors.primary, fontVariant: ['tabular-nums'] },
+     tripChevron: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+     totalCard: { alignItems: 'center', paddingVertical: spacing.xl },
+-    totalValue: { fontFamily: fonts.mono, fontSize: 44, color: colors.primary },
+-    totalLabel: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.muted, marginTop: 2 },
++    totalValue: { fontFamily: fonts.mono, fontSize: 44, color: colors.primary, fontVariant: ['tabular-nums'] },
++    totalLabel: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
+     row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+     divider: { height: 1, backgroundColor: colors.borderSoft, marginBottom: spacing.md },
+     storeName: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink, marginBottom: 4 },
+-    amount: { fontFamily: fonts.monoMedium, fontSize: 16, color: colors.ink },
++    amount: { fontFamily: fonts.monoMedium, fontSize: 16, color: colors.ink, fontVariant: ['tabular-nums'] },
+   });
+ }
+diff --git a/apps/stokit-v2/app/(tabs)/shopping.tsx b/apps/stokit-v2/app/(tabs)/shopping.tsx
+index b98fdf7..303ec3e 100644
+--- a/apps/stokit-v2/app/(tabs)/shopping.tsx
++++ b/apps/stokit-v2/app/(tabs)/shopping.tsx
+@@ -269,7 +269,7 @@ export default function ShoppingScreen() {
+             const store = storeById(storeId);
+             return (
+               <View key={storeId}>
+-                <SectionHeader title={store?.name ?? 'Unknown Store'} action={`${list.length}`} />
++                <PlanStoreHeader store={store} count={list.length} styles={styles} />
+                 <Card style={{ paddingVertical: spacing.xs }}>
+                   {list.map((e, idx) => (
+                     <View key={e.itemId}>
+@@ -476,6 +476,20 @@ function PriceMemoryIntro({ count, styles, colors }: { count: number; styles: an
+   );
+ }
+ 
++function PlanStoreHeader({ store, count, styles }: { store?: Store; count: number; styles: any }) {
++  const isOpen = store?.isOpen;
++  return (
++    <View style={styles.planStoreHeader}>
++      <StoreChip store={store} name={store?.name ?? 'Unknown Store'} size={32} />
++      <Text style={styles.planStoreTitle}>{store?.name ?? 'Unknown Store'}</Text>
++      {isOpen !== undefined ? (
++        <Pill label={isOpen ? 'Open' : 'Closed'} tone={isOpen ? 'stocked' : 'muted'} />
++      ) : null}
++      <Text style={styles.planStoreCount}>{count}</Text>
++    </View>
++  );
++}
++
+ // ── 1. Shopping at current store ──────────────────────────────────────────────
+ 
+ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubProps) {
+@@ -924,7 +938,7 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
+         <View style={rStyles.header}>
+           <View>
+             <Text style={rStyles.storeName} numberOfLines={1}>{store?.name ?? 'Store'}</Text>
+-            <Text style={rStyles.stopLabel}>Stop complete</Text>
++            <Text style={rStyles.stopLabel}>Stop completed</Text>
+           </View>
+           <Pressable onPress={skip} style={rStyles.checkBadge}>
+             <Ionicons name="checkmark" size={20} color={colors.primary} />
+@@ -1153,7 +1167,7 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
+ 
+   return (
+     <Screen>
+-      <PageTitle eyebrow="Stop complete" title={store?.name ?? 'Store'} />
++      <PageTitle eyebrow="Stop completed" title={store?.name ?? 'Store'} />
+ 
+       {/* Summary card */}
+       <Card style={ssStyles.card}>
+@@ -1192,7 +1206,7 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
+       ) : (
+         <View style={ssStyles.nextHint}>
+           <Ionicons name="checkmark-circle-outline" size={16} color={colors.success} />
+-          <Text style={[ssStyles.nextHintText, { color: colors.success }]}>All stops complete!</Text>
++          <Text style={[ssStyles.nextHintText, { color: colors.success }]}>All stops completed!</Text>
+         </View>
+       )}
+ 
+@@ -1255,7 +1269,7 @@ function ContinuePrompt({ session, dispatch, storeById, styles, colors }: SubPro
+   return (
+     <Screen>
+       <PageTitle
+-        eyebrow="Store visit complete"
++        eyebrow="Store visit completed"
+         title={hasOptions ? 'Shopping somewhere else?' : 'All done here?'}
+       />
+ 
+@@ -1773,13 +1787,16 @@ function makeStyles(colors: AppColors) {
+     priceMemoryIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
+     priceMemoryTitle: { fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink },
+     priceMemoryBody: { fontFamily: fonts.sans, fontSize: 12, lineHeight: 18, color: colors.muted, marginTop: 2 },
+-    summaryBig:   { fontFamily: fonts.mono, fontSize: 48, color: colors.primary },
+-    summarySub:   { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.muted, marginTop: 2 },
++    summaryBig:   { fontFamily: fonts.mono, fontSize: 48, color: colors.primary, fontVariant: ['tabular-nums'] },
++    summarySub:   { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
+     firstDestLabel: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
++    planStoreHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.lg, marginBottom: spacing.sm },
++    planStoreTitle: { flex: 1, fontFamily: fonts.sansSemibold, fontSize: 18, color: colors.ink },
++    planStoreCount: { fontFamily: fonts.monoMedium, fontSize: 13, color: colors.primary, fontVariant: ['tabular-nums'] },
+     rowDivider:   { height: 1, backgroundColor: colors.borderSoft, marginLeft: spacing.lg },
+     planRow:      { flexDirection: 'row', alignItems: 'center', gap: spacing.md, justifyContent: 'space-between', paddingVertical: spacing.md },
+     planName:     { fontFamily: fonts.sansMedium, fontSize: 16, color: colors.ink },
+-    planMeta:     { fontFamily: fonts.mono, fontSize: 12, color: colors.muted },
++    planMeta:     { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, fontVariant: ['tabular-nums'] },
+     unassignedMeta: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 2 },
+     assignAllRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm },
+     assignAllHint: { flex: 1, fontFamily: fonts.sans, fontSize: 13, color: colors.muted, lineHeight: 18 },
+@@ -1795,11 +1812,11 @@ function makeStyles(colors: AppColors) {
+     progressWrap: { marginTop: spacing.xl },
+     progressTrack:{ height: 8, borderRadius: 4, backgroundColor: colors.surfaceRaised },
+     progressFill: { height: 8, borderRadius: 4, backgroundColor: colors.primary },
+-    progressText: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: spacing.sm },
++    progressText: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: spacing.sm, fontVariant: ['tabular-nums'] },
+     pickRow:      { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md },
+     pickName:     { flex: 1, fontFamily: fonts.sansMedium, fontSize: 16, color: colors.ink },
+     pickNameDone: { color: colors.muted, textDecorationLine: 'line-through' },
+-    priceHint:    { fontFamily: fonts.sans, fontSize: 11, color: colors.primary, marginTop: 3 },
++    priceHint:    { fontFamily: fonts.sans, fontSize: 11, color: colors.primary, marginTop: 3, fontVariant: ['tabular-nums'] },
+     addPriceButton: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 8 },
+     addPriceText: { fontFamily: fonts.sansSemibold, fontSize: 11, color: colors.primary },
+     emptyNote:    { fontFamily: fonts.sans, fontSize: 14, color: colors.muted, textAlign: 'center', paddingVertical: spacing.lg },
+@@ -1812,13 +1829,13 @@ function makeStyles(colors: AppColors) {
+     manualStoreMeta: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 2 },
+     firstStoreRow:  { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
+     firstStoreName: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
+-    firstStoreMeta: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: 2 },
++    firstStoreMeta: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
+     firstStoreGoBtn:{ borderWidth: 1.5, borderRadius: radii.md, paddingHorizontal: 12, paddingVertical: 6 },
+     firstStoreGoBtnText: { fontFamily: fonts.sansSemibold, fontSize: 13 },
+     routeStrip:     { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md },
+     routeDot:       { width: 26, height: 26, borderRadius: 13, borderWidth: 1.5, borderColor: colors.borderSoft, alignItems: 'center', justifyContent: 'center' },
+     routeDotActive: { backgroundColor: colors.ink, borderColor: colors.ink },
+-    routeDotText:   { fontFamily: fonts.sansSemibold, fontSize: 12, color: colors.muted },
++    routeDotText:   { fontFamily: fonts.sansSemibold, fontSize: 12, color: colors.muted, fontVariant: ['tabular-nums'] },
+     routeDotTextActive: { color: colors.surface },
+     routeLine:      { flex: 1, height: 1, borderStyle: 'dashed', borderWidth: 1, borderColor: colors.borderSoft },
+     directionsBtn:  { padding: 4 },
+@@ -1830,11 +1847,11 @@ function makeStyles(colors: AppColors) {
+     stopLabel: { fontFamily: fonts.sansSemibold, fontSize: 13, color: colors.primary, marginTop: 4 },
+     checkBadge:{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+     amountRow: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: colors.border, marginHorizontal: spacing.sm, paddingBottom: spacing.md, marginBottom: spacing.md },
+-    currency:  { fontFamily: fonts.mono, fontSize: 36, color: colors.primary, marginRight: spacing.sm },
+-    amountInput:{ flex: 1, fontFamily: fonts.mono, fontSize: 48, color: colors.ink, padding: 0 },
++    currency:  { fontFamily: fonts.mono, fontSize: 36, color: colors.primary, marginRight: spacing.sm, fontVariant: ['tabular-nums'] },
++    amountInput:{ flex: 1, fontFamily: fonts.mono, fontSize: 48, color: colors.ink, padding: 0, fontVariant: ['tabular-nums'] },
+     hint:      { fontFamily: fonts.sans, fontSize: 13, color: colors.muted, marginHorizontal: spacing.sm, marginBottom: spacing.xl, lineHeight: 19 },
+     saveBtn:   { backgroundColor: colors.primary, borderRadius: radii.lg, paddingVertical: 16, alignItems: 'center', marginHorizontal: spacing.sm },
+-    saveBtnText:{ fontFamily: fonts.sansSemibold, fontSize: 17, color: colors.onPrimary },
++    saveBtnText:{ fontFamily: fonts.sansSemibold, fontSize: 17, color: colors.onPrimary, fontVariant: ['tabular-nums'] },
+     chipRow:   { flexDirection: 'row', gap: spacing.md, marginTop: spacing.lg, marginHorizontal: spacing.sm },
+     chip:      { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, backgroundColor: colors.surfaceRaised, borderRadius: radii.md, borderWidth: 1.5, borderColor: colors.primary, paddingVertical: 12 },
+     chipText:  { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.ink },
+@@ -1908,11 +1925,11 @@ function makeStyles(colors: AppColors) {
+     card:     { paddingVertical: spacing.xl },
+     row:      { flexDirection: 'row', alignItems: 'center' },
+     statBox:  { flex: 1, alignItems: 'center', gap: 4 },
+-    statVal:  { fontFamily: fonts.mono, fontSize: 26, color: colors.ink },
++    statVal:  { fontFamily: fonts.mono, fontSize: 26, color: colors.ink, fontVariant: ['tabular-nums'] },
+     statLbl:  { fontFamily: fonts.sans, fontSize: 11, color: colors.muted },
+     divider:  { width: 1, height: 40, backgroundColor: colors.border },
+     timeRow:  { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: spacing.lg, paddingTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.borderSoft },
+-    timeText: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted },
++    timeText: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, fontVariant: ['tabular-nums'] },
+     nextHint: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.lg, paddingHorizontal: spacing.sm },
+     nextHintText: { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.primary },
+     manualStore: {
+@@ -1935,7 +1952,7 @@ function makeStyles(colors: AppColors) {
+     logo:        { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+     logoAbbr:    { fontFamily: fonts.sansSemibold, fontSize: 15, color: '#fff' },
+     storeName:   { fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink },
+-    storeItems:  { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: 3 },
++    storeItems:  { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: 3, fontVariant: ['tabular-nums'] },
+     startBtn:    { borderWidth: 1.5, borderRadius: radii.md, paddingHorizontal: 14, paddingVertical: 7 },
+     startBtnText:{ fontFamily: fonts.sansSemibold, fontSize: 14 },
+     skipStoreBtn:{ alignItems: 'center', paddingTop: spacing.md, marginTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.borderSoft },
+@@ -1953,11 +1970,11 @@ function makeStyles(colors: AppColors) {
+     scroll:       { padding: spacing.xl, gap: spacing.xl },
+     header:       { alignItems: 'center', marginBottom: spacing.md },
+     eyebrow:      { fontFamily: fonts.monoMedium, fontSize: 12, color: colors.muted, letterSpacing: 1, marginBottom: spacing.sm },
+-    total:        { fontFamily: fonts.mono, fontSize: 48, color: colors.primary, lineHeight: 60 },
++    total:        { fontFamily: fonts.mono, fontSize: 48, color: colors.primary, lineHeight: 60, fontVariant: ['tabular-nums'] },
+     totalLabel:  { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.muted, marginTop: 4 },
+     statsRow:    { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.xl },
+     statBox:     { flex: 1, backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, alignItems: 'center', paddingVertical: spacing.lg, gap: 4 },
+-    statVal:     { fontSize: 22, color: colors.ink },
++    statVal:     { fontSize: 22, color: colors.ink, fontVariant: ['tabular-nums'] },
+     statLbl:     { fontFamily: fonts.sans, fontSize: 11, color: colors.muted, textAlign: 'center' },
+     sectionTitle:{ fontFamily: fonts.serifItalic, fontSize: 20, color: colors.ink, marginBottom: spacing.md, marginTop: spacing.sm },
+     storeCard:   { marginBottom: spacing.md },
+@@ -1966,21 +1983,21 @@ function makeStyles(colors: AppColors) {
+     logo:        { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+     logoAbbr:    { fontFamily: fonts.sansSemibold, fontSize: 14, color: '#fff' },
+     storeName:   { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
+-    storeMeta:   { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: 3 },
++    storeMeta:   { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: 3, fontVariant: ['tabular-nums'] },
+     itemsList:   { fontFamily: fonts.sans, fontSize: 11, color: colors.muted, marginTop: 3, fontStyle: 'italic' },
+-    storeSpent:  { fontFamily: fonts.monoMedium, fontSize: 16 },
++    storeSpent:  { fontFamily: fonts.monoMedium, fontSize: 16, fontVariant: ['tabular-nums'] },
+     timeRow:     { alignItems: 'center', marginTop: spacing.xl, paddingVertical: spacing.lg, borderTopWidth: 1, borderTopColor: colors.borderSoft },
+-    timeText:    { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, textAlign: 'center' },
++    timeText:    { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, textAlign: 'center', fontVariant: ['tabular-nums'] },
+     budgetCard:      { marginBottom: spacing.xl, gap: spacing.sm },
+     budgetHeader:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+     budgetTitleRow:  { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+-    budgetTitle:     { fontFamily: fonts.mono, fontSize: 11, color: colors.muted, letterSpacing: 1.2 },
++    budgetTitle:     { fontFamily: fonts.mono, fontSize: 11, color: colors.muted, letterSpacing: 1.2, fontVariant: ['tabular-nums'] },
+     budgetStatus:    { fontFamily: fonts.sansSemibold, fontSize: 13 },
+     budgetOver:      { color: colors.danger },
+     budgetUnder:     { color: colors.success },
+     budgetAmounts:   { flexDirection: 'row', alignItems: 'baseline' },
+-    budgetSpent:     { fontFamily: fonts.mono, fontSize: 28, color: colors.ink },
+-    budgetOf:        { fontFamily: fonts.mono, fontSize: 16, color: colors.muted },
++    budgetSpent:     { fontFamily: fonts.mono, fontSize: 28, color: colors.ink, fontVariant: ['tabular-nums'] },
++    budgetOf:        { fontFamily: fonts.mono, fontSize: 16, color: colors.muted, fontVariant: ['tabular-nums'] },
+     barTrack:        { height: 8, borderRadius: 4, backgroundColor: colors.border, overflow: 'hidden' },
+     barFill:         { height: 8, borderRadius: 4 },
+     barUnder:        { backgroundColor: colors.success },
+diff --git a/apps/stokit-v2/components/household/JoinHouseholdSheet.tsx b/apps/stokit-v2/components/household/JoinHouseholdSheet.tsx
+index d959787..61b04c4 100644
+--- a/apps/stokit-v2/components/household/JoinHouseholdSheet.tsx
++++ b/apps/stokit-v2/components/household/JoinHouseholdSheet.tsx
+@@ -32,13 +32,17 @@ export function JoinHouseholdSheet({
+     const result = await joinHousehold(code, myName);
+     setJoining(false);
+     if (!result.ok && result.invalidCode) {
+-      setError('Invalid invite code. Check the code and try again.');
++      setError(result.message);
+       return;
+     }
+     if (!result.ok) {
+       setError(result.message);
+       return;
+     }
++    if (result.alreadyMember) {
++      setError(result.message ?? 'This person is already in your household.');
++      return;
++    }
+     setCode('');
+     setMyName('');
+     onClose();
+diff --git a/apps/stokit-v2/components/receipts/TripDetailSheet.tsx b/apps/stokit-v2/components/receipts/TripDetailSheet.tsx
+index 94bdc86..50798e6 100644
+--- a/apps/stokit-v2/components/receipts/TripDetailSheet.tsx
++++ b/apps/stokit-v2/components/receipts/TripDetailSheet.tsx
+@@ -171,7 +171,7 @@ function Stat({ value, label }: { value: string | number; label: string }) {
+ function makeStyles(colors: AppColors) {
+   return StyleSheet.create({
+     totalBox: { alignItems: 'center', paddingBottom: spacing.lg },
+-    totalValue: { fontFamily: fonts.mono, fontSize: 48, color: colors.primary },
++    totalValue: { fontFamily: fonts.mono, fontSize: 48, color: colors.primary, fontVariant: ['tabular-nums'] },
+     totalLabel: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.muted, marginTop: 2 },
+     statRow: {
+       flexDirection: 'row',
+@@ -188,11 +188,11 @@ function makeStyles(colors: AppColors) {
+       paddingVertical: spacing.md,
+       gap: 2,
+     },
+-    statVal: { fontFamily: fonts.mono, fontSize: 18, color: colors.ink },
++    statVal: { fontFamily: fonts.mono, fontSize: 18, color: colors.ink, fontVariant: ['tabular-nums'] },
+     statLbl: { fontFamily: fonts.sans, fontSize: 10, color: colors.muted, textAlign: 'center' },
+     sectionTitle: {
+       fontFamily: fonts.serifItalic,
+-      fontSize: 18,
++      fontSize: 21,
+       color: colors.ink,
+       marginBottom: spacing.md,
+     },
+@@ -205,8 +205,8 @@ function makeStyles(colors: AppColors) {
+       borderBottomColor: colors.borderSoft,
+     },
+     storeName: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
+-    storeMeta: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: 2 },
+-    storeAmount: { fontFamily: fonts.monoMedium, fontSize: 16, color: colors.ink },
++    storeMeta: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
++    storeAmount: { fontFamily: fonts.monoMedium, fontSize: 16, color: colors.ink, fontVariant: ['tabular-nums'] },
+     addPhotoBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+     addPhotoText: { fontFamily: fonts.sansMedium, fontSize: 12, color: colors.primary },
+     itemRow: {
+@@ -218,8 +218,8 @@ function makeStyles(colors: AppColors) {
+       borderBottomColor: colors.borderSoft,
+     },
+     itemName: { flex: 1, fontFamily: fonts.sansMedium, fontSize: 15, color: colors.ink },
+-    itemPrice: { fontFamily: fonts.monoMedium, fontSize: 15, color: colors.ink },
+-    itemPriceMuted: { fontFamily: fonts.mono, fontSize: 15, color: colors.muted },
++    itemPrice: { fontFamily: fonts.monoMedium, fontSize: 15, color: colors.ink, fontVariant: ['tabular-nums'] },
++    itemPriceMuted: { fontFamily: fonts.mono, fontSize: 15, color: colors.muted, fontVariant: ['tabular-nums'] },
+     timeRow: {
+       flexDirection: 'row',
+       alignItems: 'center',
+@@ -227,6 +227,6 @@ function makeStyles(colors: AppColors) {
+       gap: 6,
+       marginTop: spacing.xl,
+     },
+-    timeText: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted },
++    timeText: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, fontVariant: ['tabular-nums'] },
+   });
+ }
+diff --git a/apps/stokit-v2/constants/version.ts b/apps/stokit-v2/constants/version.ts
+index 7640060..77fdfdc 100644
+--- a/apps/stokit-v2/constants/version.ts
++++ b/apps/stokit-v2/constants/version.ts
+@@ -1,2 +1,2 @@
+ /** Bump this once per OTA push — the only place the sequence number lives. */
+-export const OTA_SEQ = 161;
++export const OTA_SEQ = 163;
+diff --git a/apps/stokit-v2/core/services/household.ts b/apps/stokit-v2/core/services/household.ts
+index 5aeccce..6dc8f86 100644
+--- a/apps/stokit-v2/core/services/household.ts
++++ b/apps/stokit-v2/core/services/household.ts
+@@ -15,6 +15,8 @@
+ // Unambiguous character set — no 0/O, 1/I/L confusion (identical to V1).
+ const CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+ export const INVITE_CODE_RE = /^[A-Z0-9]{6,9}$/;
++export const ALREADY_IN_HOUSEHOLD_MESSAGE = 'This person is already in your household.';
++export const STALE_INVITE_CODE_MESSAGE = 'This invite code is no longer valid. Ask for a new invite.';
+ 
+ /** Generate a random 6-character invite code. */
+ export function generateInviteCode(): string {
+@@ -33,6 +35,14 @@ export function normalizeInviteCode(raw: string): string | null {
+   return INVITE_CODE_RE.test(normalized) ? normalized : null;
+ }
+ 
++export function joinHouseholdErrorMessage(rawMessage: string): { message: string; invalidCode: boolean } {
++  const message = rawMessage.toLowerCase();
++  if (message.includes('invalid invite code') || message.includes('expired') || message.includes('no longer valid')) {
++    return { message: STALE_INVITE_CODE_MESSAGE, invalidCode: true };
++  }
++  return { message: rawMessage, invalidCode: false };
++}
++
+ /** Format a code for display with a dash: "ABC-123". */
+ export function formatInviteCode(code: string): string {
+   return `${code.slice(0, 3)}-${code.slice(3)}`;
+diff --git a/apps/stokit-v2/store/auth-store.ts b/apps/stokit-v2/store/auth-store.ts
+index c01a713..a8b87ac 100644
+--- a/apps/stokit-v2/store/auth-store.ts
++++ b/apps/stokit-v2/store/auth-store.ts
+@@ -6,6 +6,7 @@ import { useDurableStore } from './durable-store';
+ import { useHouseholdStore } from './household-store';
+ import { useSessionStore } from './session-store';
+ import { stopSyncEngine } from '../core/services/syncEngine';
++import { isExistingAccountSignUpResponse } from '../core/services/authResponses';
+ 
+ type AuthResult =
+   | { ok: true; next?: 'VERIFY_EMAIL' | 'SIGN_IN' }
+@@ -121,6 +122,12 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
+       set({ loading: false, authError: message, pendingEmail: null });
+       return { ok: false, message, code: authErrorCode(error) };
+     }
++    if (isExistingAccountSignUpResponse(data)) {
++      _signUpInProgress = false;
++      const message = 'An account with this email already exists. Sign in or reset your password.';
++      set({ loading: false, authError: message, pendingEmail: null });
++      return { ok: false, message, code: 'EMAIL_EXISTS' };
++    }
+ 
+     if (data.session) {
+       const { error: cleanupError } = await supabase.auth.signOut({ scope: 'local' });
+diff --git a/apps/stokit-v2/store/household-store.ts b/apps/stokit-v2/store/household-store.ts
+index e528037..abc036e 100644
+--- a/apps/stokit-v2/store/household-store.ts
++++ b/apps/stokit-v2/store/household-store.ts
+@@ -1,14 +1,23 @@
+ import AsyncStorage from '@react-native-async-storage/async-storage';
+ import { create } from 'zustand';
+ import { supabase } from '../lib/supabase';
+-import { avatarColor, initials, normalizeInviteCode, type SyncStatus } from '../core/services/household';
++import {
++  ALREADY_IN_HOUSEHOLD_MESSAGE,
++  avatarColor,
++  initials,
++  joinHouseholdErrorMessage,
++  normalizeInviteCode,
++  type SyncStatus,
++} from '../core/services/household';
+ import type { HouseholdIdentity, HouseholdMember } from '../types';
+ 
+ const STORAGE_KEY = 'stokit:v2:household';
+ let householdChannel: ReturnType<typeof supabase.channel> | null = null;
+ let subscribedHouseholdId: string | null = null;
+ 
+-type Result = { ok: true } | { ok: false; message: string; invalidCode?: boolean };
++type Result =
++  | { ok: true; message?: string; alreadyMember?: boolean }
++  | { ok: false; message: string; invalidCode?: boolean };
+ type HouseholdPayload = HouseholdIdentity & {
+   members: Array<Pick<HouseholdMember, 'id' | 'displayName' | 'role' | 'joinedAt'>>;
+ };
+@@ -153,15 +162,20 @@ export const useHouseholdStore = create<HouseholdState>((set, get) => ({
+     if (!code) return { ok: false, invalidCode: true, message: 'Invalid invite code.' };
+     set({ syncStatus: 'syncing' });
+     try {
+-      await applyPayload(await rpc('join_household_by_code', {
++      const currentHouseholdId = get().household?.id;
++      const payload = await rpc('join_household_by_code', {
+         p_invite_code: code,
+         p_display_name: myName.trim() || 'Me',
+-      }), set);
++      });
++      const alreadyMember = Boolean(currentHouseholdId && payload.id === currentHouseholdId && !payload.isPersonal);
++      await applyPayload(payload, set);
++      if (alreadyMember) return { ok: true, alreadyMember: true, message: ALREADY_IN_HOUSEHOLD_MESSAGE };
+       await reloadSharedState();
+       return { ok: true };
+     } catch (error) {
+       set({ syncStatus: 'error' });
+-      return { ok: false, invalidCode: message(error).includes('Invalid invite code'), message: message(error) };
++      const mapped = joinHouseholdErrorMessage(message(error));
++      return { ok: false, invalidCode: mapped.invalidCode, message: mapped.message };
+     }
+   },
+ 

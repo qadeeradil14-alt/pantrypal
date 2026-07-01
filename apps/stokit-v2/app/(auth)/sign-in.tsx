@@ -27,7 +27,8 @@ export default function SignInScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState(typeof params.message === 'string' ? params.message : '');
+  const successMessage = typeof params.message === 'string' ? params.message : '';
+  const [error, setError] = useState('');
 
   const submit = async () => {
     if (!email.trim() || !password) {
@@ -67,6 +68,7 @@ export default function SignInScreen() {
         <Text style={styles.title}>Sign in to Stokit</Text>
         <Text style={styles.body}>Your pantry and shopping trips stay private to your account.</Text>
         <Card style={styles.card}>
+          {successMessage ? <Text style={styles.resetSent}>{successMessage}</Text> : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <TextInput
             value={email}

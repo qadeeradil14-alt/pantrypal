@@ -1,5 +1,5 @@
-import React, { useEffect, useRef } from 'react';
-import { ActivityIndicator, AppState, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, AppState, Linking, View } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { Stack, usePathname, useRouter, useRootNavigationState, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -29,8 +29,20 @@ import { setupNotifications, registerPushToken, appendNotificationLog } from '..
 import { isEmailVerified, useAuthStore } from '../store/auth-store';
 import { pullFromSupabase, startSyncEngine } from '../core/services/syncEngine';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { normalizeInviteCode } from '../core/services/household';
 
 const PENDING_JOIN_KEY = 'stokit:v2:pending-join';
+
+/** Parse invite code from any supported deep link format. */
+function parseInviteCodeFromUrl(url: string): string | null {
+  try {
+    const m = url.match(/[?&](?:invite|code|inviteCode)=([A-Za-z0-9-]+)/);
+    if (!m) return null;
+    return normalizeInviteCode(m[1]);
+  } catch {
+    return null;
+  }
+}
 // Geofence background task must be defined at module load time (before any render).
 import { defineGeofenceTask } from '../core/services/geofencing';
 
@@ -91,6 +103,11 @@ export default function RootLayout() {
   const pathname = usePathname();
   const { colors, isDark } = useTheme();
   const handledNotificationIdRef = useRef<string | null>(null);
+  // Each tap produces a new object so React always re-renders and Expo Router
+  // always navigates (identical params would be deduplicated silently).
+  const [inviteTrigger, setInviteTrigger] = useState<{ code: string; t: number } | null>(null);
+  // Gate the auth guard until we know whether a cold-start invite URL is present.
+  const [initialUrlChecked, setInitialUrlChecked] = useState(false);
   const verified = isEmailVerified(user);
   const unlocked = verified || guestMode;
   const ready = fontsLoaded && hydratedDurable && hydratedHousehold && !authInitializing;
@@ -103,6 +120,38 @@ export default function RootLayout() {
     void hydrateSession();
     void setupNotifications();
   }, [hydrateDurable, hydrateHousehold, hydrateSession]);
+
+  // Capture invite deep links before the auth guard runs.
+  // Cold start: getInitialURL resolves once and sets initialUrlChecked so the
+  // guard waits for it. Warm start: addEventListener fires while app is open.
+  useEffect(() => {
+    void Linking.getInitialURL().then((url) => {
+      if (url) {
+        const code = parseInviteCodeFromUrl(url);
+        if (code) setInviteTrigger({ code, t: Date.now() });
+      }
+      setInitialUrlChecked(true);
+    });
+
+    const sub = Linking.addEventListener('url', ({ url }) => {
+      const code = parseInviteCodeFromUrl(url);
+      if (!code) return;
+      setInviteTrigger({ code, t: Date.now() });
+    });
+
+    return () => sub.remove();
+  }, []);
+
+  // Warm-start invite: when a URL event fires while the app is already running
+  // and the navigator is ready, route immediately to the join screen.
+  // t param makes every push unique so Expo Router never deduplicates it.
+  useEffect(() => {
+    if (!inviteTrigger || !ready || !rootNavigationState?.key || !initialUrlChecked) return;
+    if (!unlocked) {
+      router.push({ pathname: '/(auth)/join', params: { invite: inviteTrigger.code, t: String(inviteTrigger.t) } });
+    }
+    setInviteTrigger(null);
+  }, [inviteTrigger, ready, rootNavigationState?.key, initialUrlChecked, unlocked, router]);
 
   // Route arrival notification taps into Shopping. No store-detail route exists
   // yet, so Shopping is the safest stable target for both local arrival
@@ -152,21 +201,23 @@ export default function RootLayout() {
     void (async () => {
       await ensureHousehold();
 
-      // Apply a pending household join from the /join sign-up flow
+      // Apply a pending household join from the /join sign-up flow.
+      // Key is cleared only after a confirmed successful join so transient
+      // network failures can be retried on the next sign-in.
       const pendingJoinRaw = await AsyncStorage.getItem(PENDING_JOIN_KEY);
       if (pendingJoinRaw) {
-        await AsyncStorage.removeItem(PENDING_JOIN_KEY);
         try {
           const { inviteCode, displayName } = JSON.parse(pendingJoinRaw) as { inviteCode: string; displayName: string };
-          await useHouseholdStore.getState().joinHousehold(inviteCode, displayName);
+          const joinResult = await useHouseholdStore.getState().joinHousehold(inviteCode, displayName);
+          if (joinResult.ok) await AsyncStorage.removeItem(PENDING_JOIN_KEY);
         } catch {
-          // Invalid stored data — ignore, user can join manually from settings
+          // Non-fatal — key stays so the next sign-in can retry
         }
       }
 
       await pullFromSupabase();
       await startSyncEngine();
-      void registerPushToken(user.id);
+      await registerPushToken(user.id);
     })();
   }, [user, hydratedDurable, hydratedHousehold, ensureHousehold]);
 
@@ -177,14 +228,17 @@ export default function RootLayout() {
   useEffect(() => {
     if (!user) return;
     const sub = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'active') void registerPushToken(user.id);
+      if (nextState === 'active') {
+        void registerPushToken(user.id);
+        void pullFromSupabase();
+      }
     });
     return () => sub.remove();
   }, [user]);
 
 
   useEffect(() => {
-    if (!ready || !rootNavigationState?.key) return;
+    if (!ready || !rootNavigationState?.key || !initialUrlChecked) return;
 
     // Add microtask delay to allow React state to settle before routing
     setTimeout(() => {
@@ -198,15 +252,20 @@ export default function RootLayout() {
 
       // Main auth routing
       const authPaths = ['/welcome', '/sign-in', '/sign-up', '/join', '/verify-email', '/reset-password', '/auth/callback'];
-      const inAuthGroup = authPaths.includes(pathname);
+      const inAuthGroup = segments[0] === '(auth)' || authPaths.includes(pathname);
 
       if (unlocked && inAuthGroup) {
         router.replace('/(tabs)');
       } else if (!unlocked && !inAuthGroup) {
-        router.replace('/(auth)/welcome');
+        if (inviteTrigger) {
+          router.replace({ pathname: '/(auth)/join', params: { invite: inviteTrigger.code, t: String(inviteTrigger.t) } });
+          setInviteTrigger(null);
+        } else {
+          router.replace('/(auth)/welcome');
+        }
       }
     }, 0);
-  }, [pathname, segments, ready, router, user, verified, guestMode, unlocked]);
+  }, [pathname, segments, ready, router, user, verified, guestMode, unlocked, initialUrlChecked, inviteTrigger]);
 
   if (!ready && pathname !== '/auth/callback') {
     return (

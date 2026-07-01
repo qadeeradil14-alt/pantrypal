@@ -35,8 +35,12 @@ import {
   getNotificationLog,
   clearNotificationLog,
   getNotificationDiagnostics,
+  getMyPushDiagnostics,
+  getHouseholdPushDiagnostics,
   type NotificationLogEntry,
   type NotificationDiagnostics,
+  type MyPushDiagnostics,
+  type HouseholdPushDiagnostics,
 } from '../../core/services/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Unit } from '../../types';
@@ -90,12 +94,16 @@ export default function SettingsScreen() {
   const household = useHouseholdStore((s) => s.household);
   const members = useHouseholdStore((s) => s.members);
   const syncStatus = useHouseholdStore((s) => s.syncStatus);
+  const refreshHousehold = useHouseholdStore((s) => s.refresh);
   const leaveHousehold = useHouseholdStore((s) => s.leaveHousehold);
+  const removeMember = useHouseholdStore((s) => s.removeMember);
   const renameMe = useHouseholdStore((s) => s.renameMe);
 
   const myDisplayName = members.find((m) => m.isMe)?.displayName ?? 'Me';
+  const isSharedOwnerWithMembers = Boolean(household && !household.isPersonal && household.role === 'owner' && members.length > 1);
 
   const [signingOut, setSigningOut] = useState(false);
+  const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
   const [createVisible, setCreateVisible] = useState(false);
   const [joinVisible, setJoinVisible] = useState(false);
   const [renameVisible, setRenameVisible] = useState(false);
@@ -121,6 +129,21 @@ export default function SettingsScreen() {
   const [testNotifStatus, setTestNotifStatus] = useState<string | null>(null);
   const [testNotifLoading, setTestNotifLoading] = useState(false);
 
+  // ── Push diagnostics state ────────────────────────────────────────────────
+  const [myPushDiag, setMyPushDiag] = useState<MyPushDiagnostics | null>(null);
+  const [householdPushDiag, setHouseholdPushDiag] = useState<HouseholdPushDiagnostics | null>(null);
+  const [pushRegistering, setPushRegistering] = useState(false);
+  const [pushRegisterStatus, setPushRegisterStatus] = useState<string | null>(null);
+
+  const refreshPushDiagnostics = useCallback(async () => {
+    const [mine, household] = await Promise.all([
+      getMyPushDiagnostics(),
+      getHouseholdPushDiagnostics(),
+    ]);
+    setMyPushDiag(mine);
+    setHouseholdPushDiag(household);
+  }, []);
+
   const refreshDiagnostics = useCallback(async () => {
     const [diagnostics, running, nd, log] = await Promise.all([
       getGeofenceDiagnostics(stores, items, activeShoppingTrip),
@@ -135,10 +158,33 @@ export default function SettingsScreen() {
     setNotifLog(log);
   }, [stores, items, activeShoppingTrip]);
 
+  const reRegisterPushToken = useCallback(async () => {
+    const currentUser = useAuthStore.getState().user;
+    if (!currentUser) {
+      setPushRegisterStatus('No signed-in user.');
+      return;
+    }
+    setPushRegistering(true);
+    setPushRegisterStatus(null);
+    try {
+      const result = await registerPushToken(currentUser.id);
+      setPushRegisterStatus(result.ok ? '✓ Token registered' : `✗ ${result.reason}${result.detail ? ` — ${result.detail}` : ''}`);
+      await refreshPushDiagnostics();
+    } finally {
+      setPushRegistering(false);
+    }
+  }, [refreshPushDiagnostics]);
+
   useEffect(() => {
     void refreshDiagnostics();
     void AsyncStorage.getItem(DEV_MODE_KEY).then((v) => setDevMode(v === 'true'));
   }, [refreshDiagnostics]);
+
+  // Fetch push diagnostics only when devMode is on — avoids an Edge Function
+  // round-trip for every user on every Settings open.
+  useEffect(() => {
+    if (devMode) void refreshPushDiagnostics();
+  }, [devMode, refreshPushDiagnostics]);
 
   const handleDevTap = useCallback(() => {
     setDevTapCount((prev) => {
@@ -257,6 +303,10 @@ export default function SettingsScreen() {
   }, [monitorableStores, items, refreshDiagnostics]);
 
   const confirmReset = () => {
+    if (isSharedOwnerWithMembers) {
+      Alert.alert('Remove members first', 'Remove members before leaving or deleting this household.');
+      return;
+    }
     if (household && !household.isPersonal && household.role !== 'owner') {
       Alert.alert('Owner permission needed', 'Only the household owner can wipe a shared pantry.');
       return;
@@ -298,6 +348,33 @@ export default function SettingsScreen() {
         },
       },
     ]);
+  };
+
+  const confirmRemoveMember = (memberId: string, displayName: string) => {
+    Alert.alert(
+      'Remove household member?',
+      `${displayName} will lose access to this shared pantry and shopping list. They will move back to their own private household.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              setRemovingMemberId(memberId);
+              const result = await removeMember(memberId);
+              setRemovingMemberId(null);
+              if (result.ok) {
+                await refreshHousehold();
+                Alert.alert('Member removed', `${displayName} no longer has access to this household.`);
+              } else {
+                Alert.alert('Could not remove member', result.message);
+              }
+            })();
+          },
+        },
+      ],
+    );
   };
 
   return (
@@ -398,20 +475,34 @@ export default function SettingsScreen() {
         ) : household ? (
           <>
             {household?.inviteCode ? <InviteCodeCard householdName={household.name} inviteCode={household.inviteCode} /> : null}
-            <MemberList members={members} />
+            <MemberList
+              members={members}
+              canRemove={household.role === 'owner'}
+              removingMemberId={removingMemberId}
+              onRemove={(member) => confirmRemoveMember(member.id, member.displayName)}
+            />
+            {isSharedOwnerWithMembers ? (
+              <Text style={styles.noHouseholdBody}>Remove members before leaving or deleting this household.</Text>
+            ) : null}
             <Button
               label="Leave shared household"
               variant="danger"
-              onPress={() => Alert.alert(
-                'Leave shared household?',
-                'You will keep a private copy of the current pantry. Owners must remove other members before leaving.',
-                [
-                  { text: 'Cancel', style: 'cancel' },
-                  { text: 'Leave', style: 'destructive', onPress: () => void leaveHousehold().then((result) => {
-                    if (!result.ok) Alert.alert('Could not leave', result.message);
-                  }) },
-                ],
-              )}
+              onPress={() => {
+                if (isSharedOwnerWithMembers) {
+                  Alert.alert('Remove members first', 'Remove members before leaving or deleting this household.');
+                  return;
+                }
+                Alert.alert(
+                  'Leave shared household?',
+                  'You will keep a private copy of the current pantry. Owners must remove other members before leaving.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Leave', style: 'destructive', onPress: () => void leaveHousehold().then((result) => {
+                      if (!result.ok) Alert.alert('Could not leave', result.message);
+                    }) },
+                  ],
+                );
+              }}
               style={{ marginTop: spacing.lg }}
             />
           </>
@@ -564,6 +655,53 @@ export default function SettingsScreen() {
             styles={styles}
           />
           <DiagRow label="Notifications" value={geofenceDiagnostics?.notificationPermission ?? '…'} colors={colors} styles={styles} />
+
+          {/* Push notifications (household alert delivery) */}
+          <Text style={styles.geofenceDiagnosticsHeading}>Push notifications</Text>
+          <DiagRow label="My push permission" value={myPushDiag?.permission ?? '…'} danger={myPushDiag?.permission === 'denied'} colors={colors} styles={styles} />
+          <DiagRow
+            label="My push token"
+            value={myPushDiag ? (myPushDiag.tokenPresent ? `present (…${myPushDiag.tokenTail})` : 'MISSING') : '…'}
+            highlight={myPushDiag?.tokenPresent === true}
+            danger={myPushDiag?.tokenPresent === false}
+            colors={colors}
+            styles={styles}
+          />
+          {myPushDiag?.error ? <DiagRow label="Token error" value={myPushDiag.error} danger colors={colors} styles={styles} /> : null}
+          <DiagRow
+            label="Partner push token"
+            value={householdPushDiag ? (householdPushDiag.recipientsWithToken > 0 ? `present (${householdPushDiag.recipientsWithToken})` : 'MISSING') : '…'}
+            highlight={(householdPushDiag?.recipientsWithToken ?? 0) > 0}
+            danger={householdPushDiag?.recipientsWithToken === 0}
+            colors={colors}
+            styles={styles}
+          />
+          <DiagRow label="Household members" value={householdPushDiag ? String(householdPushDiag.memberCount) : '…'} colors={colors} styles={styles} />
+          {householdPushDiag && !householdPushDiag.ok && householdPushDiag.error ? (
+            <DiagRow label="Household check error" value={householdPushDiag.error} danger colors={colors} styles={styles} />
+          ) : null}
+          <Pressable
+            style={[styles.testNotifButton, pushRegistering && { opacity: 0.6 }]}
+            onPress={() => void reRegisterPushToken()}
+            disabled={pushRegistering}
+            accessibilityRole="button"
+            accessibilityLabel="Re-register my push token"
+          >
+            <Ionicons name="refresh-outline" size={16} color="#fff" />
+            <Text style={styles.testNotifButtonText}>
+              {pushRegistering ? 'Registering…' : 'Re-register my push token'}
+            </Text>
+          </Pressable>
+          {pushRegisterStatus ? (
+            <Text
+              style={[
+                styles.testNotifResult,
+                pushRegisterStatus.startsWith('✓') ? { color: colors.success } : { color: colors.danger },
+              ]}
+            >
+              {pushRegisterStatus}
+            </Text>
+          ) : null}
 
           {/* Geofencing */}
           <Text style={styles.geofenceDiagnosticsHeading}>Geofencing</Text>
