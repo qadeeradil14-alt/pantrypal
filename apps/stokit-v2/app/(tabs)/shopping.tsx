@@ -328,13 +328,13 @@ export default function ShoppingScreen() {
       <PageTitle eyebrow="Plan your trip" title="Shopping" />
       {shoppableCount === 0 ? (
         <>
-          <PriceMemoryIntro count={priceHistory.length} styles={styles} colors={colors} />
           <EmptyState
             icon="cart-outline"
             title="No trip planned"
-            body="Mark items low in Pantry and they'll show up here."
-            steps={['Add items from Pantry', 'Assign a store only when useful', 'Start shopping anywhere']}
+            body="Items you add to your shopping list will show up here."
+            steps={['Add items from Pantry', 'Assign a store when useful', 'Start shopping anywhere']}
           />
+          <PriceMemoryIntro count={priceHistory.length} styles={styles} colors={colors} />
         </>
       ) : (
         <>
@@ -453,14 +453,14 @@ function PriceMemoryIntro({ count, styles, colors }: { count: number; styles: an
     <Card style={styles.priceMemoryCard}>
       <View style={styles.priceMemoryHeader}>
         <View style={styles.priceMemoryIcon}>
-          <Ionicons name="pricetag-outline" size={19} color={colors.primary} />
+          <Ionicons name="pricetag-outline" size={15} color={colors.primary} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.priceMemoryTitle}>Price memory</Text>
           <Text style={styles.priceMemoryBody}>
             {count > 0
-              ? `${count} price${count === 1 ? '' : 's'} remembered. Stokit will show cheaper stores while you shop.`
-              : 'During a shopping trip, tap Add price beside an item. Stokit will remember and compare stores next time.'}
+              ? `${count} remembered price${count === 1 ? '' : 's'}`
+              : 'Prices saved from past trips will appear here.'}
           </Text>
         </View>
       </View>
@@ -1895,11 +1895,11 @@ function StatBox({ value, label, dim, mono = true, tsStyles, colors }: { value: 
 function makeStyles(colors: AppColors) {
   const styles = StyleSheet.create({
     summaryCard:  { alignItems: 'center', paddingVertical: spacing.xl },
-    priceMemoryCard: { marginBottom: spacing.lg, borderColor: colors.primary + '55' },
-    priceMemoryHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-    priceMemoryIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
-    priceMemoryTitle: { fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink },
-    priceMemoryBody: { fontFamily: fonts.sans, fontSize: 12, lineHeight: 18, color: colors.muted, marginTop: 2 },
+    priceMemoryCard: { marginTop: spacing.lg, marginBottom: spacing.sm, paddingVertical: spacing.md, borderColor: colors.borderSoft, backgroundColor: colors.surface },
+    priceMemoryHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    priceMemoryIcon: { width: 30, height: 30, borderRadius: 15, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
+    priceMemoryTitle: { fontFamily: fonts.sansSemibold, fontSize: 13, color: colors.ink },
+    priceMemoryBody: { fontFamily: fonts.sans, fontSize: 12, lineHeight: 16, color: colors.muted, marginTop: 1 },
     partnerContextCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.lg, borderColor: colors.primary + '55' },
     partnerContextTitle: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
     partnerContextText: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, lineHeight: 18, marginTop: 2 },

@@ -111,8 +111,8 @@ export function ItemActionSheet({
         <ActionRow
           icon="checkmark-circle-outline"
           tint={colors.success}
-          label="Mark as have it"
-          sub="Remove from your shopping route"
+          label="Remove from shopping list"
+          sub="Keep this item in your pantry"
           onPress={() => act(() => setItemStatus(item.id, 'stocked'))}
           styles={styles}
           colors={colors}
@@ -121,8 +121,8 @@ export function ItemActionSheet({
         <ActionRow
           icon="trending-down"
           tint={colors.warning}
-          label="Mark as need more"
-          sub="Add it to your shopping route"
+          label="Add to shopping list"
+          sub="Keep it in pantry and buy another"
           onPress={() => act(() => setItemStatus(item.id, 'low'))}
           styles={styles}
           colors={colors}

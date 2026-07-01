@@ -263,7 +263,14 @@ export default function PantryScreen() {
                   <Text style={styles.catalogName}>{item.name}</Text>
                   <Text style={styles.catalogCategory}>At home</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+                <Pressable
+                  onPress={() => { setSearchQuery(''); Keyboard.dismiss(); setItemStatus(item.id, 'low'); }}
+                  hitSlop={8}
+                  style={styles.catalogListButton}
+                >
+                  <Ionicons name="cart-outline" size={15} color={colors.primary} />
+                  <Text style={styles.catalogListButtonText}>Add</Text>
+                </Pressable>
               </Pressable>
             ))}
             {catalogSuggestions.length === 0 && filteredListItems.length === 0 && filteredAtHomeItems.length === 0 && (
@@ -487,7 +494,7 @@ function UseItOrLoseItWidget({ items, onUsed, onRestock }: {
         </View>
         <View style={{ flex: 1 }}>
           <Text style={{ fontFamily: fonts.sansSemibold, color: colors.warning, fontSize: 15 }}>{oldest.name}</Text>
-          <Text style={{ fontFamily: fonts.sans, color: colors.warning, fontSize: 12, marginTop: 1, opacity: 0.8 }}>{ageLabel} — use it or restock?</Text>
+          <Text style={{ fontFamily: fonts.sans, color: colors.warning, fontSize: 12, marginTop: 1, opacity: 0.8 }}>{ageLabel} — use it or add to your list?</Text>
         </View>
       </View>
       <View style={{ flexDirection: 'row', gap: spacing.sm }}>
@@ -503,7 +510,7 @@ function UseItOrLoseItWidget({ items, onUsed, onRestock }: {
           style={({ pressed }) => ({ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 8, borderRadius: radii.md, backgroundColor: colors.warning + '2E', opacity: pressed ? 0.7 : 1 })}
         >
           <Ionicons name="cart-outline" size={15} color={colors.warning} />
-          <Text style={{ fontFamily: fonts.sansSemibold, fontSize: 13, color: colors.warning }}>Need more</Text>
+          <Text style={{ fontFamily: fonts.sansSemibold, fontSize: 13, color: colors.warning }}>Add to list</Text>
         </Pressable>
       </View>
     </View>
@@ -625,6 +632,8 @@ function makeStyles(c: AppColors) {
     catalogName:      { fontFamily: fonts.sansMedium, fontSize: 16, color: c.ink },
     catalogCategory:  { fontFamily: fonts.sans, fontSize: 12, color: c.muted, marginTop: 1 },
     catalogAddBtn:    { width: 32, height: 32, borderRadius: 10, borderWidth: 1, borderColor: c.border, alignItems: 'center', justifyContent: 'center' },
+    catalogListButton:{ minHeight: 34, borderRadius: 17, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: c.surface },
+    catalogListButtonText: { fontFamily: fonts.sansSemibold, fontSize: 12, color: c.primary },
     sectionTitleRow:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.sm, marginBottom: spacing.sm },
     sectionTitle:     { fontFamily: fonts.sansSemibold, fontSize: 22, color: c.ink },
     sectionActionButton: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingVertical: spacing.xs },
