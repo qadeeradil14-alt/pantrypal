@@ -20,11 +20,13 @@ export function Sheet({
   title,
   onClose,
   children,
+  minHeight,
 }: {
   visible: boolean;
   title: string;
   onClose: () => void;
   children: React.ReactNode;
+  minHeight?: number | `${number}%`;
 }) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -42,7 +44,7 @@ export function Sheet({
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.keyboardAvoider}
         >
-          <SafeAreaView edges={['bottom']} style={styles.sheet}>
+          <SafeAreaView edges={['bottom']} style={[styles.sheet, minHeight ? { minHeight } : null]}>
             <View style={styles.handle} />
             <View style={styles.header}>
               <Text style={styles.title}>{title}</Text>

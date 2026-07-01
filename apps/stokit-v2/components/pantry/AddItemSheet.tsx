@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useDeferredValue, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Sheet } from '../shared/Sheet';
@@ -62,6 +62,8 @@ export function AddItemSheet({
   const [bulkStoreId, setBulkStoreId] = useState<string | null>(defaultStoreId);
   const [draftQuantity, setDraftQuantity] = useState(1);
   const [showCatalog, setShowCatalog] = useState(false);
+  const [isCommitting, setIsCommitting] = useState(false);
+  const committingRef = useRef(false);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -72,10 +74,14 @@ export function AddItemSheet({
     setBulkStoreId(defaultStoreId);
     setDraftQuantity(1);
     setShowCatalog(false);
+    setIsCommitting(false);
+    committingRef.current = false;
   };
 
   const commitItems = (chosen: SelectedItem[]) => {
-    if (!chosen.length) return;
+    if (!chosen.length || committingRef.current) return;
+    committingRef.current = true;
+    setIsCommitting(true);
     const addedItems: PantryItem[] = [];
     chosen.forEach(({ catalog, quantity, unit, status, storeId }) => {
       const existing = quickAdd
@@ -109,7 +115,8 @@ export function AddItemSheet({
 
   const storeOptions = stores.map((s) => ({ value: s.id, label: s.name }));
   const selectedItems = Object.values(selected);
-  const normalizedQuery = query.trim().toLowerCase();
+  const deferredQuery = useDeferredValue(query);
+  const normalizedQuery = deferredQuery.trim().toLowerCase();
   const filteredCatalog = useMemo(
     () => normalizedQuery
       ? searchPantryCatalog(normalizedQuery)
@@ -205,7 +212,7 @@ export function AddItemSheet({
   const showResults = showCatalog || normalizedQuery.length > 0;
 
   return (
-    <Sheet visible={visible} title={title} onClose={close}>
+    <Sheet visible={visible} title={title} onClose={close} minHeight="78%">
       <View style={styles.formGroup}>
         <Text style={styles.fieldLabel}>Item</Text>
         <TextInput
@@ -221,20 +228,6 @@ export function AddItemSheet({
         />
       </View>
 
-      {!hideStorePicker && storeOptions.length ? (
-        <ChipSelect
-          label="Store"
-          options={storeOptions}
-          value={bulkStoreId}
-          onChange={applyBulkStore}
-        />
-      ) : bulkStoreName ? (
-        <View style={styles.storeSummary}>
-          <Text style={styles.fieldLabel}>Store</Text>
-          <Text style={styles.storeSummaryText}>{bulkStoreName}</Text>
-        </View>
-      ) : null}
-
       {!normalizedQuery ? (
         <Pressable onPress={() => setShowCatalog((current) => !current)} style={styles.catalogToggle}>
           <Ionicons name={showCatalog ? 'chevron-up' : 'search'} size={16} color={colors.primary} />
@@ -244,20 +237,22 @@ export function AddItemSheet({
 
       {showResults ? (
         <>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categories}>
-            {PANTRY_CATEGORIES.map((option) => {
-              const active = category === option;
-              return (
-                <Pressable
-                  key={option}
-                  onPress={() => setCategory(option)}
-                  style={[styles.categoryChip, active && styles.categoryChipActive]}
-                >
-                  <Text style={[styles.categoryChipText, active && styles.categoryChipTextActive]}>{option}</Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+          {!normalizedQuery ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categories}>
+              {PANTRY_CATEGORIES.map((option) => {
+                const active = category === option;
+                return (
+                  <Pressable
+                    key={option}
+                    onPress={() => setCategory(option)}
+                    style={[styles.categoryChip, active && styles.categoryChipActive]}
+                  >
+                    <Text style={[styles.categoryChipText, active && styles.categoryChipTextActive]}>{option}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          ) : null}
 
           <View style={styles.catalogHeader}>
             <Text style={styles.sectionTitle}>{normalizedQuery ? 'Search results' : 'Catalog'}</Text>
@@ -306,8 +301,22 @@ export function AddItemSheet({
           label={`Add “${query.trim()}” as custom item`}
           variant="subtle"
           onPress={addCustomItem}
-          style={{ marginBottom: spacing.lg }}
+          style={styles.customButton}
         />
+      ) : null}
+
+      {!hideStorePicker && storeOptions.length ? (
+        <ChipSelect
+          label="Store"
+          options={storeOptions}
+          value={bulkStoreId}
+          onChange={applyBulkStore}
+        />
+      ) : bulkStoreName ? (
+        <View style={styles.storeSummary}>
+          <Text style={styles.fieldLabel}>Store</Text>
+          <Text style={styles.storeSummaryText}>{bulkStoreName}</Text>
+        </View>
       ) : null}
 
       {selectedItems.length ? (
@@ -361,7 +370,7 @@ export function AddItemSheet({
       <Button
         label={submitLabel}
         onPress={selectedItems.length ? submit : submitDraftItem}
-        disabled={!canSubmit}
+        disabled={!canSubmit || isCommitting}
         style={styles.submit}
       />
     </Sheet>
@@ -435,7 +444,7 @@ function makeStyles(colors: AppColors) {
       alignItems: 'center',
       justifyContent: 'center',
       gap: spacing.sm,
-      marginBottom: spacing.md,
+      marginBottom: spacing.sm,
     },
     catalogToggleText: {
       fontFamily: fonts.sansSemibold,
@@ -460,7 +469,7 @@ function makeStyles(colors: AppColors) {
       fontFamily: fonts.sans,
       fontSize: 14,
     },
-    categories: { gap: spacing.sm, paddingBottom: spacing.lg },
+    categories: { gap: spacing.sm, paddingBottom: spacing.md },
     categoryChip: {
       borderRadius: radii.sm,
       borderWidth: 1,
@@ -479,7 +488,7 @@ function makeStyles(colors: AppColors) {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      marginBottom: spacing.md,
+      marginBottom: spacing.sm,
     },
     sectionTitle: { fontFamily: fonts.serifItalic, fontSize: 20, color: colors.ink },
     count: { fontFamily: fonts.mono, fontSize: 11, color: colors.muted },
@@ -522,6 +531,7 @@ function makeStyles(colors: AppColors) {
       borderColor: colors.border,
       backgroundColor: colors.surface,
     },
+    customButton: { marginBottom: spacing.md },
     emptyTitle: { fontFamily: fonts.sansSemibold, fontSize: 14, color: colors.ink },
     hint: { fontFamily: fonts.sans, fontSize: 13, color: colors.muted },
     selectedHeader: {
