@@ -51,8 +51,8 @@ export function StorePickerSheet({
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const countFor = (storeId: string) =>
-    items.filter((i) => i.storeId === storeId).length;
+  const shoppingCountFor = (storeId: string) =>
+    items.filter((i) => i.storeId === storeId && (i.status === 'low' || i.status === 'expiring')).length;
 
   const assign = (storeId: string | null) => {
     if (onSelect && storeId) {
@@ -104,7 +104,9 @@ export function StorePickerSheet({
                 <View style={{ flex: 1 }}>
                   <Text style={styles.name}>{store.name}</Text>
                   <Text style={styles.meta}>
-                    {countFor(store.id)} item{countFor(store.id) === 1 ? '' : 's'} assigned
+                    {shoppingCountFor(store.id) > 0
+                      ? `${shoppingCountFor(store.id)} shopping item${shoppingCountFor(store.id) === 1 ? '' : 's'}`
+                      : 'Saved store'}
                   </Text>
                 </View>
                 {active ? (

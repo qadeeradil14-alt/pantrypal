@@ -79,6 +79,7 @@ export default function ShoppingScreen() {
   const stores     = useDurableStore((s) => s.stores);
   const priceHistory = useDurableStore((s) => s.priceHistory);
   const updateItem = useDurableStore((s) => s.updateItem);
+  const resetShoppingList = useDurableStore((s) => s.resetShoppingList);
   const session    = useSessionStore((s) => s.session);
   const dispatch   = useSessionStore((s) => s.dispatch);
   const router     = useRouter();
@@ -241,7 +242,7 @@ export default function ShoppingScreen() {
         {
           text: 'Reset',
           style: 'destructive',
-          onPress: () => shoppingItems.forEach((i) => updateItem(i.id, { status: 'stocked', storeId: null })),
+          onPress: resetShoppingList,
         },
       ],
     );
@@ -356,13 +357,45 @@ export default function ShoppingScreen() {
                 ? `${planEntries.length} stores${unassignedCount > 0 ? ` · ${unassignedCount} unassigned` : ''}`
                 : planEntries.length === 1
                 ? `${shoppableCount} item${shoppableCount !== 1 ? 's' : ''}${unassignedCount > 0 ? ` · ${unassignedCount} unassigned` : ''}`
-                : `${unassignedCount} item${unassignedCount !== 1 ? 's' : ''} · assign stores in Pantry`}
+                : `${unassignedCount} item${unassignedCount !== 1 ? 's' : ''} waiting for a store`}
             </Text>
             {unassignedCount === 0
               ? <Button label="Start shopping" onPress={handleStartShopping} style={{ marginTop: spacing.lg }} />
-              : <Text style={styles.assignStoreHint}>Assign a store to each item in Pantry to start shopping.</Text>
+              : <Text style={styles.assignStoreHint}>Choose where to buy each item, then start shopping.</Text>
             }
           </Card>
+
+          {unassigned.length > 0 ? (
+            <View>
+              <PlanStoreHeader
+                store={{ id: UNASSIGNED_STORE_ID, name: 'Choose store', logoEmoji: '🛒', logoColor: colors.primary, createdAt: 0, updatedAt: 0 }}
+                count={unassigned.length}
+                styles={styles}
+              />
+              <Card style={{ paddingVertical: spacing.xs }}>
+                {unassigned.map((item, idx) => (
+                  <View key={item.id}>
+                    {idx > 0 && <View style={styles.rowDivider} />}
+                    <Pressable
+                      onPress={() => setReassignItem(item)}
+                      style={({ pressed }) => [styles.planRow, pressed && { opacity: 0.6 }]}
+                    >
+                      <ItemAvatar name={item.name} size={32} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.planName}>{item.name}</Text>
+                        {(item.quantity > 1 || item.unit !== 'unit') && (
+                          <Text style={styles.planMeta}>×{item.quantity}{item.unit !== 'unit' ? ` ${item.unit}` : ''}</Text>
+                        )}
+                      </View>
+                      <View style={styles.chooseStorePill}>
+                        <Text style={styles.chooseStorePillText}>Choose store</Text>
+                      </View>
+                    </Pressable>
+                  </View>
+                ))}
+              </Card>
+            </View>
+          ) : null}
 
           {/* Assigned items — tap any row to change its store */}
           {planEntries.map(([storeId, list]) => {
@@ -1913,6 +1946,8 @@ function makeStyles(colors: AppColors) {
     planRow:      { flexDirection: 'row', alignItems: 'center', gap: spacing.md, justifyContent: 'space-between', paddingVertical: spacing.md },
     planName:     { fontFamily: fonts.sansMedium, fontSize: 16, color: colors.ink },
     planMeta:     { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, fontVariant: ['tabular-nums'] },
+    chooseStorePill: { minHeight: 32, borderRadius: 16, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.sm, justifyContent: 'center', backgroundColor: colors.surface },
+    chooseStorePillText: { fontFamily: fonts.sansSemibold, fontSize: 12, color: colors.primary },
     assignStoreHint: { fontFamily: fonts.sans, fontSize: 13, color: colors.muted, textAlign: 'center', marginTop: spacing.lg, lineHeight: 18 },
     warnText:     { fontFamily: fonts.sans, fontSize: 13, color: colors.muted, lineHeight: 19 },
     routeNotReady:{ borderColor: colors.primary, borderWidth: 1, gap: spacing.sm },
