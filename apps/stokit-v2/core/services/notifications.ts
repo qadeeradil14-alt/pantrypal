@@ -315,17 +315,6 @@ export async function sendHouseholdShoppingAlert(
     });
     const { data, error } = response;
 
-    // TEMPORARY DIAGNOSTIC ALERT
-    const { Alert } = require('react-native');
-    Alert.alert(
-      "Edge Function Response",
-      JSON.stringify({
-        data,
-        errorName: error?.name,
-        errorMessage: error?.message,
-        context: error?.context,
-      }, null, 2)
-    );
     console.log("NOTIFY_SHOPPING_RESPONSE", JSON.stringify({ data, error }, null, 2));
 
     if (error) return { ok: false, sent: 0, result: `failed:${error.message}` };
