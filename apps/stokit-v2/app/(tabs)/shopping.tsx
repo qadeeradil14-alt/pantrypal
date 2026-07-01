@@ -435,40 +435,28 @@ export default function ShoppingScreen() {
     <Screen>
       {session.status === 'idle' && (
         <>
-          <View style={styles.tripHeader}>
+          <View style={[styles.tripHeader, { paddingBottom: spacing.md }]}>
             <View>
-              <Text style={styles.tripEyebrow}>PLAN YOUR TRIP</Text>
-              <Text style={styles.tripTitle}>Shopping Trip</Text>
+              <Text style={styles.tripTitle}>Shopping List</Text>
             </View>
             <Pressable onPress={() => router.push('/settings')} style={styles.tripSettings}>
               <Ionicons name="settings-outline" size={23} color="#0B6B28" />
             </Pressable>
           </View>
 
-          <Card style={styles.tripFocusCard}>
-            <View style={styles.tripFocusRow}>
-              <View style={styles.tripFocusIcon}>
-                <Ionicons name={canStartTrip ? 'bag-handle-outline' : 'calendar-outline'} size={22} color="#0B6B28" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.tripFocusTitle}>
-                  {canStartTrip ? `${shoppableCount} item${shoppableCount === 1 ? '' : 's'} ready` : 'No trip planned'}
+          {shoppableCount > 0 && (
+            <View style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.lg }}>
+              <Pressable
+                onPress={canStartTrip ? handleStartShopping : () => setNeutralAddSheetVisible(true)}
+                style={({ pressed }) => [styles.tripPrimaryButton, pressed && { opacity: 0.86 }]}
+              >
+                <Ionicons name={canStartTrip ? "play" : "add"} size={20} color="#FFF" />
+                <Text style={styles.tripPrimaryText}>
+                  {canStartTrip ? 'Start shopping' : 'Add item'}
                 </Text>
-                <Text style={styles.tripFocusText}>
-                  {canStartTrip
-                    ? planEntries.length > 1 ? `${planEntries.length} stores organized for this trip` : `Ready for ${singleStore?.name ?? 'your next store'}`
-                    : unassignedCount > 0 ? 'Assign stores to start a trip' : 'Start a trip to keep your list organized'}
-                </Text>
-              </View>
+              </Pressable>
             </View>
-            <Pressable
-              onPress={canStartTrip ? handleStartShopping : () => setNeutralAddSheetVisible(true)}
-              style={({ pressed }) => [styles.tripPrimaryButton, pressed && { opacity: 0.86 }]}
-            >
-              <Ionicons name="add" size={22} color="#FFF" />
-              <Text style={styles.tripPrimaryText}>{canStartTrip ? 'Start new trip' : 'Add item'}</Text>
-            </Pressable>
-          </Card>
+          )}
         </>
       )}
 
