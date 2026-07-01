@@ -15,6 +15,7 @@ import {
   Alert,
   Image,
   KeyboardAvoidingView,
+  LayoutAnimation,
   Linking,
   Platform,
   Pressable,
@@ -105,6 +106,10 @@ export default function ShoppingScreen() {
   // Holds the storeId we want to skip to receipt once START_TRIP settles
   const [pendingQuickScanStore, setPendingQuickScanStore] = useState<string | null>(null);
   const [showStoreChooser, setShowStoreChooser] = useState(false);
+
+  useEffect(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+  }, [session.status]);
 
   useEffect(() => {
     if (action === 'scan' && session.status === 'idle') {
@@ -379,12 +384,7 @@ export default function ShoppingScreen() {
   const recentTripStore = recentTrip?.storeIdsVisited[0] ? storeById(recentTrip.storeIdsVisited[0]) : undefined;
   const canStartTrip = shoppableCount > 0 && unassignedCount === 0;
 
-  // ── Active states ──────────────────────────────────────────────────────────
-  if (session.status === 'shopping_store')  return <ShoppingActive  session={session} dispatch={dispatch} storeById={storeById} styles={styles} colors={colors} />;
-  if (session.status === 'receipt_prompt')  return <ReceiptPrompt   session={session} dispatch={dispatch} storeById={storeById} rStyles={rStyles} colors={colors} />;
-  if (session.status === 'store_summary' || session.status === 'continue_prompt') return <StoreSummary session={session} dispatch={dispatch} storeById={storeById} ssStyles={ssStyles} colors={colors} />;
-  if (session.status === 'next_store_ready') return <NextStoreSelector session={session} dispatch={dispatch} storeById={storeById} styles={styles} nsStyles={nsStyles} colors={colors} />;
-  if (session.status === 'trip_summary')    return <TripSummary     session={session} dispatch={dispatch} storeById={storeById} tsStyles={tsStyles} colors={colors} />;
+  // ── Active states (Now rendered inline inside the main Screen) ─────────────────────────
 
   // Geofence arrival deep-link: arrivalStoreId is present and the store has items
   // → the useEffect is about to call startTripAt. Show a blank screen instead of
@@ -433,45 +433,68 @@ export default function ShoppingScreen() {
 
   return (
     <Screen>
-      <View style={styles.tripHeader}>
-        <View>
-          <Text style={styles.tripEyebrow}>PLAN YOUR TRIP</Text>
-          <Text style={styles.tripTitle}>Shopping Trip</Text>
-        </View>
-        <Pressable onPress={() => router.push('/settings')} style={styles.tripSettings}>
-          <Ionicons name="settings-outline" size={23} color="#0B6B28" />
-        </Pressable>
-      </View>
+      {session.status === 'idle' && (
+        <>
+          <View style={styles.tripHeader}>
+            <View>
+              <Text style={styles.tripEyebrow}>PLAN YOUR TRIP</Text>
+              <Text style={styles.tripTitle}>Shopping Trip</Text>
+            </View>
+            <Pressable onPress={() => router.push('/settings')} style={styles.tripSettings}>
+              <Ionicons name="settings-outline" size={23} color="#0B6B28" />
+            </Pressable>
+          </View>
 
-      <Card style={styles.tripFocusCard}>
-        <View style={styles.tripFocusRow}>
-          <View style={styles.tripFocusIcon}>
-            <Ionicons name={canStartTrip ? 'bag-handle-outline' : 'calendar-outline'} size={22} color="#0B6B28" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.tripFocusTitle}>
-              {canStartTrip ? `${shoppableCount} item${shoppableCount === 1 ? '' : 's'} ready` : 'No trip planned'}
-            </Text>
-            <Text style={styles.tripFocusText}>
-              {canStartTrip
-                ? planEntries.length > 1 ? `${planEntries.length} stores organized for this trip` : `Ready for ${singleStore?.name ?? 'your next store'}`
-                : unassignedCount > 0 ? 'Assign stores to start a trip' : 'Start a trip to keep your list organized'}
-            </Text>
-          </View>
-        </View>
-        <Pressable
-          onPress={canStartTrip ? handleStartShopping : () => setNeutralAddSheetVisible(true)}
-          style={({ pressed }) => [styles.tripPrimaryButton, pressed && { opacity: 0.86 }]}
-        >
-          <Ionicons name="add" size={22} color="#FFF" />
-          <Text style={styles.tripPrimaryText}>{canStartTrip ? 'Start new trip' : 'Add item'}</Text>
-        </Pressable>
-      </Card>
+          <Card style={styles.tripFocusCard}>
+            <View style={styles.tripFocusRow}>
+              <View style={styles.tripFocusIcon}>
+                <Ionicons name={canStartTrip ? 'bag-handle-outline' : 'calendar-outline'} size={22} color="#0B6B28" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.tripFocusTitle}>
+                  {canStartTrip ? `${shoppableCount} item${shoppableCount === 1 ? '' : 's'} ready` : 'No trip planned'}
+                </Text>
+                <Text style={styles.tripFocusText}>
+                  {canStartTrip
+                    ? planEntries.length > 1 ? `${planEntries.length} stores organized for this trip` : `Ready for ${singleStore?.name ?? 'your next store'}`
+                    : unassignedCount > 0 ? 'Assign stores to start a trip' : 'Start a trip to keep your list organized'}
+                </Text>
+              </View>
+            </View>
+            <Pressable
+              onPress={canStartTrip ? handleStartShopping : () => setNeutralAddSheetVisible(true)}
+              style={({ pressed }) => [styles.tripPrimaryButton, pressed && { opacity: 0.86 }]}
+            >
+              <Ionicons name="add" size={22} color="#FFF" />
+              <Text style={styles.tripPrimaryText}>{canStartTrip ? 'Start new trip' : 'Add item'}</Text>
+            </Pressable>
+          </Card>
+        </>
+      )}
+
+      {session.status === 'receipt_prompt' && (
+        <InlineReceiptPrompt session={session} dispatch={dispatch} storeById={storeById} rStyles={rStyles} colors={colors} />
+      )}
+
+      {(session.status === 'store_summary' || session.status === 'continue_prompt') && (
+        <InlineStoreSummary session={session} dispatch={dispatch} storeById={storeById} ssStyles={ssStyles} colors={colors} />
+      )}
+
+      {session.status === 'next_store_ready' && (
+        <InlineNextStoreSelector session={session} dispatch={dispatch} storeById={storeById} styles={styles} nsStyles={nsStyles} colors={colors} />
+      )}
+
+      {session.status === 'trip_summary' && (
+        <InlineTripSummary session={session} dispatch={dispatch} storeById={storeById} tsStyles={tsStyles} colors={colors} />
+      )}
 
       {planEntries.map(([storeId, list], groupIdx) => {
         const store = storeById(storeId);
+        if (session.status === 'shopping_store' && storeId === currentStoreId(session)) {
+          return <ActiveStoreCard key={storeId} session={session} dispatch={dispatch} storeById={storeById} styles={styles} colors={colors} />;
+        }
         return (
-          <Card key={storeId} style={styles.tripListCard}>
+          <Card key={storeId} style={[styles.tripListCard, session.status !== 'idle' && { opacity: 0.6 }]}>
             <View style={styles.tripSectionHeader}>
               <Text style={styles.tripSectionTitle}>{store?.name ?? 'Assigned Store'}</Text>
               {groupIdx === 0 && unassigned.length === 0 ? (
@@ -700,7 +723,7 @@ function PlanStoreHeader({ store, count, styles }: { store?: Store; count: numbe
 
 type NotifyState = 'idle' | 'sending' | 'sent' | 'no_tokens' | 'error';
 
-function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubProps) {
+function ActiveStoreCard({ session, dispatch, storeById, styles, colors }: SubProps) {
   const storeId = currentStoreId(session)!;
   const entries = currentStoreEntries(session);
   const picked  = entries.filter((e) => e.picked).length;
@@ -777,7 +800,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
   }, [entries]);
 
   return (
-    <Screen>
+    <View style={{ marginBottom: spacing.lg }}>
       <PageTitle eyebrow={total > 1 ? `Stop ${stepNo} of ${total}` : (storeById(storeId)?.name ? `At ${storeById(storeId)!.name}` : undefined)} title="Shopping" />
       <Card>
         <StoreHeader store={storeById(storeId)} eyebrow="Now shopping" styles={styles} />
@@ -1039,13 +1062,13 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
           setPriceEntry(null);
         }}
       />
-    </Screen>
+    </View>
   );
 }
 
 // ── 2. Receipt input (V1 spend-sheet style) ───────────────────────────────────
 
-function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubProps) {
+function InlineReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubProps) {
   const { isDark } = useTheme();
   const storeId   = currentStoreId(session)!;
   const store     = storeById(storeId);
@@ -1243,7 +1266,7 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
       style={{ flex: 1, backgroundColor: colors.background }}
     >
       {/* scroll={false} so the store name is pinned and never scrolls off screen */}
-      <Screen scroll={false}>
+      <View style={{ flex: 1 }}>
         {/* Always-visible store header */}
         <View style={rStyles.header}>
           <View>
@@ -1367,7 +1390,7 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
           <CancelTripLink dispatch={dispatch} colors={colors} />
         </ScrollView>
         )}
-      </Screen>
+      </View>
 
       <Sheet visible={!!scanResult} title="Receipt scanned" onClose={skipScanItems}>
         <Text style={{ fontFamily: fonts.sans, fontSize: 15, color: colors.ink, marginBottom: spacing.xs }}>
@@ -1472,7 +1495,7 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
 
 // ── 3. Per-store summary ──────────────────────────────────────────────────────
 
-function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubProps) {
+function InlineStoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubProps) {
   const router = useRouter();
   const stores = useDurableStore((s) => s.stores);
   const storeId = currentStoreId(session)!;
@@ -1492,9 +1515,8 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
   };
 
   return (
-    <Screen>
-      <PageTitle eyebrow="Stop completed" title={store?.name ?? 'Store'} />
-
+    <View style={{ marginBottom: spacing.lg }}>
+      
       {/* Summary card */}
       <Card style={ssStyles.card}>
         <View style={ssStyles.row}>
@@ -1568,7 +1590,7 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
         style={{ marginTop: spacing.md }}
       />
       <CancelTripLink dispatch={dispatch} colors={colors} />
-    </Screen>
+    </View>
   );
 }
 
@@ -1585,12 +1607,8 @@ function ContinuePrompt({ session, dispatch, storeById, styles, colors }: SubPro
   const hasOptions = pending.length > 0 || manualStores.length > 0;
 
   return (
-    <Screen>
-      <PageTitle
-        eyebrow="Store visit completed"
-        title={hasOptions ? 'Shopping somewhere else?' : 'All done here?'}
-      />
-
+    <View style={{ marginBottom: spacing.lg }}>
+      
       {/* ── Primary action card ── */}
       <Card style={styles.summaryCard}>
         <Text style={styles.continueTitle}>
@@ -1682,13 +1700,13 @@ function ContinuePrompt({ session, dispatch, storeById, styles, colors }: SubPro
           ))}
         </View>
       )}
-    </Screen>
+    </View>
   );
 }
 
 // ── 5. Next store selector ────────────────────────────────────────────────────
 
-function NextStoreSelector({ session, dispatch, storeById, styles, nsStyles, colors }: SubProps) {
+function InlineNextStoreSelector({ session, dispatch, storeById, styles, nsStyles, colors }: SubProps) {
   const pending = pendingStoreIds(session);
   const allStores = useDurableStore((s) => s.stores);
   const [skipping, setSkipping] = useState<string | null>(null);
@@ -1703,9 +1721,8 @@ function NextStoreSelector({ session, dispatch, storeById, styles, nsStyles, col
   };
 
   return (
-    <Screen>
-      <PageTitle eyebrow="On the move" title="Where next?" />
-
+    <View style={{ marginBottom: spacing.lg }}>
+      
       {pending.length === 0 ? (
         <Card>
           <Text style={styles.emptyNote}>All planned stores done or skipped.</Text>
@@ -1858,7 +1875,7 @@ function NextStoreSelector({ session, dispatch, storeById, styles, nsStyles, col
         )}
       </Sheet>
       <CancelTripLink dispatch={dispatch} colors={colors} />
-    </Screen>
+    </View>
   );
 }
 
@@ -1896,7 +1913,7 @@ function getMondayMs(): number {
 
 // ── 6. Final trip summary ─────────────────────────────────────────────────────
 
-function TripSummary({ session, dispatch, storeById, tsStyles, colors }: SubProps) {
+function InlineTripSummary({ session, dispatch, storeById, tsStyles, colors }: SubProps) {
   const trip = session.completedTrip!;
   const prefs = useDurableStore((s) => s.prefs);
   const allTrips = useDurableStore((s) => s.trips);
