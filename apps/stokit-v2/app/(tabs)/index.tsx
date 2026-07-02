@@ -63,6 +63,7 @@ export default function PantryScreen() {
   const rawMealsRef = useRef<RawMealData[]>([]);
   const rawMealsKeyRef = useRef('');
   const [searchQuery, setSearchQuery] = useState('');
+  const searchInputRef = useRef<TextInput>(null);
 
   const myName = members.find((m) => m.isMe)?.displayName ?? '';
   const firstName = (myName === 'Me' || myName === '') ? '' : myName.split(' ')[0];
@@ -190,9 +191,10 @@ export default function PantryScreen() {
           </Text>
         </View>
 
-        <View style={styles.searchBar}>
+        <Pressable style={styles.searchBar} onPress={() => searchInputRef.current?.focus()}>
           <Ionicons name="search" size={16} color={query ? colors.primary : colors.muted} style={{ marginRight: 8 }} />
           <TextInput
+            ref={searchInputRef}
             style={styles.searchInput}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -208,7 +210,7 @@ export default function PantryScreen() {
           >
             <Ionicons name="add" size={20} color={colors.onPrimary} />
           </Pressable>
-        </View>
+        </Pressable>
 
         {query ? (
           <View style={styles.catalogDropdown}>

@@ -64,6 +64,7 @@ export function AddItemSheet({
   const [showCatalog, setShowCatalog] = useState(false);
   const [isCommitting, setIsCommitting] = useState(false);
   const committingRef = useRef(false);
+  const itemInputRef = useRef<TextInput>(null);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -217,9 +218,10 @@ export function AddItemSheet({
 
   return (
     <Sheet visible={visible} title={title} onClose={close} minHeight="78%">
-      <View style={styles.formGroup}>
+      <Pressable style={styles.formGroup} onPress={() => itemInputRef.current?.focus()}>
         <Text style={styles.fieldLabel}>Item</Text>
         <TextInput
+          ref={itemInputRef}
           value={query}
           onChangeText={setQuery}
           placeholder="What do you need?"
@@ -228,7 +230,7 @@ export function AddItemSheet({
           returnKeyType="done"
           onSubmitEditing={addCustomItem}
         />
-      </View>
+      </Pressable>
 
       {!normalizedQuery ? (
         <Pressable onPress={() => setShowCatalog((current) => !current)} style={styles.catalogToggle}>
