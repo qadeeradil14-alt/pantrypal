@@ -168,10 +168,12 @@ export async function pullFromSupabase(): Promise<void> {
   const remote = data.state as DurableState;
   const remoteUpdatedAt = (remote.updatedAt ?? data.updated_at ?? 0) as number;
   const hasActiveSession = 'activeSession' in remote;
+
   if (!shouldApplyRemote(remoteUpdatedAt)) {
     console.log(`[Shopping Sync] active_session_reconcile_skipped reason=${isSelfEcho(remoteUpdatedAt) ? 'local_origin' : 'older'} version/updatedAt=${remoteUpdatedAt}`);
     return;
   }
+
   if (hasActiveSession) {
     const { itemCount, pickedCount, sessionId } = activeSessionStats(remote);
     console.log(`[Shopping Sync] remote_active_session_snapshot_received version/updatedAt=${remoteUpdatedAt} itemCount=${itemCount} pickedCount=${pickedCount} sessionId=${sessionId}`);

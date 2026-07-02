@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { Alert, Pressable, StyleSheet, Text, View, Image, Linking, Platform, ActionSheetIOS } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View, Image, Linking, Platform, ActionSheetIOS, LayoutAnimation } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../../components/shared/Screen';
 import { Card, PageTitle, StoreChip } from '../../components/shared/ui';
@@ -44,6 +45,7 @@ function EditStoreSheet({
 
   const submit = () => {
     if (!store || !name.trim()) return;
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     updateStore(store.id, { name: name.trim(), logoColor: color, logoEmoji: emoji });
     onClose();
   };
@@ -176,7 +178,11 @@ export default function StoresScreen() {
         {
           text: 'Remove',
           style: 'destructive',
-          onPress: () => deleteStore(store.id),
+          onPress: () => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            deleteStore(store.id);
+          },
         },
       ]
     );
@@ -244,9 +250,9 @@ export default function StoresScreen() {
                   </View>
                 </Pressable>
                 
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingLeft: spacing.sm }}>
-                  <Pressable hitSlop={12} onPress={() => handleDirections(store)}>
-                    <Ionicons name="navigate" size={18} color={colors.primary} style={{ opacity: 0.8 }} />
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.lg, paddingLeft: spacing.sm }}>
+                  <Pressable hitSlop={12} onPress={() => handleDirections(store)} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="navigate" size={18} color={colors.primary} />
                   </Pressable>
                   <Pressable
                     hitSlop={12}

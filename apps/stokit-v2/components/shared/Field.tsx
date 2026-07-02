@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, forwardRef } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -7,6 +7,9 @@ import {
   TextInput,
   View,
   type KeyboardTypeOptions,
+  type ReturnKeyTypeOptions,
+  type NativeSyntheticEvent,
+  type TextInputSubmitEditingEventData,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { fonts, radii, spacing, type AppColors } from '../../theme';
@@ -18,16 +21,7 @@ export function FieldLabel({ children }: { children: string }) {
   return <Text style={styles.label}>{children}</Text>;
 }
 
-export function TextField({
-  label,
-  value,
-  onChangeText,
-  placeholder,
-  keyboardType,
-  autoFocus,
-  autoCapitalize,
-  autoCorrect,
-}: {
+export const TextField = forwardRef<TextInput, {
   label: string;
   value: string;
   onChangeText: (v: string) => void;
@@ -36,13 +30,29 @@ export function TextField({
   autoFocus?: boolean;
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
   autoCorrect?: boolean;
-}) {
+  returnKeyType?: ReturnKeyTypeOptions;
+  onSubmitEditing?: (e: NativeSyntheticEvent<TextInputSubmitEditingEventData>) => void;
+  blurOnSubmit?: boolean;
+}>(({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  keyboardType,
+  autoFocus,
+  autoCapitalize,
+  autoCorrect,
+  returnKeyType,
+  onSubmitEditing,
+  blurOnSubmit,
+}, ref) => {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={styles.field}>
       <FieldLabel>{label}</FieldLabel>
       <TextInput
+        ref={ref}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
@@ -51,11 +61,14 @@ export function TextField({
         autoFocus={autoFocus}
         autoCapitalize={autoCapitalize}
         autoCorrect={autoCorrect}
+        returnKeyType={returnKeyType}
+        onSubmitEditing={onSubmitEditing}
+        blurOnSubmit={blurOnSubmit}
         style={styles.input}
       />
     </View>
   );
-}
+});
 
 export function ChipSelect<T extends string>({
   label,

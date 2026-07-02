@@ -23,6 +23,7 @@ import {
   Text,
   TextInput,
   View,
+  LayoutAnimation,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
@@ -610,17 +611,6 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
     }).start();
   }, [picked, entries.length]);
 
-  const groupedEntries = useMemo(() => {
-    const groups = new Map<string, typeof entries>();
-    for (const e of entries) {
-      const cat = categoryLabel(classifyItem(e.name).category);
-      const list = groups.get(cat) ?? [];
-      list.push(e);
-      groups.set(cat, list);
-    }
-    return Array.from(groups.entries()).map(([title, data]) => ({ title, data })).sort((a, b) => a.title.localeCompare(b.title));
-  }, [entries]);
-
   return (
     <Screen>
       <PageTitle eyebrow={total > 1 ? `Stop ${stepNo} of ${total}` : (storeById(storeId)?.name ? `At ${storeById(storeId)!.name}` : undefined)} title="Shopping" />
@@ -644,18 +634,16 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
         </View>
       </Card>
 
-      {groupedEntries.map((group) => (
-        <View key={group.title}>
-          <SectionHeader title={group.title} />
-          <Card style={{ paddingVertical: spacing.xs, marginBottom: spacing.md }}>
-            {group.data.map((e, idx) => (
-              <View key={e.itemId}>
+      <Card style={{ paddingVertical: spacing.xs, marginBottom: spacing.md }}>
+        {entries.map((e, idx) => (
+          <View key={e.itemId}>
                 {idx > 0 && <View style={styles.rowDivider} />}
                 <Pressable
                   style={[styles.pickRow, e.outOfStock && { opacity: 0.5 }]}
                   onPress={() => {
                     if (e.outOfStock) return;
                     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                     dispatch({ type: 'TOGGLE_PICK', itemId: e.itemId });
                   }}
                   onLongPress={() => {
@@ -709,8 +697,9 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                     quantityStepperId === e.itemId ? (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
                         <Pressable
-                          onPress={(ev) => { ev.stopPropagation(); void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); dispatch({ type: 'UPDATE_QUANTITY', itemId: e.itemId, quantity: e.quantity - 1 }); if (e.quantity <= 1) setQuantityStepperId(null); }}
+                          hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
                           style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
+                          onPress={(ev) => { ev.stopPropagation(); void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); dispatch({ type: 'UPDATE_QUANTITY', itemId: e.itemId, quantity: e.quantity - 1 }); if (e.quantity <= 1) setQuantityStepperId(null); }}
                         >
                           <Text style={{ fontSize: 16, color: colors.ink, lineHeight: 20 }}>−</Text>
                         </Pressable>
@@ -718,6 +707,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                           <Text style={[styles.planMeta, { minWidth: 28, textAlign: 'center' }]}>×{e.quantity}</Text>
                         </Pressable>
                         <Pressable
+                          hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
                           onPress={(ev) => { ev.stopPropagation(); void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); dispatch({ type: 'UPDATE_QUANTITY', itemId: e.itemId, quantity: e.quantity + 1 }); }}
                           style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
                         >
@@ -733,13 +723,11 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                     <Text style={styles.planMeta}>×{e.quantity}</Text>
                   )}
                 </Pressable>
-              </View>
-            ))}
-          </Card>
-        </View>
-      ))}
+          </View>
+        ))}
+      </Card>
       
-      {groupedEntries.length === 0 && (
+      {entries.length === 0 && (
          <Card style={{ paddingVertical: spacing.lg, alignItems: 'center' }}>
             <Text style={{ fontFamily: fonts.sans, fontSize: 14, color: colors.muted, textAlign: 'center', marginBottom: spacing.md }}>
                No items planned for this store.
@@ -748,7 +736,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
          </Card>
       )}
 
-      {groupedEntries.length > 0 && (
+      {entries.length > 0 && (
           <Button label="+ Add more" variant="subtle" onPress={() => setAddSheetVisible(true)} style={{ marginTop: spacing.md }} />
       )}
 
@@ -813,11 +801,11 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                    : notifyState === 'error' ? colors.danger
                    : colors.primary,
             }}>
-              {notifyState === 'sending'   ? 'Sending alert…'
-             : notifyState === 'sent'      ? 'Household notified'
+              {notifyState === 'sending'   ? 'Notifying family…'
+             : notifyState === 'sent'      ? 'Family notified'
              : notifyState === 'no_tokens' ? 'Notifications off — check partner settings'
-             : notifyState === 'error'     ? "Couldn't send alert. Try again."
-             :                               'Send alert'}
+             : notifyState === 'error'     ? "Couldn't notify family. Try again."
+             :                               'Notify family'}
             </Text>
           </Pressable>
         </Card>
@@ -1317,8 +1305,8 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
 // ── 3. Per-store summary ──────────────────────────────────────────────────────
 
 function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubProps) {
-  const router = useRouter();
   const stores = useDurableStore((s) => s.stores);
+  const [showAddStore, setShowAddStore] = useState(false);
   const storeId = currentStoreId(session)!;
   const store   = storeById(storeId);
   const receipt = session.receipts.find((r) => r.storeId === storeId);
@@ -1332,7 +1320,6 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
   const completedAt = receipt?.createdAt ?? Date.now();
   const finishTrip = () => {
     dispatch({ type: 'FINISH_TRIP', now: Date.now() });
-    if (!hasOptions) dispatch({ type: 'END_TRIP' });
   };
 
   return (
@@ -1388,7 +1375,7 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
         />
       ) : null}
 
-      {pending.length === 0 && manualStores.length > 0 ? (
+      {pending.length === 0 ? (
         <View style={{ marginTop: spacing.xl, gap: spacing.sm }}>
           <Text style={ssStyles.nextHintText}>Shopping somewhere else?</Text>
           {manualStores.map((candidate) => (
@@ -1402,6 +1389,16 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
               <Ionicons name="chevron-forward" size={18} color={colors.muted} />
             </Pressable>
           ))}
+          <Pressable
+            onPress={() => setShowAddStore(true)}
+            style={ssStyles.manualStore}
+          >
+            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="add" size={22} color={colors.primary} />
+            </View>
+            <Text style={ssStyles.manualStoreName}>Add a new store</Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+          </Pressable>
         </View>
       ) : null}
 
@@ -1411,6 +1408,20 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
         onPress={finishTrip}
         style={{ marginTop: spacing.md }}
       />
+      <Sheet
+        visible={showAddStore}
+        title="Add a new store"
+        onClose={() => setShowAddStore(false)}
+      >
+        <AddStoreContent
+          isActive={showAddStore}
+          onClose={() => setShowAddStore(false)}
+          onStoreAdded={(newStoreId) => {
+            dispatch({ type: 'START_MANUAL_STORE', storeId: newStoreId });
+            setShowAddStore(false);
+          }}
+        />
+      </Sheet>
       <CancelTripLink dispatch={dispatch} colors={colors} />
     </Screen>
   );
@@ -1965,7 +1976,7 @@ function makeStyles(colors: AppColors) {
     summaryBig:   { fontFamily: fonts.mono, fontSize: 48, color: colors.primary, fontVariant: ['tabular-nums'] },
     summarySub:   { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
     firstDestLabel: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
-    planStoreHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.lg, marginBottom: spacing.sm },
+    planStoreHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.lg, marginBottom: spacing.sm, paddingBottom: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
     planStoreTitle: { flex: 1, fontFamily: fonts.sansSemibold, fontSize: 18, color: colors.ink },
     planStoreCount: { fontFamily: fonts.monoMedium, fontSize: 13, color: colors.primary, fontVariant: ['tabular-nums'] },
     rowDivider:   { height: 1, backgroundColor: colors.borderSoft, marginLeft: spacing.lg },

@@ -7,12 +7,14 @@ import {
   Text,
   TextInput,
   View,
+  LayoutAnimation,
 } from 'react-native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Haptics from 'expo-haptics';
 import { Logo } from '../../components/shared/Logo';
 import { EmptyState } from '../../components/shared/EmptyState';
 import { AddItemSheet } from '../../components/pantry/AddItemSheet';
@@ -63,6 +65,7 @@ export default function PantryScreen() {
   const rawMealsRef = useRef<RawMealData[]>([]);
   const rawMealsKeyRef = useRef('');
   const [searchQuery, setSearchQuery] = useState('');
+  const searchInputRef = useRef<TextInput>(null);
 
   const myName = members.find((m) => m.isMe)?.displayName ?? '';
   const firstName = (myName === 'Me' || myName === '') ? '' : myName.split(' ')[0];
@@ -102,6 +105,8 @@ export default function PantryScreen() {
   }, [query, itemNameSet]);
 
   const handleAddFromCatalog = (catalogItem: PantryCatalogItem) => {
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     addItem({ name: catalogItem.name, quantity: 1, unit: catalogItem.defaultUnit, storeId: null, status: 'low' });
     setSearchQuery('');
     Keyboard.dismiss();
@@ -109,9 +114,23 @@ export default function PantryScreen() {
 
   const handleAddCustom = () => {
     if (!searchQuery.trim()) return;
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     addItem({ name: searchQuery.trim(), quantity: 1, unit: 'unit', storeId: null, status: 'low' });
     setSearchQuery('');
     Keyboard.dismiss();
+  };
+
+  const animatedSetStatus = (id: string, status: 'stocked' | 'low') => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setItemStatus(id, status);
+  };
+
+  const animatedDelete = (id: string) => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    deleteItem(id);
   };
 
   const frequentBuys = useMemo(() => {
@@ -160,7 +179,7 @@ export default function PantryScreen() {
   }, [atHomeItems]);
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
           {/* Top row: logo + sync pill + settings */}
           <View style={styles.topRow}>
@@ -174,7 +193,7 @@ export default function PantryScreen() {
                   {Updates.updateId ? `v${OTA_SEQ}` : 'dev'}
                 </Text>
               </View>
-              <Pressable onPress={() => router.push('/settings')} style={styles.settings}>
+              <Pressable onPress={() => router.push('/settings')} style={styles.settings} hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}>
                 <Ionicons name="settings-outline" size={25} color={colors.primary} />
               </Pressable>
             </View>
@@ -190,9 +209,10 @@ export default function PantryScreen() {
           </Text>
         </View>
 
-        <View style={styles.searchBar}>
+        <Pressable style={styles.searchBar} onPress={() => searchInputRef.current?.focus()}>
           <Ionicons name="search" size={16} color={query ? colors.primary : colors.muted} style={{ marginRight: 8 }} />
           <TextInput
+            ref={searchInputRef}
             style={styles.searchInput}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -208,7 +228,7 @@ export default function PantryScreen() {
           >
             <Ionicons name="add" size={20} color={colors.onPrimary} />
           </Pressable>
-        </View>
+        </Pressable>
 
         {query ? (
           <View style={styles.catalogDropdown}>
@@ -303,7 +323,7 @@ export default function PantryScreen() {
                 store={storeById(item.storeId)}
                 onPress={() => { setSearchQuery(''); Keyboard.dismiss(); setActionItem(item); }}
                 action="cart"
-                onSwipeLeft={() => deleteItem(item.id)}
+                onSwipeLeft={() => animatedDelete(item.id)}
               />
             </View>
           )) : (
@@ -332,8 +352,8 @@ export default function PantryScreen() {
             {atHomeItems.length > 0 ? (
               <UseItOrLoseItWidget
                 items={atHomeItems}
-                onUsed={(item) => deleteItem(item.id)}
-                onRestock={(item) => setItemStatus(item.id, 'low')}
+                onUsed={(item) => animatedDelete(item.id)}
+                onRestock={(item) => animatedSetStatus(item.id, 'low')}
               />
             ) : null}
             <Pressable
@@ -356,9 +376,9 @@ export default function PantryScreen() {
                       store={storeById(item.storeId)}
                       onPress={() => { setSearchQuery(''); Keyboard.dismiss(); setActionItem(item); }}
                       action="Add to list"
-                      onAction={() => { setSearchQuery(''); Keyboard.dismiss(); setItemStatus(item.id, 'low'); }}
-                      onSwipeLeft={() => deleteItem(item.id)}
-                      onSwipeRight={() => setItemStatus(item.id, 'low')}
+                      onAction={() => { setSearchQuery(''); Keyboard.dismiss(); animatedSetStatus(item.id, 'low'); }}
+                      onSwipeLeft={() => animatedDelete(item.id)}
+                      onSwipeRight={() => animatedSetStatus(item.id, 'low')}
                     />
                   </View>
                 )) : (
@@ -379,7 +399,7 @@ export default function PantryScreen() {
                     <Pressable
                       key={fb.id}
                       style={({ pressed }) => [styles.frequentItem, pressed && { opacity: 0.7 }]}
-                      onPress={() => setItemStatus(fb.id, 'low')}
+                      onPress={() => animatedSetStatus(fb.id, 'low')}
                     >
                       <ItemAvatar name={fb.name} size={48} />
                       <Text style={styles.frequentName} numberOfLines={1}>{fb.name}</Text>

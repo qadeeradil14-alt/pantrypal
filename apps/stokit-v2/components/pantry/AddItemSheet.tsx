@@ -1,4 +1,4 @@
-import React, { useDeferredValue, useMemo, useRef, useState } from 'react';
+import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Sheet } from '../shared/Sheet';
@@ -64,6 +64,7 @@ export function AddItemSheet({
   const [showCatalog, setShowCatalog] = useState(false);
   const [isCommitting, setIsCommitting] = useState(false);
   const committingRef = useRef(false);
+  const itemInputRef = useRef<TextInput>(null);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -74,9 +75,13 @@ export function AddItemSheet({
     setBulkStoreId(defaultStoreId);
     setDraftQuantity(1);
     setShowCatalog(false);
+  };
+
+  useEffect(() => {
+    if (!visible) return;
     setIsCommitting(false);
     committingRef.current = false;
-  };
+  }, [visible]);
 
   const commitItems = (chosen: SelectedItem[]) => {
     if (!chosen.length || committingRef.current) return;
@@ -213,20 +218,19 @@ export function AddItemSheet({
 
   return (
     <Sheet visible={visible} title={title} onClose={close} minHeight="78%">
-      <View style={styles.formGroup}>
+      <Pressable style={styles.formGroup} onPress={() => itemInputRef.current?.focus()}>
         <Text style={styles.fieldLabel}>Item</Text>
         <TextInput
+          ref={itemInputRef}
           value={query}
           onChangeText={setQuery}
           placeholder="What do you need?"
           placeholderTextColor={colors.muted}
           style={styles.itemInput}
           returnKeyType="done"
-          onSubmitEditing={() => {
-            if (!selectedItems.length) submitDraftItem();
-          }}
+          onSubmitEditing={addCustomItem}
         />
-      </View>
+      </Pressable>
 
       {!normalizedQuery ? (
         <Pressable onPress={() => setShowCatalog((current) => !current)} style={styles.catalogToggle}>

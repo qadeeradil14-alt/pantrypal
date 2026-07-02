@@ -10,7 +10,7 @@ let lastAppliedRemoteAt = 0;
 let lastPushedAt = 0;
 
 export function shouldApplyRemote(remoteUpdatedAt: number): boolean {
-  return remoteUpdatedAt > lastAppliedRemoteAt;
+  return !isSelfEcho(remoteUpdatedAt) && remoteUpdatedAt > lastAppliedRemoteAt;
 }
 
 export function markRemoteApplied(remoteUpdatedAt: number): void {
