@@ -8,6 +8,11 @@
 >
 > **Updated 2026-06-21** — OTA bumped to 153 (store-logo fallback fix); branch
 > pushed to `origin/shopping-engine-v2`. No app code was changed to produce this update.
+>
+> **Updated 2026-07-02** — OTA 280 (in-app account deletion, App Store compliance)
+> published to the `production` channel and merged to `feature/shopping-unified-workflow`
+> (`5d69ff7`). Status rows in §1 refreshed; §6 and §7 gained the account-deletion entries.
+> No app code was changed to produce this update.
 
 ---
 
@@ -15,11 +20,11 @@
 
 | Field | Value |
 |---|---|
-| Current OTA | **153** (`apps/stokit-v2/constants/version.ts`, `OTA_SEQ`) |
-| Current branch | `shopping-engine-v2` |
-| Branch sync | Pushed to `origin/shopping-engine-v2` — 0 ahead / 0 behind |
-| Latest commit | `0e8fe7d` — "chore: bump OTA_SEQ to 153 (store-logo fallback fix)" |
-| Latest app-code commit | `be4be5c` — stop guessing a domain for unknown-store logos (OTA 153) |
+| Current OTA | **280** (`apps/stokit-v2/constants/version.ts`, `OTA_SEQ`) — published 2026-07-02, update group `b2b1558f-c3d8-4b09-9c91-c9fbd7f9840d`, channel `production`, runtime 1.0.0 |
+| Current branch | `feature/shopping-unified-workflow` |
+| Branch sync | Not pushed — local only (verify against `origin` before submission) |
+| Latest commit | `5d69ff7` — "feat(account): add in-app account deletion flow for App Store compliance" (OTA 280) |
+| Latest app-code commit | `5d69ff7` — in-app account deletion (Settings → Account), delete-account Edge Function (OTA 280) |
 | App Store readiness | **Not ready.** One P0 (submission-risk) item open, several P1 items unverified, App Store Connect operational checklist (§7) largely unconfirmed. Last documented TestFlight build (33) and the QA sign-off doc both predate the current branch and OTA 143–153 work — a fresh native build + full regression pass is required before submission. |
 
 ---
@@ -96,6 +101,7 @@ No open P3 items found in the inspected QA docs — price intelligence / shared 
 | Geofence prioritization didn't favor stores with actionable items | `fix(geofencing): prioritize stores with actionable items` | **151** | `da1dbdb` | **Unverified** — no real-device QA logged |
 | Geofence arrival decision reliability issue | `Fix geofence arrival decision reliability` | **152** | `d0f73f4` | **Unverified** — no real-device QA logged |
 | Unknown-store logos guessed a `.com` domain for the favicon, risking wrong/broken logos | Removed the domain-guessing fallback; unknown stores now return color+abbr only, matching the existing StoreChip fallback | **153** | `be4be5c` | **Unverified on-device** — `npx tsc --noEmit` clean, `tests/store-brands.test.ts` (4/4) and full suite (111/111) pass; no simulator/real-device QA logged |
+| No in-app account deletion (Apple App Store requirement) | Settings → Account → Delete account: two-step destructive confirmation, owner-with-members blocked (409 + "Go to Household Settings"), non-owner member leaves via `leave_shared_household` first, local data + receipt images purged, sign-out to Welcome; new `delete-account` Edge Function enforces policy server-side (service role never exposed) | **280** | `5d69ff7` | **Published; backend QA passed** — live API-level QA 23/23 (owner blocked / member leave / solo delete / auth bypass / no orphans), typecheck clean, 257/257 unit tests. **Manual device verification pending** (confirmation alerts, Welcome navigation, local receipt-image removal) |
 
 **Store insertion during an active trip: already fixed.** It shipped as part of OTA 145 (same commit, `START_MANUAL_STORE` change) — not a separate open item.
 
@@ -105,6 +111,7 @@ No open P3 items found in the inspected QA docs — price intelligence / shared 
 
 | Item | Status |
 |---|---|
+| In-app account deletion (App Review Guideline 5.1.1(v)) | **Implemented — backend QA passed.** Shipped in OTA 280 (`5d69ff7`), Edge Function deployed, live API QA 23/23. Manual on-device verification still pending (see §6). |
 | Demo reviewer account | **Not set up.** App requires signup + household setup before there's anything to review — reviewers need working demo credentials or explicit step-by-step notes, or risk an "unable to test" rejection. |
 | Review notes (background location justification) | **Not written.** Apple reviews `NSLocationAlwaysUsageDescription` apps closely; review notes must explain *why* background location is needed (geofence arrival reminders), separate from the in-app permission string. |
 | Privacy nutrition label | **Not confirmed.** Must match actual collection: precise location (geofencing, linked to identity), photos (receipts), account email. |
