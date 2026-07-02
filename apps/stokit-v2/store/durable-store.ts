@@ -40,6 +40,7 @@ import {
 import { consolidatePantryItems, normalizeItemName } from '../core/services/pantryItems';
 import { isDuplicatePriceEntry, isValidPrice } from '../core/services/priceHistory';
 import { refreshWidgets } from '../core/services/widgets';
+import { findDuplicateStore } from '../core/services/storeDuplicates';
 
 interface DurableStore extends DurableState {
   hydrated: boolean;
@@ -300,6 +301,9 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     },
 
     addStore: (input) => {
+      const duplicate = findDuplicateStore(get().stores, input);
+      if (duplicate) return duplicate;
+
       const ts = now();
       const store: Store = {
         id: uid('store'),

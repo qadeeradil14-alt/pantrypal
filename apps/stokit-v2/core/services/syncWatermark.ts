@@ -29,3 +29,38 @@ export function resetSyncWatermark(): void {
   lastAppliedRemoteAt = 0;
   lastPushedAt = 0;
 }
+
+// ── Restart-safe snapshot gate (WO-002) ──────────────────────────────────────
+//
+// The in-memory watermark above resets to 0 on every app launch, so on its own
+// it cannot stop a stale cloud snapshot from overwriting edits made in a
+// previous (offline) session. The durable snapshot's own updatedAt, however,
+// IS persisted (AsyncStorage via durableRepository) and survives restarts.
+// The engine-level gate therefore additionally requires the remote snapshot to
+// be strictly newer than the local durable state.
+
+export type RemoteSkipReason = 'local_origin' | 'older' | 'not_newer_than_local';
+
+/**
+ * Composite gate used by pullFromSupabase. A remote snapshot may be applied
+ * only when it is (1) not this device's own echo, (2) newer than the last
+ * remote snapshot applied this session, and (3) strictly newer than the local
+ * durable snapshot. (3) is the restart-safe protection.
+ */
+export function shouldApplyRemoteSnapshot(
+  remoteUpdatedAt: number,
+  localUpdatedAt: number,
+): boolean {
+  return shouldApplyRemote(remoteUpdatedAt) && remoteUpdatedAt > localUpdatedAt;
+}
+
+/** Why a remote snapshot was skipped — null when it should be applied. */
+export function remoteSkipReason(
+  remoteUpdatedAt: number,
+  localUpdatedAt: number,
+): RemoteSkipReason | null {
+  if (isSelfEcho(remoteUpdatedAt)) return 'local_origin';
+  if (remoteUpdatedAt <= lastAppliedRemoteAt) return 'older';
+  if (remoteUpdatedAt <= localUpdatedAt) return 'not_newer_than_local';
+  return null;
+}
