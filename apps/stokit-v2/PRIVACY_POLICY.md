@@ -2,8 +2,8 @@
 
 **Effective date:** July 2, 2026  
 **App name:** Stokit  
-**Developer:** [Your name / company]  
-**Contact:** [your-support@email.com]
+**Developer:** Abdul Adil
+**Contact:** qadeeradil14@gmail.com
 
 ---
 
@@ -49,7 +49,7 @@ If you take or attach a photo of a receipt:
 
 - The **photo** is saved locally on your device in the app's private document directory (`receipts/`).
 - The photo is also **uploaded to Supabase Storage** (a private bucket named `receipts`) keyed to your household ID. Only members of your household can access it via a time-limited signed URL.
-- If the **AI receipt scan** feature is enabled (requires a configured server endpoint), the image is sent as a base64-encoded string to a Supabase Edge Function (`scan-receipt`). That function calls an OpenAI-compatible API (GPT-4o Vision) and returns structured line-item data (store name, date, items, prices). **The image is not retained by the scan endpoint beyond the duration of the request.**
+- If the **AI receipt scan** feature is enabled (requires a configured server endpoint), the image is sent as a base64-encoded string to a Supabase Edge Function (`scan-receipt`). That function calls an OpenAI-compatible API (GPT-4o Vision) and returns structured line-item data (store name, date, items, prices). **The scan endpoint processes the image only to return receipt data. Stokit does not intentionally store the image in that endpoint beyond the request.**
 - If the **OCR total extraction** feature is enabled (via ocr.space or Google Cloud Vision), the image is sent to the respective provider's API to extract a dollar total. Neither provider receives identifying account information along with the image.
 
 Receipt scan is strictly opt-in. If no scan keys are configured, tapping "Scan receipt" is a no-op and no image is transmitted.
@@ -171,7 +171,7 @@ Depending on where you live, you may have rights to:
 - **Deletion** — delete your account and all associated data (see §6).
 - **Portability** — request your pantry data in a machine-readable format.
 
-To exercise any of these rights, contact us at **[your-support@email.com]**.
+To exercise any of these rights, contact us at **qadeeradil14@gmail.com**.
 
 California residents: we do not sell personal data as defined under the CCPA.
 
@@ -204,5 +204,5 @@ If we make material changes, we will update the effective date and, where feasib
 
 For privacy questions or data requests:
 
-**Email:** [your-support@email.com]  
+**Email:** qadeeradil14@gmail.com
 **GitHub:** https://github.com/qadeeradil14-alt/pantrypal
