@@ -160,7 +160,7 @@ export default function PantryScreen() {
   }, [atHomeItems]);
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
           {/* Top row: logo + sync pill + settings */}
           <View style={styles.topRow}>
