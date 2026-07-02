@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View, ScrollView, TextInput } from 'react-native';
+import { ActivityIndicator, Alert, Keyboard, Pressable, StyleSheet, Text, View, ScrollView, TextInput } from 'react-native';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import { Sheet } from '../shared/Sheet';
@@ -221,6 +221,7 @@ export function AddStoreContent({
   const selectSuggestion = async (s: AutocompleteSuggestion) => {
     if (addingRef.current) return;
     addingRef.current = true;
+    Keyboard.dismiss();
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setName(s.mainText);
     setSuggestions([]);
@@ -331,7 +332,7 @@ export function AddStoreContent({
 
       {/* Autocomplete suggestions */}
       {suggestions.length > 0 && (
-        <ScrollView style={styles.dropdown} keyboardShouldPersistTaps="always">
+        <ScrollView style={styles.dropdown} keyboardShouldPersistTaps="always" keyboardDismissMode="none">
           {suggestions.slice(0, 5).map((s, i) => (
             <Pressable
               key={s.placeId}
@@ -341,6 +342,7 @@ export function AddStoreContent({
                 pressed && { opacity: 0.7 },
               ]}
               hitSlop={8}
+              onPressIn={() => { void selectSuggestion(s); }}
               onPress={() => { void selectSuggestion(s); }}
             >
               <Ionicons name="location-outline" size={18} color={colors.muted} />
