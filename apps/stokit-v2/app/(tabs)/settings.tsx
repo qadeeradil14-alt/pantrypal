@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, Platform, StyleSheet, Switch, Text, TextInput, View, useColorScheme } from 'react-native';
+import { Alert, Pressable, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, View, useColorScheme } from 'react-native';
 import Constants from 'expo-constants';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
@@ -103,7 +103,12 @@ export default function SettingsScreen() {
   const myDisplayName = members.find((m) => m.isMe)?.displayName ?? 'Me';
   const isSharedOwnerWithMembers = Boolean(household && !household.isPersonal && household.role === 'owner' && members.length > 1);
 
+  const authUser = useAuthStore((s) => s.user);
+
   const [signingOut, setSigningOut] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const scrollRef = React.useRef<ScrollView>(null);
+  const householdSectionY = React.useRef(0);
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
   const [createVisible, setCreateVisible] = useState(false);
   const [joinVisible, setJoinVisible] = useState(false);
@@ -351,6 +356,70 @@ export default function SettingsScreen() {
     ]);
   };
 
+  const OWNER_BLOCKED_MESSAGE =
+    'You can’t delete your account because you own a shared household.\n\nTransfer ownership or remove all household members before deleting your account.';
+
+  const showOwnerBlockedAlert = () => {
+    Alert.alert('Can’t delete account', OWNER_BLOCKED_MESSAGE, [
+      {
+        text: 'Go to Household Settings',
+        onPress: () => scrollRef.current?.scrollTo({ y: householdSectionY.current, animated: true }),
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const performDeleteAccount = async () => {
+    setDeletingAccount(true);
+    await stopGeofencing().catch(() => {});
+    const result = await useAuthStore.getState().deleteAccount();
+    setDeletingAccount(false);
+    if (result.ok) {
+      router.replace('/(auth)/welcome');
+      Alert.alert('Account deleted', 'Your account and all synced data have been permanently removed.');
+      return;
+    }
+    if (result.code === 'OWNER_HAS_MEMBERS') {
+      showOwnerBlockedAlert();
+      return;
+    }
+    Alert.alert('Couldn’t delete account', result.message);
+  };
+
+  const confirmDeleteAccount = () => {
+    // Local pre-check for instant feedback; the Edge Function re-checks
+    // server-side, so a stale member list can't slip a deletion through.
+    if (isSharedOwnerWithMembers) {
+      showOwnerBlockedAlert();
+      return;
+    }
+    Alert.alert(
+      'Delete account?',
+      'This permanently deletes your account and all synced data — pantry items, stores, shopping history, receipts, and household info. Receipt images stored on this device are removed too.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              'Permanently delete account?',
+              'This can’t be undone. Your account will be deleted and you’ll be signed out.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Delete account',
+                  style: 'destructive',
+                  onPress: () => { void performDeleteAccount(); },
+                },
+              ],
+            );
+          },
+        },
+      ],
+    );
+  };
+
   const confirmRemoveMember = (memberId: string, displayName: string) => {
     Alert.alert(
       'Remove household member?',
@@ -379,7 +448,7 @@ export default function SettingsScreen() {
   };
 
   return (
-    <Screen>
+    <Screen scrollRef={scrollRef}>
       <PageTitle eyebrow="Your account" title="Settings" />
 
       {/* ── PROFILE ───────────────────────────────────────────────────────── */}
@@ -461,7 +530,9 @@ export default function SettingsScreen() {
         </Pressable>
       </Card>
 
-      <SectionHeader title="Account sync" />
+      <View onLayout={(e) => { householdSectionY.current = e.nativeEvent.layout.y; }}>
+        <SectionHeader title="Account sync" />
+      </View>
       <Card>
         <Text style={styles.noHouseholdTitle}>
           {household?.isPersonal ? 'Private pantry' : household?.name ?? 'Account sync'}
@@ -983,6 +1054,15 @@ export default function SettingsScreen() {
           onPress={confirmReset}
           style={{ marginTop: spacing.sm }}
         />
+        {authUser && (
+          <Button
+            label={deletingAccount ? 'Deleting account…' : 'Delete account'}
+            variant="danger"
+            disabled={deletingAccount}
+            onPress={confirmDeleteAccount}
+            style={{ marginTop: spacing.sm }}
+          />
+        )}
       </Card>
 
       {/* ── ABOUT ─────────────────────────────────────────────────────────── */}

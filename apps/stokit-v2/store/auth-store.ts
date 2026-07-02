@@ -1,16 +1,22 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { FunctionsHttpError } from '@supabase/supabase-js';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase, SESSION_BACKUP_KEY } from '../lib/supabase';
 import { useDurableStore } from './durable-store';
 import { useHouseholdStore } from './household-store';
 import { useSessionStore } from './session-store';
 import { stopSyncEngine } from '../core/services/syncEngine';
+import { clearReceiptImages } from '../core/services/receiptImages';
 import { isExistingAccountSignUpResponse } from '../core/services/authResponses';
 
 type AuthResult =
   | { ok: true; next?: 'VERIFY_EMAIL' | 'SIGN_IN' }
   | { ok: false; message: string; code?: 'EMAIL_EXISTS' };
+
+type DeleteAccountResult =
+  | { ok: true }
+  | { ok: false; message: string; code?: 'OWNER_HAS_MEMBERS' };
 
 // Only a deliberate user sign-out should navigate to the welcome screen.
 let _explicitSignOut = false;
@@ -79,6 +85,7 @@ interface AuthStore {
   refreshUser: () => Promise<AuthResult>;
   clearConfirmationSession: () => Promise<void>;
   signOut: () => Promise<AuthResult>;
+  deleteAccount: () => Promise<DeleteAccountResult>;
   clearError: () => void;
   enterGuestMode: () => void;
   exitGuestMode: () => void;
@@ -272,6 +279,49 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       _explicitSignOut = false;
       return { ok: false, message };
     }
+    return { ok: true };
+  },
+
+  deleteAccount: async () => {
+    set({ loading: true, authError: null });
+
+    // Server enforces the deletion policy (owner-with-members → 409) and
+    // performs the actual auth.admin.deleteUser via the Edge Function.
+    const { error } = await supabase.functions.invoke('delete-account', { body: {} });
+    if (error) {
+      let message = 'Couldn’t delete your account. Please try again.';
+      let code: 'OWNER_HAS_MEMBERS' | undefined;
+      if (error instanceof FunctionsHttpError) {
+        const body = await error.context
+          .json()
+          .catch(() => null) as { error?: string; message?: string } | null;
+        if (error.context.status === 409 && body?.error === 'owner_has_members') {
+          code = 'OWNER_HAS_MEMBERS';
+          message = body.message ??
+            'Transfer ownership or remove household members before deleting your account.';
+        }
+      } else {
+        message = friendlyAuthError(error);
+      }
+      set({ loading: false, authError: code ? null : message });
+      return { ok: false, message, code };
+    }
+
+    // Account is gone server-side. Purge everything local — same clean-slate
+    // path as signOut, plus receipt images stored on disk.
+    _explicitSignOut = true;
+    await Promise.all([
+      useDurableStore.getState().resetLocalOnly(),
+      useHouseholdStore.getState().clearLocal(),
+      useSessionStore.getState().clearSession(),
+      clearReceiptImages().catch(() => {}),
+    ]);
+    stopSyncEngine();
+    AsyncStorage.removeItem(SESSION_BACKUP_KEY).catch(() => {});
+    AsyncStorage.removeItem('stokit:v2:guestMode').catch(() => {});
+    // Local scope only: the server-side user no longer exists.
+    await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+    set({ session: null, user: null, loading: false, guestMode: false });
     return { ok: true };
   },
 
