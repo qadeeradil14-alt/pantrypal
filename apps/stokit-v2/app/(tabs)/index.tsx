@@ -7,6 +7,7 @@ import {
   Text,
   TextInput,
   View,
+  LayoutAnimation,
 } from 'react-native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { useRouter } from 'expo-router';
@@ -110,9 +111,20 @@ export default function PantryScreen() {
 
   const handleAddCustom = () => {
     if (!searchQuery.trim()) return;
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     addItem({ name: searchQuery.trim(), quantity: 1, unit: 'unit', storeId: null, status: 'low' });
     setSearchQuery('');
     Keyboard.dismiss();
+  };
+
+  const animatedSetStatus = (id: string, status: 'stocked' | 'low') => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setItemStatus(id, status);
+  };
+
+  const animatedDelete = (id: string) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    deleteItem(id);
   };
 
   const frequentBuys = useMemo(() => {
@@ -175,7 +187,7 @@ export default function PantryScreen() {
                   {Updates.updateId ? `v${OTA_SEQ}` : 'dev'}
                 </Text>
               </View>
-              <Pressable onPress={() => router.push('/settings')} style={styles.settings}>
+              <Pressable onPress={() => router.push('/settings')} style={styles.settings} hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}>
                 <Ionicons name="settings-outline" size={25} color={colors.primary} />
               </Pressable>
             </View>
@@ -305,7 +317,7 @@ export default function PantryScreen() {
                 store={storeById(item.storeId)}
                 onPress={() => { setSearchQuery(''); Keyboard.dismiss(); setActionItem(item); }}
                 action="cart"
-                onSwipeLeft={() => deleteItem(item.id)}
+                onSwipeLeft={() => animatedDelete(item.id)}
               />
             </View>
           )) : (
@@ -334,8 +346,8 @@ export default function PantryScreen() {
             {atHomeItems.length > 0 ? (
               <UseItOrLoseItWidget
                 items={atHomeItems}
-                onUsed={(item) => deleteItem(item.id)}
-                onRestock={(item) => setItemStatus(item.id, 'low')}
+                onUsed={(item) => animatedDelete(item.id)}
+                onRestock={(item) => animatedSetStatus(item.id, 'low')}
               />
             ) : null}
             <Pressable
@@ -358,9 +370,9 @@ export default function PantryScreen() {
                       store={storeById(item.storeId)}
                       onPress={() => { setSearchQuery(''); Keyboard.dismiss(); setActionItem(item); }}
                       action="Add to list"
-                      onAction={() => { setSearchQuery(''); Keyboard.dismiss(); setItemStatus(item.id, 'low'); }}
-                      onSwipeLeft={() => deleteItem(item.id)}
-                      onSwipeRight={() => setItemStatus(item.id, 'low')}
+                      onAction={() => { setSearchQuery(''); Keyboard.dismiss(); animatedSetStatus(item.id, 'low'); }}
+                      onSwipeLeft={() => animatedDelete(item.id)}
+                      onSwipeRight={() => animatedSetStatus(item.id, 'low')}
                     />
                   </View>
                 )) : (
@@ -381,7 +393,7 @@ export default function PantryScreen() {
                     <Pressable
                       key={fb.id}
                       style={({ pressed }) => [styles.frequentItem, pressed && { opacity: 0.7 }]}
-                      onPress={() => setItemStatus(fb.id, 'low')}
+                      onPress={() => animatedSetStatus(fb.id, 'low')}
                     >
                       <ItemAvatar name={fb.name} size={48} />
                       <Text style={styles.frequentName} numberOfLines={1}>{fb.name}</Text>

@@ -23,6 +23,7 @@ import {
   Text,
   TextInput,
   View,
+  LayoutAnimation,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
@@ -642,6 +643,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                   onPress={() => {
                     if (e.outOfStock) return;
                     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                     dispatch({ type: 'TOGGLE_PICK', itemId: e.itemId });
                   }}
                   onLongPress={() => {
@@ -695,8 +697,9 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                     quantityStepperId === e.itemId ? (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
                         <Pressable
-                          onPress={(ev) => { ev.stopPropagation(); void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); dispatch({ type: 'UPDATE_QUANTITY', itemId: e.itemId, quantity: e.quantity - 1 }); if (e.quantity <= 1) setQuantityStepperId(null); }}
+                          hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
                           style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
+                          onPress={(ev) => { ev.stopPropagation(); void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); dispatch({ type: 'UPDATE_QUANTITY', itemId: e.itemId, quantity: e.quantity - 1 }); if (e.quantity <= 1) setQuantityStepperId(null); }}
                         >
                           <Text style={{ fontSize: 16, color: colors.ink, lineHeight: 20 }}>−</Text>
                         </Pressable>
@@ -704,6 +707,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                           <Text style={[styles.planMeta, { minWidth: 28, textAlign: 'center' }]}>×{e.quantity}</Text>
                         </Pressable>
                         <Pressable
+                          hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
                           onPress={(ev) => { ev.stopPropagation(); void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); dispatch({ type: 'UPDATE_QUANTITY', itemId: e.itemId, quantity: e.quantity + 1 }); }}
                           style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
                         >
@@ -1972,7 +1976,7 @@ function makeStyles(colors: AppColors) {
     summaryBig:   { fontFamily: fonts.mono, fontSize: 48, color: colors.primary, fontVariant: ['tabular-nums'] },
     summarySub:   { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
     firstDestLabel: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
-    planStoreHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.lg, marginBottom: spacing.sm },
+    planStoreHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.lg, marginBottom: spacing.sm, paddingBottom: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
     planStoreTitle: { flex: 1, fontFamily: fonts.sansSemibold, fontSize: 18, color: colors.ink },
     planStoreCount: { fontFamily: fonts.monoMedium, fontSize: 13, color: colors.primary, fontVariant: ['tabular-nums'] },
     rowDivider:   { height: 1, backgroundColor: colors.borderSoft, marginLeft: spacing.lg },
