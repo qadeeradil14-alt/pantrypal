@@ -2,7 +2,7 @@ import { File } from 'expo-file-system';
 import { decode } from 'base64-arraybuffer';
 import { supabase } from '../../lib/supabase';
 import type { DurableState, Receipt } from '../../types';
-import { shouldApplyRemote, markRemoteApplied, markPushed, isSelfEcho, resetSyncWatermark } from './syncWatermark';
+import { shouldApplyRemoteSnapshot, remoteSkipReason, markRemoteApplied, markPushed, isSelfEcho, resetSyncWatermark } from './syncWatermark';
 
 const CLOUD_TABLE = 'household_snapshots';
 const RECEIPT_BUCKET = 'receipts';
@@ -22,6 +22,25 @@ function activeSessionStats(state: DurableState): { itemCount: number; pickedCou
 
 async function durableStore() {
   return (await import('../../store/durable-store')).useDurableStore;
+}
+
+/**
+ * Extract the plain DurableState fields from the Zustand store state so a
+ * push never serializes store actions or the `hydrated` flag into the cloud
+ * snapshot.
+ */
+function durableSnapshot(state: DurableState): DurableState {
+  return {
+    items: state.items,
+    stores: state.stores,
+    priceHistory: state.priceHistory,
+    receipts: state.receipts,
+    trips: state.trips,
+    activity: state.activity,
+    prefs: state.prefs,
+    activeSession: state.activeSession ?? null,
+    updatedAt: state.updatedAt,
+  };
 }
 
 async function householdId(): Promise<string | null> {
@@ -108,7 +127,7 @@ export async function pullFromSupabase(): Promise<void> {
   if (!data?.state) {
     const local = store.getState();
     if (local.items.length || local.stores.length || local.receipts.length || local.trips.length) {
-      await pushLocalState({ ...local, updatedAt: Date.now() });
+      await pushLocalState({ ...durableSnapshot(local), updatedAt: Date.now() });
       return;
     }
 
@@ -169,8 +188,19 @@ export async function pullFromSupabase(): Promise<void> {
   const remoteUpdatedAt = (remote.updatedAt ?? data.updated_at ?? 0) as number;
   const hasActiveSession = 'activeSession' in remote;
 
-  if (!shouldApplyRemote(remoteUpdatedAt)) {
-    console.log(`[Shopping Sync] active_session_reconcile_skipped reason=${isSelfEcho(remoteUpdatedAt) ? 'local_origin' : 'older'} version/updatedAt=${remoteUpdatedAt}`);
+  const localUpdatedAt = store.getState().updatedAt;
+  if (!shouldApplyRemoteSnapshot(remoteUpdatedAt, localUpdatedAt)) {
+    const reason = remoteSkipReason(remoteUpdatedAt, localUpdatedAt);
+    console.log(`[Shopping Sync] active_session_reconcile_skipped reason=${reason} version/updatedAt=${remoteUpdatedAt} localUpdatedAt=${localUpdatedAt}`);
+    // The cloud snapshot is strictly older than this device's durable state
+    // (e.g. edits made offline whose push never reached Supabase). Reconcile
+    // by pushing the newer local state up so other members converge on it,
+    // instead of leaving the stale blob in the cloud. Equal timestamps mean
+    // already-in-sync — no push, or realtime would fan out on every launch.
+    if (localUpdatedAt > remoteUpdatedAt && !isSelfEcho(remoteUpdatedAt)) {
+      console.log(`[Shopping Sync] stale_remote_reconcile_push localUpdatedAt=${localUpdatedAt} remoteUpdatedAt=${remoteUpdatedAt}`);
+      await pushLocalState(durableSnapshot(store.getState()));
+    }
     return;
   }
 
@@ -179,7 +209,15 @@ export async function pullFromSupabase(): Promise<void> {
     console.log(`[Shopping Sync] remote_active_session_snapshot_received version/updatedAt=${remoteUpdatedAt} itemCount=${itemCount} pickedCount=${pickedCount} sessionId=${sessionId}`);
   }
   if (hasActiveSession && !remote.activeSession) console.log('[Shopping Sync] remote_trip_end_received');
-  store.getState().applyRemotePatch(await withSignedReceiptUrls(remote));
+  const signedRemote = await withSignedReceiptUrls(remote);
+  // Local state may have advanced while signed URLs were being fetched (a
+  // user edit or a concurrent pull) — re-check so a now-stale snapshot cannot
+  // clobber it after the await.
+  if (!shouldApplyRemoteSnapshot(remoteUpdatedAt, store.getState().updatedAt)) {
+    console.log(`[Shopping Sync] active_session_reconcile_skipped reason=${remoteSkipReason(remoteUpdatedAt, store.getState().updatedAt)} version/updatedAt=${remoteUpdatedAt} phase=post_sign`);
+    return;
+  }
+  store.getState().applyRemotePatch(signedRemote);
   if (hasActiveSession) console.log('[Shopping Sync] local_state_reconciled');
   if (!isSelfEcho(remoteUpdatedAt)) {
     markRemoteApplied(remoteUpdatedAt);

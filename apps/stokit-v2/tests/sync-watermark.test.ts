@@ -14,13 +14,16 @@ function setup() {
   resetSyncWatermark();
 }
 
-test('directional unblock: Owner snapshot applies on Wife even when Wife local write freshness is higher', () => {
+test('directional unblock: watermark layer alone does not consider local write freshness', () => {
   setup();
   // Wife last pulled remote at T=3; then wrote locally (not reflected in watermark).
   markRemoteApplied(3);
-  // Owner pushes at T=5. Wife local updatedAt might be 10 from her own writes,
-  // but the watermark is 3 — so Owner's T=5 snapshot must apply.
-  assert.ok(shouldApplyRemote(5), 'should apply Owner snapshot with updatedAt=5');
+  // Owner pushes at T=5. The watermark is 3, so at THIS layer the snapshot is
+  // eligible. Since WO-002 the engine applies a second gate on top
+  // (shouldApplyRemoteSnapshot: remote must also be newer than local.updatedAt)
+  // and reconciles a rejected-but-stale cloud snapshot by pushing local up —
+  // see tests/sync-offline-safety.test.ts for the composite behavior.
+  assert.ok(shouldApplyRemote(5), 'watermark layer accepts Owner snapshot with updatedAt=5');
 });
 
 test('own reflection skip: device does not re-apply the snapshot it just pushed', () => {
@@ -44,14 +47,17 @@ test('cleanup reset: stopSyncEngine watermark resets to 0 so next household star
   assert.ok(shouldApplyRemote(1), 'should accept any snapshot after watermark reset');
 });
 
-test('Wife local edit does not block Owner remote update arriving above the watermark', () => {
+test('Wife local edit does not advance the watermark layer', () => {
   setup();
   // Both devices synced to T=3 after household join.
   markRemoteApplied(3);
   // Wife writes locally — this does NOT call markRemoteApplied, so watermark stays at 3.
-  // Wife local updatedAt is now, say, 10. Owner then pushes T=4.
-  // Under the old `local.updatedAt` guard, 4 ≤ 10 → blocked. Under the watermark guard, 4 > 3 → applies.
-  assert.ok(shouldApplyRemote(4), 'Owner T=4 snapshot must apply despite Wife local updatedAt being 10');
+  // Owner then pushes T=4: above the watermark, so eligible at this layer.
+  // NOTE (WO-002): the ENGINE additionally rejects T=4 when Wife's local
+  // updatedAt is newer (newest-wins) and pushes Wife's newer state up so both
+  // members converge. That composite gate is covered in
+  // tests/sync-offline-safety.test.ts.
+  assert.ok(shouldApplyRemote(4), 'watermark layer accepts Owner T=4 above watermark T=3');
 });
 
 // --- Self-echo detection (new: markPushed / isSelfEcho) ---
