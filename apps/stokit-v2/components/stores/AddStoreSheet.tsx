@@ -8,6 +8,7 @@ import { Button } from '../shared/ui';
 import { Ionicons } from '@expo/vector-icons';
 import { fonts, radii, spacing, type AppColors } from '../../theme';
 import { useDurableStore } from '../../store/durable-store';
+import { findDuplicateStore } from '../../core/services/storeDuplicates';
 import { autocompleteGooglePlaces, getPlaceDetailsGoogle, geocodeLocation, searchNearbyStoresByName, type AutocompleteSuggestion, type NearbyStore } from '../../core/services/places';
 import { useTheme } from '../../hooks/useTheme';
 
@@ -41,6 +42,7 @@ export function AddStoreContent({
 }) {
   const { colors } = useTheme();
   const addStore = useDurableStore((s) => s.addStore);
+  const stores = useDurableStore((s) => s.stores);
 
   const [name, setName]   = useState('');
   const [zip, setZip]     = useState('');
@@ -58,6 +60,7 @@ export function AddStoreContent({
 
   const userLocRef = useRef<{lat: number, lng: number} | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const addingRef = useRef(false);
   // Cache NearbyStore details so selection doesn't need an extra Places API round-trip
   const nearbyStoreCache = useRef<Map<string, NearbyStore>>(new Map());
 
@@ -158,54 +161,38 @@ export function AddStoreContent({
     runAutocomplete(name, v);
   };
 
-  const selectSuggestion = async (s: AutocompleteSuggestion) => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    setName(s.mainText);
-    setSuggestions([]);
-
-    // If this came from a nearby search we already have full details — no extra call needed
-    const cached = nearbyStoreCache.current.get(s.placeId);
-    if (cached) {
-      setPlaceId(cached.placeId);
-      setAddress(cached.address || s.secondaryText);
-      setLat(cached.lat);
-      setLng(cached.lng);
+  const finishAdd = useCallback((input: {
+    name: string;
+    logoColor?: string;
+    logoEmoji?: string;
+    placeId?: string;
+    address?: string;
+    lat?: number;
+    lng?: number;
+  }) => {
+    const trimmedName = input.name.trim();
+    if (!trimmedName) {
+      addingRef.current = false;
       return;
     }
 
-    setLoadingSuggestion(true);
-    try {
-      const details = await getPlaceDetailsGoogle(s.placeId);
-      if (details) {
-        setPlaceId(details.placeId);
-        setAddress(details.address || s.secondaryText);
-        setLat(details.lat);
-        setLng(details.lng);
-      } else {
-        setPlaceId(s.placeId);
-        setAddress(s.secondaryText);
-      }
-    } catch (e) {
-      if (__DEV__) console.error('[AddStoreSheet] details error:', e);
-      setPlaceId(s.placeId);
-      setAddress(s.secondaryText);
-    } finally {
-      setLoadingSuggestion(false);
+    const duplicate = findDuplicateStore(stores, { ...input, name: trimmedName });
+    if (duplicate) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      Alert.alert('Store already added', `${trimmedName} is already in your stores.`, [{
+        text: 'OK',
+        onPress: () => {
+          addingRef.current = false;
+        },
+      }], { cancelable: false });
+      return;
     }
-  };
 
-  const submit = () => {
-    if (!name.trim()) return;
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     const store = addStore({
-      name: name.trim(),
-      logoColor: color,
-      logoEmoji: emoji,
-      placeId,
-      address,
-      lat,
-      lng,
+      ...input,
+      name: trimmedName,
     });
 
     const hasCoords = typeof store.lat === 'number' && !Number.isNaN(store.lat)
@@ -219,6 +206,7 @@ export function AddStoreContent({
       [{
         text: 'OK',
         onPress: () => {
+          addingRef.current = false;
           reset();
           onClose();
           if (onStoreAdded) {
@@ -228,6 +216,91 @@ export function AddStoreContent({
       }],
       { cancelable: false },
     );
+  }, [addStore, stores, onClose, onStoreAdded]);
+
+  const selectSuggestion = async (s: AutocompleteSuggestion) => {
+    if (addingRef.current) return;
+    addingRef.current = true;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setName(s.mainText);
+    setSuggestions([]);
+
+    // If this came from a nearby search we already have full details — no extra call needed
+    const cached = nearbyStoreCache.current.get(s.placeId);
+    if (cached) {
+      setPlaceId(cached.placeId);
+      setAddress(cached.address || s.secondaryText);
+      setLat(cached.lat);
+      setLng(cached.lng);
+      finishAdd({
+        name: cached.name || s.mainText,
+        logoColor: color,
+        logoEmoji: emoji,
+        placeId: cached.placeId,
+        address: cached.address || s.secondaryText,
+        lat: cached.lat,
+        lng: cached.lng,
+      });
+      return;
+    }
+
+    setLoadingSuggestion(true);
+    try {
+      const details = await getPlaceDetailsGoogle(s.placeId);
+      if (details) {
+        setPlaceId(details.placeId);
+        setAddress(details.address || s.secondaryText);
+        setLat(details.lat);
+        setLng(details.lng);
+        finishAdd({
+          name: s.mainText,
+          logoColor: color,
+          logoEmoji: emoji,
+          placeId: details.placeId,
+          address: details.address || s.secondaryText,
+          lat: details.lat,
+          lng: details.lng,
+        });
+      } else {
+        setPlaceId(s.placeId);
+        setAddress(s.secondaryText);
+        finishAdd({
+          name: s.mainText,
+          logoColor: color,
+          logoEmoji: emoji,
+          placeId: s.placeId,
+          address: s.secondaryText,
+        });
+      }
+    } catch (e) {
+      if (__DEV__) console.error('[AddStoreSheet] details error:', e);
+      setPlaceId(s.placeId);
+      setAddress(s.secondaryText);
+      finishAdd({
+        name: s.mainText,
+        logoColor: color,
+        logoEmoji: emoji,
+        placeId: s.placeId,
+        address: s.secondaryText,
+      });
+    } finally {
+      setLoadingSuggestion(false);
+    }
+  };
+
+  const submit = () => {
+    if (addingRef.current) return;
+    if (!name.trim()) return;
+    addingRef.current = true;
+    finishAdd({
+      name: name.trim(),
+      logoColor: color,
+      logoEmoji: emoji,
+      placeId,
+      address,
+      lat,
+      lng,
+    });
   };
 
   return (
@@ -267,6 +340,7 @@ export function AddStoreContent({
                 i > 0 && styles.suggestionBorder,
                 pressed && { opacity: 0.7 },
               ]}
+              hitSlop={8}
               onPress={() => { void selectSuggestion(s); }}
             >
               <Ionicons name="location-outline" size={18} color={colors.muted} />
@@ -352,7 +426,7 @@ function makeStyles(colors: AppColors) {
     },
     suggestionRow: {
       flexDirection: 'row', alignItems: 'center', gap: 10,
-      paddingHorizontal: 12, paddingVertical: 12,
+      minHeight: 52, paddingHorizontal: 12, paddingVertical: 12,
     },
     suggestionBorder: {
       borderTopWidth: 1, borderTopColor: colors.borderSoft,
