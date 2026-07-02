@@ -15,7 +15,7 @@
  */
 
 export const config = {
-  googleApiKey:   process.env.EXPO_PUBLIC_GOOGLE_API_KEY   || 'AIzaSyDzof6GeJDfP74kFXdxDkOJfFC220-Vhg4',
+  googleApiKey:   process.env.EXPO_PUBLIC_GOOGLE_API_KEY   ?? '',
   geoapifyApiKey: process.env.EXPO_PUBLIC_GEOAPIFY_API_KEY ?? '',
   ocrSpaceKey:    process.env.EXPO_PUBLIC_OCR_SPACE_KEY    ?? '',
   receiptScanUrl: process.env.EXPO_PUBLIC_RECEIPT_SCAN_URL ?? '',
