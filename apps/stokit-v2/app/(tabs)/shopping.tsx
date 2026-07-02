@@ -797,11 +797,11 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                    : notifyState === 'error' ? colors.danger
                    : colors.primary,
             }}>
-              {notifyState === 'sending'   ? 'Sending alert…'
-             : notifyState === 'sent'      ? 'Household notified'
+              {notifyState === 'sending'   ? 'Notifying family…'
+             : notifyState === 'sent'      ? 'Family notified'
              : notifyState === 'no_tokens' ? 'Notifications off — check partner settings'
-             : notifyState === 'error'     ? "Couldn't send alert. Try again."
-             :                               'Send alert'}
+             : notifyState === 'error'     ? "Couldn't notify family. Try again."
+             :                               'Notify family'}
             </Text>
           </Pressable>
         </Card>
