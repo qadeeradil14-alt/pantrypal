@@ -315,8 +315,6 @@ export async function sendHouseholdShoppingAlert(
     });
     const { data, error } = response;
 
-    console.log("NOTIFY_SHOPPING_RESPONSE", JSON.stringify({ data, error }, null, 2));
-
     if (error) return { ok: false, sent: 0, result: `failed:${error.message}` };
     const sent = (data as { sent?: number } | null)?.sent ?? 0;
     return { ok: true, sent, result: sent > 0 ? 'sent' : 'no_tokens' };

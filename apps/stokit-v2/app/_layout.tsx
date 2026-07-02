@@ -147,11 +147,9 @@ export default function RootLayout() {
   // t param makes every push unique so Expo Router never deduplicates it.
   useEffect(() => {
     if (!inviteTrigger || !ready || !rootNavigationState?.key || !initialUrlChecked) return;
-    if (!unlocked) {
-      router.push({ pathname: '/(auth)/join', params: { invite: inviteTrigger.code, t: String(inviteTrigger.t) } });
-    }
+    router.push({ pathname: '/(auth)/join', params: { invite: inviteTrigger.code, t: String(inviteTrigger.t) } });
     setInviteTrigger(null);
-  }, [inviteTrigger, ready, rootNavigationState?.key, initialUrlChecked, unlocked, router]);
+  }, [inviteTrigger, ready, rootNavigationState?.key, initialUrlChecked, router]);
 
   // Route arrival notification taps into Shopping. No store-detail route exists
   // yet, so Shopping is the safest stable target for both local arrival
@@ -254,7 +252,7 @@ export default function RootLayout() {
       const authPaths = ['/welcome', '/sign-in', '/sign-up', '/join', '/verify-email', '/reset-password', '/auth/callback'];
       const inAuthGroup = segments[0] === '(auth)' || authPaths.includes(pathname);
 
-      if (unlocked && inAuthGroup) {
+      if (unlocked && inAuthGroup && pathname !== '/join') {
         router.replace('/(tabs)');
       } else if (!unlocked && !inAuthGroup) {
         if (inviteTrigger) {

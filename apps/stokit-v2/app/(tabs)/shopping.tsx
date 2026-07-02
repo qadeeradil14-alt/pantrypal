@@ -1317,8 +1317,8 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
 // ── 3. Per-store summary ──────────────────────────────────────────────────────
 
 function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubProps) {
-  const router = useRouter();
   const stores = useDurableStore((s) => s.stores);
+  const [showAddStore, setShowAddStore] = useState(false);
   const storeId = currentStoreId(session)!;
   const store   = storeById(storeId);
   const receipt = session.receipts.find((r) => r.storeId === storeId);
@@ -1332,7 +1332,6 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
   const completedAt = receipt?.createdAt ?? Date.now();
   const finishTrip = () => {
     dispatch({ type: 'FINISH_TRIP', now: Date.now() });
-    if (!hasOptions) dispatch({ type: 'END_TRIP' });
   };
 
   return (
@@ -1388,7 +1387,7 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
         />
       ) : null}
 
-      {pending.length === 0 && manualStores.length > 0 ? (
+      {pending.length === 0 ? (
         <View style={{ marginTop: spacing.xl, gap: spacing.sm }}>
           <Text style={ssStyles.nextHintText}>Shopping somewhere else?</Text>
           {manualStores.map((candidate) => (
@@ -1402,6 +1401,16 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
               <Ionicons name="chevron-forward" size={18} color={colors.muted} />
             </Pressable>
           ))}
+          <Pressable
+            onPress={() => setShowAddStore(true)}
+            style={ssStyles.manualStore}
+          >
+            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="add" size={22} color={colors.primary} />
+            </View>
+            <Text style={ssStyles.manualStoreName}>Add a new store</Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+          </Pressable>
         </View>
       ) : null}
 
@@ -1411,6 +1420,20 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
         onPress={finishTrip}
         style={{ marginTop: spacing.md }}
       />
+      <Sheet
+        visible={showAddStore}
+        title="Add a new store"
+        onClose={() => setShowAddStore(false)}
+      >
+        <AddStoreContent
+          isActive={showAddStore}
+          onClose={() => setShowAddStore(false)}
+          onStoreAdded={(newStoreId) => {
+            dispatch({ type: 'START_MANUAL_STORE', storeId: newStoreId });
+            setShowAddStore(false);
+          }}
+        />
+      </Sheet>
       <CancelTripLink dispatch={dispatch} colors={colors} />
     </Screen>
   );

@@ -143,7 +143,11 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     // Commit to durable state exactly once when trip_summary is reached.
     if (next.status === 'trip_summary' && prev.status !== 'trip_summary' && next.completedTrip) {
       durable.commitTrip(next.completedTrip, next.receipts);
-      durable.clearShoppingEntries(next.entries);
+      durable.clearShoppingEntries(next.entries.filter((e) => e.picked));
+      const skippedSet = new Set(next.skippedStoreIds);
+      next.entries
+        .filter((e) => !e.picked && skippedSet.has(e.storeId))
+        .forEach((e) => durable.updateItem(e.itemId, { storeId: null }));
     }
 
     set({ session: next });

@@ -1,4 +1,4 @@
-import React, { useDeferredValue, useMemo, useRef, useState } from 'react';
+import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Sheet } from '../shared/Sheet';
@@ -74,9 +74,13 @@ export function AddItemSheet({
     setBulkStoreId(defaultStoreId);
     setDraftQuantity(1);
     setShowCatalog(false);
+  };
+
+  useEffect(() => {
+    if (!visible) return;
     setIsCommitting(false);
     committingRef.current = false;
-  };
+  }, [visible]);
 
   const commitItems = (chosen: SelectedItem[]) => {
     if (!chosen.length || committingRef.current) return;
@@ -222,9 +226,7 @@ export function AddItemSheet({
           placeholderTextColor={colors.muted}
           style={styles.itemInput}
           returnKeyType="done"
-          onSubmitEditing={() => {
-            if (!selectedItems.length) submitDraftItem();
-          }}
+          onSubmitEditing={addCustomItem}
         />
       </View>
 
