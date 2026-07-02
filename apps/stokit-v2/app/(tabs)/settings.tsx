@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, Platform, StyleSheet, Switch, Text, TextInput, View, useColorScheme } from 'react-native';
 import Constants from 'expo-constants';
+import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../../components/shared/Screen';
@@ -396,7 +397,10 @@ export default function SettingsScreen() {
               returnKeyType="done"
               onSubmitEditing={() => {
                 const t = draftName.trim();
-                if (t) void renameMe(t);
+                if (t) {
+                  void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                  void renameMe(t);
+                }
                 setRenameVisible(false);
               }}
             />
@@ -407,7 +411,10 @@ export default function SettingsScreen() {
               <Pressable
                 onPress={() => {
                   const t = draftName.trim();
-                  if (t) void renameMe(t);
+                  if (t) {
+                    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                    void renameMe(t);
+                  }
                   setRenameVisible(false);
                 }}
                 style={styles.renameSaveBtn}
@@ -426,7 +433,10 @@ export default function SettingsScreen() {
                 'This is how others in your household see you.',
                 (value) => {
                   const trimmed = (value ?? '').trim();
-                  if (trimmed) void renameMe(trimmed);
+                  if (trimmed) {
+                    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                    void renameMe(trimmed);
+                  }
                 },
                 'plain-text',
                 myDisplayName,

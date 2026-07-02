@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { Alert, Pressable, StyleSheet, Text, View, Image, Linking, Platform, ActionSheetIOS, LayoutAnimation } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../../components/shared/Screen';
 import { Card, PageTitle, StoreChip } from '../../components/shared/ui';
@@ -44,6 +45,7 @@ function EditStoreSheet({
 
   const submit = () => {
     if (!store || !name.trim()) return;
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     updateStore(store.id, { name: name.trim(), logoColor: color, logoEmoji: emoji });
     onClose();
   };
@@ -177,6 +179,7 @@ export default function StoresScreen() {
           text: 'Remove',
           style: 'destructive',
           onPress: () => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
             deleteStore(store.id);
           },

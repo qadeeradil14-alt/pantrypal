@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View, ScrollView } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View, ScrollView, TextInput } from 'react-native';
 import * as Location from 'expo-location';
+import * as Haptics from 'expo-haptics';
 import { Sheet } from '../shared/Sheet';
 import { TextField, FieldLabel } from '../shared/Field';
 import { Button } from '../shared/ui';
@@ -45,6 +46,7 @@ export function AddStoreContent({
   const [zip, setZip]     = useState('');
   const [color, setColor] = useState(LOGO_COLORS[1]);
   const [emoji, setEmoji] = useState<string | undefined>(undefined);
+  const zipRef = useRef<TextInput>(null);
 
   const [placeId, setPlaceId]  = useState<string | undefined>(undefined);
   const [address, setAddress]  = useState<string | undefined>(undefined);
@@ -194,6 +196,7 @@ export function AddStoreContent({
 
   const submit = () => {
     if (!name.trim()) return;
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     const store = addStore({
       name: name.trim(),
@@ -234,15 +237,21 @@ export function AddStoreContent({
         value={name}
         onChangeText={handleNameChange}
         placeholder="Type to search (e.g. Lidl, Target…)"
+        returnKeyType="next"
+        onSubmitEditing={() => zipRef.current?.focus()}
+        blurOnSubmit={false}
       />
 
       <View style={{ height: spacing.sm }} />
 
       <TextField
+        ref={zipRef}
         label="City or Zip Code (optional)"
         value={zip}
         onChangeText={handleZipChange}
         placeholder="Search in a different area..."
+        returnKeyType="done"
+        onSubmitEditing={() => submit()}
       />
 
       <View style={{ height: spacing.sm }} />

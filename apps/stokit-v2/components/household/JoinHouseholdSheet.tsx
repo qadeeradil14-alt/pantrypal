@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useState, useRef } from 'react';
+import { StyleSheet, Text, View, TextInput } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { Sheet } from '../shared/Sheet';
 import { TextField } from '../shared/Field';
@@ -23,6 +24,7 @@ export function JoinHouseholdSheet({
   const [myName, setMyName] = useState('');
   const [error, setError] = useState('');
   const [joining, setJoining] = useState(false);
+  const nameRef = useRef<TextInput>(null);
 
   const validCode = normalizeInviteCode(code);
 
@@ -44,6 +46,7 @@ export function JoinHouseholdSheet({
       setError(result.message ?? 'This person is already in your household.');
       return;
     }
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setCode('');
     setMyName('');
     onClose();
@@ -69,12 +72,18 @@ export function JoinHouseholdSheet({
         autoFocus
         autoCapitalize="characters"
         autoCorrect={false}
+        returnKeyType="next"
+        onSubmitEditing={() => nameRef.current?.focus()}
+        blurOnSubmit={false}
       />
       <TextField
+        ref={nameRef}
         label="Your name (shown to members)"
         value={myName}
         onChangeText={setMyName}
         placeholder="e.g. Alex"
+        returnKeyType="done"
+        onSubmitEditing={() => validCode && !joining && submit()}
       />
 
       {error ? (

@@ -14,6 +14,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Haptics from 'expo-haptics';
 import { Logo } from '../../components/shared/Logo';
 import { EmptyState } from '../../components/shared/EmptyState';
 import { AddItemSheet } from '../../components/pantry/AddItemSheet';
@@ -104,6 +105,8 @@ export default function PantryScreen() {
   }, [query, itemNameSet]);
 
   const handleAddFromCatalog = (catalogItem: PantryCatalogItem) => {
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     addItem({ name: catalogItem.name, quantity: 1, unit: catalogItem.defaultUnit, storeId: null, status: 'low' });
     setSearchQuery('');
     Keyboard.dismiss();
@@ -111,6 +114,7 @@ export default function PantryScreen() {
 
   const handleAddCustom = () => {
     if (!searchQuery.trim()) return;
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     addItem({ name: searchQuery.trim(), quantity: 1, unit: 'unit', storeId: null, status: 'low' });
     setSearchQuery('');
@@ -118,11 +122,13 @@ export default function PantryScreen() {
   };
 
   const animatedSetStatus = (id: string, status: 'stocked' | 'low') => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setItemStatus(id, status);
   };
 
   const animatedDelete = (id: string) => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     deleteItem(id);
   };
