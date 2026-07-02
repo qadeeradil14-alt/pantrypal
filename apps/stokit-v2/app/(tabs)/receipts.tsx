@@ -164,7 +164,7 @@ function makeStyles(colors: AppColors) {
     tripRight: { alignItems: 'flex-end', gap: 4 },
     tripTotal: { fontFamily: fonts.monoMedium, fontSize: 18, color: colors.primary, fontVariant: ['tabular-nums'] },
     tripChevron: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-    totalCard: { alignItems: 'center', paddingVertical: spacing.xl },
+    totalCard: { alignItems: 'center', paddingVertical: spacing.xl, backgroundColor: colors.surfaceRaised, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.borderSoft },
     totalValue: { fontFamily: fonts.mono, fontSize: 44, color: colors.primary, fontVariant: ['tabular-nums'] },
     totalLabel: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
     row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
