@@ -315,7 +315,13 @@ export async function sendHouseholdShoppingAlert(
     });
     const { data, error } = response;
 
-    if (error) return { ok: false, sent: 0, result: `failed:${error.message}` };
+    if (error) {
+      const errMessage = error.message || '';
+      if (errMessage.includes('no_recipients') || errMessage.includes('No household recipients') || errMessage.includes('No other members')) {
+        return { ok: true, sent: 0, result: 'no_tokens' };
+      }
+      return { ok: false, sent: 0, result: `failed:${errMessage}` };
+    }
     const sent = (data as { sent?: number } | null)?.sent ?? 0;
     return { ok: true, sent, result: sent > 0 ? 'sent' : 'no_tokens' };
   } catch (err) {

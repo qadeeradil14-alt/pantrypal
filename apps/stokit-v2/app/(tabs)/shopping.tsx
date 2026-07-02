@@ -610,17 +610,6 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
     }).start();
   }, [picked, entries.length]);
 
-  const groupedEntries = useMemo(() => {
-    const groups = new Map<string, typeof entries>();
-    for (const e of entries) {
-      const cat = categoryLabel(classifyItem(e.name).category);
-      const list = groups.get(cat) ?? [];
-      list.push(e);
-      groups.set(cat, list);
-    }
-    return Array.from(groups.entries()).map(([title, data]) => ({ title, data })).sort((a, b) => a.title.localeCompare(b.title));
-  }, [entries]);
-
   return (
     <Screen>
       <PageTitle eyebrow={total > 1 ? `Stop ${stepNo} of ${total}` : (storeById(storeId)?.name ? `At ${storeById(storeId)!.name}` : undefined)} title="Shopping" />
@@ -644,12 +633,9 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
         </View>
       </Card>
 
-      {groupedEntries.map((group) => (
-        <View key={group.title}>
-          <SectionHeader title={group.title} />
-          <Card style={{ paddingVertical: spacing.xs, marginBottom: spacing.md }}>
-            {group.data.map((e, idx) => (
-              <View key={e.itemId}>
+      <Card style={{ paddingVertical: spacing.xs, marginBottom: spacing.md }}>
+        {entries.map((e, idx) => (
+          <View key={e.itemId}>
                 {idx > 0 && <View style={styles.rowDivider} />}
                 <Pressable
                   style={[styles.pickRow, e.outOfStock && { opacity: 0.5 }]}
@@ -733,13 +719,11 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                     <Text style={styles.planMeta}>×{e.quantity}</Text>
                   )}
                 </Pressable>
-              </View>
-            ))}
-          </Card>
-        </View>
-      ))}
+          </View>
+        ))}
+      </Card>
       
-      {groupedEntries.length === 0 && (
+      {entries.length === 0 && (
          <Card style={{ paddingVertical: spacing.lg, alignItems: 'center' }}>
             <Text style={{ fontFamily: fonts.sans, fontSize: 14, color: colors.muted, textAlign: 'center', marginBottom: spacing.md }}>
                No items planned for this store.
@@ -748,7 +732,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
          </Card>
       )}
 
-      {groupedEntries.length > 0 && (
+      {entries.length > 0 && (
           <Button label="+ Add more" variant="subtle" onPress={() => setAddSheetVisible(true)} style={{ marginTop: spacing.md }} />
       )}
 

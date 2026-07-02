@@ -202,6 +202,13 @@ export const useHouseholdStore = create<HouseholdState>((set, get) => ({
       await applyPayload(payload, set);
       if (alreadyMember) return { ok: true, alreadyMember: true, message: ALREADY_IN_HOUSEHOLD_MESSAGE };
       await reloadSharedState();
+      
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { registerPushToken } = await import('../core/services/notifications');
+        await registerPushToken(user.id);
+      }
+
       return { ok: true };
     } catch (error) {
       set({ syncStatus: 'error' });
