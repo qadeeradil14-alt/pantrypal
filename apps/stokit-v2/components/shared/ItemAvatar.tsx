@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, Image } from 'react-native';
 import { useTheme } from '../../hooks/useTheme';
-import { PANTRY_CATALOG } from '../../constants/pantryCatalog';
+import { PANTRY_CATALOG, type PantryCatalogItem } from '../../constants/pantryCatalog';
 import { getCategoryColors } from '../../theme/categoryPalette';
 
 const CUSTOM_EMOJIS: Record<string, any> = {
@@ -52,6 +52,22 @@ const ITEM_ICON: Record<string, string> = {
   'protein powder': '💪', 'band aid': '🩹', 'bandaids': '🩹',
   'batteries': '🔋', 'light bulbs': '💡', 'candle': '🕯️',
   'air freshener': '🌸', 'matches': '🔥',
+
+  // Common items with no dedicated catalog entry — closest safe existing icon
+  'pepper': '🌶️', 'beef': '🥩', 'fish': '🐟', 'cream': '🫗',
+  'berries': '🍓', 'soap': '🧼', 'bar soap': '🧼', 'foil': '🌀',
+  'detergent': 'custom:laundry_detergent',
+  'stock cube': '🍲', 'bouillon': '🍲', 'bouillon cube': '🍲',
+  'mayo': '🍳',
+
+  // Mission-required aliases/synonyms (targets already covered by the
+  // catalog or the entries above — only the synonym itself is new here)
+  'capsicum': '🫑',
+  'coriander': '🌿',
+  'scallion': '🧅', 'green onion': '🧅',
+  'minced beef': '🥩',
+  'soft drink': '🥤',
+  'kitchen towel': '🧻',
 };
 
 // Safe per-category fallback — guarantees no blank box
@@ -63,6 +79,36 @@ const CATEGORY_ICON: Record<string, string> = {
   'Baby': '👶', 'Pet': '🐾', 'Other': '🛒',
 };
 
+// Lowercase, trim, collapse whitespace, and strip simple punctuation before
+// any lookup — keeps matching resilient to how a name was typed.
+function normalizeForIcon(raw: string): string {
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/[.,!?;:"'’]/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+// Tries an exact match first, then tolerates a simple trailing-"s" plural
+// mismatch in either direction (input vs. stored key) without ever mangling
+// words that merely end in "s" but aren't plural (e.g. "hummus").
+function lookupTolerant<T>(map: Record<string, T>, normalized: string): T | undefined {
+  if (map[normalized] !== undefined) return map[normalized];
+  if (normalized.length > 4 && normalized.endsWith('s') && !normalized.endsWith('ss')) {
+    const singular = normalized.slice(0, -1);
+    if (map[singular] !== undefined) return map[singular];
+  }
+  const plural = `${normalized}s`;
+  if (map[plural] !== undefined) return map[plural];
+  return undefined;
+}
+
+const CATALOG_BY_NAME: Record<string, PantryCatalogItem> = {};
+for (const item of PANTRY_CATALOG) {
+  const key = normalizeForIcon(item.name);
+  if (CATALOG_BY_NAME[key] === undefined) CATALOG_BY_NAME[key] = item;
+}
+
 interface ItemAvatarProps {
   name: string;
   size?: number;
@@ -72,19 +118,17 @@ interface ItemAvatarProps {
 export function ItemAvatar({ name, size = 44, icon }: ItemAvatarProps) {
   const { isDark } = useTheme();
 
-  const catalogItem = PANTRY_CATALOG.find((i) => i.name.toLowerCase() === name.toLowerCase());
+  const normalized = normalizeForIcon(name);
+  const catalogItem = lookupTolerant(CATALOG_BY_NAME, normalized);
   const category = catalogItem?.category ?? 'Other';
   const categoryTheme = getCategoryColors(category, isDark);
 
-  // Box-proof resolution chain — '🛒' is the final guarantee
-  const iconStr: string =
-    icon ||
-    (catalogItem?.icon || undefined) ||
-    ITEM_ICON[name.toLowerCase().trim()] ||
-    CATEGORY_ICON[category] ||
-    '🛒';
+  const matchedIcon = icon || catalogItem?.icon || lookupTolerant(ITEM_ICON, normalized);
 
-  const isCustom = iconStr.startsWith('custom:');
+  // Box-proof resolution chain: specific icon > category emoji > final
+  // '🛒' guarantee. Never renders blank space.
+  const isCustom = !!matchedIcon && matchedIcon.startsWith('custom:');
+  const emoji = isCustom ? undefined : matchedIcon || CATEGORY_ICON[category] || '🛒';
 
   return (
     <View
@@ -101,13 +145,13 @@ export function ItemAvatar({ name, size = 44, icon }: ItemAvatarProps) {
     >
       {isCustom ? (
         <Image
-          source={CUSTOM_EMOJIS[iconStr]}
+          source={CUSTOM_EMOJIS[matchedIcon as string]}
           style={{ width: size * 0.7, height: size * 0.7 }}
           resizeMode="contain"
         />
       ) : (
         <Text style={[styles.emoji, { fontSize: size * 0.55 }]}>
-          {iconStr}
+          {emoji}
         </Text>
       )}
     </View>

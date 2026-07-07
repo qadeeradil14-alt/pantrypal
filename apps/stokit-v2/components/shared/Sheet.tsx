@@ -47,7 +47,9 @@ export function Sheet({
           <SafeAreaView edges={['bottom']} style={[styles.sheet, minHeight ? { minHeight } : null]}>
             <View style={styles.handle} />
             <View style={styles.header}>
-              <Text style={styles.title}>{title}</Text>
+              <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">
+                {title}
+              </Text>
               <Pressable onPress={onClose} hitSlop={16} style={styles.close}>
                 <Ionicons name="close" size={20} color={colors.muted} />
               </Pressable>
@@ -96,8 +98,9 @@ function makeStyles(colors: AppColors) {
       marginBottom: spacing.lg,
       zIndex: 1,
     },
-    title: { fontFamily: fonts.serifItalic, fontSize: 24, color: colors.ink },
+    title: { flex: 1, marginRight: spacing.sm, fontFamily: fonts.serifItalic, fontSize: 24, color: colors.ink },
     close: {
+      flexShrink: 0,
       width: 32,
       height: 32,
       borderRadius: 16,
