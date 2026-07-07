@@ -5,7 +5,7 @@ import { Sheet } from '../shared/Sheet';
 import { Button } from '../shared/ui';
 import { fonts, spacing, radii, type AppColors } from '../../theme';
 import { useTheme } from '../../hooks/useTheme';
-import type { RecipeSuggestion } from '../../core/services/recipes';
+import { parseInstructionSteps, type RecipeSuggestion } from '../../core/services/recipes';
 
 interface Props {
   recipe: RecipeSuggestion | null;
@@ -25,13 +25,7 @@ function RecipeDetailContent({ recipe, onClose, onAddMissing }: { recipe: Recipe
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
 
-  const steps = useMemo(() => {
-    if (!recipe.instructions) return [];
-    return recipe.instructions
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0);
-  }, [recipe.instructions]);
+  const steps = useMemo(() => parseInstructionSteps(recipe.instructions ?? ''), [recipe.instructions]);
 
   const missing = recipe.missingIngredients;
 

@@ -45,13 +45,27 @@ function isSafeYoutubeUrl(url: string): boolean {
   }
 }
 
-function cleanInstructions(instructions: string, title: string): string {
-  const cleaned = instructions
+// "1", "2.", "3)", "Step 4:" alone on a line — numbering noise, not a cooking step
+const NUMBERING_ONLY = /^(?:step\s*\d+|\d+)\s*[.:)-]?$/i;
+// Leading "1. ", "2) ", "Step 3: " prefix; (?=\D) keeps "1.5 cups" intact
+const NUMBERING_PREFIX = /^(?:step\s*\d+|\d+)\s*[.:)-]\s*(?=\D)/i;
+
+/** Splits instruction text into clean steps: numbering noise removed, prefixes stripped. UI renders its own step numbers. */
+export function parseInstructionSteps(instructions: string): string[] {
+  if (!instructions) return [];
+  return instructions
     .replace(/\r\n/g, '\n')
     .split(/\n+|(?<=[.!?])\s+(?=[A-Z0-9])/)
-    .map((step) => step.trim())
-    .filter(Boolean)
-    .join('\n');
+    .map((step) => {
+      let s = step.trim();
+      while (NUMBERING_PREFIX.test(s)) s = s.replace(NUMBERING_PREFIX, '').trim();
+      return s;
+    })
+    .filter((s) => s.length > 0 && !NUMBERING_ONLY.test(s));
+}
+
+function cleanInstructions(instructions: string, title: string): string {
+  const cleaned = parseInstructionSteps(instructions).join('\n');
 
   return cleaned || [
     `Prep the ingredients for ${title}.`,
