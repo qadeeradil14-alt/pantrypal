@@ -6,9 +6,18 @@ audit, Visual QA pass) into one canonical checklist for Asset Pack v1. See
 `constants/itemAssetResolver.ts` / `scripts/generate-asset-map.ts` for the
 pipeline that consumes this list.
 
-Adding an asset: drop a 1024×1024 transparent PNG in `assets/item-icons/`
-named `<key>.png` (see naming convention below), run `npm run assets:generate`,
-flip the row's Status to Done. No other code changes required.
+Adding an asset: (1) drop a 1024×1024 transparent PNG in `assets/item-icons/`
+named `<key>.png` (see naming convention below), (2) run `npm run
+assets:generate`, (3) update that item's hardcoded icon field in
+`constants/pantryCatalog.ts` (or the `ITEM_ICON` table in
+`constants/itemAssetResolver.ts` for free-text-only items) from its current
+value to `custom:<key>` — this is the same one-line data edit every one of
+the 17 already-shipped custom assets required, not a resolver code change.
+Do step 3 only after steps 1-2 are done: flipping the icon field before the
+PNG exists swaps today's neutral `mdi:package-variant-closed` box for a
+broken-image placeholder glyph, which is a worse interim state. Then flip
+the row's Status to Done. No `itemAssetResolver.ts`/`generatedAssetMap.ts`
+hand-edits are ever required — the codegen switch handles that.
 
 **Naming convention:** icon string `custom:<key>`, `<key>` = lowercase snake_case
 of the item name (e.g. `duct_tape`, `vegetable_oil`). Keys must be globally
