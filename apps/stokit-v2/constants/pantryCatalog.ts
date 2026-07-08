@@ -46,12 +46,12 @@ export const PANTRY_CATALOG: PantryCatalogItem[] = [
 
   // Dairy
   item('Dairy', 'Milk', '🥛', 'gal'), item('Dairy', 'Eggs', '🥚', 'dozen'), item('Dairy', 'Cheese', '🧀', 'pack'),
-  item('Dairy', 'Yogurt', '🥣'), item('Dairy', 'Butter', '🧈', 'pack'), item('Dairy', 'Cream cheese', '🧀', 'pack'),
-  item('Dairy', 'Sour cream', '🫙'), item('Dairy', 'Heavy cream', '🫗'), item('Dairy', 'Goat cheese', '🧀', 'pack'),
+  item('Dairy', 'Yogurt', '🥣'), item('Dairy', 'Butter', '🧈', 'pack'), item('Dairy', 'Cream cheese', 'mdi:cheese', 'pack'),
+  item('Dairy', 'Sour cream', '🫙'), item('Dairy', 'Heavy cream', '🫗'), item('Dairy', 'Goat cheese', '🐐', 'pack'),
 
   // Meat
-  item('Meat', 'Chicken', '🍗', 'lb'), item('Meat', 'Ground beef', '🥩', 'lb'), item('Meat', 'Steak', '🥩', 'lb'),
-  item('Meat', 'Lamb', '🥩', 'lb'), item('Meat', 'Turkey', '🦃', 'lb'), item('Meat', 'Sausage', '🌭', 'pack'),
+  item('Meat', 'Chicken', '🍗', 'lb'), item('Meat', 'Ground beef', '🍔', 'lb'), item('Meat', 'Steak', '🥩', 'lb'),
+  item('Meat', 'Lamb', 'mdi:sheep', 'lb'), item('Meat', 'Turkey', '🦃', 'lb'), item('Meat', 'Sausage', '🌭', 'pack'),
   item('Meat', 'Bacon', '🥓', 'pack'),
 
   // Seafood
@@ -61,7 +61,7 @@ export const PANTRY_CATALOG: PantryCatalogItem[] = [
 
   // Bakery
   item('Bakery', 'Bread', '🍞'), item('Bakery', 'Bagels', '🥯', 'pack'), item('Bakery', 'Tortillas', '🫓', 'pack'),
-  item('Bakery', 'Pita bread', '🫓', 'pack'), item('Bakery', 'Croissants', '🥐', 'pack'), item('Bakery', 'Buns', '🍞', 'pack'),
+  item('Bakery', 'Pita bread', 'mdi:baguette', 'pack'), item('Bakery', 'Croissants', '🥐', 'pack'), item('Bakery', 'Buns', 'mdi:bread-slice-outline', 'pack'),
 
   // Frozen
   item('Frozen', 'Frozen vegetables', '🥦', 'pack'), item('Frozen', 'Frozen fruit', '🍓', 'pack'),
@@ -70,7 +70,7 @@ export const PANTRY_CATALOG: PantryCatalogItem[] = [
   // Dry Goods
   item('Dry Goods', 'Pasta', '🍝', 'box'), item('Dry Goods', 'Rice', '🍚', 'pack'), item('Dry Goods', 'Oats', '🌾', 'box'),
   item('Dry Goods', 'Flour', '🥞', 'pack'), item('Dry Goods', 'Sugar', '🧁', 'pack'), item('Dry Goods', 'Cereal', '🥣', 'box'),
-  item('Dry Goods', 'Lentils', '🫘', 'lb'), item('Dry Goods', 'Beans', '🫘', 'lb'), item('Dry Goods', 'Chickpeas', '🫘', 'lb'),
+  item('Dry Goods', 'Lentils', 'mdi:grain', 'lb'), item('Dry Goods', 'Beans', '🫘', 'lb'), item('Dry Goods', 'Chickpeas', 'mdi:seed-outline', 'lb'),
   item('Dry Goods', 'Quinoa', '🍙', 'lb'),
 
   // Canned
@@ -101,7 +101,7 @@ export const PANTRY_CATALOG: PantryCatalogItem[] = [
   // Kitchen
   item('Kitchen', 'Plates', '🍽️', 'pack'), item('Kitchen', 'Bowls', '🍜', 'pack'), item('Kitchen', 'Cups', '🥤', 'pack'),
   item('Kitchen', 'Mugs', '🫖'), item('Kitchen', 'Forks', '🍴', 'pack'), item('Kitchen', 'Spoons', '🥄', 'pack'),
-  item('Kitchen', 'Knives', '🔪', 'pack'), item('Kitchen', 'Napkins', '🧻', 'pack'), item('Kitchen', 'Food containers', '🥡', 'pack'),
+  item('Kitchen', 'Knives', '🔪', 'pack'), item('Kitchen', 'Food containers', '🥡', 'pack'),
   item('Kitchen', 'Aluminum foil', '🌀', 'box'), item('Kitchen', 'Plastic wrap', '🎁', 'box'),
   item('Kitchen', 'Zip bags', '🛍️', 'box'), item('Kitchen', 'Cutting board', '🪵'), item('Kitchen', 'Sponges', '🧽', 'pack'),
 
@@ -110,12 +110,11 @@ export const PANTRY_CATALOG: PantryCatalogItem[] = [
   item('Cleaning', 'Fabric softener', 'custom:fabric_softener'), item('Cleaning', 'Bleach', 'custom:bleach'), item('Cleaning', 'All-purpose cleaner', 'custom:all_purpose_cleaner'),
   item('Cleaning', 'Glass cleaner', 'custom:glass_cleaner'), item('Cleaning', 'Disinfecting wipes', 'custom:wipes'),
   item('Cleaning', 'Trash bags', 'custom:trash_bags'), item('Cleaning', 'Broom', '🧹'), item('Cleaning', 'Mop', '🪣'),
-  item('Cleaning', 'Paper towels', '🧻', 'pack'),
 
   // Paper Goods
-  item('Paper Goods', 'Toilet paper', '🧻', 'pack'), item('Paper Goods', 'Paper towels', '🧻', 'pack'),
-  item('Paper Goods', 'Tissues', '🤧', 'box'), item('Paper Goods', 'Napkins', '🧻', 'pack'),
-  item('Paper Goods', 'Paper plates', '🍽️', 'pack'), item('Paper Goods', 'Paper cups', '🧃', 'pack'),
+  item('Paper Goods', 'Toilet paper', '🧻', 'pack'), item('Paper Goods', 'Paper towels', 'mdi:paper-roll', 'pack'),
+  item('Paper Goods', 'Tissues', 'mdi:box', 'box'), item('Paper Goods', 'Napkins', 'mdi:square-rounded-outline', 'pack'),
+  item('Paper Goods', 'Paper plates', 'mdi:circle-outline', 'pack'), item('Paper Goods', 'Paper cups', 'mdi:cup-outline', 'pack'),
 
   // Personal Care
   item('Personal Care', 'Toothpaste', 'custom:toothpaste'), item('Personal Care', 'Toothbrush', '🪥'),
@@ -125,7 +124,7 @@ export const PANTRY_CATALOG: PantryCatalogItem[] = [
   item('Personal Care', 'Shaving cream', '🧴'), item('Personal Care', 'Feminine care', '🌸', 'pack'),
 
   // Baby
-  item('Baby', 'Diapers', '👶', 'pack'), item('Baby', 'Baby wipes', '🧼', 'pack'), item('Baby', 'Baby food', '🍼', 'pack'),
+  item('Baby', 'Diapers', '👶', 'pack'), item('Baby', 'Baby wipes', '🧼', 'pack'), item('Baby', 'Baby food', '🥣', 'pack'),
   item('Baby', 'Formula', '🍼'), item('Baby', 'Baby lotion', '🧴'),
 
   // Pet

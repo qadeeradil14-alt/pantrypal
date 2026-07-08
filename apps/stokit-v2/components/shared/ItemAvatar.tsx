@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, Image } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../hooks/useTheme';
 import { PANTRY_CATALOG, type PantryCatalogItem } from '../../constants/pantryCatalog';
 import { getCategoryColors } from '../../theme/categoryPalette';
@@ -128,7 +129,8 @@ export function ItemAvatar({ name, size = 44, icon }: ItemAvatarProps) {
   // Box-proof resolution chain: specific icon > category emoji > final
   // '🛒' guarantee. Never renders blank space.
   const isCustom = !!matchedIcon && matchedIcon.startsWith('custom:');
-  const emoji = isCustom ? undefined : matchedIcon || CATEGORY_ICON[category] || '🛒';
+  const isMdi = !!matchedIcon && matchedIcon.startsWith('mdi:');
+  const emoji = isCustom || isMdi ? undefined : matchedIcon || CATEGORY_ICON[category] || '🛒';
 
   return (
     <View
@@ -148,6 +150,12 @@ export function ItemAvatar({ name, size = 44, icon }: ItemAvatarProps) {
           source={CUSTOM_EMOJIS[matchedIcon as string]}
           style={{ width: size * 0.7, height: size * 0.7 }}
           resizeMode="contain"
+        />
+      ) : isMdi ? (
+        <MaterialCommunityIcons
+          name={(matchedIcon as string).slice(4) as React.ComponentProps<typeof MaterialCommunityIcons>['name']}
+          size={size * 0.55}
+          color={categoryTheme.fg}
         />
       ) : (
         <Text style={[styles.emoji, { fontSize: size * 0.55 }]}>
