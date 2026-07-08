@@ -10,7 +10,8 @@
     "web": "expo start --web",
     "postinstall": "patch-package",
     "test:unit": "tsx --test tests/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "assets:generate": "tsx scripts/generate-asset-map.ts"
   },
   "dependencies": {
     "@expo-google-fonts/dm-mono": "^0.4.2",
