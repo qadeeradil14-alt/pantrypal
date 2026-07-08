@@ -56,10 +56,10 @@ const ITEM_ICON: Record<string, string> = {
 
   // Common items with no dedicated catalog entry — closest safe existing icon
   'pepper': '🌶️', 'beef': '🥩', 'fish': '🐟', 'cream': '🫗',
-  'berries': '🍓', 'soap': '🧼', 'bar soap': '🧼', 'foil': '🌀',
-  'detergent': 'custom:laundry_detergent',
+  'berries': '🍓', 'soap': '🧼', 'bar soap': '🧼',
+  'detergent': 'custom:laundry_detergent', 'foil': 'mdi:paper-roll-outline',
   'stock cube': '🍲', 'bouillon': '🍲', 'bouillon cube': '🍲',
-  'mayo': '🍳',
+  'mayo': '🫙',
 
   // Mission-required aliases/synonyms (targets already covered by the
   // catalog or the entries above — only the synonym itself is new here)
@@ -78,6 +78,7 @@ const CATEGORY_ICON: Record<string, string> = {
   'Spices': '🧂', 'Drinks': '🥤', 'Snacks': '🍿', 'Kitchen': '🍽️',
   'Cleaning': '🧹', 'Paper Goods': '🧻', 'Personal Care': '🧴',
   'Baby': '👶', 'Pet': '🐾', 'Other': '🛒',
+  'Automotive': '🚗', 'Hardware': '🧰', 'Health': '💊', 'Office': '🗂️',
 };
 
 // Lowercase, trim, collapse whitespace, and strip simple punctuation before

@@ -37,31 +37,31 @@ const item = (
 export const PANTRY_CATALOG: PantryCatalogItem[] = [
   // Produce
   item('Produce', 'Apple', '🍎'), item('Produce', 'Banana', '🍌'), item('Produce', 'Orange', '🍊'),
-  item('Produce', 'Lemon', '🍋'), item('Produce', 'Lime', '🍈'), item('Produce', 'Grapes', '🍇', 'lb'),
+  item('Produce', 'Lemon', '🍋'), item('Produce', 'Lime', 'mdi:fruit-citrus'), item('Produce', 'Grapes', '🍇', 'lb'),
   item('Produce', 'Strawberry', '🍓', 'pack'), item('Produce', 'Blueberry', '🫐', 'pack'), item('Produce', 'Watermelon', '🍉'),
   item('Produce', 'Tomato', '🍅'), item('Produce', 'Onion', '🧅'), item('Produce', 'Garlic', '🧄'),
   item('Produce', 'Potato', '🥔'), item('Produce', 'Carrot', '🥕', 'lb'), item('Produce', 'Broccoli', '🥦'),
-  item('Produce', 'Lettuce', '🥬'), item('Produce', 'Spinach', '🌿', 'pack'), item('Produce', 'Cucumber', '🥒'),
+  item('Produce', 'Lettuce', '🥬'), item('Produce', 'Spinach', '🥬', 'pack'), item('Produce', 'Cucumber', '🥒'),
   item('Produce', 'Bell pepper', '🫑'), item('Produce', 'Avocado', '🥑'),
 
   // Dairy
   item('Dairy', 'Milk', '🥛', 'gal'), item('Dairy', 'Eggs', '🥚', 'dozen'), item('Dairy', 'Cheese', '🧀', 'pack'),
   item('Dairy', 'Yogurt', '🥣'), item('Dairy', 'Butter', '🧈', 'pack'), item('Dairy', 'Cream cheese', 'mdi:cheese', 'pack'),
-  item('Dairy', 'Sour cream', '🫙'), item('Dairy', 'Heavy cream', '🫗'), item('Dairy', 'Goat cheese', '🐐', 'pack'),
+  item('Dairy', 'Sour cream', '🫙'), item('Dairy', 'Heavy cream', '🫗'), item('Dairy', 'Goat cheese', 'mdi:cheese', 'pack'),
 
   // Meat
-  item('Meat', 'Chicken', '🍗', 'lb'), item('Meat', 'Ground beef', '🍔', 'lb'), item('Meat', 'Steak', '🥩', 'lb'),
+  item('Meat', 'Chicken', '🍗', 'lb'), item('Meat', 'Ground beef', '🥩', 'lb'), item('Meat', 'Steak', '🥩', 'lb'),
   item('Meat', 'Lamb', 'mdi:sheep', 'lb'), item('Meat', 'Turkey', '🦃', 'lb'), item('Meat', 'Sausage', '🌭', 'pack'),
   item('Meat', 'Bacon', '🥓', 'pack'),
 
   // Seafood
-  item('Seafood', 'Salmon', '🍣', 'lb'), item('Seafood', 'Shrimp', '🦐', 'lb'),
-  item('Seafood', 'Tuna', '🐡', 'lb'), item('Seafood', 'Cod', '🐠', 'lb'),
+  item('Seafood', 'Salmon', 'mdi:fish', 'lb'), item('Seafood', 'Shrimp', '🦐', 'lb'),
+  item('Seafood', 'Tuna', '🐟', 'lb'), item('Seafood', 'Cod', '🐠', 'lb'),
   item('Seafood', 'Crab', '🦀', 'lb'), item('Seafood', 'Lobster', '🦞', 'lb'),
 
   // Bakery
   item('Bakery', 'Bread', '🍞'), item('Bakery', 'Bagels', '🥯', 'pack'), item('Bakery', 'Tortillas', '🫓', 'pack'),
-  item('Bakery', 'Pita bread', 'mdi:baguette', 'pack'), item('Bakery', 'Croissants', '🥐', 'pack'), item('Bakery', 'Buns', 'mdi:bread-slice-outline', 'pack'),
+  item('Bakery', 'Pita bread', '🫓', 'pack'), item('Bakery', 'Croissants', '🥐', 'pack'), item('Bakery', 'Buns', 'mdi:bread-slice-outline', 'pack'),
 
   // Frozen
   item('Frozen', 'Frozen vegetables', '🥦', 'pack'), item('Frozen', 'Frozen fruit', '🍓', 'pack'),
@@ -69,9 +69,9 @@ export const PANTRY_CATALOG: PantryCatalogItem[] = [
 
   // Dry Goods
   item('Dry Goods', 'Pasta', '🍝', 'box'), item('Dry Goods', 'Rice', '🍚', 'pack'), item('Dry Goods', 'Oats', '🌾', 'box'),
-  item('Dry Goods', 'Flour', '🥞', 'pack'), item('Dry Goods', 'Sugar', '🧁', 'pack'), item('Dry Goods', 'Cereal', '🥣', 'box'),
+  item('Dry Goods', 'Flour', 'mdi:sack-outline', 'pack'), item('Dry Goods', 'Sugar', 'mdi:spoon-sugar', 'pack'), item('Dry Goods', 'Cereal', 'mdi:bowl-mix-outline', 'box'),
   item('Dry Goods', 'Lentils', 'mdi:grain', 'lb'), item('Dry Goods', 'Beans', '🫘', 'lb'), item('Dry Goods', 'Chickpeas', 'mdi:seed-outline', 'lb'),
-  item('Dry Goods', 'Quinoa', '🍙', 'lb'),
+  item('Dry Goods', 'Quinoa', 'mdi:grain', 'lb'),
 
   // Canned
   item('Canned', 'Canned tomatoes', '🍅', 'can'), item('Canned', 'Tomato sauce', '🫙', 'can'),
@@ -80,12 +80,12 @@ export const PANTRY_CATALOG: PantryCatalogItem[] = [
   item('Canned', 'Peanut butter', '🥜'),
 
   // Spices & Condiments
-  item('Spices', 'Salt', '🧂'), item('Spices', 'Black pepper', '🌶️'), item('Spices', 'Olive oil', '🫒'),
-  item('Spices', 'Vegetable oil', '🫚'), item('Spices', 'Vinegar', '🍾'), item('Spices', 'Soy sauce', '🥢'),
+  item('Spices', 'Salt', '🧂'), item('Spices', 'Black pepper', '🧂'), item('Spices', 'Olive oil', '🫒'),
+  item('Spices', 'Vegetable oil', '🛢️'), item('Spices', 'Vinegar', '🍾'), item('Spices', 'Soy sauce', '🫙'),
   item('Spices', 'Ketchup', 'custom:ketchup'), item('Spices', 'Mustard', 'custom:mustard'),
-  item('Spices', 'Mayonnaise', '🍳'), item('Spices', 'Hot sauce', '🔥'), item('Spices', 'Honey', '🍯'),
-  item('Spices', 'Cinnamon', '🍂'), item('Spices', 'Cumin', '🌱'), item('Spices', 'Paprika', '🫑'),
-  item('Spices', 'Turmeric', '🌼'),
+  item('Spices', 'Mayonnaise', '🫙'), item('Spices', 'Hot sauce', '🌶️'), item('Spices', 'Honey', '🍯'),
+  item('Spices', 'Cinnamon', '🧂'), item('Spices', 'Cumin', '🧂'), item('Spices', 'Paprika', '🫑'),
+  item('Spices', 'Turmeric', '🧂'),
 
   // Drinks
   item('Drinks', 'Water', '💧', 'pack'), item('Drinks', 'Juice', '🧃'), item('Drinks', 'Soda', '🥤', 'pack'),
@@ -99,10 +99,10 @@ export const PANTRY_CATALOG: PantryCatalogItem[] = [
   item('Snacks', 'Dates', '🌴', 'pack'), item('Snacks', 'Granola bars', '🌾', 'box'),
 
   // Kitchen
-  item('Kitchen', 'Plates', '🍽️', 'pack'), item('Kitchen', 'Bowls', '🍜', 'pack'), item('Kitchen', 'Cups', '🥤', 'pack'),
-  item('Kitchen', 'Mugs', '🫖'), item('Kitchen', 'Forks', '🍴', 'pack'), item('Kitchen', 'Spoons', '🥄', 'pack'),
+  item('Kitchen', 'Plates', '🍽️', 'pack'), item('Kitchen', 'Bowls', 'mdi:bowl-outline', 'pack'), item('Kitchen', 'Cups', 'mdi:cup-outline', 'pack'),
+  item('Kitchen', 'Mugs', 'mdi:coffee-outline'), item('Kitchen', 'Forks', 'mdi:silverware-fork', 'pack'), item('Kitchen', 'Spoons', '🥄', 'pack'),
   item('Kitchen', 'Knives', '🔪', 'pack'), item('Kitchen', 'Food containers', '🥡', 'pack'),
-  item('Kitchen', 'Aluminum foil', '🌀', 'box'), item('Kitchen', 'Plastic wrap', '🎁', 'box'),
+  item('Kitchen', 'Aluminum foil', 'mdi:paper-roll-outline', 'box'), item('Kitchen', 'Plastic wrap', 'mdi:paper-roll', 'box'),
   item('Kitchen', 'Zip bags', '🛍️', 'box'), item('Kitchen', 'Cutting board', '🪵'), item('Kitchen', 'Sponges', '🧽', 'pack'),
 
   // Cleaning
@@ -124,34 +124,34 @@ export const PANTRY_CATALOG: PantryCatalogItem[] = [
   item('Personal Care', 'Shaving cream', '🧴'), item('Personal Care', 'Feminine care', '🌸', 'pack'),
 
   // Baby
-  item('Baby', 'Diapers', '👶', 'pack'), item('Baby', 'Baby wipes', '🧼', 'pack'), item('Baby', 'Baby food', '🥣', 'pack'),
+  item('Baby', 'Diapers', '👶', 'pack'), item('Baby', 'Baby wipes', 'custom:wipes', 'pack'), item('Baby', 'Baby food', '🥣', 'pack'),
   item('Baby', 'Formula', '🍼'), item('Baby', 'Baby lotion', '🧴'),
 
   // Pet
   item('Pet', 'Dog food', '🐶', 'pack'), item('Pet', 'Cat food', '🐱', 'pack'), item('Pet', 'Pet treats', '🦴', 'pack'),
-  item('Pet', 'Litter', '🐈', 'pack'),
+  item('Pet', 'Litter', '🐾', 'pack'),
 
   // Automotive
-  item('Automotive', 'Motor oil', '🛢️'), item('Automotive', 'Wiper fluid', '🌧️'), item('Automotive', 'Car wash soap', '🚗'),
-  item('Automotive', 'Air freshener', '🌺'), item('Automotive', 'Jumper cables', '⚡'), item('Automotive', 'Car battery', '🪫'),
-  item('Automotive', 'Tire gauge', '🔧'), item('Automotive', 'Car wax', '✨'), item('Automotive', 'Window cleaner', '🪟'),
-  item('Automotive', 'Funnels', '🧪'), item('Automotive', 'Antifreeze', '🧊'), item('Automotive', 'Brake fluid', '💦'),
+  item('Automotive', 'Motor oil', '🛢️'), item('Automotive', 'Wiper fluid', 'mdi:wiper-wash'), item('Automotive', 'Car wash soap', 'mdi:car-wash'),
+  item('Automotive', 'Air freshener', '🌺'), item('Automotive', 'Jumper cables', '⚡'), item('Automotive', 'Car battery', '🔋'),
+  item('Automotive', 'Tire gauge', 'mdi:gauge'), item('Automotive', 'Car wax', '✨'), item('Automotive', 'Window cleaner', 'mdi:spray-bottle'),
+  item('Automotive', 'Funnels', '🚗'), item('Automotive', 'Antifreeze', 'mdi:car-coolant-level'), item('Automotive', 'Brake fluid', 'mdi:car-brake-fluid-level'),
 
   // Hardware
-  item('Hardware', 'Light bulbs', '💡', 'pack'), item('Hardware', 'Batteries', '🔋', 'pack'), item('Hardware', 'Duct tape', '🎀'),
-  item('Hardware', 'Zip ties', '🔗', 'pack'), item('Hardware', 'Extension cord', '🔌'), item('Hardware', 'Screws', '🪛', 'pack'),
-  item('Hardware', 'Measuring tape', '📏'), item('Hardware', 'Paint', '🖌️'), item('Hardware', 'WD-40', '🔩'),
-  item('Hardware', 'Sandpaper', '🪨', 'pack'), item('Hardware', 'Caulk', '💉'), item('Hardware', 'Superglue', '🫙'),
+  item('Hardware', 'Light bulbs', '💡', 'pack'), item('Hardware', 'Batteries', '🔋', 'pack'), item('Hardware', 'Duct tape', '🧰'),
+  item('Hardware', 'Zip ties', '🧰', 'pack'), item('Hardware', 'Extension cord', '🔌'), item('Hardware', 'Screws', 'mdi:screw-round-top', 'pack'),
+  item('Hardware', 'Measuring tape', 'mdi:tape-measure'), item('Hardware', 'Paint', '🖌️'), item('Hardware', 'WD-40', 'mdi:spray'),
+  item('Hardware', 'Sandpaper', '🧰', 'pack'), item('Hardware', 'Caulk', '🧰'), item('Hardware', 'Superglue', '🧰'),
 
   // Health
-  item('Health', 'Vitamins', '💊', 'pack'), item('Health', 'Pain reliever', '🩹'), item('Health', 'Cold medicine', '🌡️'),
-  item('Health', 'Allergy medicine', '🌻'), item('Health', 'Bandages', '➕', 'pack'), item('Health', 'Sunscreen', '☀️'),
-  item('Health', 'Bug spray', '🦟'), item('Health', 'Hand sanitizer', '🤲'), item('Health', 'Antacid', '⚗️'),
-  item('Health', 'Cough drops', '🍭'), item('Health', 'Eye drops', '👁️'), item('Health', 'Thermometer', '🩺'),
+  item('Health', 'Vitamins', '💊', 'pack'), item('Health', 'Pain reliever', 'mdi:medication-outline'), item('Health', 'Cold medicine', '🤧'),
+  item('Health', 'Allergy medicine', 'mdi:allergy'), item('Health', 'Bandages', 'mdi:bandage', 'pack'), item('Health', 'Sunscreen', '☀️'),
+  item('Health', 'Bug spray', '🦟'), item('Health', 'Hand sanitizer', 'mdi:hand-wash-outline'), item('Health', 'Antacid', 'mdi:pill'),
+  item('Health', 'Cough drops', '🍭'), item('Health', 'Eye drops', '👁️'), item('Health', 'Thermometer', '🌡️'),
 
   // Office
   item('Office', 'Pens', '🖊️', 'pack'), item('Office', 'Pencils', '✏️', 'pack'), item('Office', 'Notebooks', '📓'),
   item('Office', 'Printer paper', '📄', 'pack'), item('Office', 'Printer ink', '🖨️'), item('Office', 'Scissors', '✂️'),
-  item('Office', 'Sticky notes', '🗒️', 'pack'), item('Office', 'Staples', '📎', 'pack'), item('Office', 'Tape', '🔖'),
+  item('Office', 'Sticky notes', '🗒️', 'pack'), item('Office', 'Staples', '📎', 'pack'), item('Office', 'Tape', '🖇️'),
   item('Office', 'Folders', '📁', 'pack'), item('Office', 'Markers', '🖍️', 'pack'), item('Office', 'Envelopes', '✉️', 'pack'),
 ];
