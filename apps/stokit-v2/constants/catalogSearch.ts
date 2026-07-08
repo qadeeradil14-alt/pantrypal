@@ -5,6 +5,7 @@ import {
   type PantryCatalogItem,
 } from './pantryCatalog';
 import { classifyItem } from '../core/services/itemClassifier';
+import { resolveItemIconString } from './itemAssetResolver';
 
 export const CATALOG_SEARCH_LIMIT = 48;
 
@@ -61,7 +62,7 @@ const buildCatalog = (): SearchableItem[] => {
   }
   for (const family of FAMILIES) {
     for (const base of family.bases) {
-      const semanticIcon = classifyItem(base).emoji;
+      const semanticIcon = resolveItemIconString(base, classifyItem(base).emoji);
       const names = [
         base,
         ...family.prefixes.map((prefix) => `${prefix} ${base}`),

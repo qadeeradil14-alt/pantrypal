@@ -10,6 +10,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { fonts, radii, spacing, type AppColors } from '../../theme';
 import { classifyItem } from '../../core/services/itemClassifier';
+import { resolveItemAsset } from '../../constants/itemAssetResolver';
+import { ItemIcon } from '../shared/ItemIcon';
 import type { PantryItem, Store } from '../../types';
 import { useTheme } from '../../hooks/useTheme';
 
@@ -25,6 +27,7 @@ interface Props {
 export function AttentionItem({ item, store, onAddToList, onViewItem, onAssignStore }: Props) {
   const { colors } = useTheme();
   const { emoji, color } = classifyItem(item.name);
+  const asset = resolveItemAsset(item.name, emoji);
   const isExpiring = item.status === 'expiring';
   // A low item with no store can't be shopped yet — assigning a store is the
   // required next action, so it takes over the primary button.
@@ -36,7 +39,7 @@ export function AttentionItem({ item, store, onAddToList, onViewItem, onAssignSt
     <View style={styles.row}>
       {/* Product icon — large, rounded-square, white-ish bg */}
       <View style={[styles.iconWrap, { backgroundColor: color + '20' }]}>
-        <Text style={styles.emoji}>{emoji}</Text>
+        <ItemIcon asset={asset} size={52} color={color} />
       </View>
 
       {/* Name + quantity + store */}
@@ -105,7 +108,6 @@ function makeStyles(colors: AppColors) {
       justifyContent: 'center',
       flexShrink: 0,
     },
-    emoji: { fontSize: 30 },
     info: { flex: 1, minWidth: 0 },
     name: {
       fontFamily: fonts.sansMedium,

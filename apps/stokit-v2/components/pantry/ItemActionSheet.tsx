@@ -12,6 +12,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Sheet } from '../shared/Sheet';
 import { fonts, radii, spacing, type AppColors } from '../../theme';
 import { classifyItem } from '../../core/services/itemClassifier';
+import { resolveItemAsset } from '../../constants/itemAssetResolver';
+import { ItemIcon } from '../shared/ItemIcon';
 import { useDurableStore } from '../../store/durable-store';
 import type { PantryItem, Store } from '../../types';
 import { useTheme } from '../../hooks/useTheme';
@@ -45,6 +47,7 @@ export function ItemActionSheet({
   if (!item) return <Sheet visible={false} title="" onClose={onClose}>{null}</Sheet>;
 
   const { emoji, color } = classifyItem(item.name);
+  const asset = resolveItemAsset(item.name, emoji);
   const isLow = item.status === 'low' || item.status === 'expiring';
   const lastHere = store ? lastPriceAtStore(priceHistory, item.name, store.id) : undefined;
   const best = cheapestRecentPrice(priceHistory, item.name);
@@ -66,7 +69,7 @@ export function ItemActionSheet({
       {/* Item header */}
       <View style={styles.header}>
         <View style={[styles.iconChip, { backgroundColor: color + '28' }]}>
-          <Text style={styles.emoji}>{emoji}</Text>
+          <ItemIcon asset={asset} size={50} color={color} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
@@ -213,7 +216,6 @@ function makeStyles(colors: AppColors) {
       alignItems: 'center',
       justifyContent: 'center',
     },
-    emoji: { fontSize: 28 },
     name: { fontFamily: fonts.sansSemibold, fontSize: 18, color: colors.ink },
     meta: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: 3, textTransform: 'uppercase' },
     priceCard: {

@@ -4,6 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { fonts, radii, spacing, type AppColors } from '../../theme';
 import { Pill } from '../shared/ui';
 import { classifyItem } from '../../core/services/itemClassifier';
+import { resolveItemAsset } from '../../constants/itemAssetResolver';
+import { ItemIcon } from '../shared/ItemIcon';
 import type { PantryItem, Store } from '../../types';
 import { useTheme } from '../../hooks/useTheme';
 
@@ -28,6 +30,7 @@ export function ItemRow({
   const { colors } = useTheme();
   const meta = STATUS_META[item.status];
   const { emoji, color } = classifyItem(item.name);
+  const asset = resolveItemAsset(item.name, emoji);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -38,7 +41,7 @@ export function ItemRow({
     >
       {/* Classified icon chip */}
       <View style={[styles.iconChip, { backgroundColor: color + '28' }]}>
-        <Text style={styles.emoji}>{emoji}</Text>
+        <ItemIcon asset={asset} size={38} color={color} />
       </View>
 
       <View style={{ flex: 1 }}>
@@ -80,7 +83,6 @@ function makeStyles(colors: AppColors) {
       alignItems: 'center',
       justifyContent: 'center',
     },
-    emoji: { fontSize: 20 },
     name: { fontFamily: fonts.sansMedium, fontSize: 16, color: colors.ink },
     meta: {
       fontFamily: fonts.mono,

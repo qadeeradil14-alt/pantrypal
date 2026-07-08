@@ -135,13 +135,13 @@ export const PANTRY_CATALOG: PantryCatalogItem[] = [
   item('Automotive', 'Motor oil', '🛢️'), item('Automotive', 'Wiper fluid', 'mdi:wiper-wash'), item('Automotive', 'Car wash soap', 'mdi:car-wash'),
   item('Automotive', 'Air freshener', '🌺'), item('Automotive', 'Jumper cables', '⚡'), item('Automotive', 'Car battery', '🔋'),
   item('Automotive', 'Tire gauge', 'mdi:gauge'), item('Automotive', 'Car wax', '✨'), item('Automotive', 'Window cleaner', 'mdi:spray-bottle'),
-  item('Automotive', 'Funnels', '🚗'), item('Automotive', 'Antifreeze', 'mdi:car-coolant-level'), item('Automotive', 'Brake fluid', 'mdi:car-brake-fluid-level'),
+  item('Automotive', 'Funnels', 'mdi:package-variant-closed'), item('Automotive', 'Antifreeze', 'mdi:car-coolant-level'), item('Automotive', 'Brake fluid', 'mdi:car-brake-fluid-level'),
 
   // Hardware
-  item('Hardware', 'Light bulbs', '💡', 'pack'), item('Hardware', 'Batteries', '🔋', 'pack'), item('Hardware', 'Duct tape', '🧰'),
-  item('Hardware', 'Zip ties', '🧰', 'pack'), item('Hardware', 'Extension cord', '🔌'), item('Hardware', 'Screws', 'mdi:screw-round-top', 'pack'),
+  item('Hardware', 'Light bulbs', '💡', 'pack'), item('Hardware', 'Batteries', '🔋', 'pack'), item('Hardware', 'Duct tape', 'mdi:package-variant-closed'),
+  item('Hardware', 'Zip ties', 'mdi:package-variant-closed', 'pack'), item('Hardware', 'Extension cord', '🔌'), item('Hardware', 'Screws', 'mdi:screw-round-top', 'pack'),
   item('Hardware', 'Measuring tape', 'mdi:tape-measure'), item('Hardware', 'Paint', '🖌️'), item('Hardware', 'WD-40', 'mdi:spray'),
-  item('Hardware', 'Sandpaper', '🧰', 'pack'), item('Hardware', 'Caulk', '🧰'), item('Hardware', 'Superglue', '🧰'),
+  item('Hardware', 'Sandpaper', 'mdi:package-variant-closed', 'pack'), item('Hardware', 'Caulk', 'mdi:package-variant-closed'), item('Hardware', 'Superglue', 'mdi:package-variant-closed'),
 
   // Health
   item('Health', 'Vitamins', '💊', 'pack'), item('Health', 'Pain reliever', 'mdi:medication-outline'), item('Health', 'Cold medicine', '🤧'),

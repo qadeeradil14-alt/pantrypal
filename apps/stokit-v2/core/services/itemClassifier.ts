@@ -120,7 +120,7 @@ const RULES: Rule[] = [
   { keywords: ['passion fruit', 'passionfruit'], emoji: '🍇', category: 'produce_fruit', color: '#7D3C98' },
   { keywords: ['grapefruit'], emoji: '🍊', category: 'produce_fruit', color: '#E74C3C' },
   { keywords: ['apricot', 'apricots'], emoji: '🍑', category: 'produce_fruit', color: '#F39C12' },
-  { keywords: ['date', 'dates', 'medjool'], emoji: '🫚', category: 'produce_fruit', color: '#7D6608' },
+  { keywords: ['date', 'dates', 'medjool'], emoji: 'mdi:package-variant-closed', category: 'produce_fruit', color: '#7D6608' },
   { keywords: ['raisins', 'golden raisins', 'dried cranberries', 'craisins', 'dried mango', 'dried apricots', 'dried figs', 'dried cherries', 'dried blueberries', 'dried fruit', 'sultanas', 'currants'], emoji: '🍇', category: 'snack', color: '#7D3C98' },
   { keywords: ['lychee', 'lychees'], emoji: '🍡', category: 'produce_fruit', color: '#F1948A' },
 
@@ -152,7 +152,7 @@ const RULES: Rule[] = [
   { keywords: ['asparagus'], emoji: '🥦', category: 'produce_veg', color: '#1E8449' },
   { keywords: ['brussels sprouts', 'brussels'], emoji: '🥦', category: 'produce_veg', color: '#1E8449' },
   { keywords: ['artichoke'], emoji: '🥦', category: 'produce_veg', color: '#27AE60' },
-  { keywords: ['beet', 'beets', 'beetroot'], emoji: '🩸', category: 'produce_veg', color: '#943126' },
+  { keywords: ['beet', 'beets', 'beetroot'], emoji: 'mdi:package-variant-closed', category: 'produce_veg', color: '#943126' },
   { keywords: ['radish', 'radishes'], emoji: '🥕', category: 'produce_veg', color: '#E74C3C' },
   { keywords: ['turnip', 'turnips', 'parsnip', 'parsnips'], emoji: '🥕', category: 'produce_veg', color: '#E8DAEF' },
   { keywords: ['leek', 'leeks', 'scallion', 'scallions', 'green onion', 'shallot'], emoji: '🧅', category: 'produce_veg', color: '#27AE60' },
@@ -250,7 +250,7 @@ const RULES: Rule[] = [
 
   // ── CONDIMENTS & SAUCES ───────────────────────────────────────────────────
   { keywords: ['ketchup', 'catsup'], emoji: '🍅', category: 'condiment', color: '#C0392B' },
-  { keywords: ['mustard', 'dijon', 'yellow mustard', 'whole grain mustard'], emoji: '🌭', category: 'condiment', color: '#F4D03F' },
+  { keywords: ['mustard', 'dijon', 'yellow mustard', 'whole grain mustard'], emoji: '🫙', category: 'condiment', color: '#F4D03F' },
   { keywords: ['mayo', 'mayonnaise', 'miracle whip'], emoji: '🫙', category: 'condiment', color: '#F4F6F7' },
   { keywords: ['hot sauce', 'sriracha', 'tabasco', 'frank\'s', 'cholula'], emoji: '🌶️', category: 'condiment', color: '#C0392B' },
   { keywords: ['salsa'], emoji: '🫙', category: 'condiment', color: '#C0392B' },
@@ -373,7 +373,7 @@ const RULES: Rule[] = [
 
   // ── LAUNDRY ───────────────────────────────────────────────────────────────
   { keywords: ['laundry detergent', 'tide', 'gain', 'all detergent', 'arm & hammer', 'dreft', 'persil'], emoji: '🫧', category: 'laundry', color: '#2E86C1' },
-  { keywords: ['fabric softener', 'downy', 'snuggle', 'bounce dryer sheets', 'dryer sheets'], emoji: '🌸', category: 'laundry', color: '#F4D03F' },
+  { keywords: ['fabric softener', 'downy', 'snuggle', 'bounce dryer sheets', 'dryer sheets'], emoji: 'custom:fabric_softener', category: 'laundry', color: '#F4D03F' },
   { keywords: ['stain remover', 'shout spray', 'oxi clean', 'zout', 'carbona'], emoji: '🧴', category: 'laundry', color: '#E91E63' },
   { keywords: ['laundry pods', 'tide pods', 'gain pods', 'all pods'], emoji: '🫧', category: 'laundry', color: '#2E86C1' },
 
@@ -383,12 +383,12 @@ const RULES: Rule[] = [
   { keywords: ['tissue', 'kleenex', 'facial tissue', 'puffs'], emoji: '🧻', category: 'paper', color: '#F4F6F7' },
   { keywords: ['napkins', 'paper napkins'], emoji: '🧻', category: 'paper', color: '#F4F6F7' },
   { keywords: ['towel', 'bath towel', 'hand towel', 'beach towel', 'dish towel', 'kitchen towel', 'washcloth', 'towel set'], emoji: '🧺', category: 'household', color: '#5DADE2' },
-  { keywords: ['aluminum foil', 'tin foil', 'reynolds wrap'], emoji: '✨', category: 'paper', color: '#839192' },
+  { keywords: ['aluminum foil', 'tin foil', 'reynolds wrap'], emoji: 'mdi:paper-roll-outline', category: 'paper', color: '#839192' },
   { keywords: ['plastic wrap', 'saran wrap', 'cling wrap'], emoji: '🫙', category: 'paper', color: '#2E86C1' },
   { keywords: ['parchment paper', 'wax paper', 'butcher paper'], emoji: '📄', category: 'paper', color: '#F4F6F7' },
   { keywords: ['zip lock', 'ziplock', 'ziploc bags', 'sandwich bags', 'freezer bags', 'glad bags'], emoji: '🫙', category: 'paper', color: '#2E86C1' },
   { keywords: ['storage containers', 'tupperware', 'food containers', 'meal prep containers'], emoji: '🫙', category: 'paper', color: '#27AE60' },
-  { keywords: ['coffee filters', 'paper plates', 'paper cups', 'disposable cups', 'solo cups'], emoji: '☕', category: 'paper', color: '#F4F6F7' },
+  { keywords: ['coffee filters', 'paper plates', 'paper cups', 'disposable cups', 'solo cups'], emoji: 'mdi:package-variant-closed', category: 'paper', color: '#F4F6F7' },
 
   // ── PERSONAL CARE ─────────────────────────────────────────────────────────
   { keywords: ['shampoo', 'head & shoulders', 'pantene', 'dove shampoo', 'tresemmé'], emoji: '🧴', category: 'personal_care', color: '#7D3C98' },
@@ -405,7 +405,7 @@ const RULES: Rule[] = [
   { keywords: ['razor', 'gilette', 'schick', 'disposable razors'], emoji: '🪒', category: 'personal_care', color: '#839192' },
   { keywords: ['shaving cream', 'shaving gel', 'barbasol', 'edge shaving gel'], emoji: '🫧', category: 'personal_care', color: '#F4F6F7' },
   { keywords: ['feminine hygiene', 'tampons', 'pads', 'always', 'tampax', 'liners', 'menstrual'], emoji: '🌸', category: 'personal_care', color: '#E91E63' },
-  { keywords: ['cotton balls', 'cotton rounds', 'q tips', 'cotton swabs'], emoji: '🌸', category: 'personal_care', color: '#F4F6F7' },
+  { keywords: ['cotton balls', 'cotton rounds', 'q tips', 'cotton swabs'], emoji: 'mdi:package-variant-closed', category: 'personal_care', color: '#F4F6F7' },
   { keywords: ['lip balm', 'chapstick', 'burt\'s bees', 'carmex'], emoji: '💄', category: 'personal_care', color: '#E91E63' },
   { keywords: ['hair gel', 'hair wax', 'pomade', 'mousse', 'hair spray', 'dry shampoo'], emoji: '🧴', category: 'personal_care', color: '#7D3C98' },
   { keywords: ['nail polish', 'nail remover', 'acetone'], emoji: '💅', category: 'personal_care', color: '#E91E63' },
@@ -442,15 +442,15 @@ const RULES: Rule[] = [
   { keywords: ['light bulb', 'light bulbs', 'led bulb', 'lightbulb', 'ge bulb', 'philips bulb'], emoji: '💡', category: 'household', color: '#F4D03F' },
   { keywords: ['candle', 'candles', 'scented candle', 'yankee candle'], emoji: '🕯️', category: 'household', color: '#F4D03F' },
   { keywords: ['matches', 'lighter', 'bbq lighter'], emoji: '🔥', category: 'household', color: '#E74C3C' },
-  { keywords: ['tape', 'scotch tape', 'duct tape', 'masking tape', 'painters tape'], emoji: '🗂️', category: 'household', color: '#F4D03F' },
+  { keywords: ['tape', 'scotch tape', 'duct tape', 'masking tape', 'painters tape'], emoji: 'mdi:package-variant-closed', category: 'household', color: '#F4D03F' },
   { keywords: ['air freshener', 'febreze', 'glade', 'ozium', 'car freshener', 'reed diffuser'], emoji: '🌸', category: 'household', color: '#F4D03F' },
   { keywords: ['wrapping paper', 'gift wrap', 'tissue paper', 'gift bags', 'ribbon'], emoji: '🎁', category: 'household', color: '#E91E63' },
   { keywords: ['mop', 'broom', 'dustpan', 'duster', 'swiffer', 'vacuum bags'], emoji: '🧹', category: 'household', color: '#D4AC0D' },
   { keywords: ['hand sanitizer', 'purell', 'germ x'], emoji: '🫧', category: 'household', color: '#27AE60' },
   { keywords: ['extension cord', 'surge protector', 'outlet', 'electrical tape'], emoji: '🔌', category: 'household', color: '#2C2C2C' },
   { keywords: ['gloves', 'rubber gloves', 'cleaning gloves', 'nitrile gloves'], emoji: '🧤', category: 'household', color: '#27AE60' },
-  { keywords: ['insect repellent', 'bug spray', 'raid', 'deet', 'off spray'], emoji: '🐛', category: 'household', color: '#27AE60' },
-  { keywords: ['sunscreen wipes', 'wet wipes', 'baby wipes'], emoji: '🌸', category: 'household', color: '#F4F6F7' },
+  { keywords: ['insect repellent', 'bug spray', 'raid', 'deet', 'off spray'], emoji: '🦟', category: 'household', color: '#27AE60' },
+  { keywords: ['sunscreen wipes', 'wet wipes', 'baby wipes'], emoji: 'custom:wipes', category: 'household', color: '#F4F6F7' },
 ];
 
 const DEFAULT: ItemClassification = {
