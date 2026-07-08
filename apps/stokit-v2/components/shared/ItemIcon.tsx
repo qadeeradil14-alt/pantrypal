@@ -11,11 +11,15 @@ interface ItemIconProps {
 
 /** Renders a resolved item asset — image, MDI glyph, emoji, or a neutral placeholder. */
 export function ItemIcon({ asset, size, color }: ItemIconProps) {
+  // Same 0.6 scale factor across every kind so a custom PNG, an MDI glyph, and an
+  // emoji all carry the same visual weight at a given avatar size.
+  const scale = size * 0.6;
+
   if (asset.kind === 'image') {
     return (
       <Image
         source={asset.source}
-        style={{ width: size * 0.7, height: size * 0.7 }}
+        style={{ width: scale, height: scale }}
         resizeMode="contain"
       />
     );
@@ -25,7 +29,7 @@ export function ItemIcon({ asset, size, color }: ItemIconProps) {
     return (
       <MaterialCommunityIcons
         name={asset.name as React.ComponentProps<typeof MaterialCommunityIcons>['name']}
-        size={size * 0.55}
+        size={scale}
         color={color}
       />
     );
@@ -33,7 +37,7 @@ export function ItemIcon({ asset, size, color }: ItemIconProps) {
 
   if (asset.kind === 'emoji') {
     return (
-      <Text style={{ fontSize: size * 0.55, includeFontPadding: false, textAlign: 'center', textAlignVertical: 'center' }}>
+      <Text style={{ fontSize: scale, includeFontPadding: false, textAlign: 'center', textAlignVertical: 'center' }}>
         {asset.value}
       </Text>
     );
@@ -42,7 +46,7 @@ export function ItemIcon({ asset, size, color }: ItemIconProps) {
   return (
     <MaterialCommunityIcons
       name="image-off-outline"
-      size={size * 0.5}
+      size={scale}
       color={color}
     />
   );

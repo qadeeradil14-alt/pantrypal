@@ -90,6 +90,52 @@ Not touched: `raisins` / `dried cranberries` and `towel` / `towels` / `bath towe
 their existing emoji — both are locked by explicit regression tests in
 `tests/item-classifier.test.ts` and are intentional choices by a prior author, not bugs.
 
+## P0 — Fixed in Visual QA pass (was actively misleading, now on neutral placeholder)
+
+Found during a full visual QA audit of `pantryCatalog.ts` (see `VISUAL_QA_REPORT.md`). Each of
+these depicted a completely wrong object for the item; no existing MDI/emoji represented the
+real thing without inventing something equally misleading, so they now render
+`mdi:package-variant-closed` until real artwork exists.
+
+| Item | Category | Old mapping | Current mapping | Needed asset |
+|---|---|---|---|---|
+| Chips | Snacks | 🍟 (french fries) | `mdi:package-variant-closed` | Bag of chips |
+| Dates | Snacks | 🌴 (palm tree) | `mdi:package-variant-closed` | Date fruit cluster |
+| Tape | Office | 🖇️ (paperclip) | `mdi:package-variant-closed` | Tape roll/dispenser |
+| Staples | Office | 📎 (paperclip) | `mdi:package-variant-closed` | Stapler/staple strip |
+| Vegetable oil | Spices | 🛢️ (industrial oil drum, duplicated Automotive's Motor oil) | `mdi:package-variant-closed` | Cooking-oil bottle |
+
+## Corrected with an existing accurate icon — Visual QA pass (no backlog entry needed)
+
+| Item | Category | Old mapping | Current mapping |
+|---|---|---|---|
+| Cod | Seafood | 🐠 (tropical/ornamental fish) | `mdi:fish` (matches Salmon) |
+| Motor oil | Automotive | 🛢️ (duplicated Vegetable oil) | `mdi:oil` |
+| Vinegar | Spices | 🍾 (champagne bottle, alcohol-coded) | `mdi:bottle-tonic-outline` |
+| Soda | Drinks | 🥤 (generic cup + straw) | `mdi:bottle-soda-classic-outline` |
+| Jam | Canned | 🍓 (strawberry — implies one flavor) | 🫙 (matches every other jarred item) |
+| Paint | Hardware | 🖌️ (paintbrush — a tool, not the product) | `mdi:format-paint` |
+| Zip bags | Kitchen | 🛍️ (shopping bag) | `mdi:zip-box-outline` |
+| Lamb | Meat | `mdi:sheep` (live animal) | `mdi:food-steak` (matches meat-cut convention) |
+| Baby lotion | Baby | 🧴 (generic bottle) | `custom:lotion` (reused existing asset, no new art) |
+| `'air freshener'` alias | resolver `ITEM_ICON` | 🌸 (disagreed with catalog's 🌺) | 🌺 (now matches the Automotive catalog entry) |
+
+## P1 — Reviewed in Visual QA pass, left as-is (same-domain, not misleading, no non-art fix exists)
+
+| Item | Category | Mapping | Why left alone |
+|---|---|---|---|
+| Cream cheese / Goat cheese | Dairy | `mdi:cheese` (shared; differs in style from Cheese's 🧀) | No distinct per-cheese MDI glyph exists |
+| Granola bars | Snacks | 🌾 (wheat — wrong grain) | Same issue class as Oats; no oat/granola MDI glyph exists |
+| Gum | Snacks | 🦷 (tooth) | Associative, not wrong-domain; no gum-specific glyph exists |
+| Mint | Snacks | 🍃 (leaf) | Ambiguous but not wrong-domain; no mint-candy glyph exists |
+| Sour cream | Dairy | 🫙 (jar — usually sold in a tub) | No tub-shaped food-container MDI glyph exists |
+| Baby food | Baby | 🥣 (bowl, shared with Yogurt) | No jar/pouch-specific glyph exists |
+| Lentils / Quinoa | Dry Goods | `mdi:grain` (shared) | No distinct grain/legume glyph exists |
+| Car wax | Automotive | ✨ (sparkles) | Abstract but not wrong-domain; no wax-tin glyph exists |
+
+Not touched: all items already listed above under prior passes (P0/P1/P2 sections) remain
+unchanged — this Visual QA pass only added the entries in the two new sections above.
+
 ## Priority legend
 - **P0**: actively misleading (wrong object depicted)
 - **P1**: generic same-domain fallback, no dedicated icon

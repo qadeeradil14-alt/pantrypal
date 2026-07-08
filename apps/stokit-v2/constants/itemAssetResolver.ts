@@ -62,7 +62,7 @@ const ITEM_ICON: Record<string, string> = {
   'vitamins': '💊', 'ibuprofen': '💊', 'tylenol': '💊', 'aspirin': '💊',
   'protein powder': '💪', 'band aid': '🩹', 'bandaids': '🩹',
   'batteries': '🔋', 'light bulbs': '💡', 'candle': '🕯️',
-  'air freshener': '🌸', 'matches': '🔥',
+  'air freshener': '🌺', 'matches': '🔥',
 
   // Common items with no dedicated catalog entry — closest safe existing icon
   'pepper': '🌶️', 'beef': '🥩', 'fish': '🐟', 'cream': '🫗',
