@@ -6,25 +6,34 @@ export type ResolvedItemAsset =
   | { kind: 'emoji'; value: string }
   | { kind: 'placeholder' };
 
-const CUSTOM_EMOJIS: Record<string, any> = {
-  'custom:toothpaste': require('../assets/custom-emojis/toothpaste.png'),
-  'custom:shampoo': require('../assets/custom-emojis/shampoo.png'),
-  'custom:conditioner': require('../assets/custom-emojis/conditioner.png'),
-  'custom:bodywash': require('../assets/custom-emojis/bodywash.png'),
-  'custom:deodorant': require('../assets/custom-emojis/deodorant.png'),
-  'custom:lotion': require('../assets/custom-emojis/lotion.png'),
-  'custom:dishsoap': require('../assets/custom-emojis/dishsoap.png'),
-  'custom:handsoap': require('../assets/custom-emojis/handsoap.png'),
-  'custom:laundry_detergent': require('../assets/custom-emojis/laundry_detergent.png'),
-  'custom:fabric_softener': require('../assets/custom-emojis/fabric_softener.png'),
-  'custom:bleach': require('../assets/custom-emojis/bleach.png'),
-  'custom:all_purpose_cleaner': require('../assets/custom-emojis/all_purpose_cleaner.png'),
-  'custom:glass_cleaner': require('../assets/custom-emojis/glass_cleaner.png'),
-  'custom:wipes': require('../assets/custom-emojis/wipes.png'),
-  'custom:trash_bags': require('../assets/custom-emojis/trash_bags.png'),
-  'custom:ketchup': require('../assets/custom-emojis/ketchup.png'),
-  'custom:mustard': require('../assets/custom-emojis/mustard.png'),
-};
+// Requires are deferred inside the switch (rather than an eager object-literal
+// map) so this module can be imported by plain-Node test runners — which have
+// no Metro asset transform and would crash trying to load a .png as JS —
+// without ever touching the filesystem unless a custom: icon is actually
+// resolved. Metro still statically analyzes each `require('./literal.png')`
+// call fine regardless of where it sits in the file.
+function getCustomEmojiSource(icon: string): any {
+  switch (icon) {
+    case 'custom:toothpaste': return require('../assets/custom-emojis/toothpaste.png');
+    case 'custom:shampoo': return require('../assets/custom-emojis/shampoo.png');
+    case 'custom:conditioner': return require('../assets/custom-emojis/conditioner.png');
+    case 'custom:bodywash': return require('../assets/custom-emojis/bodywash.png');
+    case 'custom:deodorant': return require('../assets/custom-emojis/deodorant.png');
+    case 'custom:lotion': return require('../assets/custom-emojis/lotion.png');
+    case 'custom:dishsoap': return require('../assets/custom-emojis/dishsoap.png');
+    case 'custom:handsoap': return require('../assets/custom-emojis/handsoap.png');
+    case 'custom:laundry_detergent': return require('../assets/custom-emojis/laundry_detergent.png');
+    case 'custom:fabric_softener': return require('../assets/custom-emojis/fabric_softener.png');
+    case 'custom:bleach': return require('../assets/custom-emojis/bleach.png');
+    case 'custom:all_purpose_cleaner': return require('../assets/custom-emojis/all_purpose_cleaner.png');
+    case 'custom:glass_cleaner': return require('../assets/custom-emojis/glass_cleaner.png');
+    case 'custom:wipes': return require('../assets/custom-emojis/wipes.png');
+    case 'custom:trash_bags': return require('../assets/custom-emojis/trash_bags.png');
+    case 'custom:ketchup': return require('../assets/custom-emojis/ketchup.png');
+    case 'custom:mustard': return require('../assets/custom-emojis/mustard.png');
+    default: return undefined;
+  }
+}
 
 // Icons for commonly typed items that are not in the catalog
 const ITEM_ICON: Record<string, string> = {
@@ -140,7 +149,7 @@ export function resolveItemIconString(name: string, fallbackEmoji?: string): str
 /** Parses a raw icon string (mdi:*, custom:*, or plain emoji) into a render-ready asset descriptor. */
 export function resolveIconString(icon: string): ResolvedItemAsset {
   if (icon.startsWith('custom:')) {
-    const source = CUSTOM_EMOJIS[icon];
+    const source = getCustomEmojiSource(icon);
     return source ? { kind: 'image', source } : { kind: 'placeholder' };
   }
   if (icon.startsWith('mdi:')) {
