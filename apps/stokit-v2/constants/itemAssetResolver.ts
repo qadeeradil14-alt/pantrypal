@@ -67,7 +67,7 @@ const CATEGORY_ICON: Record<string, string> = {
   'Spices': '🧂', 'Drinks': '🥤', 'Snacks': '🍿', 'Kitchen': '🍽️',
   'Cleaning': '🧹', 'Paper Goods': '🧻', 'Personal Care': '🧴',
   'Baby': '👶', 'Pet': '🐾', 'Other': '🛒',
-  'Automotive': '🚗', 'Hardware': '🧰', 'Health': '💊', 'Office': '🗂️',
+  'Automotive': '🚗', 'Hardware': '🧰', 'Health': '💊', 'Office': 'mdi:paperclip',
 };
 
 // Lowercase, trim, collapse whitespace, and strip simple punctuation before
