@@ -4,9 +4,11 @@ import { useTheme } from '../../hooks/useTheme';
 import { getCategoryColors } from '../../theme/categoryPalette';
 import {
   lookupCatalogCategory,
+  mapItemCategoryToCatalogCategory,
   resolveIconString,
   resolveItemIconString,
 } from '../../constants/itemAssetResolver';
+import { classifyItem } from '../../core/services/itemClassifier';
 import { ItemIcon } from './ItemIcon';
 
 interface ItemAvatarProps {
@@ -18,9 +20,15 @@ interface ItemAvatarProps {
 export function ItemAvatar({ name, size = 44, icon }: ItemAvatarProps) {
   const { isDark } = useTheme();
 
-  const category = lookupCatalogCategory(name) ?? 'Other';
+  const catalogCategory = lookupCatalogCategory(name);
+  // Catalog miss: fall through to the keyword classifier, but only trust it
+  // when it found a confident keyword match (category !== 'other') —
+  // otherwise keep the existing Other/🛒 default.
+  const rawClassification = catalogCategory === undefined ? classifyItem(name) : undefined;
+  const classification = rawClassification?.category === 'other' ? undefined : rawClassification;
+  const category = catalogCategory ?? (classification ? mapItemCategoryToCatalogCategory(classification.category) : 'Other');
   const categoryTheme = getCategoryColors(category, isDark);
-  const asset = resolveIconString(resolveItemIconString(name, icon));
+  const asset = resolveIconString(resolveItemIconString(name, icon ?? classification?.emoji));
 
   return (
     <View

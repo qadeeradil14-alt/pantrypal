@@ -1,5 +1,6 @@
 import { PANTRY_CATALOG, type PantryCatalogCategory, type PantryCatalogItem } from './pantryCatalog';
 import { getGeneratedCustomAsset } from './generatedAssetMap';
+import type { ItemCategory } from '../core/services/itemClassifier';
 
 export type ResolvedItemAsset =
   | { kind: 'image'; source: any }
@@ -103,6 +104,48 @@ for (const catalogItem of PANTRY_CATALOG) {
 /** Category of the closest curated catalog match for a free-text name, if any. */
 export function lookupCatalogCategory(name: string): PantryCatalogCategory | undefined {
   return lookupTolerant(CATALOG_BY_NAME, normalizeForIcon(name))?.category;
+}
+
+// Maps itemClassifier's free-text-keyword categories onto the catalog's
+// curated categories, so a non-catalog item's inferred category can still
+// drive the same color theming as a curated one.
+const ITEM_CATEGORY_TO_CATALOG_CATEGORY: Record<ItemCategory, PantryCatalogCategory> = {
+  produce_fruit: 'Produce',
+  produce_veg: 'Produce',
+  meat: 'Meat',
+  seafood: 'Seafood',
+  dairy: 'Dairy',
+  eggs: 'Dairy',
+  bread: 'Bakery',
+  grains: 'Dry Goods',
+  pasta: 'Dry Goods',
+  canned: 'Canned',
+  condiment: 'Spices',
+  sauce: 'Spices',
+  oil: 'Spices',
+  snack: 'Snacks',
+  sweet: 'Snacks',
+  beverage: 'Drinks',
+  coffee_tea: 'Drinks',
+  alcohol: 'Drinks',
+  frozen: 'Frozen',
+  baking: 'Dry Goods',
+  spice: 'Spices',
+  cleaning: 'Cleaning',
+  laundry: 'Cleaning',
+  paper: 'Paper Goods',
+  personal_care: 'Personal Care',
+  medicine: 'Health',
+  baby: 'Baby',
+  pet: 'Pet',
+  household: 'Hardware',
+  hardware: 'Hardware',
+  other: 'Other',
+};
+
+/** Maps an itemClassifier category onto the closest catalog category, for theming non-catalog items. */
+export function mapItemCategoryToCatalogCategory(category: ItemCategory): PantryCatalogCategory {
+  return ITEM_CATEGORY_TO_CATALOG_CATEGORY[category];
 }
 
 /**

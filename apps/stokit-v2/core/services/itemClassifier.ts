@@ -37,6 +37,7 @@ export type ItemCategory =
   | 'baby'
   | 'pet'
   | 'household'
+  | 'hardware'
   | 'other';
 
 import type { StorageLocation } from '../../types';
@@ -81,6 +82,7 @@ const CATEGORY_LOCATION: Record<ItemCategory, StorageLocation> = {
   baby:          'pantry',
   pet:           'pantry',
   household:     'pantry',
+  hardware:      'pantry',
   other:         'pantry',
 };
 
@@ -208,7 +210,7 @@ const RULES: Rule[] = [
   { keywords: ['croissant', 'croissants'], emoji: '🥐', category: 'bread', color: '#D4AC0D' },
   { keywords: ['baguette', 'french bread'], emoji: '🥖', category: 'bread', color: '#D4AC0D' },
   { keywords: ['tortilla', 'tortillas', 'flour tortilla', 'corn tortilla', 'wrap', 'wraps'], emoji: '🌮', category: 'bread', color: '#F0E6D3' },
-  { keywords: ['pita', 'pita bread', 'naan', 'flatbread', 'lavash'], emoji: '🫓', category: 'bread', color: '#F0E6D3' },
+  { keywords: ['pita', 'pita bread', 'naan', 'flatbread', 'lavash', 'paratha', 'roti', 'chapati', 'dosa'], emoji: '🫓', category: 'bread', color: '#F0E6D3' },
   { keywords: ['cake', 'birthday cake'], emoji: '🎂', category: 'bread', color: '#F1948A' },
   { keywords: ['pie', 'apple pie', 'pumpkin pie'], emoji: '🥧', category: 'bread', color: '#D4AC0D' },
   { keywords: ['cookie', 'cookies', 'chocolate chip cookie'], emoji: '🍪', category: 'bread', color: '#A04000' },
@@ -451,6 +453,20 @@ const RULES: Rule[] = [
   { keywords: ['gloves', 'rubber gloves', 'cleaning gloves', 'nitrile gloves'], emoji: '🧤', category: 'household', color: '#27AE60' },
   { keywords: ['insect repellent', 'bug spray', 'raid', 'deet', 'off spray'], emoji: '🦟', category: 'household', color: '#27AE60' },
   { keywords: ['sunscreen wipes', 'wet wipes', 'baby wipes'], emoji: 'custom:wipes', category: 'household', color: '#F4F6F7' },
+
+  // ── HARDWARE ──────────────────────────────────────────────────────────────
+  { keywords: ['hammer', 'rubber mallet', 'mallet'], emoji: '🔨', category: 'hardware', color: '#7F8C8D' },
+  { keywords: ['screwdriver', 'phillips screwdriver', 'flathead screwdriver'], emoji: '🪛', category: 'hardware', color: '#7F8C8D' },
+  { keywords: ['wrench', 'adjustable wrench', 'socket wrench', 'allen wrench', 'allen key'], emoji: '🔧', category: 'hardware', color: '#7F8C8D' },
+  { keywords: ['nails', 'nail', 'roofing nails', 'finishing nails'], emoji: 'mdi:hammer-wrench', category: 'hardware', color: '#7F8C8D' },
+  { keywords: ['screws', 'screw', 'wood screws', 'drywall screws'], emoji: 'mdi:hammer-wrench', category: 'hardware', color: '#7F8C8D' },
+  { keywords: ['drill', 'power drill', 'drill bits', 'drill bit'], emoji: 'mdi:hammer-wrench', category: 'hardware', color: '#7F8C8D' },
+  { keywords: ['pliers', 'wire cutters', 'wire cutter'], emoji: 'mdi:hammer-wrench', category: 'hardware', color: '#7F8C8D' },
+  { keywords: ['level', 'spirit level', 'tape measure', 'measuring tape'], emoji: 'mdi:hammer-wrench', category: 'hardware', color: '#7F8C8D' },
+  { keywords: ['bolts', 'bolt', 'nuts and bolts', 'washers'], emoji: 'mdi:hammer-wrench', category: 'hardware', color: '#7F8C8D' },
+  { keywords: ['zip ties', 'zip tie', 'cable ties'], emoji: 'mdi:hammer-wrench', category: 'hardware', color: '#7F8C8D' },
+  { keywords: ['super glue', 'wood glue', 'epoxy'], emoji: 'mdi:hammer-wrench', category: 'hardware', color: '#7F8C8D' },
+  { keywords: ['sandpaper', 'sanding block'], emoji: 'mdi:hammer-wrench', category: 'hardware', color: '#7F8C8D' },
 ];
 
 const DEFAULT: ItemClassification = {
@@ -555,6 +571,7 @@ export function categoryLabel(cat: ItemCategory): string {
     baby: 'Baby',
     pet: 'Pet Supplies',
     household: 'Household',
+    hardware: 'Hardware',
     other: 'Other',
   };
   return labels[cat];
