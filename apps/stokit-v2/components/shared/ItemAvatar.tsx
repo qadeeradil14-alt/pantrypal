@@ -5,7 +5,7 @@ import { getCategoryColors } from '../../theme/categoryPalette';
 import {
   lookupCatalogCategory,
   resolveIconString,
-  resolveItemAsset,
+  resolveItemIconString,
 } from '../../constants/itemAssetResolver';
 import { ItemIcon } from './ItemIcon';
 
@@ -20,7 +20,7 @@ export function ItemAvatar({ name, size = 44, icon }: ItemAvatarProps) {
 
   const category = lookupCatalogCategory(name) ?? 'Other';
   const categoryTheme = getCategoryColors(category, isDark);
-  const asset = icon ? resolveIconString(icon) : resolveItemAsset(name);
+  const asset = resolveIconString(resolveItemIconString(name, icon));
 
   return (
     <View
