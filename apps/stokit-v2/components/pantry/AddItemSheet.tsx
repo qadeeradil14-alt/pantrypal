@@ -180,7 +180,13 @@ export function AddItemSheet({
       icon: '📦',
       defaultUnit: 'unit',
     };
-    toggle(custom);
+    commitItems([{
+      catalog: custom,
+      quantity: draftQuantity,
+      unit: custom.defaultUnit,
+      status: defaultStatus,
+      storeId: bulkStoreId,
+    }]);
   };
 
   const submitDraftItem = () => {
