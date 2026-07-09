@@ -154,7 +154,7 @@ const RULES: Rule[] = [
   { keywords: ['asparagus'], emoji: '🥦', category: 'produce_veg', color: '#1E8449' },
   { keywords: ['brussels sprouts', 'brussels'], emoji: '🥦', category: 'produce_veg', color: '#1E8449' },
   { keywords: ['artichoke'], emoji: '🥦', category: 'produce_veg', color: '#27AE60' },
-  { keywords: ['beet', 'beets', 'beetroot'], emoji: 'mdi:package-variant-closed', category: 'produce_veg', color: '#943126' },
+  { keywords: ['beet', 'beets', 'beetroot'], emoji: '🥕', category: 'produce_veg', color: '#943126' },
   { keywords: ['radish', 'radishes'], emoji: '🥕', category: 'produce_veg', color: '#E74C3C' },
   { keywords: ['turnip', 'turnips', 'parsnip', 'parsnips'], emoji: '🥕', category: 'produce_veg', color: '#E8DAEF' },
   { keywords: ['leek', 'leeks', 'scallion', 'scallions', 'green onion', 'shallot'], emoji: '🧅', category: 'produce_veg', color: '#27AE60' },
@@ -204,7 +204,7 @@ const RULES: Rule[] = [
   { keywords: ['egg', 'eggs', 'dozen eggs', 'free range', 'egg whites', 'quail egg'], emoji: '🥚', category: 'eggs', color: '#F4D03F' },
 
   // ── BREAD & BAKERY ─────────────────────────────────────────────────────────
-  { keywords: ['bread', 'white bread', 'wheat bread', 'whole wheat', 'sourdough', 'multigrain', 'rye bread', 'brioche'], emoji: '🍞', category: 'bread', color: '#D4AC0D' },
+  { keywords: ['bread', 'white bread', 'wheat bread', 'whole wheat', 'sourdough', 'multigrain', 'rye bread', 'brioche', 'toast'], emoji: '🍞', category: 'bread', color: '#D4AC0D' },
   { keywords: ['bagel', 'bagels'], emoji: '🥯', category: 'bread', color: '#D4AC0D' },
   { keywords: ['muffin', 'muffins', 'english muffin'], emoji: '🧁', category: 'bread', color: '#D4AC0D' },
   { keywords: ['croissant', 'croissants'], emoji: '🥐', category: 'bread', color: '#D4AC0D' },

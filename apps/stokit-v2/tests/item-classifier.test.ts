@@ -53,6 +53,12 @@ const cases: Array<[input: string, emoji: string]> = [
   ['tissue', '🧻'],
   ['napkins', '🧻'],
   ['orange juice', '🧃'],
+
+  // toast/beetroot regressions — were falling through to 🛒/other
+  ['toast', '🍞'],
+  ['beetroot', '🥕'],
+  ['beet', '🥕'],
+  ['beets', '🥕'],
 ];
 
 for (const [input, emoji] of cases) {
