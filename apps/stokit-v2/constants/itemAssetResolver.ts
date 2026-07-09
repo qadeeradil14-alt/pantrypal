@@ -112,14 +112,23 @@ export function lookupCatalogCategory(name: string): PantryCatalogCategory | und
  * Never returns undefined — matches every existing render site's "no blank
  * box" guarantee.
  */
+// Sentinel: catalog/alias entries use this generic mdi icon as a stand-in
+// for "no real asset yet". Treat it as absent so the chain below falls
+// through to the category-specific icon instead of showing it directly.
+const NO_REAL_ASSET_SENTINEL = 'mdi:package-variant-closed';
+
+function skipSentinel(icon: string | undefined): string | undefined {
+  return icon && icon !== NO_REAL_ASSET_SENTINEL ? icon : undefined;
+}
+
 export function resolveItemIconString(name: string, fallbackEmoji?: string): string {
   const normalized = normalizeForIcon(name);
   const catalogItem = lookupTolerant(CATALOG_BY_NAME, normalized);
   const category = catalogItem?.category ?? 'Other';
   return (
-    catalogItem?.icon ||
-    lookupTolerant(ITEM_ICON, normalized) ||
-    fallbackEmoji ||
+    skipSentinel(catalogItem?.icon) ||
+    skipSentinel(lookupTolerant(ITEM_ICON, normalized)) ||
+    skipSentinel(fallbackEmoji) ||
     CATEGORY_ICON[category] ||
     CATEGORY_ICON.Other
   );
