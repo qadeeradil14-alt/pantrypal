@@ -650,12 +650,21 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                     Alert.alert(
                       e.name,
-                      e.outOfStock ? 'Mark as available again?' : 'Mark as out of stock?',
+                      e.outOfStock ? 'Mark as available again?' : 'Mark as out of stock, or remove it?',
                       [
                         { text: 'Cancel', style: 'cancel' },
                         {
                           text: e.outOfStock ? 'Available' : 'Out of stock',
                           onPress: () => dispatch({ type: 'MARK_OUT_OF_STOCK', itemId: e.itemId }),
+                        },
+                        {
+                          text: 'Remove item',
+                          style: 'destructive',
+                          onPress: () => {
+                            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                            dispatch({ type: 'REMOVE_ENTRY', itemId: e.itemId });
+                          },
                         },
                       ],
                     );

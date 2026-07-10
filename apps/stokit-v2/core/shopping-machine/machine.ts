@@ -55,6 +55,8 @@ export interface ShoppingSession {
   /** Store IDs the user explicitly skipped without shopping. */
   skippedStoreIds: string[];
   entries: ShoppingEntry[];
+  /** Item ids removed mid-trip. Tombstones so a deletion propagates across devices instead of being resurrected by a merge. */
+  removedItemIds: string[];
   /** Receipts accumulated during this trip. Committed at trip_summary. */
   receipts: Receipt[];
   /** Populated only when status === 'trip_summary'. */
@@ -69,6 +71,7 @@ export const initialSession: ShoppingSession = {
   currentIndex: 0,
   skippedStoreIds: [],
   entries: [],
+  removedItemIds: [],
   receipts: [],
   completedTrip: null,
 };
@@ -101,6 +104,8 @@ export type ShoppingEvent =
   | { type: 'ADVANCE_STORE' }
   | { type: 'END_TRIP' }
   | { type: 'ADD_ENTRY'; entry: ShoppingEntry }
+  /** Removes an entry added by mistake mid-trip (e.g. accidental item). */
+  | { type: 'REMOVE_ENTRY'; itemId: string }
   | { type: 'RESUME_TRIP' }
   | { type: 'MARK_OUT_OF_STOCK'; itemId: string }
   | { type: 'UNSKIP_STORE'; storeId: string }
@@ -255,6 +260,7 @@ export function reduce(
         currentIndex: 0,
         skippedStoreIds: [],
         entries,
+        removedItemIds: [],
         receipts: [],
         completedTrip: null,
       };
@@ -274,19 +280,36 @@ export function reduce(
     case 'ADD_ENTRY': {
       if (session.status !== 'shopping_store') return session;
       const existingIdx = session.entries.findIndex((e) => e.itemId === event.entry.itemId);
+      const removedItemIds = session.removedItemIds.includes(event.entry.itemId)
+        ? session.removedItemIds.filter((id) => id !== event.entry.itemId)
+        : session.removedItemIds;
       if (existingIdx === -1) {
-        return { ...session, entries: [...session.entries, { ...event.entry, picked: false }] };
+        return {
+          ...session,
+          entries: [...session.entries, { ...event.entry, picked: false }],
+          removedItemIds,
+        };
       }
       const existing = session.entries[existingIdx];
       // True duplicate — already in this store's list. Keep the no-op.
-      if (existing.storeId === event.entry.storeId) return session;
+      if (existing.storeId === event.entry.storeId && removedItemIds === session.removedItemIds) return session;
       // Already an entry for this item, but tied to a different store (e.g. planned
       // for another stop before the trip started) — re-home it to the current store
       // instead of silently dropping the add.
       const entries = session.entries.map((e, i) =>
         i === existingIdx ? { ...event.entry, picked: false } : e,
       );
-      return { ...session, entries };
+      return { ...session, entries, removedItemIds };
+    }
+
+    case 'REMOVE_ENTRY': {
+      if (session.status !== 'shopping_store') return session;
+      if (!session.entries.some((e) => e.itemId === event.itemId)) return session;
+      const entries = session.entries.filter((e) => e.itemId !== event.itemId);
+      const removedItemIds = session.removedItemIds.includes(event.itemId)
+        ? session.removedItemIds
+        : [...session.removedItemIds, event.itemId];
+      return { ...session, entries, removedItemIds };
     }
 
     case 'FINISH_STORE': {

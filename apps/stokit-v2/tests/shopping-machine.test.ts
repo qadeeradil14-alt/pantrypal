@@ -392,6 +392,52 @@ function entriesForStoreCount(s: ShoppingSession, storeId: string): number {
   return s.entries.filter((e) => e.storeId === storeId).length;
 }
 
+// ── REMOVE_ENTRY (delete an item added by mistake mid-trip) ────────────────────
+
+test('REMOVE_ENTRY removes the item and tombstones its id', () => {
+  let s = startTrip(); // currently shopping 'aldi'
+  s = reduce(s, { type: 'ADD_ENTRY', entry: entry('bread', 'aldi') });
+  assert.equal(entriesForStoreCount(s, 'aldi'), 3);
+
+  s = reduce(s, { type: 'REMOVE_ENTRY', itemId: 'bread' });
+
+  assert.equal(s.entries.some((e) => e.itemId === 'bread'), false, 'item is gone from entries');
+  assert.equal(entriesForStoreCount(s, 'aldi'), 2);
+  assert.deepEqual(s.removedItemIds, ['bread']);
+});
+
+test('REMOVE_ENTRY is a no-op outside shopping_store', () => {
+  const before = initialSession;
+  const after = reduce(before, { type: 'REMOVE_ENTRY', itemId: 'milk' });
+  assert.equal(after, before);
+});
+
+test('REMOVE_ENTRY is a no-op for an id not present in entries', () => {
+  let s = startTrip();
+  const before = s;
+  s = reduce(s, { type: 'REMOVE_ENTRY', itemId: 'nonexistent' });
+  assert.equal(s, before, 'must return the same reference when nothing changes');
+});
+
+test('ADD_ENTRY un-tombstones an item previously removed', () => {
+  let s = startTrip();
+  s = reduce(s, { type: 'ADD_ENTRY', entry: entry('bread', 'aldi') });
+  s = reduce(s, { type: 'REMOVE_ENTRY', itemId: 'bread' });
+  assert.deepEqual(s.removedItemIds, ['bread']);
+
+  s = reduce(s, { type: 'ADD_ENTRY', entry: entry('bread', 'aldi') });
+
+  assert.equal(s.entries.some((e) => e.itemId === 'bread'), true, 'item is back in entries');
+  assert.deepEqual(s.removedItemIds, [], 're-adding clears the tombstone');
+});
+
+test('removing an item does not affect other entries or store queue', () => {
+  let s = startTrip();
+  s = reduce(s, { type: 'REMOVE_ENTRY', itemId: 'milk' });
+  assert.equal(entriesForStoreCount(s, 'aldi'), 1, 'eggs remains');
+  assert.deepEqual(s.storeQueue, ['aldi', 'target'], 'store queue unaffected by item removal');
+});
+
 // ── Regression: lingering items after store completion ────────────────────────
 // store_summary must carry picked entries so the session-store side-effect
 // can immediately mark those items stocked in the durable store — rather than

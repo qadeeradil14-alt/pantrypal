@@ -144,6 +144,8 @@ export interface SharedShoppingSession {
   currentIndex: number;
   skippedStoreIds: string[];
   entries: ShoppingEntry[];
+  /** Item ids removed mid-trip. Optional: absent on payloads from pre-fix clients. */
+  removedItemIds?: string[];
   receipts: Receipt[];
   completedTrip: Trip | null;
 }

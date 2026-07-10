@@ -8,6 +8,13 @@ const CLOUD_TABLE = 'household_snapshots';
 const RECEIPT_BUCKET = 'receipts';
 const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24 * 7;
 
+const RETRY_ATTEMPTS = 3;
+const RETRY_BASE_DELAY_MS = 500;
+
+function retryDelay(attempt: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, RETRY_BASE_DELAY_MS * attempt));
+}
+
 let syncChannel: ReturnType<typeof supabase.channel> | null = null;
 let activeHouseholdId: string | null = null;
 
@@ -64,49 +71,76 @@ async function withSignedReceiptUrls(state: DurableState): Promise<DurableState>
 
 async function uploadReceipt(householdId: string, receipt: Receipt): Promise<Receipt> {
   if (!receipt.imageUri?.startsWith('file://')) return receipt;
-  try {
-    const ext = receipt.imageUri.split('.').pop()?.toLowerCase() || 'jpg';
-    const imagePath = `${householdId}/${receipt.id}.${ext}`;
-    const base64 = await new File(receipt.imageUri).base64();
-    const { error } = await supabase.storage.from(RECEIPT_BUCKET).upload(
-      imagePath,
-      decode(base64),
-      { contentType: `image/${ext === 'jpg' ? 'jpeg' : ext}`, upsert: true },
-    );
-    return error ? receipt : { ...receipt, imagePath };
-  } catch (err) {
-    if (__DEV__) console.warn('[Sync Engine] Receipt upload failed', err);
-    return receipt;
+  const ext = receipt.imageUri.split('.').pop()?.toLowerCase() || 'jpg';
+  const imagePath = `${householdId}/${receipt.id}.${ext}`;
+  for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
+    try {
+      const base64 = await new File(receipt.imageUri).base64();
+      const { error } = await supabase.storage.from(RECEIPT_BUCKET).upload(
+        imagePath,
+        decode(base64),
+        { contentType: `image/${ext === 'jpg' ? 'jpeg' : ext}`, upsert: true },
+      );
+      if (!error) return { ...receipt, imagePath };
+      if (__DEV__) console.warn(`[Sync Engine] Receipt upload attempt ${attempt} failed`, error.message);
+    } catch (err) {
+      if (__DEV__) console.warn(`[Sync Engine] Receipt upload attempt ${attempt} failed`, err);
+    }
+    if (attempt < RETRY_ATTEMPTS) await retryDelay(attempt);
   }
+  return receipt;
 }
 
-export async function pushLocalState(state: DurableState): Promise<void> {
+export async function pushLocalState(state: DurableState, options?: { isDeferredRetry?: boolean }): Promise<void> {
   const id = await householdId();
   if (!id) return;
 
   try {
     const receipts = await Promise.all(state.receipts.map((receipt) => uploadReceipt(id, receipt)));
-    const snapshot = { ...state, receipts };
-    const { error } = await supabase.from(CLOUD_TABLE).upsert({
-      household_id: id,
-      state: snapshot,
-      updated_at: snapshot.updatedAt,
-    }, { onConflict: 'household_id' });
-    if (error && __DEV__) console.warn('[Sync Engine] Snapshot push failed:', error.message);
-    if (!error) {
-      markPushed(snapshot.updatedAt);
-      const { itemCount, pickedCount, sessionId } = activeSessionStats(snapshot);
-      console.log(`[Shopping Sync] active_session_snapshot_written version/updatedAt=${snapshot.updatedAt} itemCount=${itemCount} pickedCount=${pickedCount} sessionId=${sessionId}`);
-      const store = await durableStore();
-      const uploadedById = new Map(receipts.map((receipt) => [receipt.id, receipt]));
-      const currentReceipts = store.getState().receipts.map((receipt) => {
-        const uploaded = uploadedById.get(receipt.id);
-        return uploaded?.imagePath && uploaded.imageUri === receipt.imageUri
-          ? { ...receipt, imagePath: uploaded.imagePath }
-          : receipt;
-      });
-      store.getState().applyRemotePatch({ receipts: currentReceipts });
+    const cloudReceipts = receipts.map((receipt) =>
+      !receipt.imagePath && receipt.imageUri?.startsWith('file://')
+        ? { ...receipt, imageUri: null }
+        : receipt,
+    );
+    const snapshot = { ...state, receipts: cloudReceipts };
+
+    let error: { message: string } | null = null;
+    for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
+      const result = await supabase.from(CLOUD_TABLE).upsert({
+        household_id: id,
+        state: snapshot,
+        updated_at: snapshot.updatedAt,
+      }, { onConflict: 'household_id' });
+      error = result.error;
+      if (!error) break;
+      if (__DEV__) console.warn(`[Sync Engine] Snapshot push attempt ${attempt} failed:`, error.message);
+      if (attempt < RETRY_ATTEMPTS) await retryDelay(attempt);
     }
+
+    if (error) {
+      if (!options?.isDeferredRetry) {
+        setTimeout(() => {
+          void (async () => {
+            const store = await durableStore();
+            await pushLocalState(durableSnapshot(store.getState()), { isDeferredRetry: true });
+          })();
+        }, RETRY_BASE_DELAY_MS * (RETRY_ATTEMPTS + 1));
+      }
+      return;
+    }
+
+    markPushed(snapshot.updatedAt);
+    const { itemCount, pickedCount, sessionId } = activeSessionStats(snapshot);
+    if (__DEV__) console.log(`[Shopping Sync] active_session_snapshot_written version/updatedAt=${snapshot.updatedAt} itemCount=${itemCount} pickedCount=${pickedCount} sessionId=${sessionId}`);
+    const store = await durableStore();
+    const uploadedById = new Map(receipts.map((receipt) => [receipt.id, receipt]));
+    const currentReceipts = store.getState().receipts.map((receipt) => {
+      const uploaded = uploadedById.get(receipt.id);
+      return uploaded?.imagePath && uploaded.imageUri === receipt.imageUri
+        ? { ...receipt, imagePath: uploaded.imagePath }
+        : receipt;
+    });
+    store.getState().applyRemotePatch({ receipts: currentReceipts });
   } catch (err) {
     if (__DEV__) console.warn('[Sync Engine] Offline or push failed.', err);
   }

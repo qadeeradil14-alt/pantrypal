@@ -115,7 +115,7 @@ test('remote active session is reconciled into local shopping session', () => {
   assert.ok(durableSrc.includes('applyRemoteSession(remoteSession)'), 'remote snapshot must update session store');
   assert.ok(sessionSrc.includes('applyRemoteSession'), 'session store must expose remote reconciliation');
   assert.ok(sessionSrc.includes('AsyncStorage.removeItem(SESSION_KEY)'), 'remote trip end must clear persisted active session');
-  assert.ok(sessionSrc.includes('local_state_reconciled'), 'local reconciliation must be logged');
+  assert.ok(sessionSrc.includes('mergeShoppingEntries(previous.entries, remoteSession.entries, removedItemIds)'), 'concurrent same-trip sessions must reconcile via entry merge, not blind overwrite');
 });
 
 test('local active session mutations publish full fresh snapshots', () => {
@@ -134,10 +134,10 @@ test('local active session mutations publish full fresh snapshots', () => {
 test('remote active session fully replaces local partial session and null clears storage', () => {
   const sessionPath = path.join(__dirname, '../store/session-store.ts');
   const sessionSrc = fs.readFileSync(sessionPath, 'utf-8');
-  assert.ok(sessionSrc.includes('set({ session: remoteSession as ShoppingSession })'), 'remote activeSession must replace local session, not merge');
-  assert.ok(sessionSrc.includes('remote_active_session_replaced_local'), 'replacement count log must be present');
+  assert.ok(sessionSrc.includes('set({ session: remoteSession as ShoppingSession })'), 'remote activeSession must replace local session for non-active/non-merged cases');
+  assert.ok(sessionSrc.includes('ACTIVE_STATUSES.has(previous.status)'), 'remote end must not clobber an actively-shopping local session');
   assert.ok(sessionSrc.includes("AsyncStorage.removeItem(SESSION_KEY)"), 'remote null/end must clear persisted local active session');
-  assert.ok(sessionSrc.includes('active_session_storage_cleared_on_remote_end'), 'remote end storage clear must be logged');
+  assert.ok(sessionSrc.includes('remoteEnded'), 'remote end/null detection must gate the storage-clear and replace paths');
 });
 
 test('stale AsyncStorage cannot override newer remote active session', () => {

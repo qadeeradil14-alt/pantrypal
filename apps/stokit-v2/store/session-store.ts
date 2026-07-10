@@ -18,7 +18,40 @@ import {
   type ShoppingSession,
 } from '../core/shopping-machine';
 import { useDurableStore } from './durable-store';
-import type { SharedShoppingSession } from '../types';
+import type { SharedShoppingSession, ShoppingEntry } from '../types';
+
+const ACTIVE_STATUSES = new Set<ShoppingSession['status']>([
+  'shopping_store',
+  'receipt_prompt',
+  'store_summary',
+  'continue_prompt',
+  'next_store_ready',
+]);
+
+/**
+ * Merges two shopping_store sessions for the same trip: union of entries
+ * (picked/outOfStock OR-merged so a check on either device sticks), minus
+ * anything either device tombstoned via REMOVE_ENTRY. Base structure
+ * (queue, index, receipts, etc.) is taken from local, not remote.
+ */
+function mergeShoppingEntries(
+  localEntries: ShoppingEntry[],
+  remoteEntries: ShoppingEntry[],
+  removedItemIds: string[],
+): ShoppingEntry[] {
+  const byId = new Map<string, ShoppingEntry>();
+  for (const entry of localEntries) byId.set(entry.itemId, entry);
+  for (const entry of remoteEntries) {
+    const existing = byId.get(entry.itemId);
+    byId.set(
+      entry.itemId,
+      existing
+        ? { ...existing, picked: existing.picked || entry.picked, outOfStock: !!existing.outOfStock || !!entry.outOfStock }
+        : entry,
+    );
+  }
+  return Array.from(byId.values()).filter((entry) => !removedItemIds.includes(entry.itemId));
+}
 
 const SESSION_KEY = 'stokit:v2:active-session';
 
@@ -86,23 +119,46 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
   applyRemoteSession: (remoteSession) => {
     const previous = get().session;
-    const oldStats = sessionStats(previous);
-    const newStats = sessionStats(remoteSession);
-    if (!remoteSession || remoteSession.status === 'idle' || remoteSession.status === 'trip_summary') {
-      console.log('[Shopping Sync] remote_trip_end_received');
-      console.log('[Shopping Sync] remote_active_session_cleared_local reason=remote_null_or_ended');
-      set({ session: initialSession });
-      AsyncStorage.removeItem(SESSION_KEY)
-        .then(() => console.log('[Shopping Sync] active_session_storage_cleared_on_remote_end'))
-        .catch(() => {});
-      console.log(`[Shopping Sync] remote_active_session_replaced_local oldCount=${oldStats.itemCount} newCount=0 oldPicked=${oldStats.pickedCount} newPicked=0`);
-      console.log('[Shopping Sync] local_state_reconciled');
+    const remoteEnded = !remoteSession || remoteSession.status === 'idle' || remoteSession.status === 'trip_summary';
+
+    // Guard 1: a partner ending their trip on one device must not wipe an
+    // actively in-progress session on this device. Self-echoes are already
+    // filtered upstream by the sync watermark, so anything reaching here is a
+    // genuinely different device's update — local's own dispatches will
+    // naturally re-push and heal shared state once this device also finishes.
+    if (remoteEnded && ACTIVE_STATUSES.has(previous.status)) {
       return;
     }
+
+    if (remoteEnded) {
+      set({ session: initialSession });
+      AsyncStorage.removeItem(SESSION_KEY).catch(() => {});
+      return;
+    }
+
+    // Guard 2: both devices are actively shopping the same trip — merge
+    // per-entry instead of blind whole-object replacement, so a check
+    // registered on either device sticks and neither side's progress is lost.
+    if (
+      previous.status === 'shopping_store' &&
+      remoteSession.status === 'shopping_store' &&
+      previous.tripId === remoteSession.tripId
+    ) {
+      const removedItemIds = Array.from(
+        new Set([...(previous.removedItemIds ?? []), ...(remoteSession.removedItemIds ?? [])]),
+      );
+      const merged: ShoppingSession = {
+        ...previous,
+        entries: mergeShoppingEntries(previous.entries, remoteSession.entries, removedItemIds),
+        removedItemIds,
+      };
+      set({ session: merged });
+      persistSession(merged);
+      return;
+    }
+
     set({ session: remoteSession as ShoppingSession });
     persistSession(remoteSession as ShoppingSession);
-    console.log(`[Shopping Sync] remote_active_session_replaced_local oldCount=${oldStats.itemCount} newCount=${newStats.itemCount} oldPicked=${oldStats.pickedCount} newPicked=${newStats.pickedCount}`);
-    console.log('[Shopping Sync] local_state_reconciled');
   },
 
   dispatch: (event) => {
