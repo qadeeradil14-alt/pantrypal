@@ -198,21 +198,26 @@ export function AddStoreContent({
     const hasCoords = typeof store.lat === 'number' && !Number.isNaN(store.lat)
       && typeof store.lng === 'number' && !Number.isNaN(store.lng);
 
+    const complete = () => {
+      addingRef.current = false;
+      reset();
+      onClose();
+      if (onStoreAdded) {
+        onStoreAdded(store.id);
+      }
+    };
+
+    if (hasCoords) {
+      complete();
+      return;
+    }
+
     Alert.alert(
-      hasCoords ? 'Arrival alerts ready' : 'Location missing',
-      hasCoords
-        ? 'Coordinates found for this store.'
-        : 'Arrival alerts will not work for this store until a location is added.',
+      'Store added',
+      'Store added, but arrival reminders may not work for this store.',
       [{
         text: 'OK',
-        onPress: () => {
-          addingRef.current = false;
-          reset();
-          onClose();
-          if (onStoreAdded) {
-            onStoreAdded(store.id);
-          }
-        },
+        onPress: complete,
       }],
       { cancelable: false },
     );

@@ -1,20 +1,19 @@
 import React, { useState } from 'react';
-import {
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
-import { Link, useLocalSearchParams, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { Button, Card } from '../../components/shared/ui';
-import { Logo } from '../../components/shared/Logo';
-import { fonts, radii, spacing, type AppColors } from '../../theme';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { fonts, spacing, type AppColors } from '../../theme';
 import { useTheme } from '../../hooks/useTheme';
-import { isEmailVerified, useAuthStore } from '../../store/auth-store';
+import { useAuthStore } from '../../store/auth-store';
+import {
+  AuthScreen,
+  BrandHeader,
+  AuthHeading,
+  AuthField,
+  AuthButton,
+  AuthDivider,
+  AuthMessage,
+  AuthLink,
+} from '../../components/auth/AuthKit';
 
 export default function SignInScreen() {
   const { colors } = useTheme();
@@ -26,7 +25,6 @@ export default function SignInScreen() {
   const loading = useAuthStore((s) => s.loading);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const successMessage = typeof params.message === 'string' ? params.message : '';
   const [error, setError] = useState('');
 
@@ -51,7 +49,6 @@ export default function SignInScreen() {
     const result = await resetPassword(email);
     if (result.ok) {
       setError('');
-      // Email with an 8-digit code is on its way — go to the code-entry screen.
       router.push({ pathname: '/(auth)/reset-password', params: { email: email.trim() } });
     } else {
       setError(result.message);
@@ -59,69 +56,47 @@ export default function SignInScreen() {
   };
 
   return (
-    <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={styles.content}>
-        <View style={{ marginBottom: spacing.md }}>
-          <Logo size={64} color={colors.ink} />
-        </View>
-        <Text style={styles.eyebrow}>WELCOME BACK</Text>
-        <Text style={styles.title}>Sign in to Stokit</Text>
-        <Text style={styles.body}>Your pantry and shopping trips stay private to your account.</Text>
-        <Card style={styles.card}>
-          {successMessage ? <Text style={styles.resetSent}>{successMessage}</Text> : null}
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-          <TextInput
-            value={email}
-            onChangeText={(value) => { setEmail(value); setError(''); }}
-            placeholder="Email"
-            placeholderTextColor={colors.faintText}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoComplete="email"
-            style={styles.input}
-          />
-          <View style={styles.passwordRow}>
-            <TextInput
-              value={password}
-              onChangeText={(value) => { setPassword(value); setError(''); }}
-              placeholder="Password"
-              placeholderTextColor={colors.faintText}
-              secureTextEntry={!showPassword}
-              autoComplete="current-password"
-              style={styles.passwordInput}
-            />
-            <Pressable onPress={() => setShowPassword((value) => !value)} hitSlop={10}>
-              <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={colors.muted} />
-            </Pressable>
-          </View>
-          <Button label={loading ? 'Signing in…' : 'Sign in'} onPress={() => void submit()} disabled={loading} />
-          <Button
-            label={loading ? 'Sending…' : 'Forgot password?'}
-            onPress={() => void sendReset()}
-            disabled={loading}
-            variant="subtle"
-          />
-        </Card>
-        <Link href="/(auth)/sign-up" style={styles.link}>Don't have an account? Sign up</Link>
+    <AuthScreen>
+      <BrandHeader />
+      <AuthHeading title="Welcome back" subtitle="Sign in to get back to your pantry." />
+
+      <View style={styles.form}>
+        {successMessage ? <AuthMessage text={successMessage} tone="success" /> : null}
+        <AuthMessage text={error} />
+        <AuthField
+          icon="mail-outline"
+          value={email}
+          onChangeText={(v) => { setEmail(v); setError(''); }}
+          placeholder="Email"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoComplete="email"
+        />
+        <AuthField
+          icon="lock-closed-outline"
+          secure
+          value={password}
+          onChangeText={(v) => { setPassword(v); setError(''); }}
+          placeholder="Password"
+          autoComplete="current-password"
+        />
+        <Pressable onPress={() => void sendReset()} disabled={loading} hitSlop={8} style={styles.forgotWrap}>
+          <Text style={styles.forgot}>Forgot password?</Text>
+        </Pressable>
+        <AuthButton label="Sign in" onPress={() => void submit()} loading={loading} />
+        <AuthDivider />
+        <AuthButton label="Join with invite code" variant="outline" icon="person-add-outline" onPress={() => router.push('/(auth)/join')} />
       </View>
-    </KeyboardAvoidingView>
+
+      <AuthLink prefix="Don't have an account?" action="Create one" onPress={() => router.replace('/(auth)/sign-up')} />
+    </AuthScreen>
   );
 }
 
-
 function makeStyles(colors: AppColors) {
   return StyleSheet.create({
-    root: { flex: 1, backgroundColor: colors.background },
-    content: { flex: 1, justifyContent: 'center', padding: spacing.xl },
-    eyebrow: { fontFamily: fonts.monoMedium, fontSize: 11, letterSpacing: 1.5, color: colors.muted, marginBottom: spacing.sm },
-    title: { fontFamily: fonts.serifItalic, fontSize: 40, lineHeight: 46, color: colors.ink, marginBottom: spacing.sm },
-    body: { fontFamily: fonts.sans, fontSize: 15, lineHeight: 22, color: colors.muted, marginBottom: spacing.xl },
-    card: { gap: spacing.md },
-    input: { height: 50, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.lg, color: colors.ink, fontFamily: fonts.sans },
-    passwordRow: { height: 50, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.lg, flexDirection: 'row', alignItems: 'center' },
-    passwordInput: { flex: 1, color: colors.ink, fontFamily: fonts.sans },
-    error: { fontFamily: fonts.sansMedium, color: colors.danger, lineHeight: 20 },
-    resetSent: { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.success, textAlign: 'center' },
-    link: { marginTop: spacing.xl, textAlign: 'center', color: colors.primary, fontFamily: fonts.sansSemibold },
+    form: { gap: spacing.md },
+    forgotWrap: { alignSelf: 'flex-end', marginTop: -spacing.xs, marginBottom: spacing.xs },
+    forgot: { fontFamily: fonts.sansSemibold, fontSize: 13, color: colors.primary },
   });
 }

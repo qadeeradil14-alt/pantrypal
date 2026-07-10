@@ -25,6 +25,7 @@ import { useTheme } from '../hooks/useTheme';
 import { useDurableStore } from '../store/durable-store';
 import { useHouseholdStore } from '../store/household-store';
 import { useSessionStore } from '../store/session-store';
+import { useOnboardingStore } from '../store/onboarding';
 import { setupNotifications, registerPushToken, appendNotificationLog } from '../core/services/notifications';
 import { isEmailVerified, useAuthStore } from '../store/auth-store';
 import { pullFromSupabase, startSyncEngine } from '../core/services/syncEngine';
@@ -92,6 +93,9 @@ export default function RootLayout() {
   const hydratedHousehold = useHouseholdStore((s) => s.hydrated);
   const ensureHousehold = useHouseholdStore((s) => s.ensureHousehold);
   const hydrateSession = useSessionStore((s) => s.hydrateSession);
+  const hydrateOnboarding = useOnboardingStore((s) => s.hydrate);
+  const onboardingHydrated = useOnboardingStore((s) => s.hydrated);
+  const onboardingCompleted = useOnboardingStore((s) => s.completed);
   // Gate the navigator on `initializing` (first startup auth check) — NOT on
   // `loading`, which toggles during every sign-in/sign-up button press. Gating
   // on `loading` tore the navigator down mid-sign-up and bounced the user to
@@ -103,6 +107,8 @@ export default function RootLayout() {
   const pathname = usePathname();
   const { colors, isDark } = useTheme();
   const handledNotificationIdRef = useRef<string | null>(null);
+  const bootRouteRequestedRef = useRef(false);
+  const authEntryUnlockedRef = useRef(false);
   // Each tap produces a new object so React always re-renders and Expo Router
   // always navigates (identical params would be deduplicated silently).
   const [inviteTrigger, setInviteTrigger] = useState<{ code: string; t: number } | null>(null);
@@ -110,7 +116,7 @@ export default function RootLayout() {
   const [initialUrlChecked, setInitialUrlChecked] = useState(false);
   const verified = isEmailVerified(user);
   const unlocked = verified || guestMode;
-  const ready = fontsLoaded && hydratedDurable && hydratedHousehold && !authInitializing;
+  const ready = fontsLoaded && hydratedDurable && hydratedHousehold && !authInitializing && onboardingHydrated;
   const rootNavigationState = useRootNavigationState();
   const segments = useSegments();
 
@@ -118,8 +124,9 @@ export default function RootLayout() {
     void hydrateDurable();
     void hydrateHousehold();
     void hydrateSession();
+    void hydrateOnboarding();
     void setupNotifications();
-  }, [hydrateDurable, hydrateHousehold, hydrateSession]);
+  }, [hydrateDurable, hydrateHousehold, hydrateSession, hydrateOnboarding]);
 
   // Capture invite deep links before the auth guard runs.
   // Cold start: getInitialURL resolves once and sets initialUrlChecked so the
@@ -142,8 +149,8 @@ export default function RootLayout() {
     return () => sub.remove();
   }, []);
 
-  // Warm-start invite: when a URL event fires while the app is already running
-  // and the navigator is ready, route immediately to the join screen.
+  // Warm-start invite: after boot routing has settled, route immediately to the
+  // join screen. Cold-start invites are handled by the one-shot boot guard below.
   // t param makes every push unique so Expo Router never deduplicates it.
   useEffect(() => {
     if (!inviteTrigger || !ready || !rootNavigationState?.key || !initialUrlChecked) return;
@@ -237,10 +244,76 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (!ready || !rootNavigationState?.key || !initialUrlChecked) return;
+    if (pathname === '/welcome') authEntryUnlockedRef.current = true;
+    if (bootRouteRequestedRef.current) return;
+
+    const preserveStartupPath =
+      pathname === '/auth/callback' ||
+      pathname === '/reset-password' ||
+      pathname === '/verify-email';
+
+    bootRouteRequestedRef.current = true;
+
+    if (preserveStartupPath) return;
+    if (inviteTrigger) {
+      authEntryUnlockedRef.current = true;
+      router.replace({ pathname: '/(auth)/join', params: { invite: inviteTrigger.code, t: String(inviteTrigger.t) } });
+      setInviteTrigger(null);
+    } else if (user && !verified && !guestMode) {
+      router.replace('/(auth)/verify-email');
+    } else if (unlocked) {
+      router.replace('/(tabs)');
+    } else if (!onboardingCompleted) {
+      router.replace('/(auth)/onboarding');
+    } else {
+      router.replace('/(auth)/welcome');
+    }
+
+    if (__DEV__) {
+      console.log('[BootRoute]', {
+        pathname,
+        segments,
+        user: Boolean(user),
+        authInitializing,
+        onboardingHydrated,
+        onboardingCompleted,
+        selected: preserveStartupPath
+          ? pathname
+          : inviteTrigger
+            ? '/join'
+            : user && !verified && !guestMode
+              ? '/verify-email'
+              : unlocked
+                ? '/(tabs)'
+                : !onboardingCompleted
+                  ? '/onboarding'
+                  : '/welcome',
+      });
+    }
+  }, [
+    authInitializing,
+    guestMode,
+    initialUrlChecked,
+    inviteTrigger,
+    onboardingCompleted,
+    onboardingHydrated,
+    pathname,
+    ready,
+    rootNavigationState?.key,
+    router,
+    segments,
+    unlocked,
+    user,
+    verified,
+  ]);
+
+  useEffect(() => {
+    if (!ready || !rootNavigationState?.key || !initialUrlChecked) return;
 
     // Add microtask delay to allow React state to settle before routing
     setTimeout(() => {
       if (pathname === '/auth/callback') return;
+      if (pathname === '/welcome') authEntryUnlockedRef.current = true;
 
       // Email verification check
       if (user && !verified && !guestMode && pathname !== '/verify-email' && pathname !== '/sign-up') {
@@ -249,21 +322,33 @@ export default function RootLayout() {
       }
 
       // Main auth routing
-      const authPaths = ['/welcome', '/sign-in', '/sign-up', '/join', '/verify-email', '/reset-password', '/auth/callback'];
+      const authPaths = ['/onboarding', '/welcome', '/sign-in', '/sign-up', '/join', '/verify-email', '/reset-password', '/auth/callback'];
       const inAuthGroup = segments[0] === '(auth)' || authPaths.includes(pathname);
 
       if (unlocked && inAuthGroup && pathname !== '/join') {
         router.replace('/(tabs)');
-      } else if (!unlocked && !inAuthGroup) {
+      } else if (!unlocked) {
         if (inviteTrigger) {
+          authEntryUnlockedRef.current = true;
           router.replace({ pathname: '/(auth)/join', params: { invite: inviteTrigger.code, t: String(inviteTrigger.t) } });
           setInviteTrigger(null);
-        } else {
+        } else if (!onboardingCompleted && pathname !== '/onboarding') {
+          // First launch (or reset data): show onboarding once, then Welcome.
+          router.replace('/(auth)/onboarding');
+        } else if (
+          onboardingCompleted &&
+          pathname !== '/welcome' &&
+          pathname !== '/reset-password' &&
+          pathname !== '/verify-email' &&
+          !authEntryUnlockedRef.current
+        ) {
           router.replace('/(auth)/welcome');
+        } else if (!inAuthGroup) {
+          router.replace(onboardingCompleted ? '/(auth)/welcome' : '/(auth)/onboarding');
         }
       }
     }, 0);
-  }, [pathname, segments, ready, router, user, verified, guestMode, unlocked, initialUrlChecked, inviteTrigger]);
+  }, [pathname, segments, ready, router, user, verified, guestMode, unlocked, initialUrlChecked, inviteTrigger, onboardingCompleted]);
 
   if (!ready && pathname !== '/auth/callback') {
     return (

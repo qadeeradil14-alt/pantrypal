@@ -262,10 +262,29 @@ export default function ShoppingScreen() {
   };
 
   // ── Active states ──────────────────────────────────────────────────────────
-  if (session.status === 'shopping_store')  return <ShoppingActive  session={session} dispatch={dispatch} storeById={storeById} styles={styles} colors={colors} />;
-  if (session.status === 'receipt_prompt')  return <ReceiptPrompt   session={session} dispatch={dispatch} storeById={storeById} rStyles={rStyles} colors={colors} />;
-  if (session.status === 'store_summary' || session.status === 'continue_prompt') return <StoreSummary session={session} dispatch={dispatch} storeById={storeById} ssStyles={ssStyles} colors={colors} />;
-  if (session.status === 'next_store_ready') return <NextStoreSelector session={session} dispatch={dispatch} storeById={storeById} styles={styles} nsStyles={nsStyles} colors={colors} />;
+  // shopping_store → receipt_prompt → store_summary/continue_prompt → next_store_ready
+  // all render through one persistent shell so mid-trip transitions animate in
+  // place instead of hard-swapping unrelated screens.
+  if (
+    session.status === 'shopping_store' ||
+    session.status === 'receipt_prompt' ||
+    session.status === 'store_summary' ||
+    session.status === 'continue_prompt' ||
+    session.status === 'next_store_ready'
+  ) {
+    return (
+      <ActiveTripShell
+        session={session}
+        dispatch={dispatch}
+        storeById={storeById}
+        styles={styles}
+        rStyles={rStyles}
+        ssStyles={ssStyles}
+        nsStyles={nsStyles}
+        colors={colors}
+      />
+    );
+  }
   if (session.status === 'trip_summary')    return <TripSummary     session={session} dispatch={dispatch} storeById={storeById} tsStyles={tsStyles} colors={colors} />;
 
   // Geofence arrival deep-link: arrivalStoreId is present and the store has items
@@ -1436,120 +1455,6 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
   );
 }
 
-// ── 4. Continue or finish decision ────────────────────────────────────────────
-
-function ContinuePrompt({ session, dispatch, storeById, styles, colors }: SubProps) {
-  const router = useRouter();
-  const stores = useDurableStore((s) => s.stores);
-  const storeId = currentStoreId(session)!;
-  const store = storeById(storeId);
-  const pending = pendingStoreIds(session);
-  // Stores the user has saved but didn't plan for this trip.
-  const manualStores = stores.filter((s) => !session.storeQueue.includes(s.id));
-  const hasOptions = pending.length > 0 || manualStores.length > 0;
-
-  return (
-    <Screen>
-      <PageTitle
-        eyebrow="Store visit completed"
-        title={hasOptions ? 'Shopping somewhere else?' : 'All done here?'}
-      />
-
-      {/* ── Primary action card ── */}
-      <Card style={styles.summaryCard}>
-        <Text style={styles.continueTitle}>
-          You finished {store?.name ?? 'this store'}.
-        </Text>
-
-        {/* Case A: planned stops remain — one-tap advance */}
-        {pending.length > 0 && (
-          <Button
-            label={`Head to ${storeById(pending[0])?.name ?? 'next store'} →`}
-            onPress={() => dispatch({ type: 'CONTINUE_TRIP' })}
-            style={{ marginTop: spacing.lg }}
-          />
-        )}
-
-        {/* Case C: no planned stops, no saved stores — nothing to choose */}
-        {pending.length === 0 && manualStores.length === 0 && (
-          <Text style={styles.continueBody}>
-            Your route is complete. Finish the trip to save your receipts and update your pantry.
-          </Text>
-        )}
-        
-        {/* Case B Header: Show inline instruction */}
-        {pending.length === 0 && manualStores.length > 0 && (
-          <Text style={styles.continueBody}>
-            Your planned route is done. Pick another store below to keep going, or finish your trip.
-          </Text>
-        )}
-
-        {/* Finish trip — primary when no options, secondary otherwise */}
-        <Button
-          label="Finish trip"
-          variant={hasOptions ? 'ghost' : 'primary'}
-          onPress={() => dispatch({ type: 'FINISH_TRIP', now: Date.now() })}
-          style={{ marginTop: hasOptions ? spacing.md : spacing.lg }}
-        />
-
-        {/* Case C only: nudge to add a store for future trips */}
-        {pending.length === 0 && manualStores.length === 0 && (
-          <Button
-            label="Add a store for next time"
-            variant="subtle"
-            onPress={() => router.push('/(tabs)/stores')}
-            style={{ marginTop: spacing.sm }}
-          />
-        )}
-      </Card>
-      
-      {/* ── Control Center Grid (Case B) ── */}
-      {pending.length === 0 && manualStores.length > 0 && (
-        <View style={{ marginTop: spacing.xl, flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, justifyContent: 'space-between' }}>
-          {manualStores.map((candidate) => (
-            <Pressable
-              key={candidate.id}
-              onPress={() => dispatch({ type: 'START_MANUAL_STORE', storeId: candidate.id })}
-              style={({ pressed }) => [
-                { 
-                  width: '48%', 
-                  height: 100, 
-                  backgroundColor: colors.surfaceRaised, 
-                  borderRadius: radii.lg, 
-                  padding: spacing.md, 
-                  borderWidth: 1, 
-                  borderColor: colors.border,
-                  flexDirection: 'row',
-                  alignItems: 'center', 
-                  gap: spacing.sm,
-                },
-                pressed && { opacity: 0.7 }
-              ]}
-            >
-              <StoreChip
-                store={candidate}
-                size={40}
-              />
-              <View style={{ flex: 1 }}>
-                <Text 
-                  style={{ 
-                    fontFamily: fonts.sansSemibold, 
-                    fontSize: 14, 
-                    color: colors.ink, 
-                  }} 
-                  numberOfLines={2}
-                >
-                  {candidate.name}
-                </Text>
-              </View>
-            </Pressable>
-          ))}
-        </View>
-      )}
-    </Screen>
-  );
-}
-
 // ── 5. Next store selector ────────────────────────────────────────────────────
 
 function NextStoreSelector({ session, dispatch, storeById, styles, nsStyles, colors }: SubProps) {
@@ -1724,6 +1629,24 @@ function NextStoreSelector({ session, dispatch, storeById, styles, nsStyles, col
       <CancelTripLink dispatch={dispatch} colors={colors} />
     </Screen>
   );
+}
+
+// ── Active trip shell ─────────────────────────────────────────────────────────
+// Persistent wrapper for the shopping_store / receipt_prompt / store_summary
+// (continue_prompt) / next_store_ready sequence, so switching between them
+// animates in place instead of hard-swapping separate screens.
+
+function ActiveTripShell(props: SubProps) {
+  const { session } = props;
+
+  useEffect(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+  }, [session.status]);
+
+  if (session.status === 'receipt_prompt') return <ReceiptPrompt {...props} />;
+  if (session.status === 'store_summary' || session.status === 'continue_prompt') return <StoreSummary {...props} />;
+  if (session.status === 'next_store_ready') return <NextStoreSelector {...props} />;
+  return <ShoppingActive {...props} />;
 }
 
 // ── Shared cancel-trip link ───────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase, SESSION_BACKUP_KEY } from '../lib/supabase';
@@ -22,7 +23,7 @@ type DeleteAccountResult =
 let _explicitSignOut = false;
 let _signUpInProgress = false;
 
-const AUTH_REDIRECT_URL = 'pantrypal://auth/callback';
+const AUTH_REDIRECT_URL = `${Constants.expoConfig?.scheme ?? 'pantrypal'}://auth/callback`;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

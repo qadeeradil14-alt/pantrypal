@@ -8,6 +8,9 @@ const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'public-ano
 if (!process.env.EXPO_PUBLIC_SUPABASE_URL) {
   console.warn('⚠️ Missing EXPO_PUBLIC_SUPABASE_URL! Supabase sync will not work.');
 }
+if (!process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY) {
+  console.warn('⚠️ Missing EXPO_PUBLIC_SUPABASE_ANON_KEY! Supabase auth will not work.');
+}
 
 /**
  * SESSION BACKUP BOOTSTRAP

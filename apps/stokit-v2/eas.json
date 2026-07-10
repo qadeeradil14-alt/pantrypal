@@ -19,6 +19,17 @@
         "NPM_CONFIG_LEGACY_PEER_DEPS": "true",
         "EAS_PROJECT_ROOT": "apps/stokit-v2"
       }
+    },
+    "redesignTest": {
+      "distribution": "internal",
+      "channel": "shopping-redesign-test",
+      "environment": "preview",
+      "autoIncrement": true,
+      "env": {
+        "APP_VARIANT": "redesign",
+        "NPM_CONFIG_LEGACY_PEER_DEPS": "true",
+        "EAS_PROJECT_ROOT": "apps/stokit-v2"
+      }
     }
   },
   "submit": {
