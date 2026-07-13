@@ -71,7 +71,16 @@ export const radii = {
   lg: 20,
   xl: 26,
   pill: 999,
+  // Auth/onboarding kit inputs and CTAs use a slightly rounder corner than
+  // the rest of the app's cards/buttons — kept as its own token rather than
+  // snapping to md/lg so AuthKit's existing visual scale is preserved.
+  auth: 16,
 } as const;
+
+// Warm cream surface for the whole auth/onboarding flow in light mode — matches
+// the reference and the illustration artwork so the art blends seamlessly.
+// Dark mode uses the theme's dark background instead (see AuthKit.authBackground).
+export const authBackgroundLight = '#FEF9F1';
 
 export const darkColors = {
   background: '#0F1117',
@@ -114,6 +123,9 @@ export const type = {
   caption: { fontFamily: fonts.sans, fontSize: 12 },
   meta: { fontFamily: fonts.mono, fontSize: 12 },
   bigStat: { fontFamily: fonts.mono, fontSize: 30 },
+  // Onboarding slide headline — large sans-serif, distinct from the serif
+  // pageTitle/sectionTitle scale used in app chrome.
+  slideTitle: { fontFamily: fonts.sansSemibold, fontSize: 27, lineHeight: 34 },
 } as const;
 
 // Canonical icon sizes — prefer these over inline numbers in new code

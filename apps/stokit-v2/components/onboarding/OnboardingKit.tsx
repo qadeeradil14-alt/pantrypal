@@ -5,7 +5,8 @@
  */
 import React from 'react';
 import { Animated, Image, StyleSheet, Text, View } from 'react-native';
-import { fonts, spacing, type AppColors } from '../../theme';
+import { fonts, spacing, type } from '../../theme';
+import type { AppColors } from '../../theme';
 import { slideArtwork, type OnboardingSlide } from '../../constants/onboarding';
 
 /** Animated dots — active dot widens into an orange pill, driven by scroll. */
@@ -80,7 +81,7 @@ const styles = StyleSheet.create({
   page: { flex: 1 },
   pageInner: { flex: 1, paddingHorizontal: spacing.xxl, alignItems: 'center' },
   textBlock: { alignItems: 'center', marginBottom: spacing.lg },
-  title: { fontFamily: fonts.sansSemibold, fontSize: 27, lineHeight: 34, textAlign: 'center' },
+  title: { ...type.slideTitle, textAlign: 'center' },
   subtitle: { fontFamily: fonts.sans, fontSize: 15, lineHeight: 22, textAlign: 'center', marginTop: spacing.md, paddingHorizontal: spacing.md },
   artArea: { flex: 1, minHeight: 0, width: '100%', alignItems: 'center', justifyContent: 'center' },
   art: { flex: 1, width: '100%', maxWidth: 320 },

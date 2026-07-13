@@ -22,19 +22,15 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Logo } from '../shared/Logo';
-import { fonts, radii, spacing, type AppColors } from '../../theme';
+import { authBackgroundLight, fonts, radii, spacing, type AppColors } from '../../theme';
 import { useTheme } from '../../hooks/useTheme';
 
 // Shared tokens — the single place these values live.
 export const AUTH_FIELD_HEIGHT = 54;
 export const AUTH_BUTTON_HEIGHT = 56;
-export const AUTH_RADIUS = 16;
-// Warm cream surface for the whole auth/onboarding flow in light mode — matches
-// the reference and the illustration background (#FEF9F1) so the art blends
-// seamlessly. Dark mode uses the theme's dark background.
-export const AUTH_BG_LIGHT = '#FEF9F1';
+export const AUTH_RADIUS = radii.auth;
 export function authBackground(colors: AppColors, isDark: boolean) {
-  return isDark ? colors.background : AUTH_BG_LIGHT;
+  return isDark ? colors.background : authBackgroundLight;
 }
 
 /** Full-screen scaffold: safe areas, themed background, keyboard avoidance,
