@@ -19,14 +19,7 @@ import {
 } from '../core/shopping-machine';
 import { useDurableStore } from './durable-store';
 import type { SharedShoppingSession, ShoppingEntry } from '../types';
-
-const ACTIVE_STATUSES = new Set<ShoppingSession['status']>([
-  'shopping_store',
-  'receipt_prompt',
-  'store_summary',
-  'continue_prompt',
-  'next_store_ready',
-]);
+import { remoteShoppingSessionAction } from '../core/services/shoppingSessionSyncPolicy';
 
 /**
  * Merges two shopping_store sessions for the same trip: union of entries
@@ -119,18 +112,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
   applyRemoteSession: (remoteSession) => {
     const previous = get().session;
-    const remoteEnded = !remoteSession || remoteSession.status === 'idle' || remoteSession.status === 'trip_summary';
 
-    // Guard 1: a partner ending their trip on one device must not wipe an
-    // actively in-progress session on this device. Self-echoes are already
-    // filtered upstream by the sync watermark, so anything reaching here is a
-    // genuinely different device's update — local's own dispatches will
-    // naturally re-push and heal shared state once this device also finishes.
-    if (remoteEnded && ACTIVE_STATUSES.has(previous.status)) {
-      return;
-    }
-
-    if (remoteEnded) {
+    if (!remoteSession || remoteShoppingSessionAction(remoteSession) === 'clear') {
       set({ session: initialSession });
       AsyncStorage.removeItem(SESSION_KEY).catch(() => {});
       return;

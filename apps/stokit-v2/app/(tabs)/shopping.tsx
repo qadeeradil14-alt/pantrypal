@@ -51,6 +51,7 @@ import { normalizeItemName } from '../../core/services/pantryItems';
 import { receiptContinuationEvent, renameReviewItem, reviewReceiptItems, unplannedStores } from '../../core/services/shoppingUx';
 import { isGeofencingRunning, startGeofencing } from '../../core/services/geofencing';
 import { sendHouseholdShoppingAlert } from '../../core/services/notifications';
+import { sendShoppingAlertOnce } from '../../core/services/shoppingAlertOnce';
 import { resetShoppingTripStartGuard, startShoppingTripOnce } from '../../core/services/shoppingTripStart';
 import type { ReceiptReviewItem } from '../../core/services/shoppingUx';
 import type { PantryItem, ShoppingEntry, Store } from '../../types';
@@ -197,7 +198,10 @@ export default function ShoppingScreen() {
       tripId,
       startTrip: () => dispatch({ type: 'START_TRIP', entries, now }),
       notifyHousehold: notifyHousehold && store
-        ? () => sendHouseholdShoppingAlert(store.name, firstStoreId)
+        ? () => sendShoppingAlertOnce(
+            tripId,
+            () => sendHouseholdShoppingAlert(store.name, firstStoreId),
+          )
         : undefined,
     });
     if (await isGeofencingRunning()) {
@@ -645,9 +649,12 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
 
   const handleNotifyHousehold = async () => {
     const store = storeById(storeId);
-    if (!store || notifyState === 'sending') return;
+    if (!store || !session.tripId || notifyState === 'sending') return;
     setNotifyState('sending');
-    const { ok, sent } = await sendHouseholdShoppingAlert(store.name, storeId);
+    const { ok, sent } = await sendShoppingAlertOnce(
+      session.tripId,
+      () => sendHouseholdShoppingAlert(store.name, storeId),
+    );
     setNotifyState(!ok ? 'error' : sent > 0 ? 'sent' : 'no_tokens');
     setTimeout(() => setNotifyState('idle'), 3000);
   };
