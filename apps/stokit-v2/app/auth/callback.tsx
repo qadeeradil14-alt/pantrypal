@@ -3,7 +3,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
 import { handleAuthLink } from '../../lib/auth-links';
-import { getAuthCallbackPresentation, withTimeout } from '../../lib/auth-link-processing';
+import { getAuthCallbackPresentation } from '../../lib/auth-link-processing';
 import { useAuthStore } from '../../store/auth-store';
 import { spacing, type AppColors } from '../../theme';
 import { useTheme } from '../../hooks/useTheme';
@@ -26,7 +26,7 @@ export default function AuthCallbackScreen() {
 
       if (!active) return;
       setMessage(presentation.statusText);
-      await withTimeout(clearConfirmationSession(), 2000, undefined);
+      await clearConfirmationSession();
       await new Promise((resolve) => setTimeout(resolve, 900));
 
       if (!active) return;
