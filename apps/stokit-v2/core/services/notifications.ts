@@ -12,6 +12,7 @@ import Constants from 'expo-constants';
 import { AppState, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../../lib/supabase';
+import { readFunctionError } from './functionError';
 
 /**
  * Resolve the EAS projectId required by getExpoPushTokenAsync(). Auto-resolution
@@ -38,7 +39,8 @@ export type NotificationLogStage =
   | 'schedule_error'
   | 'delivered'
   | 'tapped'
-  | 'shopping_opened';
+  | 'shopping_opened'
+  | 'household_alert_error';
 
 export interface NotificationLogEntry {
   stage: NotificationLogStage;
@@ -316,17 +318,22 @@ export async function sendHouseholdShoppingAlert(
     const { data, error } = response;
 
     if (error) {
-      const errMessage = error.message || '';
-      if (errMessage.includes('no_recipients') || errMessage.includes('No household recipients') || errMessage.includes('No other members')) {
+      const detail = await readFunctionError(error);
+      console.warn('[Notify Family] notify-shopping failed', detail.log);
+      await appendNotificationLog('household_alert_error', detail.log);
+      const errorText = [detail.code, detail.serverMessage, detail.log].filter(Boolean).join(' ');
+      if (errorText.includes('no_recipients') || errorText.includes('No household recipients') || errorText.includes('No other members')) {
         return { ok: true, sent: 0, result: 'no_tokens' };
       }
-      return { ok: false, sent: 0, result: `failed:${errMessage}` };
+      return { ok: false, sent: 0, result: `failed:${detail.log}` };
     }
     const sent = (data as { sent?: number } | null)?.sent ?? 0;
     return { ok: true, sent, result: sent > 0 ? 'sent' : 'no_tokens' };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return { ok: false, sent: 0, result: `failed:${message}` };
+    const detail = await readFunctionError(err);
+    console.warn('[Notify Family] notify-shopping failed', detail.log);
+    await appendNotificationLog('household_alert_error', detail.log);
+    return { ok: false, sent: 0, result: `failed:${detail.log}` };
   }
 }
 
