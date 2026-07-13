@@ -209,7 +209,7 @@ export default function PantryScreen() {
                 </Text>
               </View>
               <Pressable onPress={() => router.push('/settings')} style={styles.settings} hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}>
-                <Ionicons name="settings-outline" size={25} color={colors.primary} />
+                <Ionicons name="settings-outline" size={24} color={colors.primary} />
               </Pressable>
             </View>
           </View>
@@ -504,7 +504,7 @@ function HouseholdBanner() {
 
 function stylesHousehold(colors: AppColors) {
   return StyleSheet.create({
-    card: { backgroundColor: colors.surfaceRaised, padding: spacing.md, borderRadius: radii.lg, marginBottom: spacing.md, borderWidth: 1, borderColor: colors.border },
+    card: { backgroundColor: colors.surface, padding: spacing.lg, borderRadius: radii.lg, marginBottom: spacing.md, borderWidth: 1, borderColor: colors.borderSoft, ...shadow.card },
     header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.xs },
     title: { flex: 1, fontFamily: fonts.sansSemibold, color: colors.ink, fontSize: 15 },
     count: { fontFamily: fonts.mono, color: colors.muted, fontSize: 12, fontVariant: ['tabular-nums'] },
@@ -654,7 +654,7 @@ function makeStyles(c: AppColors) {
   return StyleSheet.create({
     safe:             { flex: 1, backgroundColor: c.background },
     scroll:           { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
-    header:           { flexDirection: 'column', paddingBottom: 28 },
+    header:           { flexDirection: 'column', paddingBottom: spacing.xxl },
     topRow:           { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
     topRowRight:      { flexDirection: 'row', alignItems: 'center', gap: 8 },
     wordmark:         { flexDirection: 'row', alignItems: 'center', gap: 7 },
@@ -662,17 +662,17 @@ function makeStyles(c: AppColors) {
     syncPill:         { backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
     syncPillText:     { fontFamily: fonts.mono, fontSize: 10, color: c.muted, fontVariant: ['tabular-nums'] },
     greeting:         { fontFamily: fonts.sans, fontSize: 14, color: c.muted, marginBottom: 2 },
-    title:            { fontFamily: fonts.serifItalic, fontSize: 25, lineHeight: 30, color: c.ink, marginBottom: 4 },
+    title:            { fontFamily: fonts.serifItalic, fontSize: 28, lineHeight: 34, color: c.ink, marginBottom: spacing.xs },
     tagline:          { fontFamily: fonts.sans, fontSize: 15, color: c.muted, fontVariant: ['tabular-nums'] },
     settings:         { width: 44, height: 44, borderRadius: 22, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, alignItems: 'center', justifyContent: 'center', ...shadow.card },
     pressed:          { opacity: 0.76 },
     atHomeHeader:      { marginBottom: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.sm, borderBottomWidth: 1, borderBottomColor: c.borderSoft, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    atHomeTitle:       { fontFamily: fonts.sansSemibold, fontSize: 19, color: c.ink },
+    atHomeTitle:       { fontFamily: fonts.serifItalic, fontSize: 20, lineHeight: 26, color: c.ink },
     atHomeCount:       { fontFamily: fonts.sans, fontSize: 13, color: c.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
-    moreHeader:        { marginTop: spacing.xl, paddingVertical: spacing.lg, borderTopWidth: 1, borderTopColor: c.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
-    moreTitle:         { fontFamily: fonts.sansSemibold, fontSize: 18, color: c.ink },
+    moreHeader:        { marginTop: spacing.xl, paddingVertical: spacing.lg, borderTopWidth: 1, borderTopColor: c.borderSoft, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
+    moreTitle:         { fontFamily: fonts.serifItalic, fontSize: 20, lineHeight: 26, color: c.ink },
     moreSubtitle:      { fontFamily: fonts.sans, fontSize: 13, color: c.muted, marginTop: 2 },
-    dashboardSection:  { backgroundColor: c.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: c.border, padding: spacing.md, ...shadow.card },
+    dashboardSection:  { backgroundColor: c.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: c.borderSoft, padding: spacing.lg, ...shadow.card },
     summaryRow:       { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.lg },
     searchBar:        { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: radii.md, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.md, paddingVertical: 10, marginTop: spacing.sm, marginBottom: spacing.xs },
     searchInput:      { flex: 1, fontFamily: fonts.sans, fontSize: 15, color: c.ink, padding: 0 },
@@ -685,11 +685,11 @@ function makeStyles(c: AppColors) {
     catalogAddBtn:    { width: 32, height: 32, borderRadius: 10, borderWidth: 1, borderColor: c.border, alignItems: 'center', justifyContent: 'center' },
     catalogListButton:{ minHeight: 34, borderRadius: 17, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: c.surface },
     catalogListButtonText: { fontFamily: fonts.sansSemibold, fontSize: 12, color: c.primary },
-    sectionTitleRow:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.sm, marginBottom: spacing.sm },
-    sectionTitle:     { fontFamily: fonts.sansSemibold, fontSize: 22, color: c.ink },
+    sectionTitleRow:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.lg, marginBottom: spacing.sm, paddingHorizontal: spacing.xs },
+    sectionTitle:     { fontFamily: fonts.serifItalic, fontSize: 21, lineHeight: 27, color: c.ink },
     sectionActionButton: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingVertical: spacing.xs },
     sectionAction:    { fontFamily: fonts.sansSemibold, fontSize: 14, color: c.primary },
-    list:             { backgroundColor: c.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.md, overflow: 'hidden', ...shadow.card },
+    list:             { backgroundColor: c.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: c.borderSoft, paddingHorizontal: spacing.md, overflow: 'hidden', ...shadow.card },
     divider:          { height: 1, backgroundColor: c.borderSoft, marginLeft: 50 },
     itemRow:          { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm },
     itemIcon:         { width: 44, height: 44, borderRadius: 13, backgroundColor: c.primarySoft, alignItems: 'center', justifyContent: 'center' },

@@ -691,7 +691,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
         </View>
       </View>
 
-      <Card style={styles.shoppingListCard}>
+      {entries.length > 0 ? <Card style={styles.shoppingListCard}>
         {entries.map((e, idx) => (
           <View key={e.itemId}>
                 {idx > 0 && <View style={styles.rowDivider} />}
@@ -797,7 +797,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                 </Pressable>
           </View>
         ))}
-      </Card>
+      </Card> : null}
       
       {entries.length === 0 && (
          <Card style={styles.activeEmptyCard}>
@@ -1997,7 +1997,7 @@ function makeStyles(colors: AppColors) {
     firstDestCaption: { fontFamily: fonts.monoMedium, fontSize: 9, letterSpacing: 1, color: colors.primary },
     firstDestLabel: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
     primaryCta: { marginTop: spacing.lg, minHeight: 54 },
-    planStoreCard: { marginTop: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xs },
+    planStoreCard: { marginTop: spacing.xl, paddingTop: spacing.md, paddingBottom: spacing.xs },
     planStoreHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.xs, paddingBottom: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
     planStoreTitle: { flex: 1, fontFamily: fonts.sansSemibold, fontSize: 17, color: colors.ink },
     planStoreCount: { minWidth: 28, height: 28, borderRadius: 14, textAlign: 'center', textAlignVertical: 'center', paddingTop: Platform.OS === 'ios' ? 6 : 4, fontFamily: fonts.monoMedium, fontSize: 12, color: colors.primary, backgroundColor: colors.primarySoft, fontVariant: ['tabular-nums'] },

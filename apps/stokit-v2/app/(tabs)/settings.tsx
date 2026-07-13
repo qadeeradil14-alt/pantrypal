@@ -1330,7 +1330,7 @@ function makeStyles(colors: AppColors) {
     statusPillDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.muted },
     statusPillText: { fontFamily: fonts.sansSemibold, fontSize: 10, color: colors.muted },
     settingsSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xl, marginBottom: spacing.sm, paddingHorizontal: spacing.xs },
-    settingsSectionTitle: { fontFamily: fonts.serifItalic, fontSize: 21, color: colors.ink },
+    settingsSectionTitle: { fontFamily: fonts.serifItalic, fontSize: 21, lineHeight: 27, color: colors.ink },
     sectionCard: { paddingVertical: spacing.md, borderColor: colors.borderSoft },
     sectionLabel: {
       fontFamily: fonts.sansSemibold,

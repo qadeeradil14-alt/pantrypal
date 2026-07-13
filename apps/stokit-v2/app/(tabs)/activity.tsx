@@ -5,7 +5,7 @@ import { Screen } from '../../components/shared/Screen';
 import { Card, PageTitle, StoreChip } from '../../components/shared/ui';
 import { EmptyState } from '../../components/shared/EmptyState';
 import { TripDetailSheet } from '../../components/receipts/TripDetailSheet';
-import { fonts, radii, shadow, spacing, type AppColors } from '../../theme';
+import { fonts, radii, spacing, type AppColors } from '../../theme';
 import { useDurableStore } from '../../store/durable-store';
 import type { ActivityEvent, ActivityType, Store, Trip } from '../../types';
 import { useTheme } from '../../hooks/useTheme';
@@ -297,12 +297,13 @@ function makeStyles(colors: AppColors) {
     filterChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
     filterText: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.inkSoft },
     filterTextActive: { color: colors.onPrimary },
-    section: { marginTop: spacing.lg },
+    section: { marginTop: spacing.xl },
     sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm, paddingHorizontal: spacing.xs },
     sectionTitle: {
       flex: 1,
       fontFamily: fonts.serifItalic,
-      fontSize: 20,
+      fontSize: 21,
+      lineHeight: 27,
       color: colors.ink,
     },
     sectionCount: {
@@ -342,7 +343,6 @@ function makeStyles(colors: AppColors) {
       borderRadius: radii.md,
       padding: spacing.md,
       marginVertical: spacing.xs,
-      ...shadow.card,
     },
     tripIcon: {
       width: 44,
