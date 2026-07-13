@@ -5,9 +5,9 @@ import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../../components/shared/Screen';
-import { Button, Card, PageTitle, SectionHeader } from '../../components/shared/ui';
+import { Button, Card, PageTitle } from '../../components/shared/ui';
 import { ChipSelect } from '../../components/shared/Field';
-import { fonts, spacing, type AppColors } from '../../theme';
+import { fonts, radii, shadow, spacing, type AppColors } from '../../theme';
 import { useDurableStore } from '../../store/durable-store';
 import { useAuthStore } from '../../store/auth-store';
 import { useHouseholdStore } from '../../store/household-store';
@@ -451,9 +451,25 @@ export default function SettingsScreen() {
     <Screen scrollRef={scrollRef}>
       <PageTitle eyebrow="Your account" title="Settings" />
 
-      {/* ── PROFILE ───────────────────────────────────────────────────────── */}
-      <SectionHeader title="Profile" />
-      <Card>
+      <Card style={styles.profileHero}>
+        <View style={styles.profileAvatar}>
+          <Text style={styles.profileInitial}>{myDisplayName.trim().charAt(0).toUpperCase() || 'M'}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.profileEyebrow}>SIGNED IN</Text>
+          <Text style={styles.profileName}>{myDisplayName}</Text>
+          <Text style={styles.profileEmail} numberOfLines={1}>{authUser?.email ?? 'Your Stokit account'}</Text>
+        </View>
+        <View style={[styles.statusPill, syncStatus === 'synced' && styles.statusPillSynced]}>
+          <View style={[styles.statusPillDot, syncStatus === 'synced' && { backgroundColor: colors.success }]} />
+          <Text style={[styles.statusPillText, syncStatus === 'synced' && { color: colors.success }]}>
+            {syncStatus === 'synced' ? 'Synced' : 'Syncing'}
+          </Text>
+        </View>
+      </Card>
+
+      <SettingsSectionHeader icon="person-outline" title="Profile" styles={styles} colors={colors} />
+      <Card style={styles.sectionCard}>
         {renameVisible && (
           <View style={styles.renameModal}>
             <Text style={styles.renameTitle}>Your name</Text>
@@ -494,7 +510,7 @@ export default function SettingsScreen() {
           </View>
         )}
         <Pressable
-          style={styles.budgetRow}
+          style={({ pressed }) => [styles.settingsRow, pressed && styles.settingsRowPressed]}
           onPress={() => {
             if (Platform.OS === 'ios') {
               Alert.prompt(
@@ -517,7 +533,9 @@ export default function SettingsScreen() {
           }}
         >
           <View style={styles.budgetLeft}>
-            <Ionicons name="person-outline" size={18} color={colors.primary} />
+            <View style={styles.rowIcon}>
+              <Ionicons name="id-card-outline" size={19} color={colors.primary} />
+            </View>
             <View>
               <Text style={styles.budgetLabel}>Your name</Text>
               <Text style={styles.budgetSub}>Shown to household members</Text>
@@ -531,19 +549,26 @@ export default function SettingsScreen() {
       </Card>
 
       <View onLayout={(e) => { householdSectionY.current = e.nativeEvent.layout.y; }}>
-        <SectionHeader title="Account sync" />
+        <SettingsSectionHeader icon="people-outline" title="Household & sync" styles={styles} colors={colors} />
       </View>
-      <Card>
-        <Text style={styles.noHouseholdTitle}>
-          {household?.isPersonal ? 'Private pantry' : household?.name ?? 'Account sync'}
-        </Text>
-        <Text style={styles.noHouseholdBody}>
-          {household?.isPersonal
-            ? 'Your pantry is securely backed up. Create or join a household to share updates live with family.'
-            : household
-            ? `${members.length} member${members.length === 1 ? '' : 's'} share this pantry in real time.`
-            : 'Sign in to securely back up your pantry and share it with family.'}
-        </Text>
+      <Card style={styles.sectionCard}>
+        <View style={styles.householdHeader}>
+          <View style={styles.householdIcon}>
+            <Ionicons name={household?.isPersonal ? 'lock-closed-outline' : 'people-outline'} size={21} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.noHouseholdTitle}>
+              {household?.isPersonal ? 'Private pantry' : household?.name ?? 'Account sync'}
+            </Text>
+            <Text style={styles.noHouseholdBody}>
+              {household?.isPersonal
+                ? 'Securely backed up and private to you.'
+                : household
+                ? `${members.length} member${members.length === 1 ? '' : 's'} share updates in real time.`
+                : 'Sign in to securely back up your pantry.'}
+            </Text>
+          </View>
+        </View>
         <View style={styles.syncRow}>
           <View style={[styles.syncDot, syncStatus === 'synced' && { backgroundColor: colors.success }]} />
           <Text style={styles.syncText}>{syncStatus === 'synced' ? 'Live sync connected' : 'Connecting to live sync'}</Text>
@@ -590,15 +615,13 @@ export default function SettingsScreen() {
         ) : null}
       </Card>
 
-      {/* ── APPEARANCE ────────────────────────────────────────────────────── */}
-      <SectionHeader title="Appearance" />
-      <Card>
+      <SettingsSectionHeader icon="color-palette-outline" title="Appearance" styles={styles} colors={colors} />
+      <Card style={styles.sectionCard}>
         <AppearancePicker stored={storedTheme} setIsDark={setIsDark} styles={styles} colors={colors} />
       </Card>
 
-      {/* ── PREFERENCES ───────────────────────────────────────────────────── */}
-      <SectionHeader title="Preferences" />
-      <Card>
+      <SettingsSectionHeader icon="options-outline" title="Preferences" styles={styles} colors={colors} />
+      <Card style={styles.sectionCard}>
         <ChipSelect
           label="Default unit for new items"
           options={UNIT_OPTIONS}
@@ -606,7 +629,7 @@ export default function SettingsScreen() {
           onChange={(v) => updatePrefs({ defaultUnit: v })}
         />
         <Pressable
-          style={styles.budgetRow}
+          style={({ pressed }) => [styles.settingsRow, styles.settingsRowBordered, pressed && styles.settingsRowPressed]}
           onPress={() => {
             if (Platform.OS === 'ios') {
               Alert.prompt(
@@ -629,7 +652,9 @@ export default function SettingsScreen() {
           }}
         >
           <View style={styles.budgetLeft}>
-            <Ionicons name="wallet-outline" size={18} color={colors.primary} />
+            <View style={styles.rowIcon}>
+              <Ionicons name="wallet-outline" size={19} color={colors.primary} />
+            </View>
             <View>
               <Text style={styles.budgetLabel}>Weekly budget</Text>
               <Text style={styles.budgetSub}>Tap to adjust</Text>
@@ -640,23 +665,26 @@ export default function SettingsScreen() {
             <Ionicons name="pencil-outline" size={14} color={colors.muted} />
           </View>
         </Pressable>
-        <View style={styles.statRow}>
-          <Text style={styles.statLabel}>Items tracked</Text>
-          <Text style={styles.statValue}>{items.length}</Text>
-        </View>
-        <View style={styles.statRow}>
-          <Text style={styles.statLabel}>Stores</Text>
-          <Text style={styles.statValue}>{stores.length}</Text>
-        </View>
-        <View style={styles.statRow}>
-          <Text style={styles.statLabel}>Trips completed</Text>
-          <Text style={styles.statValue}>{trips.length}</Text>
+        <View style={styles.preferenceStats}>
+          <View style={styles.preferenceStat}>
+            <Text style={styles.preferenceStatValue}>{items.length}</Text>
+            <Text style={styles.preferenceStatLabel}>Items</Text>
+          </View>
+          <View style={styles.preferenceStatDivider} />
+          <View style={styles.preferenceStat}>
+            <Text style={styles.preferenceStatValue}>{stores.length}</Text>
+            <Text style={styles.preferenceStatLabel}>Stores</Text>
+          </View>
+          <View style={styles.preferenceStatDivider} />
+          <View style={styles.preferenceStat}>
+            <Text style={styles.preferenceStatValue}>{trips.length}</Text>
+            <Text style={styles.preferenceStatLabel}>Trips</Text>
+          </View>
         </View>
       </Card>
 
-      {/* ── PRIVACY (geofence lives here — subtle, not prominent) ─────────── */}
-      <SectionHeader title="Privacy & notifications" />
-      <Card>
+      <SettingsSectionHeader icon="notifications-outline" title="Privacy & notifications" styles={styles} colors={colors} />
+      <Card style={styles.sectionCard}>
         <ToggleRow
           icon="location-outline"
           label="Store arrival reminders"
@@ -681,12 +709,16 @@ export default function SettingsScreen() {
           </Text>
         )}
 
-        {/* ── ARRIVAL ALERT MANUAL FALLBACK ─────────────────────────── */}
         <View style={styles.testNotifSection}>
-          <Text style={styles.testNotifHeading}>Arrival alert</Text>
-          <Text style={styles.testNotifNote}>
-            Use this if geofencing didn{"'"}t fire when you arrived at a store.
-          </Text>
+          <View style={styles.testNotifHeader}>
+            <View style={styles.rowIcon}>
+              <Ionicons name="notifications-outline" size={19} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.testNotifHeading}>Arrival alert</Text>
+              <Text style={styles.testNotifNote}>Send a manual alert if an arrival reminder did not appear.</Text>
+            </View>
+          </View>
           <Pressable
             style={[styles.testNotifButton, testNotifLoading && { opacity: 0.6 }]}
             onPress={() => void sendArrivalNotification('manual')}
@@ -1039,9 +1071,17 @@ export default function SettingsScreen() {
         </Text>
       </Card>
 
-      {/* ── ACCOUNT ───────────────────────────────────────────────────────── */}
-      <SectionHeader title="Account" />
-      <Card>
+      <SettingsSectionHeader icon="shield-checkmark-outline" title="Account" styles={styles} colors={colors} />
+      <Card style={[styles.sectionCard, styles.accountCard]}>
+        <View style={styles.accountIntro}>
+          <View style={styles.accountIntroIcon}>
+            <Ionicons name="shield-checkmark-outline" size={20} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.accountIntroTitle}>Account controls</Text>
+            <Text style={styles.accountIntroText}>Manage this device, local data, and your Stokit account.</Text>
+          </View>
+        </View>
         <Button
           label={signingOut ? 'Logging out…' : 'Log out'}
           variant="ghost"
@@ -1052,7 +1092,7 @@ export default function SettingsScreen() {
           label="Reset all local data"
           variant="danger"
           onPress={confirmReset}
-          style={{ marginTop: spacing.sm }}
+          style={{ marginTop: spacing.md }}
         />
         {authUser && (
           <Button
@@ -1065,15 +1105,20 @@ export default function SettingsScreen() {
         )}
       </Card>
 
-      {/* ── ABOUT ─────────────────────────────────────────────────────────── */}
-      <SectionHeader title="About" />
-      <Card>
+      <SettingsSectionHeader icon="information-circle-outline" title="About" styles={styles} colors={colors} />
+      <Card style={styles.sectionCard}>
         <View style={styles.statRow}>
-          <Text style={styles.statLabel}>App</Text>
+          <View style={styles.aboutLabel}>
+            <Ionicons name="phone-portrait-outline" size={16} color={colors.muted} />
+            <Text style={styles.statLabel}>App</Text>
+          </View>
           <Text style={styles.statValue}>Stokit V2</Text>
         </View>
         <Pressable style={styles.statRow} onPress={handleDevTap} accessibilityRole="button" accessibilityLabel="Version info">
-          <Text style={styles.statLabel}>Version</Text>
+          <View style={styles.aboutLabel}>
+            <Ionicons name="git-branch-outline" size={16} color={colors.muted} />
+            <Text style={styles.statLabel}>Version</Text>
+          </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <Text style={styles.statValue}>{Constants.expoConfig?.version ?? '0.1.0'} (OTA {OTA_SEQ})</Text>
             {devMode && (
@@ -1084,7 +1129,10 @@ export default function SettingsScreen() {
           </View>
         </Pressable>
         <View style={styles.statRow}>
-          <Text style={styles.statLabel}>Build</Text>
+          <View style={styles.aboutLabel}>
+            <Ionicons name="cube-outline" size={16} color={colors.muted} />
+            <Text style={styles.statLabel}>Build</Text>
+          </View>
           <Text style={styles.statValue}>
             {inExpoGo ? 'Expo Go' : 'Standalone'}
           </Text>
@@ -1131,7 +1179,9 @@ function AppearancePicker({
   };
   return (
     <View style={styles.appearanceRow}>
-      <Ionicons name="contrast-outline" size={20} color={colors.primary} style={{ marginTop: 2 }} />
+      <View style={styles.rowIcon}>
+        <Ionicons name="contrast-outline" size={19} color={colors.primary} />
+      </View>
       <View style={{ flex: 1 }}>
         <Text style={styles.appearanceLabel}>Appearance</Text>
         <View style={styles.appearanceChips}>
@@ -1179,7 +1229,9 @@ function ToggleRow({
 }) {
   return (
     <View style={styles.toggleRow}>
-      <Ionicons name={icon} size={20} color={dimmed ? colors.muted : colors.primary} style={{ marginTop: 2 }} />
+      <View style={[styles.rowIcon, dimmed && { backgroundColor: colors.surfaceRaised }]}>
+        <Ionicons name={icon} size={19} color={dimmed ? colors.muted : colors.primary} />
+      </View>
       <View style={{ flex: 1 }}>
         <Text style={[styles.toggleLabel, dimmed && { color: colors.muted }]}>{label}</Text>
         {description ? <Text style={styles.toggleDesc}>{description}</Text> : null}
@@ -1228,10 +1280,58 @@ function DiagRow({
   );
 }
 
+function SettingsSectionHeader({
+  icon,
+  title,
+  styles,
+  colors,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  styles: any;
+  colors: AppColors;
+}) {
+  return (
+    <View style={styles.settingsSectionHeader}>
+      <Ionicons name={icon} size={16} color={colors.primary} />
+      <Text style={styles.settingsSectionTitle}>{title}</Text>
+    </View>
+  );
+}
+
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 function makeStyles(colors: AppColors) {
   return StyleSheet.create({
+    profileHero: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      padding: spacing.xl,
+      borderColor: colors.primary + '24',
+      backgroundColor: colors.backgroundElevated,
+      marginBottom: spacing.lg,
+    },
+    profileAvatar: {
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      backgroundColor: colors.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+      ...shadow.card,
+    },
+    profileInitial: { fontFamily: fonts.serifItalic, fontSize: 25, color: colors.onPrimary },
+    profileEyebrow: { fontFamily: fonts.monoMedium, fontSize: 9, letterSpacing: 1, color: colors.primary },
+    profileName: { fontFamily: fonts.serifItalic, fontSize: 22, color: colors.ink, marginTop: 1 },
+    profileEmail: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 1 },
+    statusPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: spacing.sm, paddingVertical: 6, borderRadius: radii.pill, backgroundColor: colors.surfaceRaised },
+    statusPillSynced: { backgroundColor: colors.successSoft },
+    statusPillDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.muted },
+    statusPillText: { fontFamily: fonts.sansSemibold, fontSize: 10, color: colors.muted },
+    settingsSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xl, marginBottom: spacing.sm, paddingHorizontal: spacing.xs },
+    settingsSectionTitle: { fontFamily: fonts.serifItalic, fontSize: 21, color: colors.ink },
+    sectionCard: { paddingVertical: spacing.md, borderColor: colors.borderSoft },
     sectionLabel: {
       fontFamily: fonts.sansSemibold,
       fontSize: 13,
@@ -1244,7 +1344,7 @@ function makeStyles(colors: AppColors) {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.sm,
-      marginTop: spacing.lg,
+      marginTop: spacing.md,
       paddingTop: spacing.md,
       borderTopWidth: 1,
       borderTopColor: colors.border,
@@ -1256,23 +1356,37 @@ function makeStyles(colors: AppColors) {
       backgroundColor: colors.muted,
     },
     syncText: {
-      fontFamily: fonts.sans,
+      fontFamily: fonts.sansMedium,
       fontSize: 12,
       color: colors.muted,
-      fontStyle: 'italic',
     },
+    householdHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+    householdIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
     noHouseholdTitle: {
       fontFamily: fonts.serifItalic,
-      fontSize: 18,
+      fontSize: 20,
       color: colors.ink,
-      marginBottom: spacing.sm,
+      marginBottom: 2,
     },
     noHouseholdBody: {
       fontFamily: fonts.sans,
-      fontSize: 14,
+      fontSize: 13,
       color: colors.muted,
-      lineHeight: 21,
+      lineHeight: 19,
     },
+    settingsRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingVertical: spacing.md,
+      borderRadius: radii.md,
+    },
+    settingsRowBordered: {
+      borderTopWidth: 1,
+      borderTopColor: colors.borderSoft,
+      marginTop: spacing.sm,
+    },
+    settingsRowPressed: { opacity: 0.68, backgroundColor: colors.surface },
     budgetRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
@@ -1287,6 +1401,7 @@ function makeStyles(colors: AppColors) {
     budgetLabel: { fontFamily: fonts.sansMedium, fontSize: 15, color: colors.ink },
     budgetSub: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 2 },
     budgetAmount: { fontFamily: fonts.monoMedium, fontSize: 16, color: colors.primary },
+    rowIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
     renameModal: { backgroundColor: colors.surfaceRaised, borderRadius: 14, padding: spacing.lg, marginBottom: spacing.md },
     renameTitle: { fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink, marginBottom: 4 },
     renameSub: { fontFamily: fonts.sans, fontSize: 13, color: colors.muted, marginBottom: spacing.md },
@@ -1301,7 +1416,10 @@ function makeStyles(colors: AppColors) {
       justifyContent: 'space-between',
       alignItems: 'center',
       gap: spacing.sm,
+      minHeight: 44,
       paddingVertical: spacing.sm,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderSoft,
     },
     statLabel: { fontFamily: fonts.sans, fontSize: 15, color: colors.inkSoft, flex: 1, flexShrink: 1 },
     statValue: { fontFamily: fonts.monoMedium, fontSize: 14, color: colors.ink, flexShrink: 1, textAlign: 'right' },
@@ -1316,15 +1434,15 @@ function makeStyles(colors: AppColors) {
       flexDirection: 'row',
       alignItems: 'flex-start',
       gap: spacing.md,
-      paddingVertical: spacing.sm,
+      paddingVertical: spacing.xs,
     },
-    appearanceLabel: { fontFamily: fonts.sansMedium, fontSize: 15, color: colors.ink, marginBottom: spacing.sm },
-    appearanceChips: { flexDirection: 'row', gap: spacing.sm },
+    appearanceLabel: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink, marginBottom: spacing.sm },
+    appearanceChips: { flexDirection: 'row', gap: spacing.xs },
     appearanceChip: {
       flex: 1,
       paddingVertical: 8,
       paddingHorizontal: spacing.sm,
-      borderRadius: 8,
+      borderRadius: radii.sm,
       borderWidth: 1,
       borderColor: colors.border,
       alignItems: 'center',
@@ -1333,13 +1451,18 @@ function makeStyles(colors: AppColors) {
     appearanceChipText: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.ink },
     appearanceChipTextActive: { color: '#fff' },
     appearanceDesc: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: spacing.xs },
+    preferenceStats: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.lg, paddingTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.borderSoft },
+    preferenceStat: { flex: 1, alignItems: 'center' },
+    preferenceStatValue: { fontFamily: fonts.monoMedium, fontSize: 21, color: colors.ink, fontVariant: ['tabular-nums'] },
+    preferenceStatLabel: { fontFamily: fonts.sansMedium, fontSize: 11, color: colors.muted, marginTop: 2 },
+    preferenceStatDivider: { width: 1, height: 30, backgroundColor: colors.border },
     toggleRow: {
       flexDirection: 'row',
-      alignItems: 'flex-start',
+      alignItems: 'center',
       gap: spacing.md,
-      paddingVertical: spacing.sm,
+      paddingVertical: spacing.xs,
     },
-    toggleLabel: { fontFamily: fonts.sansMedium, fontSize: 15, color: colors.ink },
+    toggleLabel: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
     toggleDesc: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 2 },
     locationWarning: {
       fontFamily: fonts.sans,
@@ -1351,32 +1474,36 @@ function makeStyles(colors: AppColors) {
     // ── Test notification section ──────────────────────────────────────────
     testNotifSection: {
       marginTop: spacing.md,
-      paddingTop: spacing.md,
-      borderTopWidth: 1,
-      borderTopColor: colors.borderSoft,
+      padding: spacing.md,
+      borderRadius: radii.md,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.borderSoft,
     },
+    testNotifHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
     testNotifHeading: {
       fontFamily: fonts.sansSemibold,
       fontSize: 14,
       color: colors.ink,
-      marginBottom: spacing.xs,
+      marginBottom: 2,
     },
     testNotifNote: {
       fontFamily: fonts.sans,
       fontSize: 12,
       color: colors.muted,
       lineHeight: 18,
-      marginBottom: spacing.md,
+      marginBottom: 0,
     },
     testNotifButton: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.sm,
       backgroundColor: colors.primary,
-      borderRadius: 10,
-      paddingVertical: 10,
+      borderRadius: radii.md,
+      paddingVertical: 11,
       paddingHorizontal: spacing.md,
       alignSelf: 'flex-start',
+      marginTop: spacing.md,
     },
     testNotifButtonText: {
       fontFamily: fonts.sansSemibold,
@@ -1500,5 +1627,11 @@ function makeStyles(colors: AppColors) {
       borderTopWidth: 1,
       borderTopColor: colors.borderSoft,
     },
+    accountCard: { borderColor: colors.danger + '24' },
+    accountIntro: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingBottom: spacing.md, marginBottom: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
+    accountIntroIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
+    accountIntroTitle: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
+    accountIntroText: { fontFamily: fonts.sans, fontSize: 12, lineHeight: 17, color: colors.muted, marginTop: 2 },
+    aboutLabel: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flex: 1 },
   });
 }
