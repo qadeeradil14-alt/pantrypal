@@ -14,6 +14,8 @@ import type { HouseholdIdentity, HouseholdMember } from '../types';
 const STORAGE_KEY = 'stokit:v2:household';
 let householdChannel: ReturnType<typeof supabase.channel> | null = null;
 let subscribedHouseholdId: string | null = null;
+let profileChannel: ReturnType<typeof supabase.channel> | null = null;
+let subscribedUserId: string | null = null;
 
 type Result =
   | { ok: true; message?: string; alreadyMember?: boolean }
@@ -37,6 +39,8 @@ interface HouseholdState {
   joinHousehold: (rawCode: string, myName: string) => Promise<Result>;
   leaveHousehold: () => Promise<Result>;
   removeMember: (targetUserId: string) => Promise<Result>;
+  transferOwnership: (targetUserId: string) => Promise<Result>;
+  deleteHousehold: () => Promise<Result>;
   renameMe: (name: string) => Promise<Result>;
 }
 
@@ -96,6 +100,19 @@ async function applyPayload(payload: HouseholdPayload | null, set: (state: Parti
       }, () => { void useHouseholdStore.getState().refresh(); })
       .subscribe();
   }
+  if (user?.id && subscribedUserId !== user.id) {
+    if (profileChannel) void supabase.removeChannel(profileChannel);
+    subscribedUserId = user.id;
+    profileChannel = supabase
+      .channel(`household-profile:${user.id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'profiles',
+        filter: `id=eq.${user.id}`,
+      }, () => { void useHouseholdStore.getState().refresh(); })
+      .subscribe();
+  }
 }
 
 async function rpc(name: string, args?: Record<string, string>): Promise<HouseholdPayload | null> {
@@ -113,8 +130,12 @@ async function rpcRequired(name: string, args?: Record<string, string>): Promise
 async function reloadSharedState() {
   const { stopSyncEngine, pullFromSupabase, startSyncEngine } = await import('../core/services/syncEngine');
   const { useDurableStore } = await import('./durable-store');
+  const { useSessionStore } = await import('./session-store');
   stopSyncEngine();
-  await useDurableStore.getState().resetLocalOnly();
+  await Promise.all([
+    useDurableStore.getState().resetLocalOnly(),
+    useSessionStore.getState().clearSession(),
+  ]);
   await pullFromSupabase();
   await startSyncEngine();
 }
@@ -168,8 +189,11 @@ export const useHouseholdStore = create<HouseholdState>((set, get) => ({
 
   clearLocal: async () => {
     if (householdChannel) void supabase.removeChannel(householdChannel);
+    if (profileChannel) void supabase.removeChannel(profileChannel);
     householdChannel = null;
+    profileChannel = null;
     subscribedHouseholdId = null;
+    subscribedUserId = null;
     await AsyncStorage.removeItem(STORAGE_KEY);
     set({ household: null, members: [], syncStatus: 'local', hydrated: true });
   },
@@ -233,6 +257,29 @@ export const useHouseholdStore = create<HouseholdState>((set, get) => ({
     set({ syncStatus: 'syncing' });
     try {
       await applyPayload(await rpcRequired('remove_household_member', { target_user_id: targetUserId }), set);
+      return { ok: true };
+    } catch (error) {
+      set({ syncStatus: 'error' });
+      return { ok: false, message: message(error) };
+    }
+  },
+
+  transferOwnership: async (targetUserId) => {
+    set({ syncStatus: 'syncing' });
+    try {
+      await applyPayload(await rpcRequired('transfer_household_ownership', { target_user_id: targetUserId }), set);
+      return { ok: true };
+    } catch (error) {
+      set({ syncStatus: 'error' });
+      return { ok: false, message: message(error) };
+    }
+  },
+
+  deleteHousehold: async () => {
+    set({ syncStatus: 'syncing' });
+    try {
+      await applyPayload(await rpcRequired('delete_shared_household'), set);
+      await reloadSharedState();
       return { ok: true };
     } catch (error) {
       set({ syncStatus: 'error' });

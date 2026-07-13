@@ -16,6 +16,7 @@ import { CreateHouseholdSheet } from '../../components/household/CreateHousehold
 import { JoinHouseholdSheet } from '../../components/household/JoinHouseholdSheet';
 import { InviteCodeCard } from '../../components/household/InviteCodeCard';
 import { MemberList } from '../../components/household/MemberList';
+import { householdCapabilities } from '../../core/services/householdPermissions';
 import { useTheme } from '../../hooks/useTheme';
 import { useThemeStore } from '../../store/theme';
 import { clearLocalAppData } from '../../lib/local-data';
@@ -98,10 +99,13 @@ export default function SettingsScreen() {
   const refreshHousehold = useHouseholdStore((s) => s.refresh);
   const leaveHousehold = useHouseholdStore((s) => s.leaveHousehold);
   const removeMember = useHouseholdStore((s) => s.removeMember);
+  const transferOwnership = useHouseholdStore((s) => s.transferOwnership);
+  const deleteHousehold = useHouseholdStore((s) => s.deleteHousehold);
   const renameMe = useHouseholdStore((s) => s.renameMe);
 
   const myDisplayName = members.find((m) => m.isMe)?.displayName ?? 'Me';
   const isSharedOwnerWithMembers = Boolean(household && !household.isPersonal && household.role === 'owner' && members.length > 1);
+  const capabilities = householdCapabilities(household?.role ?? 'member', members.length);
 
   const authUser = useAuthStore((s) => s.user);
 
@@ -110,6 +114,8 @@ export default function SettingsScreen() {
   const scrollRef = React.useRef<ScrollView>(null);
   const householdSectionY = React.useRef(0);
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
+  const [transferringMemberId, setTransferringMemberId] = useState<string | null>(null);
+  const [deletingHousehold, setDeletingHousehold] = useState(false);
   const [createVisible, setCreateVisible] = useState(false);
   const [joinVisible, setJoinVisible] = useState(false);
   const [renameVisible, setRenameVisible] = useState(false);
@@ -447,6 +453,57 @@ export default function SettingsScreen() {
     );
   };
 
+  const confirmTransferOwnership = (memberId: string, displayName: string) => {
+    Alert.alert(
+      'Transfer household ownership?',
+      `${displayName} will become the owner. You will become a regular member and lose owner-only controls.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Transfer ownership',
+          onPress: () => {
+            void (async () => {
+              setTransferringMemberId(memberId);
+              const result = await transferOwnership(memberId);
+              setTransferringMemberId(null);
+              if (result.ok) {
+                Alert.alert('Ownership transferred', `${displayName} is now the household owner.`);
+              } else {
+                Alert.alert('Could not transfer ownership', result.message);
+              }
+            })();
+          },
+        },
+      ],
+    );
+  };
+
+  const confirmDeleteHousehold = () => {
+    Alert.alert(
+      'Delete shared household?',
+      'This permanently deletes the shared pantry, stores, receipts, shopping history, and activity. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete household',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              setDeletingHousehold(true);
+              const result = await deleteHousehold();
+              setDeletingHousehold(false);
+              if (result.ok) {
+                Alert.alert('Household deleted', 'You now have a new private pantry.');
+              } else {
+                Alert.alert('Could not delete household', result.message);
+              }
+            })();
+          },
+        },
+      ],
+    );
+  };
+
   return (
     <Screen scrollRef={scrollRef}>
       <PageTitle eyebrow="Your account" title="Settings" />
@@ -580,37 +637,47 @@ export default function SettingsScreen() {
           </>
         ) : household ? (
           <>
-            {household?.inviteCode ? <InviteCodeCard householdName={household.name} inviteCode={household.inviteCode} /> : null}
+            {capabilities.canInvite && household?.inviteCode ? <InviteCodeCard householdName={household.name} inviteCode={household.inviteCode} /> : null}
             <MemberList
               members={members}
-              canRemove={household.role === 'owner'}
+              canRemove={capabilities.canRemoveMembers}
+              canTransfer={capabilities.canTransferOwnership}
               removingMemberId={removingMemberId}
+              transferringMemberId={transferringMemberId}
               onRemove={(member) => confirmRemoveMember(member.id, member.displayName)}
+              onTransfer={(member) => confirmTransferOwnership(member.id, member.displayName)}
             />
             {isSharedOwnerWithMembers ? (
-              <Text style={styles.noHouseholdBody}>Remove members before leaving or deleting this household.</Text>
+              <Text style={styles.noHouseholdBody}>Transfer ownership before leaving, or remove members to become the sole owner.</Text>
             ) : null}
-            <Button
-              label="Leave shared household"
-              variant="danger"
-              onPress={() => {
-                if (isSharedOwnerWithMembers) {
-                  Alert.alert('Remove members first', 'Remove members before leaving or deleting this household.');
-                  return;
-                }
-                Alert.alert(
-                  'Leave shared household?',
-                  'You will keep a private copy of the current pantry. Owners must remove other members before leaving.',
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    { text: 'Leave', style: 'destructive', onPress: () => void leaveHousehold().then((result) => {
-                      if (!result.ok) Alert.alert('Could not leave', result.message);
-                    }) },
-                  ],
-                );
-              }}
-              style={{ marginTop: spacing.lg }}
-            />
+            {capabilities.canLeave ? (
+              <Button
+                label="Leave shared household"
+                variant="danger"
+                onPress={() => {
+                  Alert.alert(
+                    'Leave shared household?',
+                    'Your membership will be removed. Shared household data stays with the household and will be cleared from this device.',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      { text: 'Leave', style: 'destructive', onPress: () => void leaveHousehold().then((result) => {
+                        if (!result.ok) Alert.alert('Could not leave', result.message);
+                      }) },
+                    ],
+                  );
+                }}
+                style={{ marginTop: spacing.lg }}
+              />
+            ) : null}
+            {capabilities.canDeleteHousehold ? (
+              <Button
+                label={deletingHousehold ? 'Deleting household…' : 'Delete shared household'}
+                variant="danger"
+                disabled={deletingHousehold}
+                onPress={confirmDeleteHousehold}
+                style={{ marginTop: spacing.lg }}
+              />
+            ) : null}
           </>
         ) : null}
       </Card>

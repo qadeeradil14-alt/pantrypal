@@ -8,11 +8,22 @@ import type { HouseholdMember } from '../../types';
 type MemberListProps = {
   members: HouseholdMember[];
   canRemove?: boolean;
+  canTransfer?: boolean;
   removingMemberId?: string | null;
+  transferringMemberId?: string | null;
   onRemove?: (member: HouseholdMember) => void;
+  onTransfer?: (member: HouseholdMember) => void;
 };
 
-export function MemberList({ members, canRemove = false, removingMemberId = null, onRemove }: MemberListProps) {
+export function MemberList({
+  members,
+  canRemove = false,
+  canTransfer = false,
+  removingMemberId = null,
+  transferringMemberId = null,
+  onRemove,
+  onTransfer,
+}: MemberListProps) {
   const { colors } = useTheme();
   const styles = React.useMemo(() => makeStyles(colors), [colors]);
   return (
@@ -22,8 +33,11 @@ export function MemberList({ members, canRemove = false, removingMemberId = null
           key={m.id}
           member={m}
           canRemove={canRemove && !m.isMe && m.role !== 'owner'}
+          canTransfer={canTransfer && !m.isMe && m.role === 'member'}
           removing={removingMemberId === m.id}
+          transferring={transferringMemberId === m.id}
           onRemove={onRemove}
+          onTransfer={onTransfer}
         />
       ))}
     </View>
@@ -33,13 +47,19 @@ export function MemberList({ members, canRemove = false, removingMemberId = null
 function MemberRow({
   member,
   canRemove,
+  canTransfer,
   removing,
+  transferring,
   onRemove,
+  onTransfer,
 }: {
   member: HouseholdMember;
   canRemove: boolean;
+  canTransfer: boolean;
   removing: boolean;
+  transferring: boolean;
   onRemove?: (member: HouseholdMember) => void;
+  onTransfer?: (member: HouseholdMember) => void;
 }) {
   const { colors } = useTheme();
   const styles = React.useMemo(() => makeStyles(colors), [colors]);
@@ -64,23 +84,45 @@ function MemberRow({
         </Text>
       </View>
 
-      {canRemove ? (
-        <Pressable
-          disabled={removing}
-          onPress={() => onRemove?.(member)}
-          style={({ pressed }) => [styles.removeButton, pressed && { opacity: 0.7 }, removing && { opacity: 0.5 }]}
-          accessibilityRole="button"
-          accessibilityLabel={`Remove ${member.displayName}`}
-        >
-          {removing ? (
-            <ActivityIndicator size="small" color={colors.danger} />
-          ) : (
-            <>
-              <Ionicons name="person-remove-outline" size={15} color={colors.danger} />
-              <Text style={styles.removeText}>Remove</Text>
-            </>
-          )}
-        </Pressable>
+      {canRemove || canTransfer ? (
+        <View style={styles.actions}>
+          {canTransfer ? (
+            <Pressable
+              disabled={transferring || removing}
+              onPress={() => onTransfer?.(member)}
+              style={({ pressed }) => [styles.transferButton, pressed && { opacity: 0.7 }, transferring && { opacity: 0.5 }]}
+              accessibilityRole="button"
+              accessibilityLabel={`Transfer ownership to ${member.displayName}`}
+            >
+              {transferring ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <>
+                  <Ionicons name="swap-horizontal" size={15} color={colors.primary} />
+                  <Text style={styles.transferText}>Transfer</Text>
+                </>
+              )}
+            </Pressable>
+          ) : null}
+          {canRemove ? (
+            <Pressable
+              disabled={removing || transferring}
+              onPress={() => onRemove?.(member)}
+              style={({ pressed }) => [styles.removeButton, pressed && { opacity: 0.7 }, removing && { opacity: 0.5 }]}
+              accessibilityRole="button"
+              accessibilityLabel={`Remove ${member.displayName}`}
+            >
+              {removing ? (
+                <ActivityIndicator size="small" color={colors.danger} />
+              ) : (
+                <>
+                  <Ionicons name="person-remove-outline" size={15} color={colors.danger} />
+                  <Text style={styles.removeText}>Remove</Text>
+                </>
+              )}
+            </Pressable>
+          ) : null}
+        </View>
       ) : (
         <Ionicons name="checkmark-circle" size={18} color={colors.success} />
       )}
@@ -117,6 +159,18 @@ function makeStyles(colors: AppColors) {
     },
     meText: { fontFamily: fonts.sansSemibold, fontSize: 11, color: colors.primary },
     role: { fontFamily: fonts.sans, fontSize: 13, color: colors.muted, marginTop: 2 },
+    actions: { gap: spacing.xs, alignItems: 'stretch' },
+    transferButton: {
+      minHeight: 32,
+      paddingHorizontal: spacing.sm,
+      borderRadius: radii.sm,
+      backgroundColor: colors.primarySoft,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 5,
+    },
+    transferText: { fontFamily: fonts.sansSemibold, fontSize: 12, color: colors.primary },
     removeButton: {
       minHeight: 34,
       paddingHorizontal: spacing.sm,

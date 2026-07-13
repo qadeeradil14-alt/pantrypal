@@ -234,8 +234,11 @@ export default function RootLayout() {
     if (!user) return;
     const sub = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
-        void registerPushToken(user.id);
-        void pullFromSupabase();
+        void (async () => {
+          await useHouseholdStore.getState().refresh();
+          await pullFromSupabase();
+          await registerPushToken(user.id);
+        })();
       }
     });
     return () => sub.remove();
