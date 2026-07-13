@@ -5,7 +5,7 @@ import { Screen } from '../../components/shared/Screen';
 import { Card, PageTitle, StoreChip } from '../../components/shared/ui';
 import { EmptyState } from '../../components/shared/EmptyState';
 import { TripDetailSheet } from '../../components/receipts/TripDetailSheet';
-import { fonts, radii, spacing, type AppColors } from '../../theme';
+import { fonts, radii, shadow, spacing, type AppColors } from '../../theme';
 import { useDurableStore } from '../../store/durable-store';
 import type { ActivityEvent, ActivityType, Store, Trip } from '../../types';
 import { useTheme } from '../../hooks/useTheme';
@@ -21,11 +21,20 @@ const ICON_META: Record<ActivityType, { name: keyof typeof Ionicons.glyphMap; co
 
 type FilterKey = 'all' | 'trips' | 'pantry';
 
-const FILTERS: { key: FilterKey; label: string; types: ActivityType[] | null }[] = [
-  { key: 'all', label: 'All', types: null },
-  { key: 'trips', label: 'Trips', types: ['trip_completed'] },
-  { key: 'pantry', label: 'Pantry', types: ['item_added', 'marked_low', 'picked_up'] },
+const FILTERS: { key: FilterKey; label: string; icon: keyof typeof Ionicons.glyphMap; types: ActivityType[] | null }[] = [
+  { key: 'all', label: 'All', icon: 'apps-outline', types: null },
+  { key: 'trips', label: 'Trips', icon: 'navigate-outline', types: ['trip_completed'] },
+  { key: 'pantry', label: 'Pantry', icon: 'basket-outline', types: ['item_added', 'marked_low', 'picked_up'] },
 ];
+
+const EVENT_LABELS: Record<ActivityType, string> = {
+  item_added: 'Added to pantry',
+  marked_low: 'Needs restock',
+  picked_up: 'Picked up',
+  receipt_logged: 'Receipt saved',
+  store_added: 'Store added',
+  trip_completed: 'Trip completed',
+};
 
 function timeAgo(ts: number): string {
   const diff = Date.now() - ts;
@@ -64,6 +73,11 @@ export default function ActivityScreen() {
   const [filter, setFilter] = useState<FilterKey>('all');
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
 
+  const overview = useMemo(() => ({
+    trips: activity.filter((event) => event.type === 'trip_completed').length,
+    receipts: activity.filter((event) => event.type === 'receipt_logged').length,
+  }), [activity]);
+
   const filtered = useMemo(() => {
     const types = FILTERS.find((f) => f.key === filter)?.types ?? null;
     return types ? activity.filter((e) => types.includes(e.type)) : activity;
@@ -99,7 +113,35 @@ export default function ActivityScreen() {
     <Screen>
       <PageTitle eyebrow="History" title="Activity" />
 
-      {/* Filter chips */}
+      <Card style={styles.overviewCard}>
+        <View style={styles.overviewHeader}>
+          <View style={styles.overviewIcon}>
+            <Ionicons name="pulse" size={22} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.overviewEyebrow}>YOUR HOUSEHOLD</Text>
+            <Text style={styles.overviewTitle}>Recent activity</Text>
+          </View>
+          <Text style={styles.overviewTotal}>{activity.length}</Text>
+        </View>
+        <View style={styles.overviewStats}>
+          <View style={styles.overviewStat}>
+            <Text style={styles.overviewStatValue}>{overview.trips}</Text>
+            <Text style={styles.overviewStatLabel}>Trips</Text>
+          </View>
+          <View style={styles.overviewDivider} />
+          <View style={styles.overviewStat}>
+            <Text style={styles.overviewStatValue}>{overview.receipts}</Text>
+            <Text style={styles.overviewStatLabel}>Receipts</Text>
+          </View>
+          <View style={styles.overviewDivider} />
+          <View style={styles.overviewStat}>
+            <Text style={styles.overviewStatValue}>{activity.length}</Text>
+            <Text style={styles.overviewStatLabel}>Updates</Text>
+          </View>
+        </View>
+      </Card>
+
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -113,6 +155,7 @@ export default function ActivityScreen() {
               onPress={() => setFilter(f.key)}
               style={[styles.filterChip, active && styles.filterChipActive]}
             >
+              <Ionicons name={f.icon} size={15} color={active ? colors.onPrimary : colors.muted} />
               <Text style={[styles.filterText, active && styles.filterTextActive]}>{f.label}</Text>
             </Pressable>
           );
@@ -120,26 +163,37 @@ export default function ActivityScreen() {
       </ScrollView>
 
       {sections.length === 0 ? (
-        <Text style={styles.noneNote}>Nothing here for this filter.</Text>
+        <EmptyState
+          icon={filter === 'trips' ? 'navigate-outline' : 'basket-outline'}
+          title={filter === 'trips' ? 'No trips yet' : 'No pantry activity'}
+          body={filter === 'trips'
+            ? 'Completed shopping trips will appear here with their receipt details.'
+            : 'Pantry updates will appear here as items are added, restocked, and picked up.'}
+        />
       ) : (
         sections.map((section) => (
-          <View key={section.label}>
-            <Text style={styles.sectionTitle}>{section.label}</Text>
-            {section.events.map((event) =>
-              event.type === 'trip_completed' ? (
-                <TripCard
-                  key={event.id}
-                  event={event}
-                  styles={styles}
-                  colors={colors}
-                  onPress={() => setSelectedTrip(tripById(event.tripId) ?? null)}
-                />
-              ) : (
-                <Card key={event.id} style={styles.eventCard}>
-                  <EventRow event={event} store={storeById(event.storeId)} styles={styles} colors={colors} />
-                </Card>
-              ),
-            )}
+          <View key={section.label} style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>{section.label}</Text>
+              <Text style={styles.sectionCount}>{section.events.length}</Text>
+            </View>
+            <Card style={styles.timelineCard}>
+              {section.events.map((event, index) => (
+                <View key={event.id}>
+                  {index > 0 ? <View style={styles.eventDivider} /> : null}
+                  {event.type === 'trip_completed' ? (
+                    <TripCard
+                      event={event}
+                      styles={styles}
+                      colors={colors}
+                      onPress={() => setSelectedTrip(tripById(event.tripId) ?? null)}
+                    />
+                  ) : (
+                    <EventRow event={event} store={storeById(event.storeId)} styles={styles} colors={colors} />
+                  )}
+                </View>
+              ))}
+            </Card>
           </View>
         ))
       )}
@@ -155,12 +209,16 @@ function TripCard({ event, styles, colors, onPress }: { event: ActivityEvent; st
       onPress={onPress}
     >
       <View style={styles.tripIcon}>
-        <Ionicons name="flag" size={20} color={colors.primary} />
+        <Ionicons name="navigate" size={20} color={colors.onPrimary} />
       </View>
       <View style={{ flex: 1 }}>
+        <Text style={styles.eventLabel}>TRIP COMPLETED</Text>
         <Text style={styles.tripTitle}>Shopping trip completed</Text>
         <Text style={styles.tripMessage}>{event.message.replace('Trip complete · ', '')}</Text>
-        <Text style={styles.time}>{timeAgo(event.createdAt)}</Text>
+        <View style={styles.timeRow}>
+          <Ionicons name="time-outline" size={12} color={colors.muted} />
+          <Text style={styles.time}>{timeAgo(event.createdAt)}</Text>
+        </View>
       </View>
       <Ionicons name="chevron-forward" size={18} color={colors.primary} />
     </Pressable>
@@ -180,8 +238,12 @@ function EventRow({ event, store, styles, colors }: { event: ActivityEvent; stor
         </View>
       )}
       <View style={{ flex: 1 }}>
+        <Text style={[styles.eventLabel, { color: colors[meta.colorKey] }]}>{EVENT_LABELS[event.type].toUpperCase()}</Text>
         <Text style={styles.message}>{event.message}</Text>
-        <Text style={styles.time}>{timeAgo(event.createdAt)}</Text>
+        <View style={styles.timeRow}>
+          <Ionicons name="time-outline" size={12} color={colors.muted} />
+          <Text style={styles.time}>{timeAgo(event.createdAt)}</Text>
+        </View>
       </View>
     </View>
   );
@@ -189,10 +251,42 @@ function EventRow({ event, store, styles, colors }: { event: ActivityEvent; stor
 
 function makeStyles(colors: AppColors) {
   return StyleSheet.create({
-    filterRow: { gap: spacing.sm, paddingBottom: spacing.lg },
+    overviewCard: {
+      padding: spacing.xl,
+      borderColor: colors.primary + '24',
+      backgroundColor: colors.backgroundElevated,
+      marginBottom: spacing.lg,
+    },
+    overviewHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+    overviewIcon: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: colors.primarySoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    overviewEyebrow: { fontFamily: fonts.monoMedium, fontSize: 9, color: colors.primary, letterSpacing: 1.1 },
+    overviewTitle: { fontFamily: fonts.serifItalic, fontSize: 22, color: colors.ink, marginTop: 2 },
+    overviewTotal: { fontFamily: fonts.monoMedium, fontSize: 28, color: colors.primary, fontVariant: ['tabular-nums'] },
+    overviewStats: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: spacing.xl,
+      paddingTop: spacing.lg,
+      borderTopWidth: 1,
+      borderTopColor: colors.borderSoft,
+    },
+    overviewStat: { flex: 1, alignItems: 'center' },
+    overviewStatValue: { fontFamily: fonts.monoMedium, fontSize: 20, color: colors.ink, fontVariant: ['tabular-nums'] },
+    overviewStatLabel: { fontFamily: fonts.sansMedium, fontSize: 11, color: colors.muted, marginTop: 2 },
+    overviewDivider: { width: 1, height: 30, backgroundColor: colors.border },
+    filterRow: { gap: spacing.sm, paddingBottom: spacing.md },
     filterChip: {
+      flexDirection: 'row',
+      gap: 6,
       paddingHorizontal: spacing.lg,
-      height: 34,
+      height: 38,
       borderRadius: radii.pill,
       backgroundColor: colors.surface,
       borderWidth: 1,
@@ -203,24 +297,29 @@ function makeStyles(colors: AppColors) {
     filterChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
     filterText: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.inkSoft },
     filterTextActive: { color: colors.onPrimary },
-    noneNote: {
-      fontFamily: fonts.sans,
-      fontSize: 14,
-      color: colors.muted,
-      textAlign: 'center',
-      paddingVertical: spacing.huge,
-    },
+    section: { marginTop: spacing.lg },
+    sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm, paddingHorizontal: spacing.xs },
     sectionTitle: {
-      fontFamily: fonts.sansSemibold,
-      fontSize: 12,
-      color: colors.muted,
-      textTransform: 'uppercase',
-      letterSpacing: 0.5,
-      marginTop: spacing.lg,
-      marginBottom: spacing.md,
+      flex: 1,
+      fontFamily: fonts.serifItalic,
+      fontSize: 20,
+      color: colors.ink,
     },
-    eventCard: { marginBottom: spacing.sm },
-    row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+    sectionCount: {
+      minWidth: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: colors.surfaceRaised,
+      textAlign: 'center',
+      paddingTop: 6,
+      fontFamily: fonts.monoMedium,
+      fontSize: 11,
+      color: colors.muted,
+      fontVariant: ['tabular-nums'],
+    },
+    timelineCard: { paddingVertical: spacing.xs },
+    eventDivider: { height: 1, backgroundColor: colors.borderSoft, marginLeft: 50 + spacing.md },
+    row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 72, paddingVertical: spacing.md },
     iconWrap: {
       width: 38,
       height: 38,
@@ -230,32 +329,30 @@ function makeStyles(colors: AppColors) {
       alignItems: 'center',
       justifyContent: 'center',
     },
-    message: { fontFamily: fonts.sansMedium, fontSize: 15, color: colors.ink },
-    time: { fontFamily: fonts.mono, fontSize: 11, color: colors.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
+    eventLabel: { fontFamily: fonts.monoMedium, fontSize: 9, letterSpacing: 0.8, color: colors.primary, marginBottom: 3 },
+    message: { fontFamily: fonts.sansMedium, fontSize: 15, lineHeight: 20, color: colors.ink },
+    timeRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 5 },
+    time: { fontFamily: fonts.mono, fontSize: 10, color: colors.muted, fontVariant: ['tabular-nums'] },
 
-    // Prominent trip card
     tripCard: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.md,
       backgroundColor: colors.primarySoft,
-      borderRadius: radii.lg,
-      borderWidth: 1,
-      borderColor: colors.primary,
-      padding: spacing.lg,
-      marginBottom: spacing.sm,
+      borderRadius: radii.md,
+      padding: spacing.md,
+      marginVertical: spacing.xs,
+      ...shadow.card,
     },
     tripIcon: {
       width: 44,
       height: 44,
       borderRadius: 22,
-      backgroundColor: colors.background,
-      borderWidth: 1,
-      borderColor: colors.primary,
+      backgroundColor: colors.primary,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    tripTitle: { fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink },
+    tripTitle: { fontFamily: fonts.sansSemibold, fontSize: 16, lineHeight: 21, color: colors.ink },
     tripMessage: { fontFamily: fonts.mono, fontSize: 12, color: colors.inkSoft, marginTop: 3, fontVariant: ['tabular-nums'] },
   });
 }
