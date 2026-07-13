@@ -286,20 +286,33 @@ export function reduce(
       if (existingIdx === -1) {
         return {
           ...session,
+          storeQueue: session.storeQueue.includes(event.entry.storeId)
+            ? session.storeQueue
+            : [...session.storeQueue, event.entry.storeId],
           entries: [...session.entries, { ...event.entry, picked: false }],
           removedItemIds,
         };
       }
       const existing = session.entries[existingIdx];
-      // True duplicate — already in this store's list. Keep the no-op.
-      if (existing.storeId === event.entry.storeId && removedItemIds === session.removedItemIds) return session;
-      // Already an entry for this item, but tied to a different store (e.g. planned
-      // for another stop before the trip started) — re-home it to the current store
-      // instead of silently dropping the add.
+      const metadataMatches =
+        existing.name === event.entry.name &&
+        existing.quantity === event.entry.quantity &&
+        existing.unit === event.entry.unit &&
+        existing.storeId === event.entry.storeId;
+      if (metadataMatches && removedItemIds === session.removedItemIds) return session;
       const entries = session.entries.map((e, i) =>
-        i === existingIdx ? { ...event.entry, picked: false } : e,
+        i === existingIdx
+          ? { ...event.entry, picked: existing.picked, outOfStock: existing.outOfStock }
+          : e,
       );
-      return { ...session, entries, removedItemIds };
+      return {
+        ...session,
+        storeQueue: session.storeQueue.includes(event.entry.storeId)
+          ? session.storeQueue
+          : [...session.storeQueue, event.entry.storeId],
+        entries,
+        removedItemIds,
+      };
     }
 
     case 'REMOVE_ENTRY': {

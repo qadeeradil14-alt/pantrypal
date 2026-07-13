@@ -3,6 +3,7 @@ import { decode } from 'base64-arraybuffer';
 import { supabase } from '../../lib/supabase';
 import type { DurableState, Receipt } from '../../types';
 import { shouldApplyRemoteSnapshot, remoteSkipReason, markRemoteApplied, markPushed, isSelfEcho, resetSyncWatermark } from './syncWatermark';
+import { reconcileShoppingSession } from './shoppingEntrySync';
 
 const CLOUD_TABLE = 'household_snapshots';
 const RECEIPT_BUCKET = 'receipts';
@@ -45,7 +46,9 @@ function durableSnapshot(state: DurableState): DurableState {
     trips: state.trips,
     activity: state.activity,
     prefs: state.prefs,
-    activeSession: state.activeSession ?? null,
+    activeSession: state.activeSession
+      ? reconcileShoppingSession(state.activeSession, state.items)
+      : null,
     updatedAt: state.updatedAt,
   };
 }
@@ -96,13 +99,14 @@ export async function pushLocalState(state: DurableState, options?: { isDeferred
   if (!id) return;
 
   try {
-    const receipts = await Promise.all(state.receipts.map((receipt) => uploadReceipt(id, receipt)));
+    const consistentState = durableSnapshot(state);
+    const receipts = await Promise.all(consistentState.receipts.map((receipt) => uploadReceipt(id, receipt)));
     const cloudReceipts = receipts.map((receipt) =>
       !receipt.imagePath && receipt.imageUri?.startsWith('file://')
         ? { ...receipt, imageUri: null }
         : receipt,
     );
-    const snapshot = { ...state, receipts: cloudReceipts };
+    const snapshot = { ...consistentState, receipts: cloudReceipts };
 
     let error: { message: string } | null = null;
     for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
@@ -244,6 +248,12 @@ export async function pullFromSupabase(): Promise<void> {
   }
   if (hasActiveSession && !remote.activeSession) console.log('[Shopping Sync] remote_trip_end_received');
   const signedRemote = await withSignedReceiptUrls(remote);
+  const reconciledRemote: DurableState = {
+    ...signedRemote,
+    activeSession: signedRemote.activeSession
+      ? reconcileShoppingSession(signedRemote.activeSession, signedRemote.items)
+      : null,
+  };
   // Local state may have advanced while signed URLs were being fetched (a
   // user edit or a concurrent pull) — re-check so a now-stale snapshot cannot
   // clobber it after the await.
@@ -251,7 +261,7 @@ export async function pullFromSupabase(): Promise<void> {
     console.log(`[Shopping Sync] active_session_reconcile_skipped reason=${remoteSkipReason(remoteUpdatedAt, store.getState().updatedAt)} version/updatedAt=${remoteUpdatedAt} phase=post_sign`);
     return;
   }
-  store.getState().applyRemotePatch(signedRemote);
+  store.getState().applyRemotePatch(reconciledRemote);
   if (hasActiveSession) console.log('[Shopping Sync] local_state_reconciled');
   if (!isSelfEcho(remoteUpdatedAt)) {
     markRemoteApplied(remoteUpdatedAt);

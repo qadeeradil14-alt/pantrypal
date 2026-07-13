@@ -22,6 +22,7 @@ import type {
   Trip,
   Unit,
 } from '../types';
+import { shoppingEntryEventForItem } from '../core/services/shoppingEntrySync';
 export type { StorageLocation as StorageLocationImport };
 import { uid, now } from '../core/services/id';
 import {
@@ -140,6 +141,14 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       .catch((err) => { if (__DEV__) console.warn('[durable-store] persist failed', err); });
   };
 
+  const syncShoppingItem = (item: PantryItem | null, itemId: string) => {
+    const event = shoppingEntryEventForItem(get().activeSession, item, itemId);
+    if (!event) return;
+    void import('./session-store').then(({ useSessionStore }) => {
+      useSessionStore.getState().dispatch(event);
+    });
+  };
+
   const pushActivity = (
     type: ActivityType,
     message: string,
@@ -195,6 +204,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
           pushActivity('marked_low', `${updated.name} marked low`, { itemId: updated.id });
         }
         persist();
+        syncShoppingItem(updated, updated.id);
         // Merge can change storeId/status (e.g. re-adding an item with a new
         // store assignment) — geofence eligibility is item-driven, so refresh.
         void refreshGeofencedStoreData();
@@ -218,6 +228,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         pushActivity('marked_low', `${item.name} marked low`, { itemId: item.id });
       }
       persist();
+      syncShoppingItem(item, item.id);
       // A newly added item may be assigned to a store at creation, making
       // that store newly eligible for arrival reminders.
       void refreshGeofencedStoreData();
@@ -231,6 +242,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         ),
       }));
       persist();
+      syncShoppingItem(get().items.find((item) => item.id === id) ?? null, id);
       // patch may change storeId and/or status — both affect geofence
       // eligibility (assignment, status change, marking purchased, etc.).
       void refreshGeofencedStoreData();
@@ -247,6 +259,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         pushActivity('marked_low', `${item.name} marked low`, { itemId: id });
       }
       persist();
+      syncShoppingItem(get().items.find((candidate) => candidate.id === id) ?? null, id);
       // Status changes (including marking purchased, or restoring to stocked)
       // can add or remove a store from geofence eligibility.
       void refreshGeofencedStoreData();
@@ -277,6 +290,9 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         ),
       }));
       persist();
+      get().items
+        .filter((item) => idSet.has(item.id))
+        .forEach((item) => syncShoppingItem(item, item.id));
       void refreshGeofencedStoreData();
     },
 
@@ -295,6 +311,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     deleteItem: (id) => {
       set((s) => ({ items: s.items.filter((it) => it.id !== id) }));
       persist();
+      syncShoppingItem(null, id);
       // Deleting the last active item assigned to a store removes that
       // store's eligibility — re-register so it stops being monitored.
       void refreshGeofencedStoreData();

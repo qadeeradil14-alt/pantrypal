@@ -20,31 +20,7 @@ import {
 import { useDurableStore } from './durable-store';
 import type { SharedShoppingSession, ShoppingEntry } from '../types';
 import { remoteShoppingSessionAction } from '../core/services/shoppingSessionSyncPolicy';
-
-/**
- * Merges two shopping_store sessions for the same trip: union of entries
- * (picked/outOfStock OR-merged so a check on either device sticks), minus
- * anything either device tombstoned via REMOVE_ENTRY. Base structure
- * (queue, index, receipts, etc.) is taken from local, not remote.
- */
-function mergeShoppingEntries(
-  localEntries: ShoppingEntry[],
-  remoteEntries: ShoppingEntry[],
-  removedItemIds: string[],
-): ShoppingEntry[] {
-  const byId = new Map<string, ShoppingEntry>();
-  for (const entry of localEntries) byId.set(entry.itemId, entry);
-  for (const entry of remoteEntries) {
-    const existing = byId.get(entry.itemId);
-    byId.set(
-      entry.itemId,
-      existing
-        ? { ...existing, picked: existing.picked || entry.picked, outOfStock: !!existing.outOfStock || !!entry.outOfStock }
-        : entry,
-    );
-  }
-  return Array.from(byId.values()).filter((entry) => !removedItemIds.includes(entry.itemId));
-}
+import { mergeShoppingEntries } from '../core/services/shoppingEntrySync';
 
 const SESSION_KEY = 'stokit:v2:active-session';
 
@@ -132,6 +108,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       );
       const merged: ShoppingSession = {
         ...previous,
+        storeQueue: [
+          ...previous.storeQueue,
+          ...remoteSession.storeQueue.filter((storeId) => !previous.storeQueue.includes(storeId)),
+        ],
         entries: mergeShoppingEntries(previous.entries, remoteSession.entries, removedItemIds),
         removedItemIds,
       };
