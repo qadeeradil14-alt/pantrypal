@@ -31,7 +31,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Animated } from 'react-native';
 import { Screen } from '../../components/shared/Screen';
-import { Button, Card, PageTitle, Pill, SectionHeader, StoreChip } from '../../components/shared/ui';
+import { Button, Card, PageTitle, Pill, StoreChip } from '../../components/shared/ui';
 import { EmptyState } from '../../components/shared/EmptyState';
 import { StorePickerSheet } from '../../components/pantry/StorePickerSheet';
 import { AddItemSheet } from '../../components/pantry/AddItemSheet';
@@ -39,7 +39,7 @@ import { Sheet } from '../../components/shared/Sheet';
 import { ItemAvatar } from '../../components/shared/ItemAvatar';
 import { PricePromptSheet } from '../../components/shopping/PricePromptSheet';
 import { AddStoreContent } from '../../components/stores/AddStoreSheet';
-import { fonts, radii, spacing, type AppColors } from '../../theme';
+import { fonts, radii, shadow, spacing, type AppColors } from '../../theme';
 import { useDurableStore } from '../../store/durable-store';
 import { useHouseholdStore } from '../../store/household-store';
 import { useSessionStore } from '../../store/session-store';
@@ -305,14 +305,16 @@ export default function ShoppingScreen() {
     return (
       <Screen>
         <PageTitle eyebrow="Starting your trip" title="Where are you shopping first?" />
+        <Text style={nsStyles.chooserIntro}>Pick your first stop. The rest of your route stays ready.</Text>
         {planEntries.map(([storeId, list], idx) => {
           const store    = storeById(storeId);
           const barColor = ROUTE_COLORS[idx % ROUTE_COLORS.length];
           return (
-            <Card key={storeId} style={nsStyles.storeCard}>
+            <Card key={storeId} style={[nsStyles.storeCard, idx === 0 && nsStyles.recommendedStoreCard]}>
               <View style={nsStyles.storeRow}>
                 <StoreChip store={store} name={store?.name ?? '?'} size={48} />
                 <View style={{ flex: 1 }}>
+                  {idx === 0 ? <Text style={nsStyles.recommendedLabel}>Suggested first</Text> : null}
                   <Text style={nsStyles.storeName}>{store?.name ?? 'Unknown Store'}</Text>
                   <Text style={nsStyles.storeItems}>{list.length} item{list.length !== 1 ? 's' : ''}</Text>
                 </View>
@@ -320,7 +322,7 @@ export default function ShoppingScreen() {
                   onPress={() => { setShowStoreChooser(false); void startTripAt(storeId); }}
                   style={({ pressed }) => [nsStyles.startBtn, { borderColor: barColor }, pressed && { opacity: 0.8 }]}
                 >
-                  <Text style={[nsStyles.startBtnText, { color: barColor }]}>Start here</Text>
+                  <Text style={[nsStyles.startBtnText, { color: barColor }]}>Start</Text>
                 </Pressable>
               </View>
             </Card>
@@ -361,40 +363,61 @@ export default function ShoppingScreen() {
         </>
       ) : (
         <>
-          <PriceMemoryIntro count={priceHistory.length} styles={styles} colors={colors} />
           {partnerContext}
           <Card style={styles.summaryCard}>
-            {singleStore && (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md }}>
-                <StoreChip
-                  store={singleStore}
-                  size={36}
-                />
-                <Text style={styles.firstDestLabel}>{singleStore.name}</Text>
+            <View style={styles.summaryHeader}>
+              <View>
+                <Text style={styles.summaryEyebrow}>TRIP OVERVIEW</Text>
+                <Text style={styles.summaryTitle}>
+                  {unassignedCount === 0 ? 'Ready to shop' : 'Finish your plan'}
+                </Text>
               </View>
-            )}
-            <Text style={styles.summaryBig}>{shoppableCount}</Text>
-            <Text style={styles.summarySub}>
-              {planEntries.length > 1
-                ? `${planEntries.length} stores${unassignedCount > 0 ? ` · ${unassignedCount} unassigned` : ''}`
-                : planEntries.length === 1
-                ? `${shoppableCount} item${shoppableCount !== 1 ? 's' : ''}${unassignedCount > 0 ? ` · ${unassignedCount} unassigned` : ''}`
-                : `${unassignedCount} item${unassignedCount !== 1 ? 's' : ''} waiting for a store`}
-            </Text>
+              <View style={styles.summaryIcon}>
+                <Ionicons name={unassignedCount === 0 ? 'navigate' : 'storefront-outline'} size={22} color={colors.primary} />
+              </View>
+            </View>
+            <View style={styles.summaryStats}>
+              <View style={styles.summaryStat}>
+                <Text style={styles.summaryBig}>{shoppableCount}</Text>
+                <Text style={styles.summarySub}>Items</Text>
+              </View>
+              <View style={styles.summaryStatDivider} />
+              <View style={styles.summaryStat}>
+                <Text style={styles.summaryBig}>{planEntries.length}</Text>
+                <Text style={styles.summarySub}>Stores</Text>
+              </View>
+              <View style={styles.summaryStatDivider} />
+              <View style={styles.summaryStat}>
+                <Text style={[styles.summaryBig, unassignedCount > 0 && { color: colors.warning }]}>{unassignedCount}</Text>
+                <Text style={styles.summarySub}>Unassigned</Text>
+              </View>
+            </View>
+            {singleStore && unassignedCount === 0 ? (
+              <View style={styles.firstDestination}>
+                <StoreChip store={singleStore} size={32} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.firstDestCaption}>YOUR STOP</Text>
+                  <Text style={styles.firstDestLabel}>{singleStore.name}</Text>
+                </View>
+                <Ionicons name="arrow-forward" size={18} color={colors.primary} />
+              </View>
+            ) : null}
             {unassignedCount === 0
-              ? <Button label="Start shopping" onPress={handleStartShopping} style={{ marginTop: spacing.lg }} />
+              ? <Button label={planEntries.length > 1 ? 'Choose first store' : 'Start shopping'} onPress={handleStartShopping} style={styles.primaryCta} />
               : <Text style={styles.assignStoreHint}>Choose where to buy each item, then start shopping.</Text>
             }
           </Card>
 
+          <PriceMemoryIntro count={priceHistory.length} styles={styles} colors={colors} />
+
           {unassigned.length > 0 ? (
-            <View>
+            <Card style={styles.planStoreCard}>
               <PlanStoreHeader
                 store={{ id: UNASSIGNED_STORE_ID, name: 'Choose store', logoEmoji: '🛒', logoColor: colors.primary, createdAt: 0, updatedAt: 0 }}
                 count={unassigned.length}
                 styles={styles}
               />
-              <Card style={{ paddingVertical: spacing.xs }}>
+              <View>
                 <Pressable
                   onPress={() => setBulkAssignStorePicker(true)}
                   style={({ pressed }) => [styles.bulkAssignRow, pressed && { opacity: 0.75 }]}
@@ -429,17 +452,17 @@ export default function ShoppingScreen() {
                     </Pressable>
                   </View>
                 ))}
-              </Card>
-            </View>
+              </View>
+            </Card>
           ) : null}
 
           {/* Assigned items — tap any row to change its store */}
           {planEntries.map(([storeId, list]) => {
             const store = storeById(storeId);
             return (
-              <View key={storeId}>
+              <Card key={storeId} style={styles.planStoreCard}>
                 <PlanStoreHeader store={store} count={list.length} styles={styles} />
-                <Card style={{ paddingVertical: spacing.xs }}>
+                <View>
                   {list.map((e, idx) => (
                     <View key={e.itemId}>
                       {idx > 0 && <View style={styles.rowDivider} />}
@@ -461,8 +484,8 @@ export default function ShoppingScreen() {
                       </Pressable>
                     </View>
                   ))}
-                </Card>
-              </View>
+                </View>
+              </Card>
             );
           })}
 
@@ -633,9 +656,13 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
   return (
     <Screen>
       <PageTitle eyebrow={total > 1 ? `Stop ${stepNo} of ${total}` : (storeById(storeId)?.name ? `At ${storeById(storeId)!.name}` : undefined)} title="Shopping" />
-      <Card>
+      <Card style={styles.activeTripCard}>
         <StoreHeader store={storeById(storeId)} eyebrow="Now shopping" styles={styles} />
         <View style={styles.progressWrap}>
+          <View style={styles.progressHeader}>
+            <Text style={styles.progressLabel}>TRIP PROGRESS</Text>
+            <Text style={styles.progressCount}>{picked} of {entries.length}</Text>
+          </View>
           <View style={styles.progressTrack}>
             <Animated.View
               style={[
@@ -649,16 +676,27 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
               ]}
             />
           </View>
-          <Text style={styles.progressText}>{picked}/{entries.length} picked</Text>
+          <Text style={styles.progressText}>
+            {entries.length === picked && entries.length > 0
+              ? 'Everything on this list is checked off'
+              : `${entries.length - picked} item${entries.length - picked === 1 ? '' : 's'} left at this stop`}
+          </Text>
         </View>
       </Card>
 
-      <Card style={{ paddingVertical: spacing.xs, marginBottom: spacing.md }}>
+      <View style={styles.listHeading}>
+        <Text style={styles.listTitle}>Shopping list</Text>
+        <View style={styles.listCountBadge}>
+          <Text style={styles.listCountText}>{entries.length}</Text>
+        </View>
+      </View>
+
+      <Card style={styles.shoppingListCard}>
         {entries.map((e, idx) => (
           <View key={e.itemId}>
                 {idx > 0 && <View style={styles.rowDivider} />}
                 <Pressable
-                  style={[styles.pickRow, e.outOfStock && { opacity: 0.5 }]}
+                  style={({ pressed }) => [styles.pickRow, e.picked && styles.pickRowDone, e.outOfStock && { opacity: 0.5 }, pressed && { opacity: 0.72 }]}
                   onPress={() => {
                     if (e.outOfStock) return;
                     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -689,11 +727,17 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                     );
                   }}
                 >
-                  <Ionicons
-                    name={e.outOfStock ? 'close-circle-outline' : e.picked ? 'checkmark-circle' : 'ellipse-outline'}
-                    size={26}
-                    color={e.outOfStock ? colors.danger : e.picked ? colors.success : colors.faintText}
-                  />
+                  <View style={[
+                    styles.pickControl,
+                    e.picked && styles.pickControlDone,
+                    e.outOfStock && { backgroundColor: colors.dangerSoft, borderColor: colors.danger },
+                  ]}>
+                    <Ionicons
+                      name={e.outOfStock ? 'close' : e.picked ? 'checkmark' : 'ellipse-outline'}
+                      size={e.picked || e.outOfStock ? 16 : 12}
+                      color={e.outOfStock ? colors.danger : e.picked ? colors.onPrimary : colors.faintText}
+                    />
+                  </View>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.pickName, e.picked && styles.pickNameDone]}>{e.name}</Text>
                     {(() => {
@@ -756,16 +800,24 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
       </Card>
       
       {entries.length === 0 && (
-         <Card style={{ paddingVertical: spacing.lg, alignItems: 'center' }}>
-            <Text style={{ fontFamily: fonts.sans, fontSize: 14, color: colors.muted, textAlign: 'center', marginBottom: spacing.md }}>
-               No items planned for this store.
-            </Text>
-            <Button label="+ Add more" variant="ghost" onPress={() => setAddSheetVisible(true)} />
+         <Card style={styles.activeEmptyCard}>
+            <View style={styles.activeEmptyIcon}>
+              <Ionicons name="basket-outline" size={26} color={colors.primary} />
+            </View>
+            <Text style={styles.activeEmptyTitle}>This stop is clear</Text>
+            <Text style={styles.activeEmptyText}>No items are planned for this store yet.</Text>
+            <Button label="Add an item" onPress={() => setAddSheetVisible(true)} style={{ alignSelf: 'stretch', marginTop: spacing.lg }} />
          </Card>
       )}
 
       {entries.length > 0 && (
-          <Button label="+ Add more" variant="subtle" onPress={() => setAddSheetVisible(true)} style={{ marginTop: spacing.md }} />
+          <Pressable onPress={() => setAddSheetVisible(true)} style={({ pressed }) => [styles.addMoreRow, pressed && { opacity: 0.7 }]}>
+            <View style={styles.addMoreIcon}>
+              <Ionicons name="add" size={20} color={colors.primary} />
+            </View>
+            <Text style={styles.addMoreText}>Add another item</Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.faintText} />
+          </Pressable>
       )}
 
       {isSharedHousehold && (
@@ -862,7 +914,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
           void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           dispatch({ type: 'FINISH_STORE', now: Date.now() });
         }}
-        style={{ marginTop: spacing.md }}
+        style={styles.finishStoreCta}
       />
       <CancelTripLink dispatch={dispatch} colors={colors} />
       <AddItemSheet
@@ -1106,23 +1158,31 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
       <Screen scroll={false}>
         {/* Always-visible store header */}
         <View style={rStyles.header}>
-          <View>
+          <View style={rStyles.completedIcon}>
+            <Ionicons name="checkmark" size={20} color={colors.onPrimary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={rStyles.stopLabel}>STOP COMPLETED</Text>
             <Text style={rStyles.storeName} numberOfLines={1}>{store?.name ?? 'Store'}</Text>
-            <Text style={rStyles.stopLabel}>Stop completed</Text>
           </View>
           <Pressable onPress={skip} style={rStyles.checkBadge}>
-            <Ionicons name="checkmark" size={20} color={colors.primary} />
+            <Ionicons name="arrow-forward" size={20} color={colors.primary} />
           </Pressable>
         </View>
 
         {!showSpendEntry ? (
-          <View style={{ paddingTop: spacing.xl }}>
-            <Button label="Add receipt or total" onPress={() => setShowSpendEntry(true)} />
+          <View style={rStyles.receiptChoice}>
+            <View style={rStyles.receiptChoiceIcon}>
+              <Ionicons name="receipt-outline" size={30} color={colors.primary} />
+            </View>
+            <Text style={rStyles.receiptChoiceTitle}>Save this purchase?</Text>
+            <Text style={rStyles.receiptChoiceBody}>Track your total, scan the receipt, and remember prices for next time.</Text>
+            <Button label="Add receipt or total" onPress={() => setShowSpendEntry(true)} style={{ alignSelf: 'stretch', marginTop: spacing.xl }} />
             <Button
-              label="Done"
+              label="Skip receipt"
               variant="ghost"
               onPress={skip}
-              style={{ marginTop: spacing.md }}
+              style={{ alignSelf: 'stretch', marginTop: spacing.md }}
             />
             <CancelTripLink dispatch={dispatch} colors={colors} />
           </View>
@@ -1354,8 +1414,11 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
     <Screen>
       <PageTitle eyebrow="Stop completed" title={store?.name ?? 'Store'} />
 
-      {/* Summary card */}
       <Card style={ssStyles.card}>
+        <View style={ssStyles.completedBadge}>
+          <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+          <Text style={ssStyles.completedBadgeText}>Stop saved</Text>
+        </View>
         <View style={ssStyles.row}>
           <View style={ssStyles.statBox}>
             <Text style={ssStyles.statVal}>{spent > 0 ? `$${spent.toFixed(2)}` : '—'}</Text>
@@ -1382,14 +1445,18 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
 
       {/* What's next hint */}
       {pending.length > 0 ? (
-        <View style={ssStyles.nextHint}>
-          <Ionicons name="navigate-outline" size={16} color={colors.primary} />
-          <Text style={ssStyles.nextHintText}>
-            {pending.length} more stop{pending.length > 1 ? 's' : ''} on your route
-          </Text>
-        </View>
+        <Card style={ssStyles.routeCard}>
+          <View style={ssStyles.routeIcon}>
+            <Ionicons name="navigate" size={20} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={ssStyles.routeEyebrow}>UP NEXT</Text>
+            <Text style={ssStyles.routeTitle}>{storeById(pending[0])?.name ?? 'Next store'}</Text>
+            <Text style={ssStyles.routeMeta}>{pending.length} stop{pending.length > 1 ? 's' : ''} left on your route</Text>
+          </View>
+        </Card>
       ) : (
-        <View style={ssStyles.nextHint}>
+        <View style={[ssStyles.nextHint, ssStyles.completeHint]}>
           <Ionicons name="checkmark-circle-outline" size={16} color={colors.success} />
           <Text style={[ssStyles.nextHintText, { color: colors.success }]}>All stops completed!</Text>
         </View>
@@ -1397,15 +1464,15 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
 
       {pending.length > 0 ? (
         <Button
-          label={`Head to ${storeById(pending[0])?.name ?? 'next store'} →`}
+          label={`Continue to ${storeById(pending[0])?.name ?? 'next store'}`}
           onPress={() => dispatch({ type: 'CONTINUE_TRIP' })}
-          style={{ marginTop: spacing.xl }}
+          style={{ marginTop: spacing.lg }}
         />
       ) : null}
 
       {pending.length === 0 ? (
         <View style={{ marginTop: spacing.xl, gap: spacing.sm }}>
-          <Text style={ssStyles.nextHintText}>Shopping somewhere else?</Text>
+          <Text style={ssStyles.sectionLabel}>Shopping somewhere else?</Text>
           {manualStores.map((candidate) => (
             <Pressable
               key={candidate.id}
@@ -1486,7 +1553,15 @@ function NextStoreSelector({ session, dispatch, storeById, styles, nsStyles, col
         </Card>
       ) : (
         <>
-          <Text style={nsStyles.subtitle}>Choose your next stop:</Text>
+          <View style={nsStyles.routeSummary}>
+            <View style={nsStyles.routeSummaryIcon}>
+              <Ionicons name="map-outline" size={20} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={nsStyles.routeSummaryTitle}>{pending.length} stop{pending.length === 1 ? '' : 's'} remaining</Text>
+              <Text style={nsStyles.routeSummaryText}>Choose where you want to shop next.</Text>
+            </View>
+          </View>
 
           {pending.map((storeId, idx) => {
             const store    = storeById(storeId);
@@ -1494,10 +1569,11 @@ function NextStoreSelector({ session, dispatch, storeById, styles, nsStyles, col
             const barColor = ROUTE_COLORS[idx % ROUTE_COLORS.length];
 
             return (
-              <Card key={storeId} style={nsStyles.storeCard}>
+              <Card key={storeId} style={[nsStyles.storeCard, idx === 0 && nsStyles.recommendedStoreCard]}>
                 <View style={nsStyles.storeRow}>
                   <StoreChip store={store} name={store?.name ?? '?'} size={48} />
                   <View style={{ flex: 1 }}>
+                    {idx === 0 ? <Text style={nsStyles.recommendedLabel}>NEXT ON ROUTE</Text> : null}
                     <Text style={nsStyles.storeName}>{store?.name ?? 'Unknown Store'}</Text>
                     <Text style={nsStyles.storeItems}>{itemCount} item{itemCount !== 1 ? 's' : ''} waiting</Text>
                   </View>
@@ -1505,7 +1581,7 @@ function NextStoreSelector({ session, dispatch, storeById, styles, nsStyles, col
                     onPress={() => dispatch({ type: 'CHOOSE_NEXT_STORE', storeId })}
                     style={({ pressed }) => [nsStyles.startBtn, { borderColor: barColor }, pressed && { opacity: 0.8 }]}
                   >
-                    <Text style={[nsStyles.startBtnText, { color: barColor }]}>Start</Text>
+                    <Text style={[nsStyles.startBtnText, { color: barColor }]}>Go</Text>
                   </Pressable>
                 </View>
 
@@ -1751,11 +1827,14 @@ function TripSummary({ session, dispatch, storeById, tsStyles, colors }: SubProp
           </Card>
         )}
 
-        {/* Header */}
-        <View style={tsStyles.header}>
+        <Card style={tsStyles.heroCard}>
+          <View style={tsStyles.completeIcon}>
+            <Ionicons name="checkmark" size={24} color={colors.onPrimary} />
+          </View>
+          <Text style={tsStyles.heroEyebrow}>SHOPPING COMPLETE</Text>
           <Text style={tsStyles.total}>${trip.totalSpent.toFixed(2)}</Text>
           <Text style={tsStyles.totalLabel}>total spent this trip</Text>
-        </View>
+        </Card>
 
         {/* Stats row */}
         <View style={tsStyles.statsRow}>
@@ -1896,8 +1975,15 @@ function StatBox({ value, label, dim, mono = true, tsStyles, colors }: { value: 
 
 function makeStyles(colors: AppColors) {
   const styles = StyleSheet.create({
-    summaryCard:  { alignItems: 'center', paddingVertical: spacing.xl },
-    priceMemoryCard: { marginTop: spacing.lg, marginBottom: spacing.sm, paddingVertical: spacing.md, borderColor: colors.borderSoft, backgroundColor: colors.surface },
+    summaryCard:  { padding: spacing.xl, borderColor: colors.primary + '24', backgroundColor: colors.backgroundElevated },
+    summaryHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    summaryEyebrow: { fontFamily: fonts.monoMedium, fontSize: 10, letterSpacing: 1.2, color: colors.primary },
+    summaryTitle: { fontFamily: fonts.serifItalic, fontSize: 24, color: colors.ink, marginTop: 3 },
+    summaryIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
+    summaryStats: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.xl, paddingVertical: spacing.lg, borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.borderSoft },
+    summaryStat: { flex: 1, alignItems: 'center' },
+    summaryStatDivider: { width: 1, height: 38, backgroundColor: colors.border },
+    priceMemoryCard: { marginTop: spacing.md, marginBottom: spacing.sm, paddingVertical: spacing.md, borderColor: colors.borderSoft, backgroundColor: colors.surface },
     priceMemoryHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     priceMemoryIcon: { width: 30, height: 30, borderRadius: 15, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
     priceMemoryTitle: { fontFamily: fonts.sansSemibold, fontSize: 13, color: colors.ink },
@@ -1905,14 +1991,18 @@ function makeStyles(colors: AppColors) {
     partnerContextCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.lg, borderColor: colors.primary + '55' },
     partnerContextTitle: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
     partnerContextText: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, lineHeight: 18, marginTop: 2 },
-    summaryBig:   { fontFamily: fonts.mono, fontSize: 48, color: colors.primary, fontVariant: ['tabular-nums'] },
-    summarySub:   { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
+    summaryBig:   { fontFamily: fonts.monoMedium, fontSize: 27, color: colors.ink, lineHeight: 34, fontVariant: ['tabular-nums'] },
+    summarySub:   { fontFamily: fonts.sansMedium, fontSize: 11, color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.6 },
+    firstDestination: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.lg, padding: spacing.md, borderRadius: radii.md, backgroundColor: colors.primarySoft },
+    firstDestCaption: { fontFamily: fonts.monoMedium, fontSize: 9, letterSpacing: 1, color: colors.primary },
     firstDestLabel: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
-    planStoreHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.lg, marginBottom: spacing.sm, paddingBottom: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
-    planStoreTitle: { flex: 1, fontFamily: fonts.sansSemibold, fontSize: 18, color: colors.ink },
-    planStoreCount: { fontFamily: fonts.monoMedium, fontSize: 13, color: colors.primary, fontVariant: ['tabular-nums'] },
-    rowDivider:   { height: 1, backgroundColor: colors.borderSoft, marginLeft: spacing.lg },
-    planRow:      { flexDirection: 'row', alignItems: 'center', gap: spacing.md, justifyContent: 'space-between', paddingVertical: spacing.md },
+    primaryCta: { marginTop: spacing.lg, minHeight: 54 },
+    planStoreCard: { marginTop: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xs },
+    planStoreHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.xs, paddingBottom: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
+    planStoreTitle: { flex: 1, fontFamily: fonts.sansSemibold, fontSize: 17, color: colors.ink },
+    planStoreCount: { minWidth: 28, height: 28, borderRadius: 14, textAlign: 'center', textAlignVertical: 'center', paddingTop: Platform.OS === 'ios' ? 6 : 4, fontFamily: fonts.monoMedium, fontSize: 12, color: colors.primary, backgroundColor: colors.primarySoft, fontVariant: ['tabular-nums'] },
+    rowDivider:   { height: 1, backgroundColor: colors.borderSoft, marginLeft: 44 + spacing.md },
+    planRow:      { flexDirection: 'row', alignItems: 'center', gap: spacing.md, justifyContent: 'space-between', minHeight: 58, paddingVertical: spacing.md },
     planName:     { fontFamily: fonts.sansMedium, fontSize: 16, color: colors.ink },
     planMeta:     { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, fontVariant: ['tabular-nums'] },
     bulkAssignRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md },
@@ -1921,24 +2011,44 @@ function makeStyles(colors: AppColors) {
     bulkAssignText: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 2 },
     chooseStorePill: { minHeight: 32, borderRadius: 16, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.sm, justifyContent: 'center', backgroundColor: colors.surface },
     chooseStorePillText: { fontFamily: fonts.sansSemibold, fontSize: 12, color: colors.primary },
-    assignStoreHint: { fontFamily: fonts.sans, fontSize: 13, color: colors.muted, textAlign: 'center', marginTop: spacing.lg, lineHeight: 18 },
+    assignStoreHint: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.warning, textAlign: 'center', marginTop: spacing.lg, lineHeight: 18 },
     warnText:     { fontFamily: fonts.sans, fontSize: 13, color: colors.muted, lineHeight: 19 },
     routeNotReady:{ borderColor: colors.primary, borderWidth: 1, gap: spacing.sm },
     routeNotReadyHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     routeNotReadyTitle: { fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink },
-    activeHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
+    activeTripCard: { padding: spacing.xl, borderColor: colors.primary + '24' },
+    activeHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
     activeStep:   { fontFamily: fonts.monoMedium, fontSize: 11, color: colors.muted, textTransform: 'uppercase', letterSpacing: 1 },
-    activeStore:  { fontFamily: fonts.serifItalic, fontSize: 24, color: colors.ink, marginTop: 2 },
+    activeStore:  { fontFamily: fonts.serifItalic, fontSize: 25, color: colors.ink, marginTop: 2 },
     progressWrap: { marginTop: spacing.xl },
-    progressTrack:{ height: 8, borderRadius: 4, backgroundColor: colors.surfaceRaised },
-    progressFill: { height: 8, borderRadius: 4, backgroundColor: colors.primary },
-    progressText: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: spacing.sm, fontVariant: ['tabular-nums'] },
-    pickRow:      { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md },
+    progressHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
+    progressLabel: { fontFamily: fonts.monoMedium, fontSize: 10, color: colors.muted, letterSpacing: 1 },
+    progressCount: { fontFamily: fonts.monoMedium, fontSize: 12, color: colors.primary, fontVariant: ['tabular-nums'] },
+    progressTrack:{ height: 10, borderRadius: 5, backgroundColor: colors.surfaceRaised, overflow: 'hidden' },
+    progressFill: { height: 10, borderRadius: 5, backgroundColor: colors.primary },
+    progressText: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: spacing.sm },
+    listHeading: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.xl, marginBottom: spacing.sm, paddingHorizontal: spacing.xs },
+    listTitle: { fontFamily: fonts.serifItalic, fontSize: 21, color: colors.ink, flex: 1 },
+    listCountBadge: { minWidth: 28, height: 28, paddingHorizontal: spacing.sm, borderRadius: 14, backgroundColor: colors.surfaceRaised, alignItems: 'center', justifyContent: 'center' },
+    listCountText: { fontFamily: fonts.monoMedium, fontSize: 12, color: colors.ink, fontVariant: ['tabular-nums'] },
+    shoppingListCard: { paddingVertical: spacing.xs, marginBottom: spacing.sm },
+    pickRow:      { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 64, paddingVertical: spacing.md, paddingHorizontal: spacing.xs, borderRadius: radii.sm },
+    pickRowDone: { backgroundColor: colors.successSoft + '55' },
+    pickControl: { width: 28, height: 28, borderRadius: 14, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.backgroundElevated, alignItems: 'center', justifyContent: 'center' },
+    pickControlDone: { backgroundColor: colors.success, borderColor: colors.success },
     pickName:     { flex: 1, fontFamily: fonts.sansMedium, fontSize: 16, color: colors.ink },
     pickNameDone: { color: colors.muted, textDecorationLine: 'line-through' },
     priceHint:    { fontFamily: fonts.sans, fontSize: 11, color: colors.primary, marginTop: 3, fontVariant: ['tabular-nums'] },
     addPriceButton: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 8 },
     addPriceText: { fontFamily: fonts.sansSemibold, fontSize: 11, color: colors.primary },
+    addMoreRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.sm, padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, backgroundColor: colors.surface },
+    addMoreIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
+    addMoreText: { flex: 1, fontFamily: fonts.sansSemibold, fontSize: 14, color: colors.ink },
+    activeEmptyCard: { alignItems: 'center', paddingVertical: spacing.xxl },
+    activeEmptyIcon: { width: 58, height: 58, borderRadius: 29, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
+    activeEmptyTitle: { fontFamily: fonts.serifItalic, fontSize: 22, color: colors.ink, marginTop: spacing.md },
+    activeEmptyText: { fontFamily: fonts.sans, fontSize: 13, color: colors.muted, marginTop: spacing.xs },
+    finishStoreCta: { marginTop: spacing.xl, minHeight: 54, ...shadow.card },
     emptyNote:    { fontFamily: fonts.sans, fontSize: 14, color: colors.muted, textAlign: 'center', paddingVertical: spacing.lg },
     continueTitle:{ fontFamily: fonts.serifItalic, fontSize: 22, color: colors.ink, textAlign: 'center' },
     continueBody: { fontFamily: fonts.sans, fontSize: 14, lineHeight: 20, color: colors.muted, textAlign: 'center', marginTop: spacing.md },
@@ -1950,15 +2060,20 @@ function makeStyles(colors: AppColors) {
   });
 
   const rStyles = StyleSheet.create({
-    header:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.xl, marginBottom: spacing.xl, paddingHorizontal: spacing.sm },
-    storeName: { fontFamily: fonts.serifItalic, fontSize: 28, color: colors.ink, maxWidth: 260 },
-    stopLabel: { fontFamily: fonts.sansSemibold, fontSize: 13, color: colors.primary, marginTop: 4 },
-    checkBadge:{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-    amountRow: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: colors.border, marginHorizontal: spacing.sm, paddingBottom: spacing.md, marginBottom: spacing.md },
+    header:    { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.lg, marginBottom: spacing.xl, padding: spacing.lg, borderWidth: 1, borderColor: colors.borderSoft, borderRadius: radii.lg, backgroundColor: colors.surface, ...shadow.card },
+    completedIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.success, alignItems: 'center', justifyContent: 'center' },
+    storeName: { fontFamily: fonts.serifItalic, fontSize: 25, color: colors.ink, maxWidth: 230 },
+    stopLabel: { fontFamily: fonts.monoMedium, fontSize: 10, color: colors.success, letterSpacing: 1, marginBottom: 2 },
+    checkBadge:{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
+    receiptChoice: { alignItems: 'center', paddingTop: spacing.xl },
+    receiptChoiceIcon: { width: 72, height: 72, borderRadius: 36, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.lg },
+    receiptChoiceTitle: { fontFamily: fonts.serifItalic, fontSize: 26, color: colors.ink, textAlign: 'center' },
+    receiptChoiceBody: { fontFamily: fonts.sans, fontSize: 14, lineHeight: 21, color: colors.muted, textAlign: 'center', maxWidth: 310, marginTop: spacing.sm },
+    amountRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: radii.lg, backgroundColor: colors.surface, marginHorizontal: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, marginBottom: spacing.md },
     currency:  { fontFamily: fonts.mono, fontSize: 36, color: colors.primary, marginRight: spacing.sm, fontVariant: ['tabular-nums'] },
     amountInput:{ flex: 1, fontFamily: fonts.mono, fontSize: 48, color: colors.ink, padding: 0, fontVariant: ['tabular-nums'] },
     hint:      { fontFamily: fonts.sans, fontSize: 13, color: colors.muted, marginHorizontal: spacing.sm, marginBottom: spacing.xl, lineHeight: 19 },
-    saveBtn:   { backgroundColor: colors.primary, borderRadius: radii.lg, paddingVertical: 16, alignItems: 'center', marginHorizontal: spacing.sm },
+    saveBtn:   { backgroundColor: colors.primary, borderRadius: radii.lg, paddingVertical: 17, alignItems: 'center', marginHorizontal: spacing.sm, ...shadow.card },
     saveBtnText:{ fontFamily: fonts.sansSemibold, fontSize: 17, color: colors.onPrimary, fontVariant: ['tabular-nums'] },
     chipRow:   { flexDirection: 'row', gap: spacing.md, marginTop: spacing.lg, marginHorizontal: spacing.sm },
     chip:      { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, backgroundColor: colors.surfaceRaised, borderRadius: radii.md, borderWidth: 1.5, borderColor: colors.primary, paddingVertical: 12 },
@@ -2030,7 +2145,9 @@ function makeStyles(colors: AppColors) {
   });
 
   const ssStyles = StyleSheet.create({
-    card:     { paddingVertical: spacing.xl },
+    card:     { paddingVertical: spacing.xl, borderColor: colors.success + '24' },
+    completedBadge: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: radii.pill, backgroundColor: colors.successSoft, marginBottom: spacing.xl },
+    completedBadgeText: { fontFamily: fonts.sansSemibold, fontSize: 12, color: colors.success },
     row:      { flexDirection: 'row', alignItems: 'center' },
     statBox:  { flex: 1, alignItems: 'center', gap: 4 },
     statVal:  { fontFamily: fonts.mono, fontSize: 26, color: colors.ink, fontVariant: ['tabular-nums'] },
@@ -2039,7 +2156,14 @@ function makeStyles(colors: AppColors) {
     timeRow:  { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: spacing.lg, paddingTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.borderSoft },
     timeText: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, fontVariant: ['tabular-nums'] },
     nextHint: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.lg, paddingHorizontal: spacing.sm },
+    completeHint: { justifyContent: 'center', padding: spacing.md, borderRadius: radii.md, backgroundColor: colors.successSoft },
     nextHintText: { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.primary },
+    routeCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.lg, padding: spacing.lg, borderColor: colors.primary + '24' },
+    routeIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
+    routeEyebrow: { fontFamily: fonts.monoMedium, fontSize: 9, letterSpacing: 1.1, color: colors.primary },
+    routeTitle: { fontFamily: fonts.sansSemibold, fontSize: 17, color: colors.ink, marginTop: 2 },
+    routeMeta: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 2 },
+    sectionLabel: { fontFamily: fonts.serifItalic, fontSize: 19, color: colors.ink, marginBottom: spacing.xs },
     manualStore: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -2054,14 +2178,21 @@ function makeStyles(colors: AppColors) {
   });
 
   const nsStyles = StyleSheet.create({
+    chooserIntro: { fontFamily: fonts.sans, fontSize: 14, lineHeight: 20, color: colors.muted, marginBottom: spacing.lg },
     subtitle:    { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.muted, marginBottom: spacing.md, marginTop: spacing.sm },
-    storeCard:   { paddingVertical: spacing.lg },
+    routeSummary: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.lg, marginBottom: spacing.md, backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.borderSoft },
+    routeSummaryIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
+    routeSummaryTitle: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
+    routeSummaryText: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 2 },
+    storeCard:   { paddingVertical: spacing.lg, marginBottom: spacing.md },
+    recommendedStoreCard: { borderColor: colors.primary + '55', backgroundColor: colors.backgroundElevated },
+    recommendedLabel: { fontFamily: fonts.monoMedium, fontSize: 9, color: colors.primary, letterSpacing: 0.9, marginBottom: 2 },
     storeRow:    { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
     logo:        { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
     logoAbbr:    { fontFamily: fonts.sansSemibold, fontSize: 15, color: '#fff' },
     storeName:   { fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink },
     storeItems:  { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: 3, fontVariant: ['tabular-nums'] },
-    startBtn:    { borderWidth: 1.5, borderRadius: radii.md, paddingHorizontal: 14, paddingVertical: 7 },
+    startBtn:    { minWidth: 64, borderWidth: 1.5, borderRadius: radii.pill, paddingHorizontal: 14, paddingVertical: 9, alignItems: 'center' },
     startBtnText:{ fontFamily: fonts.sansSemibold, fontSize: 14 },
     skipStoreBtn:{ alignItems: 'center', paddingTop: spacing.md, marginTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.borderSoft },
     skipStoreText:{ fontFamily: fonts.sans, fontSize: 13, color: colors.muted },
@@ -2077,6 +2208,9 @@ function makeStyles(colors: AppColors) {
   const tsStyles = StyleSheet.create({
     scroll:       { padding: spacing.xl, gap: spacing.xl },
     header:       { alignItems: 'center', marginBottom: spacing.md },
+    heroCard:     { alignItems: 'center', paddingVertical: spacing.xxl, borderColor: colors.primary + '24' },
+    completeIcon: { width: 52, height: 52, borderRadius: 26, backgroundColor: colors.success, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.md },
+    heroEyebrow:  { fontFamily: fonts.monoMedium, fontSize: 10, color: colors.success, letterSpacing: 1.2, marginBottom: spacing.xs },
     eyebrow:      { fontFamily: fonts.monoMedium, fontSize: 12, color: colors.muted, letterSpacing: 1, marginBottom: spacing.sm },
     total:        { fontFamily: fonts.mono, fontSize: 48, color: colors.primary, lineHeight: 60, fontVariant: ['tabular-nums'] },
     totalLabel:  { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.muted, marginTop: 4 },
