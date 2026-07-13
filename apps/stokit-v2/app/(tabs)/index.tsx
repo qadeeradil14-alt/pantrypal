@@ -223,7 +223,7 @@ export default function PantryScreen() {
         <View style={styles.summaryRow}>
           <SummaryCard
             icon="cart"
-            tone="primary"
+            tone="surface"
             label="Shopping list"
             value={shoppingCount}
             sublabel={storeCount > 0 ? `${storeCount} store${storeCount === 1 ? '' : 's'} assigned` : 'No stores assigned'}
@@ -253,12 +253,6 @@ export default function PantryScreen() {
             clearButtonMode="while-editing"
             onSubmitEditing={handleAddCustom}
           />
-          <Pressable
-            onPress={() => setAddVisible(true)}
-            style={({ pressed }) => [styles.searchAddBtn, pressed && styles.pressed]}
-          >
-            <Ionicons name="add" size={20} color={colors.onPrimary} />
-          </Pressable>
         </Pressable>
 
         {query ? (
@@ -341,8 +335,9 @@ export default function PantryScreen() {
         ) : null}
 
         <SectionTitle title="On your list" />
-        <View style={styles.list}>
-          {filteredListItems.length ? filteredListItems.map((item, index) => (
+        {filteredListItems.length ? (
+          <View style={styles.list}>
+            {filteredListItems.map((item, index) => (
             <View key={item.id}>
               {index > 0 ? <View style={styles.divider} /> : null}
               <SimpleItemRow
@@ -353,14 +348,15 @@ export default function PantryScreen() {
                 onSwipeLeft={() => animatedDelete(item.id)}
               />
             </View>
-          )) : (
-            <EmptyState
-              icon={query ? 'search-outline' : 'cart-outline'}
-              title={query ? 'No results' : 'Your list is empty'}
-              body={query ? `No items match "${searchQuery}"` : 'Use the search bar above to add your first item.'}
-            />
-          )}
-        </View>
+            ))}
+          </View>
+        ) : (
+          <EmptyState
+            icon={query ? 'search-outline' : 'cart-outline'}
+            title={query ? 'No results' : 'Your list is empty'}
+            body={query ? `No items match "${searchQuery}"` : 'Use the search bar above to add your first item.'}
+          />
+        )}
 
         <Pressable
           onPress={() => setShowMore((value) => !value)}
@@ -394,8 +390,9 @@ export default function PantryScreen() {
               <Ionicons name={showAtHome ? 'chevron-up' : 'chevron-down'} size={20} color={colors.muted} />
             </Pressable>
             {showAtHome ? (
-              <View style={styles.list}>
-                {filteredAtHomeItems.length ? filteredAtHomeItems.map((item, index) => (
+              filteredAtHomeItems.length ? (
+                <View style={styles.list}>
+                  {filteredAtHomeItems.map((item, index) => (
                   <View key={item.id}>
                     {index > 0 ? <View style={styles.divider} /> : null}
                     <SimpleItemRow
@@ -408,14 +405,15 @@ export default function PantryScreen() {
                       onSwipeRight={() => animatedSetStatus(item.id, 'low')}
                     />
                   </View>
-                )) : (
-                  <EmptyState
-                    icon="home-outline"
-                    title="Nothing at home yet"
-                    body="Items you mark stocked will show up here."
-                  />
-                )}
-              </View>
+                  ))}
+                </View>
+              ) : (
+                <EmptyState
+                  icon="home-outline"
+                  title="Nothing at home yet"
+                  body="Items you mark stocked will show up here."
+                />
+              )
             ) : null}
             <RecipeSuggestionsCard recipes={recipes} onPress={setSelectedRecipe} />
             {frequentBuys.length > 0 ? (
@@ -676,7 +674,6 @@ function makeStyles(c: AppColors) {
     summaryRow:       { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.lg },
     searchBar:        { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: radii.md, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.md, paddingVertical: 10, marginTop: spacing.sm, marginBottom: spacing.xs },
     searchInput:      { flex: 1, fontFamily: fonts.sans, fontSize: 15, color: c.ink, padding: 0 },
-    searchAddBtn:     { width: 32, height: 32, borderRadius: radii.pill, backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center', marginLeft: spacing.sm, flexShrink: 0 },
     catalogDropdown:  { backgroundColor: c.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.md, marginBottom: spacing.md, overflow: 'hidden', ...shadow.card },
     catalogRow:       { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: 10, minHeight: 60 },
     catalogCopy:      { flex: 1 },
@@ -686,7 +683,7 @@ function makeStyles(c: AppColors) {
     catalogListButton:{ minHeight: 34, borderRadius: 17, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: c.surface },
     catalogListButtonText: { fontFamily: fonts.sansSemibold, fontSize: 12, color: c.primary },
     sectionTitleRow:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.lg, marginBottom: spacing.sm, paddingHorizontal: spacing.xs },
-    sectionTitle:     { fontFamily: fonts.serifItalic, fontSize: 21, lineHeight: 27, color: c.ink },
+    sectionTitle:     { fontFamily: fonts.serifItalic, fontSize: 20, lineHeight: 26, color: c.ink },
     sectionActionButton: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingVertical: spacing.xs },
     sectionAction:    { fontFamily: fonts.sansSemibold, fontSize: 14, color: c.primary },
     list:             { backgroundColor: c.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: c.borderSoft, paddingHorizontal: spacing.md, overflow: 'hidden', ...shadow.card },

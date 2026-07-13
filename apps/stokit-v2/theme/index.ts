@@ -115,8 +115,8 @@ export const colors = lightColors;
 export type AppColors = { [K in keyof typeof lightColors]: string };
 
 export const type = {
-  pageTitle: { fontFamily: fonts.serifItalic, fontSize: 40, lineHeight: 46 },
-  sectionTitle: { fontFamily: fonts.serifItalic, fontSize: 22, lineHeight: 28 },
+  pageTitle: { fontFamily: fonts.serifItalic, fontSize: 34, lineHeight: 40 },
+  sectionTitle: { fontFamily: fonts.serifItalic, fontSize: 20, lineHeight: 26 },
   cardTitle: { fontFamily: fonts.sansSemibold, fontSize: 16 },
   body: { fontFamily: fonts.sans, fontSize: 15 },
   label: { fontFamily: fonts.sansSemibold, fontSize: 13 },
@@ -134,10 +134,10 @@ export const iconSizes = { xs: 14, sm: 16, md: 20, lg: 24, xl: 32 } as const;
 export const shadow = {
   card: {
     shadowColor: '#221A12',
-    shadowOpacity: 0.10,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 3,
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
 } as const;
 

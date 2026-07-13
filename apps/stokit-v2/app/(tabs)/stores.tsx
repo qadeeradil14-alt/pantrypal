@@ -203,7 +203,6 @@ export default function StoresScreen() {
           />
           <AddStoreSheet visible={addOpen} onClose={() => setAddOpen(false)} />
         </Screen>
-        <Fab onPress={() => setAddOpen(true)} />
       </View>
     );
   }
@@ -212,6 +211,24 @@ export default function StoresScreen() {
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <Screen>
         <PageTitle eyebrow="Where you shop" title="Stores" />
+        <Card style={styles.overviewCard}>
+          <View style={styles.overviewIcon}>
+            <Ionicons name="storefront-outline" size={20} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.overviewLabel}>YOUR STORES</Text>
+            <Text style={styles.overviewTitle}>
+              {stores.length} saved location{stores.length === 1 ? '' : 's'}
+            </Text>
+            <Text style={styles.overviewMeta}>
+              {items.filter((item) => item.storeId).length} assigned item{items.filter((item) => item.storeId).length === 1 ? '' : 's'}
+            </Text>
+          </View>
+        </Card>
+        <View style={styles.listHeader}>
+          <Text style={styles.listTitle}>Saved stores</Text>
+          <Text style={styles.listCount}>{stores.length}</Text>
+        </View>
         <View style={{ gap: spacing.md }}>
           {stores.map((store) => (
           <Card key={store.id} style={styles.cardContainer}>
@@ -305,13 +322,34 @@ function makeStyles(colors: AppColors) {
     cardContainer: { 
       padding: 0, 
       overflow: 'hidden',
-      borderRadius: radii.xl,
+      borderRadius: radii.lg,
       borderWidth: 1,
       borderColor: colors.borderSoft,
     },
     cardPressable: {
       padding: spacing.lg,
     },
+    overviewCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      backgroundColor: colors.backgroundElevated,
+      borderColor: colors.primary + '24',
+    },
+    overviewIcon: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: colors.primarySoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    overviewLabel: { fontFamily: fonts.monoMedium, fontSize: 9, letterSpacing: 1, color: colors.primary },
+    overviewTitle: { fontFamily: fonts.sansSemibold, fontSize: 17, color: colors.ink, marginTop: 2 },
+    overviewMeta: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 2 },
+    listHeader: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.xxl, marginBottom: spacing.sm, paddingHorizontal: spacing.xs },
+    listTitle: { flex: 1, fontFamily: fonts.serifItalic, fontSize: 20, lineHeight: 26, color: colors.ink },
+    listCount: { minWidth: 28, height: 28, borderRadius: 14, backgroundColor: colors.surfaceRaised, textAlign: 'center', paddingTop: 6, fontFamily: fonts.monoMedium, fontSize: 11, color: colors.muted },
     storeHeader: {
       flexDirection: 'row',
       alignItems: 'flex-start',
@@ -325,7 +363,7 @@ function makeStyles(colors: AppColors) {
     },
     name: { 
       fontFamily: fonts.sansSemibold, 
-      fontSize: 18, 
+      fontSize: 17,
       color: colors.ink,
       letterSpacing: -0.3,
     },

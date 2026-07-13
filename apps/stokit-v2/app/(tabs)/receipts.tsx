@@ -58,11 +58,6 @@ export default function ReceiptsScreen() {
           icon="receipt-outline"
           title="No receipts yet"
           body="When you finish shopping a store, log what you spent. Receipts are grouped by trip and store here."
-          steps={[
-            'Complete a shopping trip',
-            'Save or upload a receipt per store',
-            'Track spending over time',
-          ]}
         />
       </Screen>
     );
@@ -72,10 +67,14 @@ export default function ReceiptsScreen() {
     <Screen>
       <PageTitle eyebrow="Spending" title="Receipts" />
       <Card style={styles.totalCard}>
+        <View style={styles.totalIcon}>
+          <Ionicons name="receipt-outline" size={20} color={colors.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.totalEyebrow}>TOTAL RECORDED</Text>
+          <Text style={styles.totalLabel}>{trips.length} trip{trips.length === 1 ? '' : 's'}</Text>
+        </View>
         <Text style={styles.totalValue}>${total.toFixed(2)}</Text>
-        <Text style={styles.totalLabel}>
-          across {trips.length} trip{trips.length === 1 ? '' : 's'}
-        </Text>
       </Card>
 
       {grouped.map(([tripId, list]) => {
@@ -159,14 +158,16 @@ function makeStyles(colors: AppColors) {
       marginTop: spacing.xl,
       marginBottom: spacing.md,
     },
-    tripTitle: { fontFamily: fonts.serifItalic, fontSize: 20, color: colors.ink },
+    tripTitle: { fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink },
     tripMeta: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: 3, fontVariant: ['tabular-nums'] },
     tripRight: { alignItems: 'flex-end', gap: 4 },
-    tripTotal: { fontFamily: fonts.monoMedium, fontSize: 18, color: colors.primary, fontVariant: ['tabular-nums'] },
+    tripTotal: { fontFamily: fonts.monoMedium, fontSize: 17, color: colors.ink, fontVariant: ['tabular-nums'] },
     tripChevron: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-    totalCard: { alignItems: 'center', paddingVertical: spacing.xl, backgroundColor: colors.surfaceRaised, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.borderSoft },
-    totalValue: { fontFamily: fonts.mono, fontSize: 44, color: colors.primary, fontVariant: ['tabular-nums'] },
-    totalLabel: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
+    totalCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.lg, backgroundColor: colors.backgroundElevated, borderColor: colors.primary + '24' },
+    totalIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
+    totalEyebrow: { fontFamily: fonts.monoMedium, fontSize: 9, letterSpacing: 1, color: colors.primary },
+    totalValue: { fontFamily: fonts.monoMedium, fontSize: 24, color: colors.ink, fontVariant: ['tabular-nums'] },
+    totalLabel: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
     row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
     divider: { height: 1, backgroundColor: colors.borderSoft, marginBottom: spacing.md },
     storeName: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink, marginBottom: 4 },

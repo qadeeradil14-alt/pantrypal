@@ -7,7 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../../components/shared/Screen';
 import { Button, Card, PageTitle } from '../../components/shared/ui';
 import { ChipSelect } from '../../components/shared/Field';
-import { fonts, radii, shadow, spacing, type AppColors } from '../../theme';
+import { fonts, radii, spacing, type AppColors } from '../../theme';
 import { useDurableStore } from '../../store/durable-store';
 import { useAuthStore } from '../../store/auth-store';
 import { useHouseholdStore } from '../../store/household-store';
@@ -726,7 +726,7 @@ export default function SettingsScreen() {
             accessibilityRole="button"
             accessibilityLabel="Send arrival notification"
           >
-            <Ionicons name="notifications-outline" size={16} color="#fff" />
+            <Ionicons name="notifications-outline" size={16} color={colors.primary} />
             <Text style={styles.testNotifButtonText}>
               {testNotifLoading ? 'Sending…' : 'Send Alert'}
             </Text>
@@ -800,7 +800,7 @@ export default function SettingsScreen() {
             accessibilityRole="button"
             accessibilityLabel="Re-register my push token"
           >
-            <Ionicons name="refresh-outline" size={16} color="#fff" />
+            <Ionicons name="refresh-outline" size={16} color={colors.primary} />
             <Text style={styles.testNotifButtonText}>
               {pushRegistering ? 'Registering…' : 'Re-register my push token'}
             </Text>
@@ -1005,7 +1005,7 @@ export default function SettingsScreen() {
             accessibilityRole="button"
             accessibilityLabel="Send test arrival notification"
           >
-            <Ionicons name="notifications-outline" size={16} color="#fff" />
+            <Ionicons name="notifications-outline" size={16} color={colors.primary} />
             <Text style={styles.testNotifButtonText}>
               {testNotifLoading ? 'Sending…' : 'Send Test Arrival Notification'}
             </Text>
@@ -1075,7 +1075,7 @@ export default function SettingsScreen() {
       <Card style={[styles.sectionCard, styles.accountCard]}>
         <View style={styles.accountIntro}>
           <View style={styles.accountIntroIcon}>
-            <Ionicons name="shield-checkmark-outline" size={20} color={colors.primary} />
+            <Ionicons name="shield-checkmark-outline" size={20} color={colors.danger} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.accountIntroTitle}>Account controls</Text>
@@ -1316,12 +1316,11 @@ function makeStyles(colors: AppColors) {
       width: 56,
       height: 56,
       borderRadius: 28,
-      backgroundColor: colors.primary,
+      backgroundColor: colors.primarySoft,
       alignItems: 'center',
       justifyContent: 'center',
-      ...shadow.card,
     },
-    profileInitial: { fontFamily: fonts.serifItalic, fontSize: 25, color: colors.onPrimary },
+    profileInitial: { fontFamily: fonts.serifItalic, fontSize: 25, color: colors.primary },
     profileEyebrow: { fontFamily: fonts.monoMedium, fontSize: 9, letterSpacing: 1, color: colors.primary },
     profileName: { fontFamily: fonts.serifItalic, fontSize: 22, color: colors.ink, marginTop: 1 },
     profileEmail: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 1 },
@@ -1330,8 +1329,8 @@ function makeStyles(colors: AppColors) {
     statusPillDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.muted },
     statusPillText: { fontFamily: fonts.sansSemibold, fontSize: 10, color: colors.muted },
     settingsSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xl, marginBottom: spacing.sm, paddingHorizontal: spacing.xs },
-    settingsSectionTitle: { fontFamily: fonts.serifItalic, fontSize: 21, lineHeight: 27, color: colors.ink },
-    sectionCard: { paddingVertical: spacing.md, borderColor: colors.borderSoft },
+    settingsSectionTitle: { fontFamily: fonts.serifItalic, fontSize: 20, lineHeight: 26, color: colors.ink },
+    sectionCard: { paddingVertical: spacing.md, borderColor: colors.borderSoft, shadowOpacity: 0, elevation: 0 },
     sectionLabel: {
       fontFamily: fonts.sansSemibold,
       fontSize: 13,
@@ -1400,7 +1399,7 @@ function makeStyles(colors: AppColors) {
     budgetRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     budgetLabel: { fontFamily: fonts.sansMedium, fontSize: 15, color: colors.ink },
     budgetSub: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 2 },
-    budgetAmount: { fontFamily: fonts.monoMedium, fontSize: 16, color: colors.primary },
+    budgetAmount: { fontFamily: fonts.monoMedium, fontSize: 16, color: colors.ink },
     rowIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
     renameModal: { backgroundColor: colors.surfaceRaised, borderRadius: 14, padding: spacing.lg, marginBottom: spacing.md },
     renameTitle: { fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink, marginBottom: 4 },
@@ -1498,7 +1497,9 @@ function makeStyles(colors: AppColors) {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.sm,
-      backgroundColor: colors.primary,
+      backgroundColor: colors.surfaceRaised,
+      borderWidth: 1,
+      borderColor: colors.border,
       borderRadius: radii.md,
       paddingVertical: 11,
       paddingHorizontal: spacing.md,
@@ -1508,7 +1509,7 @@ function makeStyles(colors: AppColors) {
     testNotifButtonText: {
       fontFamily: fonts.sansSemibold,
       fontSize: 14,
-      color: '#fff',
+      color: colors.primary,
     },
     testNotifResult: {
       fontFamily: fonts.monoMedium,
@@ -1629,7 +1630,7 @@ function makeStyles(colors: AppColors) {
     },
     accountCard: { borderColor: colors.danger + '24' },
     accountIntro: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingBottom: spacing.md, marginBottom: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
-    accountIntroIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
+    accountIntroIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.dangerSoft, alignItems: 'center', justifyContent: 'center' },
     accountIntroTitle: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
     accountIntroText: { fontFamily: fonts.sans, fontSize: 12, lineHeight: 17, color: colors.muted, marginTop: 2 },
     aboutLabel: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flex: 1 },

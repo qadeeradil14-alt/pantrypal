@@ -122,7 +122,6 @@ export default function ActivityScreen() {
             <Text style={styles.overviewEyebrow}>YOUR HOUSEHOLD</Text>
             <Text style={styles.overviewTitle}>Recent activity</Text>
           </View>
-          <Text style={styles.overviewTotal}>{activity.length}</Text>
         </View>
         <View style={styles.overviewStats}>
           <View style={styles.overviewStat}>
@@ -212,7 +211,7 @@ function TripCard({ event, styles, colors, onPress }: { event: ActivityEvent; st
         <Ionicons name="navigate" size={20} color={colors.onPrimary} />
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={styles.eventLabel}>TRIP COMPLETED</Text>
+        <Text style={styles.tripEventLabel}>TRIP COMPLETED</Text>
         <Text style={styles.tripTitle}>Shopping trip completed</Text>
         <Text style={styles.tripMessage}>{event.message.replace('Trip complete · ', '')}</Text>
         <View style={styles.timeRow}>
@@ -220,7 +219,7 @@ function TripCard({ event, styles, colors, onPress }: { event: ActivityEvent; st
           <Text style={styles.time}>{timeAgo(event.createdAt)}</Text>
         </View>
       </View>
-      <Ionicons name="chevron-forward" size={18} color={colors.primary} />
+      <Ionicons name="chevron-forward" size={18} color={colors.success} />
     </Pressable>
   );
 }
@@ -267,13 +266,12 @@ function makeStyles(colors: AppColors) {
       justifyContent: 'center',
     },
     overviewEyebrow: { fontFamily: fonts.monoMedium, fontSize: 9, color: colors.primary, letterSpacing: 1.1 },
-    overviewTitle: { fontFamily: fonts.serifItalic, fontSize: 22, color: colors.ink, marginTop: 2 },
-    overviewTotal: { fontFamily: fonts.monoMedium, fontSize: 28, color: colors.primary, fontVariant: ['tabular-nums'] },
+    overviewTitle: { fontFamily: fonts.sansSemibold, fontSize: 17, color: colors.ink, marginTop: 2 },
     overviewStats: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginTop: spacing.xl,
-      paddingTop: spacing.lg,
+      marginTop: spacing.lg,
+      paddingTop: spacing.md,
       borderTopWidth: 1,
       borderTopColor: colors.borderSoft,
     },
@@ -294,7 +292,7 @@ function makeStyles(colors: AppColors) {
       alignItems: 'center',
       justifyContent: 'center',
     },
-    filterChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+    filterChipActive: { backgroundColor: colors.success, borderColor: colors.success },
     filterText: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.inkSoft },
     filterTextActive: { color: colors.onPrimary },
     section: { marginTop: spacing.xl },
@@ -302,8 +300,8 @@ function makeStyles(colors: AppColors) {
     sectionTitle: {
       flex: 1,
       fontFamily: fonts.serifItalic,
-      fontSize: 21,
-      lineHeight: 27,
+      fontSize: 20,
+      lineHeight: 26,
       color: colors.ink,
     },
     sectionCount: {
@@ -331,6 +329,7 @@ function makeStyles(colors: AppColors) {
       justifyContent: 'center',
     },
     eventLabel: { fontFamily: fonts.monoMedium, fontSize: 9, letterSpacing: 0.8, color: colors.primary, marginBottom: 3 },
+    tripEventLabel: { fontFamily: fonts.monoMedium, fontSize: 9, letterSpacing: 0.8, color: colors.success, marginBottom: 3 },
     message: { fontFamily: fonts.sansMedium, fontSize: 15, lineHeight: 20, color: colors.ink },
     timeRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 5 },
     time: { fontFamily: fonts.mono, fontSize: 10, color: colors.muted, fontVariant: ['tabular-nums'] },
@@ -339,7 +338,7 @@ function makeStyles(colors: AppColors) {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.md,
-      backgroundColor: colors.primarySoft,
+      backgroundColor: colors.successSoft,
       borderRadius: radii.md,
       padding: spacing.md,
       marginVertical: spacing.xs,
@@ -348,7 +347,7 @@ function makeStyles(colors: AppColors) {
       width: 44,
       height: 44,
       borderRadius: 22,
-      backgroundColor: colors.primary,
+      backgroundColor: colors.success,
       alignItems: 'center',
       justifyContent: 'center',
     },
