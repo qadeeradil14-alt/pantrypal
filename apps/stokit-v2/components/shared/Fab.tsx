@@ -9,13 +9,18 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 export function Fab({
   onPress,
   icon = 'add',
+  position = 'top',
 }: {
   onPress: () => void;
   icon?: keyof typeof Ionicons.glyphMap;
+  position?: 'top' | 'bottom';
 }) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const styles = useMemo(() => makeStyles(colors, insets.top), [colors, insets.top]);
+  const styles = useMemo(
+    () => makeStyles(colors, position === 'top' ? insets.top : insets.bottom, position),
+    [colors, insets.top, insets.bottom, position],
+  );
 
   return (
     <Pressable
@@ -34,17 +39,19 @@ export function Fab({
   );
 }
 
-function makeStyles(colors: AppColors, topInset: number) {
+function makeStyles(colors: AppColors, inset: number, position: 'top' | 'bottom') {
   return StyleSheet.create({
     fab: {
       position: 'absolute',
       right: 20,
-      top: Math.max(16, topInset + 8),
+      ...(position === 'top'
+        ? { top: Math.max(16, inset + 8) }
+        : { bottom: Math.max(16, inset + 8) }),
       width: 48,
       height: 48,
       borderRadius: 24,
       backgroundColor: colors.primary,
-      opacity: 0.85,
+      opacity: position === 'top' ? 0.85 : 1,
       alignItems: 'center',
       justifyContent: 'center',
     },

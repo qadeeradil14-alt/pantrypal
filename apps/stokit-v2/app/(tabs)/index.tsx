@@ -17,6 +17,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { Logo } from '../../components/shared/Logo';
 import { EmptyState } from '../../components/shared/EmptyState';
+import { Fab } from '../../components/shared/Fab';
+import { MemberAvatars } from '../../components/shared/MemberAvatars';
+import { SummaryCard } from '../../components/shared/SummaryCard';
 import { AddItemSheet } from '../../components/pantry/AddItemSheet';
 import { ItemActionSheet } from '../../components/pantry/ItemActionSheet';
 import { StorePickerSheet } from '../../components/pantry/StorePickerSheet';
@@ -80,6 +83,17 @@ export default function PantryScreen() {
   const atHomeItems = useMemo(
     () => items.filter((item) => item.status === 'stocked'),
     [items],
+  );
+
+  const shoppingCount = listItems.length;
+  const pantryCount = atHomeItems.length;
+  const expiringCount = useMemo(
+    () => listItems.filter((item) => item.status === 'expiring').length,
+    [listItems],
+  );
+  const storeCount = useMemo(
+    () => new Set(listItems.filter((item) => item.storeId).map((item) => item.storeId)).size,
+    [listItems],
   );
 
   // Filtered views based on search query
@@ -188,6 +202,7 @@ export default function PantryScreen() {
               <Text style={styles.wordmarkText}>Stokit</Text>
             </View>
             <View style={styles.topRowRight}>
+              <MemberAvatars members={members} onPress={() => router.push('/settings')} />
               <View style={styles.syncPill}>
                 <Text style={styles.syncPillText}>
                   {Updates.updateId ? `v${OTA_SEQ}` : 'dev'}
@@ -201,12 +216,28 @@ export default function PantryScreen() {
           {/* Greeting — 20px below the logo row */}
           <Text style={styles.title}>{greeting}</Text>
           <Text style={styles.tagline}>
-            {items.length === 0
-              ? 'Add your first item to get started'
-              : listItems.length > 0
-                ? `${items.length} item${items.length === 1 ? '' : 's'} · ${listItems.length} running low`
-                : `${items.length} item${items.length === 1 ? '' : 's'} · well stocked`}
+            {items.length === 0 ? 'Add your first item to get started' : "Here's your household at a glance"}
           </Text>
+        </View>
+
+        <View style={styles.summaryRow}>
+          <SummaryCard
+            icon="cart"
+            tone="primary"
+            label="Shopping list"
+            value={shoppingCount}
+            sublabel={storeCount > 0 ? `${storeCount} store${storeCount === 1 ? '' : 's'} assigned` : 'No stores assigned'}
+            badge={expiringCount > 0 ? { label: `${expiringCount} expiring`, tone: 'danger' } : undefined}
+            onPress={() => router.push('/shopping')}
+          />
+          <SummaryCard
+            icon="home"
+            tone="surface"
+            label="At home"
+            value={pantryCount}
+            sublabel={pantryCount === 1 ? '1 item stocked' : `${pantryCount} items stocked`}
+            onPress={() => { setShowMore(true); setShowAtHome(true); }}
+          />
         </View>
 
         <Pressable style={styles.searchBar} onPress={() => searchInputRef.current?.focus()}>
@@ -309,11 +340,7 @@ export default function PantryScreen() {
           </View>
         ) : null}
 
-        <SectionTitle
-          title="On your list"
-          action="Shop"
-          onAction={() => router.push('/shopping')}
-        />
+        <SectionTitle title="On your list" />
         <View style={styles.list}>
           {filteredListItems.length ? filteredListItems.map((item, index) => (
             <View key={item.id}>
@@ -415,6 +442,8 @@ export default function PantryScreen() {
         ) : null}
         <View style={{ height: 110 }} />
       </ScrollView>
+
+      <Fab position="bottom" onPress={() => setAddVisible(true)} />
 
       <AddItemSheet
         visible={addVisible}
@@ -536,16 +565,18 @@ function UseItOrLoseItWidget({ items, onUsed, onRestock }: {
   );
 }
 
-function SectionTitle({ title, action, onAction }: { title: string; action: string; onAction: () => void }) {
+function SectionTitle({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={s.sectionTitleRow}>
       <Text style={s.sectionTitle}>{title}</Text>
-      <Pressable onPress={onAction} style={s.sectionActionButton}>
-        <Text style={s.sectionAction}>{action}</Text>
-        {action === 'View all' ? <Ionicons name="chevron-forward" size={17} color={colors.primary} /> : null}
-      </Pressable>
+      {action ? (
+        <Pressable onPress={onAction} style={s.sectionActionButton}>
+          <Text style={s.sectionAction}>{action}</Text>
+          {action === 'View all' ? <Ionicons name="chevron-forward" size={17} color={colors.primary} /> : null}
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -642,6 +673,7 @@ function makeStyles(c: AppColors) {
     moreTitle:         { fontFamily: fonts.sansSemibold, fontSize: 18, color: c.ink },
     moreSubtitle:      { fontFamily: fonts.sans, fontSize: 13, color: c.muted, marginTop: 2 },
     dashboardSection:  { backgroundColor: c.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: c.border, padding: spacing.md, ...shadow.card },
+    summaryRow:       { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.lg },
     searchBar:        { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: radii.md, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.md, paddingVertical: 10, marginTop: spacing.sm, marginBottom: spacing.xs },
     searchInput:      { flex: 1, fontFamily: fonts.sans, fontSize: 15, color: c.ink, padding: 0 },
     searchAddBtn:     { width: 32, height: 32, borderRadius: radii.pill, backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center', marginLeft: spacing.sm, flexShrink: 0 },
