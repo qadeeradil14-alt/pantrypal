@@ -69,6 +69,8 @@ export default function PantryScreen() {
   const rawMealsKeyRef = useRef('');
   const [searchQuery, setSearchQuery] = useState('');
   const searchInputRef = useRef<TextInput>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const dashboardSectionY = useRef(0);
 
   const myName = members.find((m) => m.isMe)?.displayName ?? '';
   const firstName = (myName === 'Me' || myName === '') ? '' : myName.split(' ')[0];
@@ -147,13 +149,6 @@ export default function PantryScreen() {
     deleteItem(id);
   };
 
-  const frequentBuys = useMemo(() => {
-    if (query) return [];
-    return [...atHomeItems]
-      .sort((a, b) => b.updatedAt - a.updatedAt)
-      .slice(0, 10);
-  }, [atHomeItems, query]);
-
   // One-time prompt: if the user has a solo personal household (created automatically
   // on sign-up), offer to join a shared household. Only fires once per install.
   useEffect(() => {
@@ -193,7 +188,7 @@ export default function PantryScreen() {
   }, [atHomeItems]);
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
           {/* Top row: logo + sync pill + settings */}
           <View style={styles.topRow}>
@@ -236,7 +231,13 @@ export default function PantryScreen() {
             label="At home"
             value={pantryCount}
             sublabel={pantryCount === 1 ? '1 item stocked' : `${pantryCount} items stocked`}
-            onPress={() => { setShowMore(true); setShowAtHome(true); }}
+            onPress={() => {
+              setShowMore(true);
+              setShowAtHome(true);
+              requestAnimationFrame(() => {
+                scrollRef.current?.scrollTo({ y: dashboardSectionY.current, animated: true });
+              });
+            }}
           />
         </View>
 
@@ -359,6 +360,7 @@ export default function PantryScreen() {
         )}
 
         <Pressable
+          onLayout={(event) => { dashboardSectionY.current = event.nativeEvent.layout.y; }}
           onPress={() => setShowMore((value) => !value)}
           style={({ pressed }) => [styles.moreHeader, pressed && styles.pressed]}
         >
@@ -416,29 +418,9 @@ export default function PantryScreen() {
               )
             ) : null}
             <RecipeSuggestionsCard recipes={recipes} onPress={setSelectedRecipe} />
-            {frequentBuys.length > 0 ? (
-              <View style={styles.frequentSection}>
-                <Text style={styles.frequentTitle}>Recently added</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.frequentScroll}>
-                  {frequentBuys.map((fb) => (
-                    <Pressable
-                      key={fb.id}
-                      style={({ pressed }) => [styles.frequentItem, pressed && { opacity: 0.7 }]}
-                      onPress={() => animatedSetStatus(fb.id, 'low')}
-                    >
-                      <ItemAvatar name={fb.name} size={48} />
-                      <Text style={styles.frequentName} numberOfLines={1}>{fb.name}</Text>
-                      <View style={styles.frequentAddBtn}>
-                        <Ionicons name="add" size={14} color={colors.primary} />
-                      </View>
-                    </Pressable>
-                  ))}
-                </ScrollView>
-              </View>
-            ) : null}
           </View>
         ) : null}
-        <View style={{ height: 110 }} />
+        <View style={{ height: 96 }} />
       </ScrollView>
 
       <Fab position="bottom" onPress={() => setAddVisible(true)} />
@@ -697,12 +679,6 @@ function makeStyles(c: AppColors) {
     itemAction:       { minHeight: 38, borderRadius: 19, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 3 },
     itemCartAction:   { width: 44, height: 44, borderRadius: 13, justifyContent: 'center', paddingHorizontal: 0, backgroundColor: c.surface },
     itemActionText:   { fontFamily: fonts.sansSemibold, fontSize: 12, color: c.primary },
-    frequentSection:  { marginTop: spacing.md, marginBottom: spacing.sm },
-    frequentTitle:    { fontFamily: fonts.sansSemibold, fontSize: 15, color: c.muted, marginBottom: spacing.sm, paddingHorizontal: 4 },
-    frequentScroll:   { gap: spacing.md, paddingRight: spacing.xl },
-    frequentItem:     { width: 70, alignItems: 'center', gap: 6 },
-    frequentName:     { fontFamily: fonts.sansMedium, fontSize: 12, color: c.ink, textAlign: 'center' },
-    frequentAddBtn:   { position: 'absolute', top: 0, right: 2, width: 20, height: 20, borderRadius: 10, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, alignItems: 'center', justifyContent: 'center' },
     swipeActionLeft:  { backgroundColor: c.success, justifyContent: 'center', alignItems: 'flex-start', paddingLeft: 20, flex: 1 },
     swipeActionRight: { backgroundColor: c.danger, justifyContent: 'center', alignItems: 'flex-end', paddingRight: 20, flex: 1 },
   });
