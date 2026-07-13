@@ -51,6 +51,7 @@ import { normalizeItemName } from '../../core/services/pantryItems';
 import { receiptContinuationEvent, renameReviewItem, reviewReceiptItems, unplannedStores } from '../../core/services/shoppingUx';
 import { isGeofencingRunning, startGeofencing } from '../../core/services/geofencing';
 import { sendHouseholdShoppingAlert } from '../../core/services/notifications';
+import { resetShoppingTripStartGuard, startShoppingTripOnce } from '../../core/services/shoppingTripStart';
 import type { ReceiptReviewItem } from '../../core/services/shoppingUx';
 import type { PantryItem, ShoppingEntry, Store } from '../../types';
 import { useTheme } from '../../hooks/useTheme';
@@ -98,6 +99,16 @@ export default function ShoppingScreen() {
   // Holds the storeId we want to skip to receipt once START_TRIP settles
   const [pendingQuickScanStore, setPendingQuickScanStore] = useState<string | null>(null);
   const [showStoreChooser, setShowStoreChooser] = useState(false);
+  const tripStartIdRef = useRef<string | null>(null);
+  const previousSessionStatusRef = useRef(session.status);
+
+  useEffect(() => {
+    if (previousSessionStatusRef.current !== 'idle' && session.status === 'idle') {
+      if (tripStartIdRef.current) resetShoppingTripStartGuard(tripStartIdRef.current);
+      tripStartIdRef.current = null;
+    }
+    previousSessionStatusRef.current = session.status;
+  }, [session.status]);
 
   useEffect(() => {
     if (action === 'scan' && session.status === 'idle') {
@@ -155,7 +166,8 @@ export default function ShoppingScreen() {
     [items],
   );
 
-  const startTripAt = async (firstStoreId: string) => {
+  const startTripAt = async (firstStoreId: string, notifyHousehold = false) => {
+    if (tripStartIdRef.current) return;
     const shoppable = items.filter((i) => i.status === 'low' || i.status === 'expiring');
     shoppable
       .filter((i) => !i.storeId)
@@ -176,7 +188,18 @@ export default function ShoppingScreen() {
     byStore.forEach((list, sid) => {
       if (sid !== firstStoreId) entries.push(...list);
     });
-    dispatch({ type: 'START_TRIP', entries, now: Date.now() });
+    if (entries.length === 0) return;
+    const now = Date.now();
+    const tripId = `t_${now}`;
+    tripStartIdRef.current = tripId;
+    const store = storeById(firstStoreId);
+    startShoppingTripOnce({
+      tripId,
+      startTrip: () => dispatch({ type: 'START_TRIP', entries, now }),
+      notifyHousehold: notifyHousehold && store
+        ? () => sendHouseholdShoppingAlert(store.name, firstStoreId)
+        : undefined,
+    });
     if (await isGeofencingRunning()) {
       const result = await startGeofencing(stores, nextItems);
       if (result === 'no_permission') {
@@ -255,7 +278,7 @@ export default function ShoppingScreen() {
     const entries = Array.from(plan.entries());
     if (entries.length === 0) return;
     if (entries.length === 1) {
-      void startTripAt(entries[0][0]);
+      void startTripAt(entries[0][0], true);
       return;
     }
     setShowStoreChooser(true);
@@ -319,7 +342,7 @@ export default function ShoppingScreen() {
                   <Text style={nsStyles.storeItems}>{list.length} item{list.length !== 1 ? 's' : ''}</Text>
                 </View>
                 <Pressable
-                  onPress={() => { setShowStoreChooser(false); void startTripAt(storeId); }}
+                  onPress={() => { setShowStoreChooser(false); void startTripAt(storeId, true); }}
                   style={({ pressed }) => [nsStyles.startBtn, { borderColor: barColor }, pressed && { opacity: 0.8 }]}
                 >
                   <Text style={[nsStyles.startBtnText, { color: barColor }]}>Start</Text>
