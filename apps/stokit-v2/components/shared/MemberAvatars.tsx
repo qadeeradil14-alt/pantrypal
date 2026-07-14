@@ -3,11 +3,11 @@
  * Mirrors the couple-photo style from the V1 reference image.
  */
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { fonts, radii, type AppColors } from '../../theme';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { type AppColors } from '../../theme';
 import { useTheme } from '../../hooks/useTheme';
 import type { HouseholdMember } from '../../types';
+import { Avatar } from './Avatar';
 
 const SIZE = 40;
 const OVERLAP = 14;
@@ -26,7 +26,7 @@ export function MemberAvatars({
   if (visible.length === 0) {
     return (
       <Pressable onPress={onPress} style={styles.emptyBtn} hitSlop={8}>
-        <Ionicons name="people-outline" size={22} color={colors.muted} />
+        <Avatar color={colors.muted} size={36} borderColor={colors.border} />
       </Pressable>
     );
   }
@@ -46,22 +46,20 @@ export function MemberAvatars({
             style={[
               styles.avatar,
               {
-                backgroundColor: m.avatarColor + '33',
-                borderColor: m.avatarColor,
                 left: i * (SIZE - OVERLAP),
                 zIndex: visible.length - i,
               },
             ]}
           >
-            <Text style={[styles.initials, { color: m.avatarColor }]}>
-              {m.initials}
-            </Text>
+            <Avatar
+              photoUrl={m.avatarUrl}
+              displayName={m.displayName}
+              color={m.avatarColor}
+              size={SIZE}
+              borderWidth={2}
+            />
           </View>
         ))}
-      </View>
-      {/* Household icon badge */}
-      <View style={styles.badge}>
-        <Ionicons name="people" size={14} color={colors.muted} />
       </View>
     </Pressable>
   );
@@ -69,30 +67,12 @@ export function MemberAvatars({
 
 function makeStyles(colors: AppColors) {
   return StyleSheet.create({
-    row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    row: { flexDirection: 'row', alignItems: 'center' },
     stack: { height: SIZE, position: 'relative' },
     avatar: {
       position: 'absolute',
       width: SIZE,
       height: SIZE,
-      borderRadius: SIZE / 2,
-      borderWidth: 2,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    initials: {
-      fontFamily: fonts.sansSemibold,
-      fontSize: 14,
-    },
-    badge: {
-      width: 32,
-      height: 32,
-      borderRadius: 16,
-      backgroundColor: colors.surfaceRaised,
-      borderWidth: 1,
-      borderColor: colors.border,
-      alignItems: 'center',
-      justifyContent: 'center',
     },
     emptyBtn: {
       width: 36,

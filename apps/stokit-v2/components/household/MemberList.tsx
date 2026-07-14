@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { fonts, radii, spacing, type AppColors } from '../../theme';
 import { useTheme } from '../../hooks/useTheme';
 import type { HouseholdMember } from '../../types';
+import { Avatar } from '../shared/Avatar';
 
 type MemberListProps = {
   members: HouseholdMember[];
@@ -65,10 +66,13 @@ function MemberRow({
   const styles = React.useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={styles.row}>
-      {/* Avatar */}
-      <View style={[styles.avatar, { backgroundColor: member.avatarColor + '33', borderColor: member.avatarColor + '55' }]}>
-        <Text style={[styles.initials, { color: member.avatarColor }]}>{member.initials}</Text>
-      </View>
+      <Avatar
+        photoUrl={member.avatarUrl}
+        displayName={member.displayName}
+        color={member.avatarColor}
+        size={44}
+        borderColor={`${member.avatarColor}55`}
+      />
 
       <View style={{ flex: 1 }}>
         <View style={styles.nameRow}>
@@ -140,15 +144,6 @@ function makeStyles(colors: AppColors) {
       gap: spacing.md,
       paddingVertical: spacing.sm,
     },
-    avatar: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
-      borderWidth: 1.5,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    initials: { fontFamily: fonts.sansSemibold, fontSize: 16 },
     nameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     name: { fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink },
     mePill: {

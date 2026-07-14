@@ -10,18 +10,19 @@ import {
   type SyncStatus,
 } from '../core/services/household';
 import type { HouseholdIdentity, HouseholdMember } from '../types';
+import { createAvatarSignedUrl } from '../core/services/profileAvatar';
 
 const STORAGE_KEY = 'stokit:v2:household';
 let householdChannel: ReturnType<typeof supabase.channel> | null = null;
 let subscribedHouseholdId: string | null = null;
 let profileChannel: ReturnType<typeof supabase.channel> | null = null;
-let subscribedUserId: string | null = null;
+let subscribedProfileHouseholdId: string | null = null;
 
 type Result =
   | { ok: true; message?: string; alreadyMember?: boolean }
   | { ok: false; message: string; invalidCode?: boolean };
 type HouseholdPayload = HouseholdIdentity & {
-  members: Array<Pick<HouseholdMember, 'id' | 'displayName' | 'role' | 'joinedAt'>>;
+  members: Array<Pick<HouseholdMember, 'id' | 'displayName' | 'avatarPath' | 'role' | 'joinedAt'>>;
 };
 
 interface HouseholdState {
@@ -66,13 +67,15 @@ async function applyPayload(payload: HouseholdPayload | null, set: (state: Parti
     role: payload.role,
     createdAt: Number(payload.createdAt),
   };
-  const members = payload.members.map((member) => ({
+  const members = await Promise.all(payload.members.map(async (member) => ({
     ...member,
+    avatarPath: member.avatarPath ?? null,
+    avatarUrl: await createAvatarSignedUrl(member.avatarPath ?? null),
     joinedAt: Number(member.joinedAt),
     initials: initials(member.displayName),
     avatarColor: avatarColor(member.id),
     isMe: member.id === user?.id,
-  }));
+  })));
 
   let partnerHasToken = false;
   if (!payload.isPersonal) {
@@ -86,7 +89,7 @@ async function applyPayload(payload: HouseholdPayload | null, set: (state: Parti
   }
 
   set({ household, members, partnerHasToken, syncStatus: 'synced' });
-  persist({ household, members });
+  persist({ household, members: members.map((member) => ({ ...member, avatarUrl: null })) });
   if (subscribedHouseholdId !== household.id) {
     if (householdChannel) void supabase.removeChannel(householdChannel);
     subscribedHouseholdId = household.id;
@@ -100,16 +103,16 @@ async function applyPayload(payload: HouseholdPayload | null, set: (state: Parti
       }, () => { void useHouseholdStore.getState().refresh(); })
       .subscribe();
   }
-  if (user?.id && subscribedUserId !== user.id) {
+  if (subscribedProfileHouseholdId !== household.id) {
     if (profileChannel) void supabase.removeChannel(profileChannel);
-    subscribedUserId = user.id;
+    subscribedProfileHouseholdId = household.id;
     profileChannel = supabase
-      .channel(`household-profile:${user.id}`)
+      .channel(`household-profiles:${household.id}`)
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
         table: 'profiles',
-        filter: `id=eq.${user.id}`,
+        filter: `household_id=eq.${household.id}`,
       }, () => { void useHouseholdStore.getState().refresh(); })
       .subscribe();
   }
@@ -193,7 +196,7 @@ export const useHouseholdStore = create<HouseholdState>((set, get) => ({
     householdChannel = null;
     profileChannel = null;
     subscribedHouseholdId = null;
-    subscribedUserId = null;
+    subscribedProfileHouseholdId = null;
     await AsyncStorage.removeItem(STORAGE_KEY);
     set({ household: null, members: [], syncStatus: 'local', hydrated: true });
   },

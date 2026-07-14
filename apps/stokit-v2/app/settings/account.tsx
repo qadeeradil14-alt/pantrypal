@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../../components/shared/Screen';
@@ -11,6 +12,8 @@ import { useAuthStore } from '../../store/auth-store';
 import { useHouseholdStore } from '../../store/household-store';
 import { useTheme } from '../../hooks/useTheme';
 import { stopGeofencing } from '../../core/services/geofencing';
+import { removeProfileAvatar, uploadProfileAvatar, type AvatarUploadStage } from '../../core/services/profileAvatar';
+import { Avatar } from '../../components/shared/Avatar';
 
 const OWNER_BLOCKED_MESSAGE =
   'You can’t delete your account because you own a shared household.\n\nTransfer ownership or remove all household members before deleting your account.';
@@ -24,15 +27,109 @@ export default function AccountScreen() {
   const renameMe = useHouseholdStore((s) => s.renameMe);
   const authUser = useAuthStore((s) => s.user);
 
-  const myDisplayName = members.find((m) => m.isMe)?.displayName ?? 'Me';
+  const myMember = members.find((m) => m.isMe);
+  const myDisplayName = myMember?.displayName ?? 'Me';
   const isSharedOwnerWithMembers = Boolean(household && !household.isPersonal && household.role === 'owner' && members.length > 1);
 
   const [signingOut, setSigningOut] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [renameVisible, setRenameVisible] = useState(false);
   const [draftName, setDraftName] = useState('');
+  const [photoStage, setPhotoStage] = useState<AvatarUploadStage | 'removing' | null>(null);
+  const [pendingPhoto, setPendingPhoto] = useState<{
+    base64: string;
+    uri: string;
+    contentType: 'image/jpeg' | 'image/png';
+  } | null>(null);
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  const permissionDenied = (source: 'camera' | 'library') => {
+    Alert.alert(
+      `${source === 'camera' ? 'Camera' : 'Photo library'} access needed`,
+      `Allow ${source === 'camera' ? 'camera' : 'photo library'} access in Settings to choose a profile photo.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Open Settings', onPress: () => { void Linking.openSettings(); } },
+      ],
+    );
+  };
+
+  const uploadPhoto = async (photo: { base64: string; uri: string; contentType: 'image/jpeg' | 'image/png' }) => {
+    if (!authUser) return;
+    setPendingPhoto(photo);
+    const result = await uploadProfileAvatar(authUser.id, photo.base64, photo.contentType, setPhotoStage);
+    setPhotoStage(null);
+    if (!result.ok) {
+      Alert.alert('Couldn’t update photo', result.message);
+      return;
+    }
+    setPendingPhoto(null);
+    await useHouseholdStore.getState().refresh();
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
+  const choosePhoto = async (source: 'camera' | 'library') => {
+    const permission = source === 'camera'
+      ? await ImagePicker.requestCameraPermissionsAsync()
+      : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      permissionDenied(source);
+      return;
+    }
+
+    const options: ImagePicker.ImagePickerOptions = {
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.65,
+      base64: true,
+      exif: false,
+      ...(source === 'camera' ? { cameraType: ImagePicker.CameraType.front } : {}),
+    };
+    const result = source === 'camera'
+      ? await ImagePicker.launchCameraAsync(options)
+      : await ImagePicker.launchImageLibraryAsync(options);
+    const asset = result.canceled ? null : result.assets[0];
+    if (!asset?.base64) {
+      if (!result.canceled) Alert.alert('Couldn’t use photo', 'Choose another image and try again.');
+      return;
+    }
+    const contentType = asset.base64.startsWith('iVBOR')
+      ? 'image/png'
+      : asset.base64.startsWith('/9j/')
+        ? 'image/jpeg'
+        : null;
+    if (!contentType) {
+      Alert.alert('Unsupported image', 'Choose a JPEG or PNG image and try again.');
+      return;
+    }
+    await uploadPhoto({ base64: asset.base64, uri: asset.uri, contentType });
+  };
+
+  const confirmRemovePhoto = () => {
+    if (!authUser) return;
+    Alert.alert('Remove profile photo?', 'Your initials will be shown instead.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove photo',
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            setPhotoStage('removing');
+            const result = await removeProfileAvatar(authUser.id);
+            setPhotoStage(null);
+            if (!result.ok) {
+              Alert.alert('Couldn’t remove photo', result.message);
+              return;
+            }
+            setPendingPhoto(null);
+            await useHouseholdStore.getState().refresh();
+          })();
+        },
+      },
+    ]);
+  };
 
   const confirmLogout = () => {
     Alert.alert('Log out?', 'Your local pantry, stores, shopping session, and history will be removed from this device. Synced cloud data stays in your account.', [
@@ -147,9 +244,13 @@ export default function AccountScreen() {
       <SubScreenHeader eyebrow="You" title="Account" />
 
       <Card style={styles.profileHero}>
-        <View style={styles.profileAvatar}>
-          <Text style={styles.profileInitial}>{myDisplayName.trim().charAt(0).toUpperCase() || 'M'}</Text>
-        </View>
+        <Avatar
+          photoUrl={pendingPhoto?.uri ?? myMember?.avatarUrl}
+          displayName={myDisplayName}
+          color={myMember?.avatarColor ?? colors.primary}
+          size={56}
+          borderColor={colors.border}
+        />
         <View style={{ flex: 1 }}>
           <Text style={styles.profileEyebrow}>SIGNED IN</Text>
           <Text style={styles.profileName}>{myDisplayName}</Text>
@@ -163,7 +264,62 @@ export default function AccountScreen() {
         </View>
       </Card>
 
-      <Card style={styles.sectionCard}>
+      <Card style={[styles.sectionCard, styles.photoCard]}>
+        <Text style={styles.photoTitle}>Profile photo</Text>
+        <View style={styles.photoContent}>
+          <Avatar
+            photoUrl={pendingPhoto?.uri ?? myMember?.avatarUrl}
+            displayName={myDisplayName}
+            color={myMember?.avatarColor ?? colors.primary}
+            size={88}
+            borderColor={colors.border}
+          />
+          <View style={styles.photoActions}>
+            <Pressable
+              disabled={photoStage !== null}
+              onPress={() => { void choosePhoto('camera'); }}
+              style={({ pressed }) => [styles.photoAction, pressed && styles.settingsRowPressed]}
+            >
+              <Ionicons name="camera-outline" size={18} color={colors.primary} />
+              <Text style={styles.photoActionText}>Take photo</Text>
+            </Pressable>
+            <Pressable
+              disabled={photoStage !== null}
+              onPress={() => { void choosePhoto('library'); }}
+              style={({ pressed }) => [styles.photoAction, pressed && styles.settingsRowPressed]}
+            >
+              <Ionicons name="images-outline" size={18} color={colors.primary} />
+              <Text style={styles.photoActionText}>Choose from library</Text>
+            </Pressable>
+            {(myMember?.avatarPath || pendingPhoto) && (
+              <Pressable
+                disabled={photoStage !== null}
+                onPress={confirmRemovePhoto}
+                style={({ pressed }) => [styles.photoAction, pressed && styles.settingsRowPressed]}
+              >
+                <Ionicons name="trash-outline" size={18} color={colors.danger} />
+                <Text style={[styles.photoActionText, { color: colors.danger }]}>Remove photo</Text>
+              </Pressable>
+            )}
+            {photoStage && (
+              <View style={styles.photoProgress}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={styles.photoProgressText}>
+                  {photoStage === 'uploading' ? 'Uploading…' : photoStage === 'saving' ? 'Saving…' : 'Removing…'}
+                </Text>
+              </View>
+            )}
+            {pendingPhoto && !photoStage && (
+              <Pressable onPress={() => { void uploadPhoto(pendingPhoto); }} style={styles.retryButton}>
+                <Ionicons name="refresh" size={16} color={colors.primary} />
+                <Text style={styles.retryText}>Retry upload</Text>
+              </Pressable>
+            )}
+          </View>
+        </View>
+      </Card>
+
+      <Card style={[styles.sectionCard, { marginTop: spacing.lg }]}>
         {renameVisible && (
           <View style={styles.renameModal}>
             <Text style={styles.renameTitle}>Your name</Text>
@@ -247,15 +403,6 @@ function makeStyles(colors: AppColors) {
       backgroundColor: colors.backgroundElevated,
       marginBottom: spacing.lg,
     },
-    profileAvatar: {
-      width: 56,
-      height: 56,
-      borderRadius: 28,
-      backgroundColor: colors.primarySoft,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    profileInitial: { fontFamily: fonts.serifItalic, fontSize: 25, color: colors.primary },
     profileEyebrow: { fontFamily: fonts.monoMedium, fontSize: 9, letterSpacing: 1, color: colors.primary },
     profileName: { fontFamily: fonts.serifItalic, fontSize: 22, color: colors.ink, marginTop: 1 },
     profileEmail: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 1 },
@@ -264,6 +411,16 @@ function makeStyles(colors: AppColors) {
     statusPillDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.muted },
     statusPillText: { fontFamily: fonts.sansSemibold, fontSize: 10, color: colors.muted },
     sectionCard: { paddingVertical: spacing.md, borderColor: colors.borderSoft, shadowOpacity: 0, elevation: 0 },
+    photoCard: { padding: spacing.lg },
+    photoTitle: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink, marginBottom: spacing.md },
+    photoContent: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg, flexWrap: 'wrap' },
+    photoActions: { flex: 1, minWidth: 190, gap: spacing.xs },
+    photoAction: { minHeight: 38, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderRadius: radii.sm, paddingHorizontal: spacing.sm },
+    photoActionText: { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.ink },
+    photoProgress: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.sm, minHeight: 36 },
+    photoProgressText: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted },
+    retryButton: { minHeight: 38, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.sm },
+    retryText: { fontFamily: fonts.sansSemibold, fontSize: 13, color: colors.primary },
     settingsRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',

@@ -193,6 +193,8 @@ export type MemberColor = typeof MEMBER_COLORS[number];
 export interface HouseholdMember {
   id: string;
   displayName: string;
+  avatarPath: string | null;
+  avatarUrl: string | null;
   /** Derived from displayName. */
   initials: string;
   avatarColor: string;
