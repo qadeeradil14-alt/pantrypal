@@ -180,6 +180,16 @@ test('shopping reset converges without resurrecting a stale active store', () =>
   assert.equal(merged.items[0].storeId, null);
 });
 
+test('malformed local active session is quarantined and tombstones its valid remote twin', () => {
+  const remote = initializeReplicaState({ ...emptyState(), activeSession: shoppingSession(1) }, 'device-1');
+  const corrupted = { ...remote, activeSession: {} as SharedShoppingSession };
+
+  const merged = mergeReplicaStates([corrupted, remote], 'device-1');
+
+  assert.equal(merged.activeSession, null);
+  assert.ok(merged.syncMeta?.sessionTombstones?.['trip-1']);
+});
+
 test('offline post-reset shopping transitions cannot resurrect a deleted trip on reconnect', () => {
   const seeded = initializeReplicaState({
     ...emptyState(),

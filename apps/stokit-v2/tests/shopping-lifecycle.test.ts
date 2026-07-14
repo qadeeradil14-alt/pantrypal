@@ -53,6 +53,15 @@ test('durable trip completion prevents stale standalone storage from resurrectin
   assert.deepEqual(resolved, initialSession);
 });
 
+test('malformed persisted session is quarantined to idle', () => {
+  const resolved = resolveHydratedShoppingSession(
+    activeSession,
+    {} as ShoppingSession,
+  );
+
+  assert.deepEqual(resolved, initialSession);
+});
+
 test('reset clears shopping items and active session in one durable state transition', () => {
   const state: DurableState = {
     ...emptyDurableState,

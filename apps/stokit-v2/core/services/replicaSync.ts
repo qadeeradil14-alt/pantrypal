@@ -5,6 +5,7 @@ import type {
   SyncEntityCollection,
   SyncStamp,
 } from '../../types';
+import { normalizeShoppingSession } from './shoppingLifecycle';
 
 const COLLECTIONS: SyncEntityCollection[] = [
   'items',
@@ -130,11 +131,26 @@ function stampAll(state: DurableState, replicaId: string): DurableSyncMetadata {
 }
 
 export function initializeReplicaState(state: DurableState, replicaId: string): DurableState {
+  const normalizedSession = normalizeShoppingSession(state.activeSession);
+  const invalidSession = state.activeSession != null && normalizedSession == null;
+  const normalizedState = { ...state, activeSession: normalizedSession };
+  const meta = state.syncMeta
+    ? cloneMetadata(state.syncMeta, replicaId)
+    : stampAll(normalizedState, replicaId);
+  if (invalidSession) {
+    meta.clock += 1;
+    const stamp = { clock: meta.clock, replicaId };
+    meta.singletons.activeSession = stamp;
+    meta.lastOperation = {
+      operation: 'shopping.invalid_session_quarantine',
+      at: Date.now(),
+      sequence: meta.clock,
+      entityIds: ['activeSession'],
+    };
+  }
   return {
-    ...state,
-    syncMeta: state.syncMeta
-      ? cloneMetadata(state.syncMeta, replicaId)
-      : stampAll(state, replicaId),
+    ...normalizedState,
+    syncMeta: meta,
   };
 }
 
@@ -352,6 +368,18 @@ export function mergeReplicaStates(
   if (rawStates.length === 0) throw new Error('At least one replica state is required.');
   const states = rawStates.map((state, index) => initializeReplicaState(state, state.syncMeta?.replicaId ?? `legacy-${index}`));
   const meta = maxMetadata(states, localReplicaId);
+  for (const quarantined of states) {
+    if (quarantined.syncMeta?.lastOperation?.operation !== 'shopping.invalid_session_quarantine') continue;
+    const quarantineStamp = quarantined.syncMeta.singletons.activeSession;
+    if (!quarantineStamp) continue;
+    for (const candidate of states) {
+      const tripId = candidate.activeSession?.tripId;
+      if (!tripId || compareStamp(quarantineStamp, candidate.syncMeta?.singletons.activeSession) < 0) continue;
+      if (compareStamp(quarantineStamp, meta.sessionTombstones?.[tripId]) > 0) {
+        meta.sessionTombstones![tripId] = quarantineStamp;
+      }
+    }
+  }
   const mergedCollections = {} as Record<SyncEntityCollection, Entity[]>;
 
   for (const collection of COLLECTIONS) {

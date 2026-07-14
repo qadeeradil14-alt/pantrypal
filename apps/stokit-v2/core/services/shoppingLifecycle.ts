@@ -14,11 +14,42 @@ export type ShoppingTraceContext = {
   error?: unknown;
 };
 
+const SESSION_STATUSES = new Set<SharedShoppingSession['status']>([
+  'idle',
+  'shopping_store',
+  'receipt_prompt',
+  'store_summary',
+  'continue_prompt',
+  'next_store_ready',
+  'trip_summary',
+]);
+
+export function normalizeShoppingSession(value: unknown): SharedShoppingSession | null {
+  if (!value || typeof value !== 'object') return null;
+  const session = value as Partial<SharedShoppingSession>;
+  if (
+    !SESSION_STATUSES.has(session.status as SharedShoppingSession['status'])
+    || (session.tripId !== null && typeof session.tripId !== 'string')
+    || (session.startedAt !== null && typeof session.startedAt !== 'number')
+    || !Array.isArray(session.storeQueue)
+    || !Number.isInteger(session.currentIndex)
+    || !Array.isArray(session.skippedStoreIds)
+    || !Array.isArray(session.entries)
+    || !Array.isArray(session.receipts)
+  ) return null;
+  if (session.status !== 'idle' && (!session.tripId || session.storeQueue.length === 0)) return null;
+  return {
+    ...session,
+    removedItemIds: Array.isArray(session.removedItemIds) ? session.removedItemIds : [],
+    completedTrip: session.completedTrip ?? null,
+  } as SharedShoppingSession;
+}
+
 export function resolveHydratedShoppingSession(
   _savedSession: ShoppingSession,
   durableSession: SharedShoppingSession | null,
 ): ShoppingSession {
-  return durableSession ? durableSession as ShoppingSession : initialSession;
+  return normalizeShoppingSession(durableSession) as ShoppingSession | null ?? initialSession;
 }
 
 export function resetShoppingLifecycleState<T extends DurableState>(state: T, now: number): T {
