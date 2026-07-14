@@ -42,6 +42,7 @@ import { consolidatePantryItems, normalizeItemName } from '../core/services/pant
 import { isDuplicatePriceEntry, isValidPrice } from '../core/services/priceHistory';
 import { refreshWidgets } from '../core/services/widgets';
 import { findDuplicateStore } from '../core/services/storeDuplicates';
+import { initializeReplicaState, recordLocalMutation } from '../core/services/replicaSync';
 
 interface DurableStore extends DurableState {
   hydrated: boolean;
@@ -116,7 +117,12 @@ function snapshot(s: DurableState): DurableState {
     prefs: s.prefs,
     activeSession: s.activeSession ?? null,
     updatedAt: s.updatedAt,
+    syncMeta: s.syncMeta,
   };
+}
+
+function createReplicaId(): string {
+  return `replica-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 }
 
 export const useDurableStore = create<DurableStore>((set, get) => {
@@ -124,12 +130,20 @@ export const useDurableStore = create<DurableStore>((set, get) => {
   let persistQueue = Promise.resolve();
   let persistEpoch = 0;
   let lastSnapshotAt = 0;
-  const persist = () => {
+  let replicaId = createReplicaId();
+  let lastLocalSnapshot = initializeReplicaState(emptyDurableState, replicaId);
+  const persist = (operation = 'state.update') => {
     const updatedAt = Math.max(now(), lastSnapshotAt + 1);
     lastSnapshotAt = updatedAt;
     const epoch = persistEpoch;
-    set({ updatedAt });
-    const snap = snapshot(get());
+    const current = { ...snapshot(get()), updatedAt };
+    const snap = recordLocalMutation(lastLocalSnapshot, current, replicaId, operation);
+    lastLocalSnapshot = snap;
+    set({ updatedAt, syncMeta: snap.syncMeta });
+    if (__DEV__) {
+      const diagnostic = snap.syncMeta?.lastOperation;
+      console.log(`[Sync] local operation=${operation} entity=${diagnostic?.entityIds.join(',') || 'state'} timestamp=${updatedAt} device=${replicaId} sequence=${diagnostic?.sequence ?? 0}`);
+    }
     void refreshWidgets(snap.items);
     persistQueue = persistQueue
       .then(async () => {
@@ -171,7 +185,10 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     hydrate: async () => {
       const loaded = await loadDurable();
       if (loaded) {
-        const normalized = { ...loaded, items: consolidatePantryItems(loaded.items) };
+        replicaId = loaded.syncMeta?.replicaId ?? replicaId;
+        const normalized = initializeReplicaState({ ...loaded, items: consolidatePantryItems(loaded.items) }, replicaId);
+        lastSnapshotAt = normalized.updatedAt;
+        lastLocalSnapshot = normalized;
         set({ ...normalized, hydrated: true });
         void saveDurable(normalized);
       } else {
@@ -203,7 +220,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         if (updated.status === 'low' && existing.status !== 'low') {
           pushActivity('marked_low', `${updated.name} marked low`, { itemId: updated.id });
         }
-        persist();
+        persist('item.update');
         syncShoppingItem(updated, updated.id);
         // Merge can change storeId/status (e.g. re-adding an item with a new
         // store assignment) — geofence eligibility is item-driven, so refresh.
@@ -227,7 +244,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       if (item.status === 'low') {
         pushActivity('marked_low', `${item.name} marked low`, { itemId: item.id });
       }
-      persist();
+      persist('item.create');
       syncShoppingItem(item, item.id);
       // A newly added item may be assigned to a store at creation, making
       // that store newly eligible for arrival reminders.
@@ -241,7 +258,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
           it.id === id ? { ...it, ...patch, updatedAt: now() } : it
         ),
       }));
-      persist();
+      persist('item.update');
       syncShoppingItem(get().items.find((item) => item.id === id) ?? null, id);
       // patch may change storeId and/or status — both affect geofence
       // eligibility (assignment, status change, marking purchased, etc.).
@@ -258,7 +275,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       if (item && status === 'low' && item.status !== 'low') {
         pushActivity('marked_low', `${item.name} marked low`, { itemId: id });
       }
-      persist();
+      persist('item.status');
       syncShoppingItem(get().items.find((candidate) => candidate.id === id) ?? null, id);
       // Status changes (including marking purchased, or restoring to stocked)
       // can add or remove a store from geofence eligibility.
@@ -275,7 +292,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
             : item
         ),
       }));
-      persist();
+      persist('shopping.clear');
       void refreshGeofencedStoreData();
     },
 
@@ -289,7 +306,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
             : item
         ),
       }));
-      persist();
+      persist('shopping.assign_store');
       get().items
         .filter((item) => idSet.has(item.id))
         .forEach((item) => syncShoppingItem(item, item.id));
@@ -304,13 +321,13 @@ export const useDurableStore = create<DurableStore>((set, get) => {
             : item
         ),
       }));
-      persist();
+      persist('shopping.reset');
       void refreshGeofencedStoreData();
     },
 
     deleteItem: (id) => {
       set((s) => ({ items: s.items.filter((it) => it.id !== id) }));
-      persist();
+      persist('item.delete');
       syncShoppingItem(null, id);
       // Deleting the last active item assigned to a store removes that
       // store's eligibility — re-register so it stops being monitored.
@@ -341,7 +358,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       pushActivity('store_added', `Added store ${store.name}`, {
         storeId: store.id,
       });
-      persist();
+      persist('store.create');
       void refreshGeofencedStoreData();
       return store;
     },
@@ -352,7 +369,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
           st.id === id ? { ...st, ...patch, updatedAt: now() } : st
         ),
       }));
-      persist();
+      persist('store.update');
       void refreshGeofencedStoreData();
     },
 
@@ -364,7 +381,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
           it.storeId === id ? { ...it, storeId: null, updatedAt: now() } : it
         ),
       }));
-      persist();
+      persist('store.delete');
       void refreshGeofencedStoreData();
     },
 
@@ -391,7 +408,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         `Trip complete · ${trip.itemsBought} items · $${trip.totalSpent.toFixed(2)}`,
         { tripId: trip.id }
       );
-      persist();
+      persist('trip.commit');
     },
 
     removeTrip: (tripId, receiptIds) => {
@@ -400,14 +417,14 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         trips: s.trips.filter((t) => t.id !== tripId),
         receipts: s.receipts.filter((r) => !receiptSet.has(r.id)),
       }));
-      persist();
+      persist('trip.remove');
     },
 
     updateReceipt: (receiptId, patch) => {
       set((s) => ({
         receipts: s.receipts.map((r) => r.id === receiptId ? { ...r, ...patch } : r),
       }));
-      persist();
+      persist('receipt.update');
     },
 
     recordPrice: (input) => {
@@ -422,7 +439,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         paidAt: now(),
       };
       set((s) => ({ priceHistory: [entry, ...s.priceHistory].slice(0, 1000) }));
-      persist();
+      persist('price.create');
     },
 
     setActiveSession: (session, eventType) => {
@@ -441,25 +458,29 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       if (eventType === 'START_TRIP') console.log('[Shopping Sync] trip_start synced', session?.tripId ?? 'none');
       if (eventType === 'TOGGLE_PICK' || eventType === 'SET_PICK') console.log('[Shopping Sync] item_checked synced', session?.tripId ?? 'none');
       if (eventType === 'END_TRIP' || eventType === 'FINISH_TRIP' || eventType === 'FINISH_TRIP_EARLY') console.log('[Shopping Sync] trip_end synced', session?.tripId ?? 'none');
-      persist();
+      persist(`shopping.${action}`);
     },
 
     updatePrefs: (patch) => {
       set((s) => ({ prefs: { ...s.prefs, ...patch } }));
-      persist();
+      persist('prefs.update');
     },
 
     logActivity: (type, message, refs) => {
       pushActivity(type, message, refs);
-      persist();
+      persist(`activity.${type}`);
     },
 
     resetAll: async () => {
       persistEpoch += 1;
       await persistQueue;
-      await clearCloudState();
+      const cleared = await clearCloudState();
       await clearDurable();
-      set({ ...emptyDurableState, prefs: { ...defaultPrefs }, hydrated: true });
+      replicaId = cleared.syncMeta!.replicaId;
+      lastSnapshotAt = cleared.updatedAt;
+      lastLocalSnapshot = cleared;
+      set({ ...cleared, hydrated: true });
+      await saveDurable(cleared);
       void refreshWidgets([]);
     },
 
@@ -468,6 +489,8 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       await persistQueue;
       await clearDurable();
       set({ ...emptyDurableState, prefs: { ...defaultPrefs }, hydrated: true });
+      replicaId = createReplicaId();
+      lastLocalSnapshot = initializeReplicaState(emptyDurableState, replicaId);
       void refreshWidgets([]);
     },
 
@@ -485,6 +508,11 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         activity:     Array.isArray(patch.activity)     ? patch.activity     : s.activity,
         activeSession: 'activeSession' in patch ? patch.activeSession ?? null : s.activeSession ?? null,
       }));
+      if (patch.syncMeta) {
+        replicaId = patch.syncMeta.replicaId;
+        lastSnapshotAt = Math.max(lastSnapshotAt, patch.updatedAt ?? 0);
+        lastLocalSnapshot = snapshot(get());
+      }
       if ('activeSession' in patch) {
         const remoteSession = patch.activeSession ?? null;
         void import('./session-store').then(({ useSessionStore }) => {

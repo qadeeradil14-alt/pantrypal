@@ -45,6 +45,7 @@ function normalize(parsed: unknown): DurableState {
     prefs: { ...defaultPrefs, ...(p.prefs ?? {}) },
     activeSession: p.activeSession ?? null,
     updatedAt: typeof p.updatedAt === 'number' ? p.updatedAt : 0,
+    syncMeta: p.syncMeta?.schema === 1 ? p.syncMeta : undefined,
   };
 }
 

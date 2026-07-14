@@ -18,9 +18,8 @@ import {
   type ShoppingSession,
 } from '../core/shopping-machine';
 import { useDurableStore } from './durable-store';
-import type { SharedShoppingSession, ShoppingEntry } from '../types';
+import type { SharedShoppingSession } from '../types';
 import { remoteShoppingSessionAction } from '../core/services/shoppingSessionSyncPolicy';
-import { mergeShoppingEntries } from '../core/services/shoppingEntrySync';
 
 const SESSION_KEY = 'stokit:v2:active-session';
 
@@ -87,36 +86,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   },
 
   applyRemoteSession: (remoteSession) => {
-    const previous = get().session;
-
     if (!remoteSession || remoteShoppingSessionAction(remoteSession) === 'clear') {
       set({ session: initialSession });
       AsyncStorage.removeItem(SESSION_KEY).catch(() => {});
-      return;
-    }
-
-    // Guard 2: both devices are actively shopping the same trip — merge
-    // per-entry instead of blind whole-object replacement, so a check
-    // registered on either device sticks and neither side's progress is lost.
-    if (
-      previous.status === 'shopping_store' &&
-      remoteSession.status === 'shopping_store' &&
-      previous.tripId === remoteSession.tripId
-    ) {
-      const removedItemIds = Array.from(
-        new Set([...(previous.removedItemIds ?? []), ...(remoteSession.removedItemIds ?? [])]),
-      );
-      const merged: ShoppingSession = {
-        ...previous,
-        storeQueue: [
-          ...previous.storeQueue,
-          ...remoteSession.storeQueue.filter((storeId) => !previous.storeQueue.includes(storeId)),
-        ],
-        entries: mergeShoppingEntries(previous.entries, remoteSession.entries, removedItemIds),
-        removedItemIds,
-      };
-      set({ session: merged });
-      persistSession(merged);
       return;
     }
 

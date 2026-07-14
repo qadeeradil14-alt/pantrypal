@@ -214,6 +214,38 @@ export interface HouseholdPrefs {
   dismissedBudgetWarningWeekOf?: number;
 }
 
+export type SyncEntityCollection =
+  | 'items'
+  | 'stores'
+  | 'priceHistory'
+  | 'receipts'
+  | 'trips'
+  | 'activity';
+
+export interface SyncStamp {
+  clock: number;
+  replicaId: string;
+}
+
+export interface DurableSyncMetadata {
+  schema: 1;
+  replicaId: string;
+  clock: number;
+  entities: Record<SyncEntityCollection, Record<string, SyncStamp>>;
+  tombstones: Record<SyncEntityCollection, Record<string, SyncStamp>>;
+  singletons: Partial<Record<'prefs' | 'activeSession', SyncStamp>>;
+  sessionEntries: Record<string, SyncStamp>;
+  sessionEntryTombstones: Record<string, SyncStamp>;
+  sessionReceipts: Record<string, SyncStamp>;
+  sessionReceiptTombstones: Record<string, SyncStamp>;
+  lastOperation?: {
+    operation: string;
+    at: number;
+    sequence: number;
+    entityIds: string[];
+  };
+}
+
 /** Everything persisted to disk. */
 export interface DurableState {
   items: PantryItem[];
@@ -225,4 +257,5 @@ export interface DurableState {
   prefs: HouseholdPrefs;
   activeSession: SharedShoppingSession | null;
   updatedAt: number;
+  syncMeta?: DurableSyncMetadata;
 }

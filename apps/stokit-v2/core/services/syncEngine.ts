@@ -2,22 +2,46 @@ import { File } from 'expo-file-system';
 import { decode } from 'base64-arraybuffer';
 import { supabase } from '../../lib/supabase';
 import type { DurableState, Receipt } from '../../types';
-import { shouldApplyRemoteSnapshot, remoteSkipReason, markRemoteApplied, markPushed, isSelfEcho, resetSyncWatermark } from './syncWatermark';
+import { emptyDurableState } from '../repositories/durableRepository';
+import {
+  initializeReplicaState,
+  mergeReplicaStates,
+  recordLocalMutation,
+  replicaEnvelopeDigest,
+  syncStateDigest,
+  type SyncMergeDecision,
+} from './replicaSync';
 import { reconcileShoppingSession } from './shoppingEntrySync';
+import { resetSyncWatermark } from './syncWatermark';
 
-const CLOUD_TABLE = 'household_snapshots';
+const LEGACY_CLOUD_TABLE = 'household_snapshots';
+const REPLICA_TABLE = 'household_sync_replicas';
 const RECEIPT_BUCKET = 'receipts';
 const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24 * 7;
-
 const RETRY_ATTEMPTS = 3;
 const RETRY_BASE_DELAY_MS = 500;
+
+type SyncContext = { householdId: string; userId: string };
+type ReplicaRow = {
+  user_id: string;
+  replica_id: string;
+  state: DurableState;
+  client_clock: number;
+  updated_at: string;
+};
+
+let syncChannel: ReturnType<typeof supabase.channel> | null = null;
+let activeHouseholdId: string | null = null;
+let pushRequested = false;
+let pushDrain: Promise<void> | null = null;
+let pushRetryOptions: { isDeferredRetry?: boolean } | undefined;
+let deferredRetryScheduled = false;
+let pullRequested = false;
+let syncPullQueue: Promise<void> | null = null;
 
 function retryDelay(attempt: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, RETRY_BASE_DELAY_MS * attempt));
 }
-
-let syncChannel: ReturnType<typeof supabase.channel> | null = null;
-let activeHouseholdId: string | null = null;
 
 function activeSessionStats(state: DurableState): { itemCount: number; pickedCount: number; sessionId: string } {
   const entries = state.activeSession?.entries ?? [];
@@ -32,11 +56,6 @@ async function durableStore() {
   return (await import('../../store/durable-store')).useDurableStore;
 }
 
-/**
- * Extract the plain DurableState fields from the Zustand store state so a
- * push never serializes store actions or the `hydrated` flag into the cloud
- * snapshot.
- */
 function durableSnapshot(state: DurableState): DurableState {
   return {
     items: state.items,
@@ -46,37 +65,58 @@ function durableSnapshot(state: DurableState): DurableState {
     trips: state.trips,
     activity: state.activity,
     prefs: state.prefs,
-    activeSession: state.activeSession
-      ? reconcileShoppingSession(state.activeSession, state.items)
-      : null,
+    activeSession: state.activeSession,
     updatedAt: state.updatedAt,
+    syncMeta: state.syncMeta,
   };
 }
 
-async function householdId(): Promise<string | null> {
+function cloudReceipt(receipt: Receipt): Receipt {
+  if (receipt.imagePath) return { ...receipt, imageUri: null };
+  return receipt.imageUri?.startsWith('file://') ? { ...receipt, imageUri: null } : receipt;
+}
+
+function cloudSnapshot(state: DurableState): DurableState {
+  return {
+    ...durableSnapshot(state),
+    receipts: state.receipts.map(cloudReceipt),
+    activeSession: state.activeSession
+      ? { ...state.activeSession, receipts: state.activeSession.receipts.map(cloudReceipt) }
+      : null,
+  };
+}
+
+async function syncContext(): Promise<SyncContext | null> {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.user?.id) return null;
   const householdStore = (await import('../../store/household-store')).useHouseholdStore;
   if (!householdStore.getState().household) await householdStore.getState().ensureHousehold();
-  return householdStore.getState().household?.id ?? null;
+  const householdId = householdStore.getState().household?.id;
+  return householdId ? { householdId, userId: session.user.id } : null;
 }
 
 async function withSignedReceiptUrls(state: DurableState): Promise<DurableState> {
-  const receipts = await Promise.all(state.receipts.map(async (receipt) => {
+  const sign = async (receipt: Receipt): Promise<Receipt> => {
     if (!receipt.imagePath) return receipt;
     const { data, error } = await supabase.storage
       .from(RECEIPT_BUCKET)
       .createSignedUrl(receipt.imagePath, SIGNED_URL_TTL_SECONDS);
     return error ? receipt : { ...receipt, imageUri: data.signedUrl };
-  }));
-  return { ...state, receipts };
+  };
+  return {
+    ...state,
+    receipts: await Promise.all(state.receipts.map(sign)),
+    activeSession: state.activeSession
+      ? { ...state.activeSession, receipts: await Promise.all(state.activeSession.receipts.map(sign)) }
+      : null,
+  };
 }
 
 async function uploadReceipt(householdId: string, receipt: Receipt): Promise<Receipt> {
   if (!receipt.imageUri?.startsWith('file://')) return receipt;
   const ext = receipt.imageUri.split('.').pop()?.toLowerCase() || 'jpg';
   const imagePath = `${householdId}/${receipt.id}.${ext}`;
-  for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
+  for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt += 1) {
     try {
       const base64 = await new File(receipt.imageUri).base64();
       const { error } = await supabase.storage.from(RECEIPT_BUCKET).upload(
@@ -85,222 +125,221 @@ async function uploadReceipt(householdId: string, receipt: Receipt): Promise<Rec
         { contentType: `image/${ext === 'jpg' ? 'jpeg' : ext}`, upsert: true },
       );
       if (!error) return { ...receipt, imagePath };
-      if (__DEV__) console.warn(`[Sync Engine] Receipt upload attempt ${attempt} failed`, error.message);
-    } catch (err) {
-      if (__DEV__) console.warn(`[Sync Engine] Receipt upload attempt ${attempt} failed`, err);
+      if (__DEV__) console.warn(`[Sync] receipt.upload attempt=${attempt} entity=${receipt.id} reason=${error.message}`);
+    } catch (error) {
+      if (__DEV__) console.warn(`[Sync] receipt.upload attempt=${attempt} entity=${receipt.id}`, error);
     }
     if (attempt < RETRY_ATTEMPTS) await retryDelay(attempt);
   }
   return receipt;
 }
 
-export async function pushLocalState(state: DurableState, options?: { isDeferredRetry?: boolean }): Promise<void> {
-  const id = await householdId();
-  if (!id) return;
-
-  try {
-    const consistentState = durableSnapshot(state);
-    const receipts = await Promise.all(consistentState.receipts.map((receipt) => uploadReceipt(id, receipt)));
-    const cloudReceipts = receipts.map((receipt) =>
-      !receipt.imagePath && receipt.imageUri?.startsWith('file://')
-        ? { ...receipt, imageUri: null }
-        : receipt,
-    );
-    const snapshot = { ...consistentState, receipts: cloudReceipts };
-
-    let error: { message: string } | null = null;
-    for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
-      const result = await supabase.from(CLOUD_TABLE).upsert({
-        household_id: id,
-        state: snapshot,
-        updated_at: snapshot.updatedAt,
-      }, { onConflict: 'household_id' });
-      error = result.error;
-      if (!error) break;
-      if (__DEV__) console.warn(`[Sync Engine] Snapshot push attempt ${attempt} failed:`, error.message);
-      if (attempt < RETRY_ATTEMPTS) await retryDelay(attempt);
-    }
-
-    if (error) {
-      if (!options?.isDeferredRetry) {
-        setTimeout(() => {
-          void (async () => {
-            const store = await durableStore();
-            await pushLocalState(durableSnapshot(store.getState()), { isDeferredRetry: true });
-          })();
-        }, RETRY_BASE_DELAY_MS * (RETRY_ATTEMPTS + 1));
-      }
-      return;
-    }
-
-    markPushed(snapshot.updatedAt);
-    const { itemCount, pickedCount, sessionId } = activeSessionStats(snapshot);
-    if (__DEV__) console.log(`[Shopping Sync] active_session_snapshot_written version/updatedAt=${snapshot.updatedAt} itemCount=${itemCount} pickedCount=${pickedCount} sessionId=${sessionId}`);
-    const store = await durableStore();
-    const uploadedById = new Map(receipts.map((receipt) => [receipt.id, receipt]));
-    const currentReceipts = store.getState().receipts.map((receipt) => {
-      const uploaded = uploadedById.get(receipt.id);
-      return uploaded?.imagePath && uploaded.imageUri === receipt.imageUri
-        ? { ...receipt, imagePath: uploaded.imagePath }
-        : receipt;
-    });
-    store.getState().applyRemotePatch({ receipts: currentReceipts });
-  } catch (err) {
-    if (__DEV__) console.warn('[Sync Engine] Offline or push failed.', err);
-  }
-}
-
-export async function pullFromSupabase(): Promise<void> {
-  const id = await householdId();
-  if (!id) return;
+async function prepareLatestState(context: SyncContext): Promise<DurableState> {
   const store = await durableStore();
+  const latest = durableSnapshot(store.getState());
+  const replicaId = latest.syncMeta?.replicaId;
+  if (!replicaId) return initializeReplicaState(latest, `replica-${Date.now().toString(36)}`);
 
-  const { data, error } = await supabase
-    .from(CLOUD_TABLE)
-    .select('state, updated_at')
-    .eq('household_id', id)
-    .maybeSingle();
-  if (error) return;
-
-  if (!data?.state) {
-    const local = store.getState();
-    if (local.items.length || local.stores.length || local.receipts.length || local.trips.length) {
-      await pushLocalState({ ...durableSnapshot(local), updatedAt: Date.now() });
-      return;
-    }
-
-    const [{ data: items }, { data: stores }, { data: receipts }] = await Promise.all([
-      supabase.from('pantry_items').select('*').eq('household_id', id),
-      supabase.from('pantry_stores').select('*').eq('household_id', id),
-      supabase.from('pantry_receipts').select('*').eq('household_id', id),
-    ]);
-    if (!items?.length && !stores?.length && !receipts?.length) return;
-
-    const migrated: DurableState = {
-      ...local,
-      items: (items ?? []).map((row: any) => ({
-        id: row.id,
-        name: row.name,
-        quantity: Number(row.quantity),
-        unit: row.unit,
-        status: row.status,
-        storageLocation: row.storage_location,
-        storeId: row.store_id,
-        expiryDate: row.expiry_date,
-        createdAt: Number(row.created_at),
-        updatedAt: Number(row.updated_at),
-      })),
-      stores: (stores ?? []).map((row: any) => ({
-        id: row.id,
-        name: row.name,
-        logoColor: row.logo_color ?? undefined,
-        logoEmoji: row.logo_emoji ?? undefined,
-        logoUrl: row.logo_url ?? undefined,
-        placeId: row.place_id ?? undefined,
-        address: row.address ?? undefined,
-        lat: row.lat == null ? undefined : Number(row.lat),
-        lng: row.lng == null ? undefined : Number(row.lng),
-        openingHours: row.opening_hours ?? undefined,
-        isOpen: row.is_open ?? undefined,
-        createdAt: Number(row.created_at),
-        updatedAt: Number(row.updated_at),
-      })),
-      priceHistory: local.priceHistory,
-      receipts: (receipts ?? []).map((row: any) => ({
-        id: row.id,
-        tripId: row.trip_id,
-        storeId: row.store_id,
-        amount: Number(row.amount),
-        status: row.status,
-        imageUri: row.image_uri,
-        createdAt: Number(row.created_at),
-      })),
-      updatedAt: Date.now(),
-    };
-    store.getState().applyRemotePatch(migrated);
-    await pushLocalState(migrated);
-    return;
-  }
-
-  const remote = data.state as DurableState;
-  const remoteUpdatedAt = (remote.updatedAt ?? data.updated_at ?? 0) as number;
-  const hasActiveSession = 'activeSession' in remote;
-
-  const localUpdatedAt = store.getState().updatedAt;
-  if (!shouldApplyRemoteSnapshot(remoteUpdatedAt, localUpdatedAt)) {
-    const reason = remoteSkipReason(remoteUpdatedAt, localUpdatedAt);
-    console.log(`[Shopping Sync] active_session_reconcile_skipped reason=${reason} version/updatedAt=${remoteUpdatedAt} localUpdatedAt=${localUpdatedAt}`);
-    // The cloud snapshot is strictly older than this device's durable state
-    // (e.g. edits made offline whose push never reached Supabase). Reconcile
-    // by pushing the newer local state up so other members converge on it,
-    // instead of leaving the stale blob in the cloud. Equal timestamps mean
-    // already-in-sync — no push, or realtime would fan out on every launch.
-    if (localUpdatedAt > remoteUpdatedAt && !isSelfEcho(remoteUpdatedAt)) {
-      console.log(`[Shopping Sync] stale_remote_reconcile_push localUpdatedAt=${localUpdatedAt} remoteUpdatedAt=${remoteUpdatedAt}`);
-      await pushLocalState(durableSnapshot(store.getState()));
-    }
-    return;
-  }
-
-  if (hasActiveSession) {
-    const { itemCount, pickedCount, sessionId } = activeSessionStats(remote);
-    console.log(`[Shopping Sync] remote_active_session_snapshot_received version/updatedAt=${remoteUpdatedAt} itemCount=${itemCount} pickedCount=${pickedCount} sessionId=${sessionId}`);
-  }
-  if (hasActiveSession && !remote.activeSession) console.log('[Shopping Sync] remote_trip_end_received');
-  const signedRemote = await withSignedReceiptUrls(remote);
-  const reconciledRemote: DurableState = {
-    ...signedRemote,
-    activeSession: signedRemote.activeSession
-      ? reconcileShoppingSession(signedRemote.activeSession, signedRemote.items)
-      : null,
+  const receipts = await Promise.all(latest.receipts.map((receipt) => uploadReceipt(context.householdId, receipt)));
+  const activeReceipts = latest.activeSession
+    ? await Promise.all(latest.activeSession.receipts.map((receipt) => uploadReceipt(context.householdId, receipt)))
+    : [];
+  const uploaded = {
+    ...latest,
+    receipts,
+    activeSession: latest.activeSession ? { ...latest.activeSession, receipts: activeReceipts } : null,
   };
-  // Local state may have advanced while signed URLs were being fetched (a
-  // user edit or a concurrent pull) — re-check so a now-stale snapshot cannot
-  // clobber it after the await.
-  if (!shouldApplyRemoteSnapshot(remoteUpdatedAt, store.getState().updatedAt)) {
-    console.log(`[Shopping Sync] active_session_reconcile_skipped reason=${remoteSkipReason(remoteUpdatedAt, store.getState().updatedAt)} version/updatedAt=${remoteUpdatedAt} phase=post_sign`);
+  const prepared = syncStateDigest(uploaded) === syncStateDigest(latest)
+    ? latest
+    : recordLocalMutation(latest, uploaded, replicaId, 'receipt.upload');
+  if (prepared !== latest) store.getState().applyRemotePatch(prepared);
+  return prepared;
+}
+
+async function pushLatestReplica(options?: { isDeferredRetry?: boolean }): Promise<void> {
+  const context = await syncContext();
+  if (!context) return;
+  const prepared = await prepareLatestState(context);
+  const snapshot = cloudSnapshot(prepared);
+  const replicaId = snapshot.syncMeta!.replicaId;
+  let error: { message: string } | null = null;
+
+  for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt += 1) {
+    const result = await supabase.from(REPLICA_TABLE).upsert({
+      household_id: context.householdId,
+      user_id: context.userId,
+      replica_id: replicaId,
+      state: snapshot,
+      client_clock: snapshot.syncMeta!.clock,
+    }, { onConflict: 'household_id,user_id,replica_id' });
+    error = result.error;
+    if (!error) break;
+    if (__DEV__) console.warn(`[Sync] replica.push attempt=${attempt} device=${replicaId} sequence=${snapshot.syncMeta!.clock} reason=${error.message}`);
+    if (attempt < RETRY_ATTEMPTS) await retryDelay(attempt);
+  }
+
+  if (error) {
+    if (!options?.isDeferredRetry && !deferredRetryScheduled) {
+      deferredRetryScheduled = true;
+      setTimeout(() => {
+        deferredRetryScheduled = false;
+        void (async () => {
+          const store = await durableStore();
+          await pushLocalState(durableSnapshot(store.getState()), { isDeferredRetry: true });
+        })();
+      }, RETRY_BASE_DELAY_MS * (RETRY_ATTEMPTS + 1));
+    }
     return;
   }
-  store.getState().applyRemotePatch(reconciledRemote);
-  if (hasActiveSession) console.log('[Shopping Sync] local_state_reconciled');
-  if (!isSelfEcho(remoteUpdatedAt)) {
-    markRemoteApplied(remoteUpdatedAt);
+
+  deferredRetryScheduled = false;
+  const stats = activeSessionStats(snapshot);
+  if (__DEV__) console.log(`[Sync] replica.push accepted entity=state operation=upsert timestamp=${snapshot.updatedAt} device=${replicaId} sequence=${snapshot.syncMeta!.clock} itemCount=${snapshot.items.length} sessionId=${stats.sessionId} pickedCount=${stats.pickedCount}`);
+}
+
+export function pushLocalState(
+  _state: DurableState,
+  options?: { isDeferredRetry?: boolean },
+): Promise<void> {
+  pushRequested = true;
+  pushRetryOptions = options;
+  if (!pushDrain) {
+    pushDrain = (async () => {
+      while (pushRequested) {
+        pushRequested = false;
+        const nextOptions = pushRetryOptions;
+        pushRetryOptions = undefined;
+        await pushLatestReplica(nextOptions);
+      }
+    })().finally(() => { pushDrain = null; });
+  }
+  return pushDrain;
+}
+
+function logMergeDecision(decision: SyncMergeDecision): void {
+  if (!__DEV__) return;
+  console.log(`[Sync] merge entity=${decision.entityId} operation=${decision.operation} device=${decision.originatingDevice} sequence=${decision.sequence} decision=accept reason=${decision.reason}`);
+}
+
+async function pullLatestReplicas(): Promise<void> {
+  const context = await syncContext();
+  if (!context) return;
+  const store = await durableStore();
+  const local = durableSnapshot(store.getState());
+  const localReplicaId = local.syncMeta?.replicaId ?? `replica-${Date.now().toString(36)}`;
+  const [{ data: replicaRows, error: replicaError }, { data: legacyRow }] = await Promise.all([
+    supabase
+      .from(REPLICA_TABLE)
+      .select('user_id, replica_id, state, client_clock, updated_at')
+      .eq('household_id', context.householdId),
+    supabase
+      .from(LEGACY_CLOUD_TABLE)
+      .select('state, updated_at')
+      .eq('household_id', context.householdId)
+      .maybeSingle(),
+  ]);
+  if (replicaError) {
+    if (__DEV__) console.warn(`[Sync] replica.pull reason=${replicaError.message}`);
+    return;
+  }
+
+  const rows = (replicaRows ?? []) as ReplicaRow[];
+  let merged: DurableState;
+  if (rows.length === 0) {
+    const legacy = legacyRow?.state as DurableState | undefined;
+    const baseline = legacy && Number(legacy.updatedAt ?? legacyRow?.updated_at ?? 0) > local.updatedAt
+      ? legacy
+      : local;
+    merged = initializeReplicaState(baseline, localReplicaId);
+  } else {
+    merged = mergeReplicaStates(
+      [local, ...rows.map((row) => row.state)],
+      localReplicaId,
+      logMergeDecision,
+    );
+  }
+
+  const reconciled = merged.activeSession
+    ? { ...merged, activeSession: reconcileShoppingSession(merged.activeSession, merged.items) }
+    : merged;
+  if (syncStateDigest(reconciled) !== syncStateDigest(merged)) {
+    merged = recordLocalMutation(merged, reconciled, localReplicaId, 'shopping.reconcile');
+  } else {
+    merged = reconciled;
+  }
+
+  const ownRow = rows.find((row) => row.user_id === context.userId && row.replica_id === localReplicaId);
+  const localChanged = syncStateDigest(local) !== syncStateDigest(merged)
+    || replicaEnvelopeDigest(local) !== replicaEnvelopeDigest(merged);
+  if (localChanged) {
+    const signed = await withSignedReceiptUrls(merged);
+    store.getState().applyRemotePatch(signed);
+    if (__DEV__) console.log(`[Sync] replica.pull applied entity=state operation=merge timestamp=${merged.updatedAt} device=${localReplicaId} sequence=${merged.syncMeta!.clock} reason=deterministic_replica_merge`);
+  }
+
+  if (!ownRow || replicaEnvelopeDigest(ownRow.state) !== replicaEnvelopeDigest(merged)) {
+    await pushLocalState(merged);
   }
 }
 
-export async function clearCloudState(): Promise<void> {
-  const id = await householdId();
-  if (!id) return;
+export function pullFromSupabase(): Promise<void> {
+  pullRequested = true;
+  if (!syncPullQueue) {
+    syncPullQueue = (async () => {
+      while (pullRequested) {
+        pullRequested = false;
+        await pullLatestReplicas();
+      }
+    })().finally(() => { syncPullQueue = null; });
+  }
+  return syncPullQueue;
+}
+
+export async function clearCloudState(): Promise<DurableState> {
+  const context = await syncContext();
   const store = await durableStore();
-  await Promise.all([
-    supabase.from(CLOUD_TABLE).delete().eq('household_id', id),
-    supabase.storage.from(RECEIPT_BUCKET).remove(
-      store.getState().receipts
-        .map((receipt) => receipt.imagePath)
-        .filter((path): path is string => Boolean(path)),
-    ),
-  ]);
+  const current = durableSnapshot(store.getState());
+  const replicaId = current.syncMeta?.replicaId ?? `replica-${Date.now().toString(36)}`;
+  const cleared = recordLocalMutation(
+    initializeReplicaState(current, replicaId),
+    { ...emptyDurableState, prefs: { ...emptyDurableState.prefs }, updatedAt: Date.now() },
+    replicaId,
+    'state.clear',
+  );
+  store.getState().applyRemotePatch(cleared);
+  await pushLocalState(cleared);
+  if (context) {
+    await Promise.all([
+      supabase.from(LEGACY_CLOUD_TABLE).delete().eq('household_id', context.householdId),
+      supabase.storage.from(RECEIPT_BUCKET).remove(
+        current.receipts.map((receipt) => receipt.imagePath).filter((path): path is string => Boolean(path)),
+      ),
+    ]);
+  }
+  return cleared;
 }
 
 export async function startSyncEngine(): Promise<void> {
-  const id = await householdId();
-  if (!id || activeHouseholdId === id) return;
+  const context = await syncContext();
+  if (!context || activeHouseholdId === context.householdId) return;
   stopSyncEngine();
-  activeHouseholdId = id;
+  activeHouseholdId = context.householdId;
 
   syncChannel = supabase
-    .channel(`household-snapshot:${id}`)
+    .channel(`household-replicas:${context.householdId}`)
     .on(
       'postgres_changes',
       {
         event: '*',
         schema: 'public',
-        table: CLOUD_TABLE,
-        filter: `household_id=eq.${id}`,
+        table: REPLICA_TABLE,
+        filter: `household_id=eq.${context.householdId}`,
       },
       () => { void pullFromSupabase(); },
     )
-    .subscribe();
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') void pullFromSupabase();
+    });
 }
 
 export function stopSyncEngine(): void {

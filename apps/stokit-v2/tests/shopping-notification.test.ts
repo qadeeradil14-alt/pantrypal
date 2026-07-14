@@ -92,7 +92,7 @@ test('active shopping session ingests live household items for current store', (
   assert.ok(src.includes("type: 'ADD_ENTRY'"), 'live synced items must be added into the active session');
 });
 
-test('active shopping session is included in household snapshot sync', () => {
+test('active shopping session is included in household replica sync', () => {
   const typesPath = path.join(__dirname, '../types/index.ts');
   const durablePath = path.join(__dirname, '../store/durable-store.ts');
   const sessionPath = path.join(__dirname, '../store/session-store.ts');
@@ -104,18 +104,23 @@ test('active shopping session is included in household snapshot sync', () => {
   assert.ok(typesSrc.includes('activeSession: SharedShoppingSession | null'), 'DurableState must carry shared active session');
   assert.ok(durableSrc.includes('activeSession: s.activeSession ?? null'), 'snapshot must include active session');
   assert.ok(sessionSrc.includes('durable.setActiveSession'), 'session dispatch must push active session into durable sync');
-  assert.ok(syncSrc.includes('remote_trip_end_received'), 'remote trip end must be logged during pull');
+  assert.ok(syncSrc.includes('activeSession: state.activeSession'), 'replica payload must include active session');
+  assert.ok(syncSrc.includes('household_sync_replicas'), 'active session must use deterministic replica transport');
 });
 
 test('remote active session is reconciled into local shopping session', () => {
   const durablePath = path.join(__dirname, '../store/durable-store.ts');
   const sessionPath = path.join(__dirname, '../store/session-store.ts');
+  const replicaPath = path.join(__dirname, '../core/services/replicaSync.ts');
   const durableSrc = fs.readFileSync(durablePath, 'utf-8');
   const sessionSrc = fs.readFileSync(sessionPath, 'utf-8');
+  const replicaSrc = fs.readFileSync(replicaPath, 'utf-8');
   assert.ok(durableSrc.includes('applyRemoteSession(remoteSession)'), 'remote snapshot must update session store');
   assert.ok(sessionSrc.includes('applyRemoteSession'), 'session store must expose remote reconciliation');
   assert.ok(sessionSrc.includes('AsyncStorage.removeItem(SESSION_KEY)'), 'remote trip end must clear persisted active session');
-  assert.ok(sessionSrc.includes('mergeShoppingEntries(previous.entries, remoteSession.entries, removedItemIds)'), 'concurrent same-trip sessions must reconcile via entry merge, not blind overwrite');
+  assert.ok(replicaSrc.includes('sessionEntries'), 'concurrent same-trip entries must merge by per-entry Lamport stamps');
+  assert.ok(replicaSrc.includes('sessionEntryTombstones'), 'remote removals must not resurrect stale session entries');
+  assert.ok(sessionSrc.includes('set({ session: remoteSession as ShoppingSession })'), 'session store must render the already-merged replica result exactly');
 });
 
 test('local active session mutations publish full fresh snapshots', () => {
@@ -128,7 +133,8 @@ test('local active session mutations publish full fresh snapshots', () => {
   assert.ok(durableSrc.includes('Math.max(now(), lastSnapshotAt + 1)'), 'snapshot updatedAt must be monotonic for rapid activeSession writes');
   assert.ok(sessionSrc.includes('durable.setActiveSession'), 'every session reducer mutation must request activeSession sync');
   assert.ok(durableSrc.includes('active_session_snapshot_write_requested'), 'local activeSession write requests must be logged');
-  assert.ok(syncSrc.includes('active_session_snapshot_written'), 'successful household snapshot writes must be logged');
+  assert.ok(durableSrc.includes('recordLocalMutation'), 'each local session mutation must receive deterministic replica metadata');
+  assert.ok(syncSrc.includes('replica.push accepted'), 'successful replica writes must be logged');
 });
 
 test('remote active session fully replaces local partial session and null clears storage', () => {
