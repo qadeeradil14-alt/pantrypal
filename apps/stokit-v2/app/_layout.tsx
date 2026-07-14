@@ -37,6 +37,7 @@ import {
   runObservedOperation,
   setCrashContext,
 } from '../core/services/crashReporter';
+import { setShoppingLifecycleRoute } from '../core/services/shoppingLifecycle';
 
 const PENDING_JOIN_KEY = 'stokit:v2:pending-join';
 
@@ -145,6 +146,7 @@ export default function RootLayout() {
   }, [hydrateDurable, hydrateHousehold, hydrateSession, hydrateOnboarding]);
 
   useEffect(() => {
+    setShoppingLifecycleRoute(pathname);
     setCrashContext({
       screen: pathname,
       householdId,

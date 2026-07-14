@@ -238,6 +238,7 @@ export interface DurableSyncMetadata {
   sessionEntryTombstones: Record<string, SyncStamp>;
   sessionReceipts: Record<string, SyncStamp>;
   sessionReceiptTombstones: Record<string, SyncStamp>;
+  sessionTombstones?: Record<string, SyncStamp>;
   lastOperation?: {
     operation: string;
     at: number;

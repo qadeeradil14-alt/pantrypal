@@ -180,6 +180,71 @@ test('shopping reset converges without resurrecting a stale active store', () =>
   assert.equal(merged.items[0].storeId, null);
 });
 
+test('offline post-reset shopping transitions cannot resurrect a deleted trip on reconnect', () => {
+  const seeded = initializeReplicaState({
+    ...emptyState(),
+    items: [item(0)],
+    activeSession: shoppingSession(1),
+  }, 'seed-device');
+  let stale = mergeReplicaStates([seeded], 'stale-device');
+  const resetBase = mergeReplicaStates([seeded], 'reset-device');
+  const reset = recordLocalMutation(resetBase, {
+    ...resetBase,
+    items: resetBase.items.map((entry) => ({ ...entry, status: 'stocked', storeId: null })),
+    activeSession: null,
+  }, 'reset-device', 'shopping.reset');
+
+  for (let index = 0; index < 4; index += 1) {
+    stale = recordLocalMutation(stale, {
+      ...stale,
+      activeSession: {
+        ...stale.activeSession!,
+        currentIndex: index + 1,
+        status: index % 2 === 0 ? 'receipt_prompt' : 'shopping_store',
+      },
+    }, 'stale-device', `shopping.offline.${index}`);
+  }
+
+  const merged = mergeReplicaStates([reset, stale], 'observer-device');
+
+  assert.equal(merged.activeSession, null);
+  assert.equal(merged.items[0].storeId, null);
+});
+
+test('both devices can reset the same trip and converge without a ghost store', () => {
+  const seeded = initializeReplicaState({ ...emptyState(), activeSession: shoppingSession(1) }, 'seed-device');
+  const ownerBase = mergeReplicaStates([seeded], 'owner-device');
+  const memberBase = mergeReplicaStates([seeded], 'member-device');
+  const owner = recordLocalMutation(ownerBase, { ...ownerBase, activeSession: null }, 'owner-device', 'shopping.reset');
+  const member = recordLocalMutation(memberBase, { ...memberBase, activeSession: null }, 'member-device', 'shopping.reset');
+
+  const ownerFirst = mergeReplicaStates([owner, member], 'observer-a');
+  const memberFirst = mergeReplicaStates([member, owner], 'observer-b');
+
+  assert.equal(ownerFirst.activeSession, null);
+  assert.equal(memberFirst.activeSession, null);
+  assert.equal(syncStateDigest(ownerFirst), syncStateDigest(memberFirst));
+});
+
+test('a new trip can start after the deleted trip tombstone converges', () => {
+  const seeded = initializeReplicaState({ ...emptyState(), activeSession: shoppingSession(1) }, 'seed-device');
+  const resetBase = mergeReplicaStates([seeded], 'reset-device');
+  const reset = recordLocalMutation(resetBase, { ...resetBase, activeSession: null }, 'reset-device', 'shopping.reset');
+  const converged = mergeReplicaStates([seeded, reset], 'owner-device');
+  const nextSession = { ...shoppingSession(1), tripId: 'trip-2', startedAt: 2 };
+  const restarted = recordLocalMutation(
+    converged,
+    { ...converged, activeSession: nextSession },
+    'owner-device',
+    'shopping.start',
+  );
+
+  const merged = mergeReplicaStates([reset, restarted], 'observer-device');
+
+  assert.equal(merged.activeSession?.tripId, 'trip-2');
+  assert.equal(merged.activeSession?.status, 'shopping_store');
+});
+
 test('offline changes survive serialization and converge after reconnect', () => {
   const base = addItemsRapidly(initializeReplicaState(emptyState(), 'seed-device'), 'seed-device', 20);
   let offline = mergeReplicaStates([base], 'offline-device');

@@ -47,6 +47,7 @@ function cloneMetadata(meta: DurableSyncMetadata, replicaId: string): DurableSyn
     sessionEntryTombstones: { ...meta.sessionEntryTombstones },
     sessionReceipts: { ...meta.sessionReceipts },
     sessionReceiptTombstones: { ...meta.sessionReceiptTombstones },
+    sessionTombstones: { ...(meta.sessionTombstones ?? {}) },
   };
 }
 
@@ -116,6 +117,7 @@ function stampAll(state: DurableState, replicaId: string): DurableSyncMetadata {
     sessionEntryTombstones: {},
     sessionReceipts: {},
     sessionReceiptTombstones: {},
+    sessionTombstones: {},
   };
   if (state.activeSession) {
     for (const entry of state.activeSession.entries) meta.sessionEntries[sessionKey(state.activeSession, entry.itemId)] = stamp;
@@ -173,6 +175,9 @@ export function recordLocalMutation(
 
   const beforeSession = baseline.activeSession;
   const afterSession = current.activeSession;
+  if (beforeSession?.tripId && beforeSession.tripId !== afterSession?.tripId) {
+    meta.sessionTombstones![beforeSession.tripId] = nextStamp(`shoppingSession:${beforeSession.tripId}`);
+  }
   if (afterSession) {
     const beforeEntries = beforeSession?.tripId === afterSession.tripId
       ? new Map(beforeSession.entries.map((entry) => [entry.itemId, entry]))
@@ -227,6 +232,7 @@ function maxMetadata(states: DurableState[], localReplicaId: string): DurableSyn
   combined.sessionEntryTombstones = {};
   combined.sessionReceipts = {};
   combined.sessionReceiptTombstones = {};
+  combined.sessionTombstones = {};
   combined.clock = 0;
 
   const mergeMap = (target: Record<string, SyncStamp>, source: Record<string, SyncStamp>) => {
@@ -246,6 +252,7 @@ function maxMetadata(states: DurableState[], localReplicaId: string): DurableSyn
     mergeMap(combined.sessionEntryTombstones, meta.sessionEntryTombstones);
     mergeMap(combined.sessionReceipts, meta.sessionReceipts);
     mergeMap(combined.sessionReceiptTombstones, meta.sessionReceiptTombstones);
+    mergeMap(combined.sessionTombstones!, meta.sessionTombstones ?? {});
   }
   combined.replicaId = localReplicaId;
   delete combined.lastOperation;
@@ -288,6 +295,7 @@ function mergeSession(states: DurableState[], meta: DurableSyncMetadata): Shared
   const baseState = highestSingletonState(states, 'activeSession');
   const base = baseState.activeSession;
   if (!base) return null;
+  if (base.tripId && meta.sessionTombstones?.[base.tripId]) return null;
   const tripPrefix = `${base.tripId ?? 'idle'}:`;
   const entryIds = new Set<string>();
   const receiptIds = new Set<string>();

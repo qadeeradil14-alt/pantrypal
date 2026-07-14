@@ -69,6 +69,20 @@ test('reset clears shopping items and active session in one durable state transi
   assert.equal(reset.items[0].updatedAt, 200);
 });
 
+test('repeated reset is idempotent', () => {
+  const state: DurableState = {
+    ...emptyDurableState,
+    items: [lowItem],
+    activeSession,
+    updatedAt: 50,
+  };
+
+  const first = resetShoppingLifecycleState(state, 200);
+  const second = resetShoppingLifecycleState(first, 300);
+
+  assert.deepEqual(second, first);
+});
+
 test('full lifecycle trace records every state transition through idle', () => {
   const transitions: string[] = [];
   let session: ShoppingSession = initialSession;
@@ -98,6 +112,12 @@ test('full lifecycle trace records every state transition through idle', () => {
       ['trip_summary', 'idle'],
     ],
   );
+  assert.match(transitions[0], /route=unknown/);
+  assert.match(transitions[0], /device=unknown/);
+  assert.match(transitions[0], /sequence=0/);
+  assert.match(transitions[0], /version=0/);
+  assert.match(transitions[0], /entityIds=t_100,tuna,sams-club/);
+  assert.match(transitions[0], /error=none/);
 });
 
 test('boot hydration orders durable convergence before session hydration', () => {
@@ -124,6 +144,16 @@ test('reset action updates both stores through the lifecycle boundary', () => {
   assert.match(sessionStore, /durable\.resetShoppingList\(\)/);
   assert.match(sessionStore, /set\(\{ session: initialSession/);
   assert.match(shoppingScreen, /onPress:\s*resetShopping/);
+});
+
+test('shopping tab remains mounted and renders the idle planner after reset', () => {
+  const tabLayout = readFileSync(join(process.cwd(), 'app/(tabs)/_layout.tsx'), 'utf8');
+  const shoppingScreen = readFileSync(join(process.cwd(), 'app/(tabs)/shopping.tsx'), 'utf8');
+
+  assert.match(tabLayout, /name="shopping"/);
+  assert.match(shoppingScreen, /if \(session\.status === 'trip_summary'\)/);
+  assert.match(shoppingScreen, /const planEntries = Array\.from\(plan\.entries\(\)\)/);
+  assert.doesNotMatch(shoppingScreen, /router\.(?:replace|dismiss|back)\([^)]*RESET/);
 });
 
 test('rejected trip start releases the one-shot guard for retry', () => {
