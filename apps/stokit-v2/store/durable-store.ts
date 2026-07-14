@@ -23,6 +23,7 @@ import type {
   Unit,
 } from '../types';
 import { shoppingEntryEventForItem } from '../core/services/shoppingEntrySync';
+import { hasValidStoreCoordinates } from '../core/services/storeCoordinates';
 export type { StorageLocation as StorageLocationImport };
 import { uid, now } from '../core/services/id';
 import {
@@ -85,7 +86,7 @@ interface DurableStore extends DurableState {
     openingHours?: string;
     isOpen?: boolean;
   }) => Store;
-  updateStore: (id: string, patch: { name?: string; logoColor?: string; logoEmoji?: string; logoUrl?: string; openingHours?: string; isOpen?: boolean }) => void;
+  updateStore: (id: string, patch: { name?: string; logoColor?: string; logoEmoji?: string; logoUrl?: string; placeId?: string; address?: string; lat?: number; lng?: number; openingHours?: string; isOpen?: boolean }) => void;
   deleteStore: (id: string) => void;
 
   // Trips / receipts (committed from the shopping session)
@@ -333,6 +334,9 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     },
 
     addStore: (input) => {
+      if (!hasValidStoreCoordinates(input.lat, input.lng)) {
+        throw new Error('Stores require valid latitude and longitude before they can be saved.');
+      }
       const duplicate = findDuplicateStore(get().stores, input);
       if (duplicate) return duplicate;
 

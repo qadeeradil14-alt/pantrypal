@@ -10,7 +10,9 @@ import { fonts, radii, spacing, type AppColors } from '../../theme';
 import { useDurableStore } from '../../store/durable-store';
 import { findDuplicateStore } from '../../core/services/storeDuplicates';
 import { autocompleteGooglePlaces, getPlaceDetailsGoogle, geocodeLocation, searchNearbyStoresByName, type AutocompleteSuggestion, type NearbyStore } from '../../core/services/places';
+import { hasValidStoreCoordinates } from '../../core/services/storeCoordinates';
 import { useTheme } from '../../hooks/useTheme';
+import type { Store } from '../../types';
 
 const LOGO_COLORS = ['#C0392B','#E8913E','#D8A24A','#3D7A53','#2E6DA4','#6C5CE7','#444'];
 const EMOJIS      = ['🛒','🏬','🥕','🧀','🍞','🐟','🍎','🛍️'];
@@ -19,14 +21,16 @@ export function AddStoreSheet({
   visible,
   onClose,
   onStoreAdded,
+  storeToUpdate,
 }: {
   visible: boolean;
   onClose: () => void;
   onStoreAdded?: (storeId: string) => void;
+  storeToUpdate?: Store | null;
 }) {
   return (
-    <Sheet visible={visible} title="Add a store" onClose={onClose}>
-      <AddStoreContent onClose={onClose} onStoreAdded={onStoreAdded} isActive={visible} />
+    <Sheet visible={visible} title={storeToUpdate ? 'Update location' : 'Add a store'} onClose={onClose}>
+      <AddStoreContent onClose={onClose} onStoreAdded={onStoreAdded} isActive={visible} storeToUpdate={storeToUpdate} />
     </Sheet>
   );
 }
@@ -35,13 +39,16 @@ export function AddStoreContent({
   onClose,
   onStoreAdded,
   isActive = true,
+  storeToUpdate,
 }: {
   onClose: () => void;
   onStoreAdded?: (storeId: string) => void;
   isActive?: boolean;
+  storeToUpdate?: Store | null;
 }) {
   const { colors } = useTheme();
   const addStore = useDurableStore((s) => s.addStore);
+  const updateStore = useDurableStore((s) => s.updateStore);
   const stores = useDurableStore((s) => s.stores);
 
   const [name, setName]   = useState('');
@@ -65,6 +72,19 @@ export function AddStoreContent({
   const nearbyStoreCache = useRef<Map<string, NearbyStore>>(new Map());
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  useEffect(() => {
+    if (!isActive || !storeToUpdate) return;
+    setName(storeToUpdate.name);
+    setColor(storeToUpdate.logoColor ?? LOGO_COLORS[1]);
+    setEmoji(storeToUpdate.logoEmoji);
+    setPlaceId(undefined);
+    setAddress(undefined);
+    setLat(undefined);
+    setLng(undefined);
+    setSuggestions([]);
+    setSearchError('');
+  }, [isActive, storeToUpdate?.id]);
 
   // Grab location once when active, store in ref (doesn't trigger re-renders)
   useEffect(() => {
@@ -135,6 +155,10 @@ export function AddStoreContent({
     }, 400);
   }, []);
 
+  useEffect(() => {
+    if (isActive && storeToUpdate) runAutocomplete(storeToUpdate.name, '');
+  }, [isActive, runAutocomplete, storeToUpdate?.id]);
+
   const reset = () => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setName(''); setZip(''); setColor(LOGO_COLORS[1]); setEmoji(undefined);
@@ -169,6 +193,8 @@ export function AddStoreContent({
     address?: string;
     lat?: number;
     lng?: number;
+    openingHours?: string;
+    isOpen?: boolean;
   }) => {
     const trimmedName = input.name.trim();
     if (!trimmedName) {
@@ -176,7 +202,16 @@ export function AddStoreContent({
       return;
     }
 
-    const duplicate = findDuplicateStore(stores, { ...input, name: trimmedName });
+    if (!hasValidStoreCoordinates(input.lat, input.lng)) {
+      addingRef.current = false;
+      Alert.alert('Choose a store location', 'Select a search result with a precise location before saving.');
+      return;
+    }
+
+    const duplicate = findDuplicateStore(
+      storeToUpdate ? stores.filter((store) => store.id !== storeToUpdate.id) : stores,
+      { ...input, name: trimmedName },
+    );
     if (duplicate) {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       Alert.alert('Store already added', `${trimmedName} is already in your stores.`, [{
@@ -190,13 +225,21 @@ export function AddStoreContent({
 
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-    const store = addStore({
-      ...input,
-      name: trimmedName,
-    });
+    const store = storeToUpdate
+      ? { ...storeToUpdate, ...input, name: trimmedName }
+      : addStore({ ...input, name: trimmedName });
 
-    const hasCoords = typeof store.lat === 'number' && !Number.isNaN(store.lat)
-      && typeof store.lng === 'number' && !Number.isNaN(store.lng);
+    if (storeToUpdate) {
+      updateStore(storeToUpdate.id, {
+        name: trimmedName,
+        placeId: input.placeId,
+        address: input.address,
+        lat: input.lat,
+        lng: input.lng,
+        openingHours: input.openingHours,
+        isOpen: input.isOpen,
+      });
+    }
 
     const complete = () => {
       addingRef.current = false;
@@ -207,21 +250,8 @@ export function AddStoreContent({
       }
     };
 
-    if (hasCoords) {
-      complete();
-      return;
-    }
-
-    Alert.alert(
-      'Store added',
-      'Store added, but arrival reminders may not work for this store.',
-      [{
-        text: 'OK',
-        onPress: complete,
-      }],
-      { cancelable: false },
-    );
-  }, [addStore, stores, onClose, onStoreAdded]);
+    complete();
+  }, [addStore, onClose, onStoreAdded, storeToUpdate, stores, updateStore]);
 
   const selectSuggestion = async (s: AutocompleteSuggestion) => {
     if (addingRef.current) return;
@@ -270,25 +300,15 @@ export function AddStoreContent({
       } else {
         setPlaceId(s.placeId);
         setAddress(s.secondaryText);
-        finishAdd({
-          name: s.mainText,
-          logoColor: color,
-          logoEmoji: emoji,
-          placeId: s.placeId,
-          address: s.secondaryText,
-        });
+        setSearchError('That result has no precise location. Choose another result.');
+        addingRef.current = false;
       }
     } catch (e) {
       if (__DEV__) console.error('[AddStoreSheet] details error:', e);
       setPlaceId(s.placeId);
       setAddress(s.secondaryText);
-      finishAdd({
-        name: s.mainText,
-        logoColor: color,
-        logoEmoji: emoji,
-        placeId: s.placeId,
-        address: s.secondaryText,
-      });
+      setSearchError('That result has no precise location. Choose another result.');
+      addingRef.current = false;
     } finally {
       setLoadingSuggestion(false);
     }

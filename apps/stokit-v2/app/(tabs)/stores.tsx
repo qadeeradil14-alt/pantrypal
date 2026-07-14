@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { Alert, Pressable, StyleSheet, Text, View, Image, Linking, Platform, ActionSheetIOS, LayoutAnimation } from 'react-native';
 import * as Haptics from 'expo-haptics';
@@ -14,6 +14,8 @@ import { Button } from '../../components/shared/ui';
 import { fonts, radii, spacing, type AppColors } from '../../theme';
 import { useDurableStore } from '../../store/durable-store';
 import { useTheme } from '../../hooks/useTheme';
+import { geocodeLocation } from '../../core/services/places';
+import { hasValidStoreCoordinates, storeBackfillQuery } from '../../core/services/storeCoordinates';
 import type { Store } from '../../types';
 
 const LOGO_COLORS = ['#C0392B', '#E8913E', '#D8A24A', '#3D7A53', '#2E6DA4', '#6C5CE7', '#444'];
@@ -95,8 +97,11 @@ export default function StoresScreen() {
   const stores = useDurableStore((s) => s.stores);
   const items = useDurableStore((s) => s.items);
   const deleteStore = useDurableStore((s) => s.deleteStore);
+  const updateStore = useDurableStore((s) => s.updateStore);
   const [addOpen, setAddOpen] = useState(false);
   const [editStore, setEditStore] = useState<Store | null>(null);
+  const [locationRecoveryStore, setLocationRecoveryStore] = useState<Store | null>(null);
+  const backfillInFlightRef = useRef(new Set<string>());
   // Live open/closed status — fetched fresh from Google on every tab focus, never persisted
   const [liveStatus, setLiveStatus] = useState<Record<string, boolean | undefined>>({});
 
@@ -132,13 +137,9 @@ export default function StoresScreen() {
   const countFor = (storeId: string) =>
     items.filter((i) => i.storeId === storeId).length;
 
-  const handleDirections = async (store: Store) => {
-    if (store.lat == null || store.lng == null) {
-      Alert.alert('Location Missing', 'This store does not have precise GPS coordinates saved.');
-      return;
-    }
-    const latLng = `${store.lat},${store.lng}`;
-    const label = encodeURIComponent(store.name);
+  const openDirections = async (name: string, lat: number, lng: number) => {
+    const latLng = `${lat},${lng}`;
+    const label = encodeURIComponent(name);
     
     // Platform-specific native map schemes
     const nativeUrl = Platform.select({
@@ -163,6 +164,48 @@ export default function StoresScreen() {
     Linking.openURL(browserUrl).catch(() => {
       Alert.alert('Error', 'Could not open maps.');
     });
+  };
+
+  const handleDirections = async (store: Store) => {
+    const { lat, lng } = store;
+    if (hasValidStoreCoordinates(lat, lng) && lat !== undefined && lng !== undefined) {
+      return openDirections(store.name, lat, lng);
+    }
+
+    const query = store.address ? storeBackfillQuery(store) : '';
+    if (query) {
+      if (backfillInFlightRef.current.has(store.id)) return;
+      backfillInFlightRef.current.add(store.id);
+      try {
+        const backfill = await geocodeLocation(query);
+        if (backfill && hasValidStoreCoordinates(backfill.lat, backfill.lng)) {
+          updateStore(store.id, { lat: backfill.lat, lng: backfill.lng });
+          return openDirections(store.name, backfill.lat, backfill.lng);
+        }
+      } finally {
+        backfillInFlightRef.current.delete(store.id);
+      }
+    }
+
+    Alert.alert(
+      'Location Missing',
+      'We could not find a precise location for this saved store.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Update location',
+          onPress: () => {
+            setLocationRecoveryStore(store);
+            setAddOpen(true);
+          },
+        },
+      ],
+    );
+  };
+
+  const closeAddStore = () => {
+    setAddOpen(false);
+    setLocationRecoveryStore(null);
   };
 
   const handleDelete = (store: Store) => {
@@ -201,7 +244,7 @@ export default function StoresScreen() {
             onCta={() => setAddOpen(true)}
             steps={['Name your store', 'Pick a color or icon', 'Assign items when you add them']}
           />
-          <AddStoreSheet visible={addOpen} onClose={() => setAddOpen(false)} />
+          <AddStoreSheet visible={addOpen} onClose={closeAddStore} storeToUpdate={locationRecoveryStore} />
         </Screen>
       </View>
     );
@@ -309,7 +352,7 @@ export default function StoresScreen() {
         ))}
         </View>
 
-        <AddStoreSheet visible={addOpen} onClose={() => setAddOpen(false)} />
+        <AddStoreSheet visible={addOpen} onClose={closeAddStore} storeToUpdate={locationRecoveryStore} />
         <EditStoreSheet store={editStore} onClose={() => setEditStore(null)} />
       </Screen>
       <Fab onPress={() => setAddOpen(true)} />

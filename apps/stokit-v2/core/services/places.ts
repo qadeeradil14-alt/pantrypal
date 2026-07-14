@@ -15,6 +15,7 @@
  */
 
 import { config, hasGoogleKey, hasGeoapifyKey } from '../../lib/config';
+import { hasValidStoreCoordinates } from './storeCoordinates';
 
 export interface NearbyStore {
   placeId: string;
@@ -106,6 +107,7 @@ export async function geocodeLocation(
         if (data.status === 'OK' && data.results?.length > 0) {
           const r = data.results[0];
           const loc = r.geometry.location;
+          if (!hasValidStoreCoordinates(loc.lat, loc.lng)) return null;
           return {
             lat: loc.lat,
             lng: loc.lng,
@@ -131,6 +133,7 @@ export async function geocodeLocation(
         const data = await res.json();
         if (data.results && data.results.length > 0) {
           const r = data.results[0];
+          if (!hasValidStoreCoordinates(r.lat, r.lon)) return null;
           return {
             lat: r.lat,
             lng: r.lon,
@@ -160,9 +163,12 @@ export async function geocodeLocation(
     if (!res.ok) return null;
     const data = (await res.json()) as NominatimResult[];
     if (!data.length) return null;
+    const lat = parseFloat(data[0].lat);
+    const lng = parseFloat(data[0].lon);
+    if (!hasValidStoreCoordinates(lat, lng)) return null;
     return {
-      lat: parseFloat(data[0].lat),
-      lng: parseFloat(data[0].lon),
+      lat,
+      lng,
       displayName: data[0].display_name.split(',').slice(0, 2).join(','),
     };
   } catch {
@@ -311,7 +317,7 @@ async function findNearbyStoresOSM(
         types: [el.tags?.shop ?? 'store'],
       };
     })
-    .filter((s) => s.name.trim().length > 0)
+    .filter((s) => s.name.trim().length > 0 && hasValidStoreCoordinates(s.lat, s.lng))
     .sort((a, b) => a.distanceMetres - b.distanceMetres);
 }
 
@@ -360,7 +366,7 @@ async function searchByNameOSM(
         types: [el.tags?.shop ?? 'store'],
       };
     })
-    .filter((s) => s.name.trim().length > 0)
+    .filter((s) => s.name.trim().length > 0 && hasValidStoreCoordinates(s.lat, s.lng))
     .sort((a, b) => a.distanceMetres - b.distanceMetres);
 }
 
@@ -397,7 +403,8 @@ async function searchByNameGoogle(
       lng: p.geometry.location.lng,
       types: p.types ?? [],
       rating: p.rating,
-    })).sort((a, b) => a.distanceMetres - b.distanceMetres);
+    })).filter((store) => hasValidStoreCoordinates(store.lat, store.lng))
+      .sort((a, b) => a.distanceMetres - b.distanceMetres);
   } catch {
     return [];
   }
@@ -457,14 +464,14 @@ export async function getPlaceDetailsGoogle(placeId: string): Promise<NearbyStor
     }
     const data = await res.json();
     const p = data.result;
-    if (!p) return null;
+    if (!p || !hasValidStoreCoordinates(p.geometry?.location?.lat, p.geometry?.location?.lng)) return null;
     return {
       placeId: p.place_id,
       name: p.name,
       address: p.vicinity ?? '',
       distanceMetres: 0,
-      lat: p.geometry?.location?.lat ?? 0,
-      lng: p.geometry?.location?.lng ?? 0,
+      lat: p.geometry.location.lat,
+      lng: p.geometry.location.lng,
       types: p.types ?? [],
       rating: p.rating,
       isOpen: p.opening_hours?.open_now,
@@ -525,6 +532,7 @@ async function findNearbyStoresGoogle(
       rating: p.rating,
       isOpen: p.opening_hours?.open_now,
     }))
+    .filter((store) => hasValidStoreCoordinates(store.lat, store.lng))
     .sort((a, b) => a.distanceMetres - b.distanceMetres);
 }
 
@@ -572,7 +580,7 @@ async function findNearbyStoresGeoapify(
           openingHours: f.properties.opening_hours,
         };
       })
-      .filter((s) => s.name.trim().length > 0)
+      .filter((s) => s.name.trim().length > 0 && hasValidStoreCoordinates(s.lat, s.lng))
       .sort((a, b) => a.distanceMetres - b.distanceMetres);
   } catch {
     return [];
@@ -624,6 +632,7 @@ async function searchByNameGeoapify(
           openingHours: f.properties.opening_hours,
         };
       })
+      .filter((s: NearbyStore) => hasValidStoreCoordinates(s.lat, s.lng))
       .sort((a: NearbyStore, b: NearbyStore) => (a.distanceMetres || 0) - (b.distanceMetres || 0));
 
     if (__DEV__) console.log('[Geoapify] Mapped results count:', mapped.length);
