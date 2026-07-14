@@ -9,7 +9,7 @@
  *   next_store_ready → pick next store / skip stores / finish early
  *   trip_summary   → full bird's-eye summary with per-store breakdown
  */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -27,7 +27,7 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect, useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Animated } from 'react-native';
 import { Screen } from '../../components/shared/Screen';
@@ -53,6 +53,7 @@ import { isGeofencingRunning, startGeofencing } from '../../core/services/geofen
 import { sendHouseholdShoppingAlert } from '../../core/services/notifications';
 import { sendShoppingAlertOnce } from '../../core/services/shoppingAlertOnce';
 import { resetShoppingTripStartGuard, startShoppingTripOnce } from '../../core/services/shoppingTripStart';
+import { pullFromSupabase } from '../../core/services/syncEngine';
 import type { ReceiptReviewItem } from '../../core/services/shoppingUx';
 import type { PantryItem, ShoppingEntry, Store } from '../../types';
 import { useTheme } from '../../hooks/useTheme';
@@ -102,6 +103,13 @@ export default function ShoppingScreen() {
   const [showStoreChooser, setShowStoreChooser] = useState(false);
   const tripStartIdRef = useRef<string | null>(null);
   const previousSessionStatusRef = useRef(session.status);
+
+  useFocusEffect(
+    useCallback(() => {
+      console.log('[Shopping Sync] shopping_tab_focus_pull');
+      void pullFromSupabase();
+    }, []),
+  );
 
   useEffect(() => {
     if (previousSessionStatusRef.current !== 'idle' && session.status === 'idle') {

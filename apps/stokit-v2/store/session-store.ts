@@ -139,7 +139,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         durable.logActivity('picked_up', `Picked up ${after.name}`, {
           itemId: after.itemId,
           storeId: after.storeId,
-        });
+        }, false);
       }
     }
 

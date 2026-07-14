@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase';
 import type { DurableState, Receipt } from '../../types';
 import { shouldApplyRemoteSnapshot, remoteSkipReason, markRemoteApplied, markPushed, isSelfEcho, resetSyncWatermark } from './syncWatermark';
 import { reconcileShoppingSession } from './shoppingEntrySync';
+import { createDebouncedPullScheduler } from './realtimePullScheduler';
 
 const CLOUD_TABLE = 'household_snapshots';
 const RECEIPT_BUCKET = 'receipts';
@@ -37,6 +38,7 @@ function retryDelay(attempt: number): Promise<void> {
 let syncChannel: ReturnType<typeof supabase.channel> | null = null;
 let activeHouseholdId: string | null = null;
 const initialHouseholdSyncComplete = new Set<string>();
+const realtimePullScheduler = createDebouncedPullScheduler(() => pullFromSupabase(), 150);
 
 function activeSessionStats(state: DurableState): { itemCount: number; pickedCount: number; sessionId: string } {
   const entries = state.activeSession?.entries ?? [];
@@ -343,12 +345,18 @@ export async function startSyncEngine(): Promise<void> {
         table: CLOUD_TABLE,
         filter: `household_id=eq.${id}`,
       },
-      () => { void pullFromSupabase(); },
+      (payload) => {
+        console.log(`[Shopping Sync] realtime_snapshot_event event=${payload.eventType} householdId=${id}`);
+        realtimePullScheduler.schedule();
+      },
     )
-    .subscribe();
+    .subscribe((status, error) => {
+      console.log(`[Shopping Sync] realtime_subscription_status status=${status} householdId=${id}${error ? ` error=${error.message}` : ''}`);
+    });
 }
 
 export function stopSyncEngine(): void {
+  realtimePullScheduler.cancel();
   if (syncChannel) void supabase.removeChannel(syncChannel);
   syncChannel = null;
   activeHouseholdId = null;

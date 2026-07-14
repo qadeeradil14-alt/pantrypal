@@ -42,6 +42,7 @@ import { consolidatePantryItems, normalizeItemName } from '../core/services/pant
 import { isDuplicatePriceEntry, isValidPrice } from '../core/services/priceHistory';
 import { refreshWidgets } from '../core/services/widgets';
 import { findDuplicateStore } from '../core/services/storeDuplicates';
+import { createLatestSnapshotQueue } from '../core/services/latestSnapshotQueue';
 
 let persistedDurableState = false;
 
@@ -101,7 +102,8 @@ interface DurableStore extends DurableState {
   logActivity: (
     type: ActivityType,
     message: string,
-    refs?: { itemId?: string; storeId?: string; tripId?: string }
+    refs?: { itemId?: string; storeId?: string; tripId?: string },
+    persistActivity?: boolean,
   ) => void;
 
   resetAll: () => Promise<void>;
@@ -128,6 +130,10 @@ function snapshot(s: DurableState): DurableState {
 export const useDurableStore = create<DurableStore>((set, get) => {
   // is swallowed by the repository so the in-memory state stays authoritative.
   let persistQueue = Promise.resolve();
+  const snapshotPushQueue = createLatestSnapshotQueue(async ({ snap, epoch }: { snap: DurableState; epoch: number }) => {
+    if (epoch !== persistEpoch) return;
+    await pushLocalState(snap);
+  });
   let persistEpoch = 0;
   let lastSnapshotAt = 0;
   const persist = () => {
@@ -142,7 +148,9 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         if (epoch !== persistEpoch) return;
         await saveDurable(snap);
         if (epoch !== persistEpoch) return;
-        await pushLocalState(snap);
+        void snapshotPushQueue.enqueue({ snap, epoch }).catch((err) => {
+          if (__DEV__) console.warn('[durable-store] snapshot push failed', err);
+        });
       })
       .catch((err) => { if (__DEV__) console.warn('[durable-store] persist failed', err); });
   };
@@ -456,14 +464,15 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       persist();
     },
 
-    logActivity: (type, message, refs) => {
+    logActivity: (type, message, refs, persistActivity = true) => {
       pushActivity(type, message, refs);
-      persist();
+      if (persistActivity) persist();
     },
 
     resetAll: async () => {
       persistEpoch += 1;
       await persistQueue;
+      await snapshotPushQueue.whenIdle();
       await clearCloudState();
       await clearDurable();
       set({ ...emptyDurableState, prefs: { ...defaultPrefs }, hydrated: true });
@@ -473,6 +482,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     resetLocalOnly: async () => {
       persistEpoch += 1;
       await persistQueue;
+      await snapshotPushQueue.whenIdle();
       await clearDurable();
       set({ ...emptyDurableState, prefs: { ...defaultPrefs }, hydrated: true });
       void refreshWidgets([]);
