@@ -159,6 +159,27 @@ test('concurrent shopping entry changes merge per item and rapid uncheck wins lo
   assert.equal(merged.activeSession?.entries.find((entry) => entry.itemId === 'item-0')?.picked, false);
 });
 
+test('shopping reset converges without resurrecting a stale active store', () => {
+  const seeded = initializeReplicaState({
+    ...emptyState(),
+    items: [item(0)],
+    activeSession: shoppingSession(1),
+  }, 'seed-device');
+  const stale = mergeReplicaStates([seeded], 'stale-device');
+  const resetBase = mergeReplicaStates([seeded], 'reset-device');
+  const reset = recordLocalMutation(resetBase, {
+    ...resetBase,
+    items: resetBase.items.map((entry) => ({ ...entry, status: 'stocked', storeId: null })),
+    activeSession: null,
+  }, 'reset-device', 'shopping.reset');
+
+  const merged = mergeReplicaStates([stale, reset], 'observer-device');
+
+  assert.equal(merged.activeSession, null);
+  assert.equal(merged.items[0].status, 'stocked');
+  assert.equal(merged.items[0].storeId, null);
+});
+
 test('offline changes survive serialization and converge after reconnect', () => {
   const base = addItemsRapidly(initializeReplicaState(emptyState(), 'seed-device'), 'seed-device', 20);
   let offline = mergeReplicaStates([base], 'offline-device');

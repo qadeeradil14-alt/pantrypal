@@ -1,9 +1,8 @@
 /**
- * Session Zustand store — the ONE place the active shopping session lives.
+ * Session Zustand store — the UI projection of the durable shopping session.
  *
- * Persisted to AsyncStorage so the session survives an app restart
- * (Test 5: refresh before choosing next store → receipt is still there).
- * A fresh idle session is NOT persisted — only active sessions are saved.
+ * The durable store is authoritative during hydration and replica sync.
+ * AsyncStorage remains a write-through cache for compatibility.
  *
  * Driven exclusively by the shopping state machine reducer.
  * Owns side-effects that bridge transient session → durable state.
@@ -20,6 +19,7 @@ import {
 import { useDurableStore } from './durable-store';
 import type { SharedShoppingSession } from '../types';
 import { remoteShoppingSessionAction } from '../core/services/shoppingSessionSyncPolicy';
+import { resolveHydratedShoppingSession, shoppingTransitionTrace } from '../core/services/shoppingLifecycle';
 
 const SESSION_KEY = 'stokit:v2:active-session';
 
@@ -30,6 +30,7 @@ interface SessionStore {
   applyRemoteSession: (session: SharedShoppingSession | null) => void;
   /** Load a persisted session on app start. */
   hydrateSession: () => Promise<void>;
+  resetShopping: () => void;
   clearSession: () => Promise<void>;
 }
 
@@ -42,42 +43,25 @@ function persistSession(session: ShoppingSession): void {
   }
 }
 
-function sessionStats(session: ShoppingSession | SharedShoppingSession | null): { itemCount: number; pickedCount: number; sessionId: string } {
-  const entries = session?.entries ?? [];
-  return {
-    itemCount: entries.length,
-    pickedCount: entries.filter((entry) => entry.picked).length,
-    sessionId: session?.tripId ?? 'none',
-  };
-}
-
 export const useSessionStore = create<SessionStore>((set, get) => ({
   session: initialSession,
   hydrated: false,
 
   hydrateSession: async () => {
-    try {
-      const raw = await AsyncStorage.getItem(SESSION_KEY);
-      if (raw) {
-        const saved = JSON.parse(raw) as ShoppingSession;
-        // Only restore active sessions — never restore trip_summary (it was committed)
-        if (saved.status !== 'idle' && saved.status !== 'trip_summary') {
-          const durableSession = useDurableStore.getState().activeSession;
-          if (durableSession && (durableSession.startedAt ?? 0) > (saved.startedAt ?? 0)) {
-            console.log('[Shopping Sync] active_session_storage_rehydrate_ignored reason=remote_newer');
-            set({ session: durableSession as ShoppingSession });
-            set({ hydrated: true });
-            return;
-          }
-          const stats = sessionStats(saved);
-          console.log(`[Shopping Sync] active_session_storage_rehydrated sessionId=${stats.sessionId} itemCount=${stats.itemCount}`);
-          set({ session: saved });
-        }
-      }
-    } catch {
-      // Non-fatal — start fresh
-    }
+    const resolved = resolveHydratedShoppingSession(initialSession, useDurableStore.getState().activeSession);
+    set({ session: resolved });
+    persistSession(resolved);
+    console.log(shoppingTransitionTrace('hydrate', 'HYDRATE', initialSession, resolved));
     set({ hydrated: true });
+  },
+
+  resetShopping: () => {
+    const previous = get().session;
+    const durable = useDurableStore.getState();
+    durable.resetShoppingList();
+    set({ session: initialSession, hydrated: true });
+    persistSession(initialSession);
+    console.log(shoppingTransitionTrace('local', 'RESET_SHOPPING', previous, initialSession));
   },
 
   clearSession: async () => {
@@ -86,20 +70,27 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   },
 
   applyRemoteSession: (remoteSession) => {
+    const previous = get().session;
     if (!remoteSession || remoteShoppingSessionAction(remoteSession) === 'clear') {
       set({ session: initialSession });
       AsyncStorage.removeItem(SESSION_KEY).catch(() => {});
+      console.log(shoppingTransitionTrace('remote', 'REMOTE_CLEAR', previous, initialSession));
       return;
     }
 
-    set({ session: remoteSession as ShoppingSession });
-    persistSession(remoteSession as ShoppingSession);
+    const next = remoteSession as ShoppingSession;
+    set({ session: next });
+    persistSession(next);
+    console.log(shoppingTransitionTrace('remote', 'REMOTE_APPLY', previous, next));
   },
 
   dispatch: (event) => {
     const prev = get().session;
     const next = reduce(prev, event);
-    if (next === prev) return; // pure no-op
+    if (next === prev) {
+      console.log(shoppingTransitionTrace('local', `${event.type}_NOOP`, prev, next));
+      return;
+    }
 
     const durable = useDurableStore.getState();
 
@@ -144,5 +135,6 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     set({ session: next });
     persistSession(next);
     durable.setActiveSession(next.status === 'idle' || next.status === 'trip_summary' ? null : next, event.type);
+    console.log(shoppingTransitionTrace('local', event.type, prev, next));
   },
 }));

@@ -328,6 +328,8 @@ export async function startSyncEngine(): Promise<void> {
   stopSyncEngine();
   activeHouseholdId = context.householdId;
 
+  await pullFromSupabase();
+
   syncChannel = supabase
     .channel(`household-replicas:${context.householdId}`)
     .on(

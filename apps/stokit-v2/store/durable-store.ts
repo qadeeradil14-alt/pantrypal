@@ -44,6 +44,7 @@ import { refreshWidgets } from '../core/services/widgets';
 import { findDuplicateStore } from '../core/services/storeDuplicates';
 import { initializeReplicaState, recordLocalMutation } from '../core/services/replicaSync';
 import { runObservedOperation } from '../core/services/crashReporter';
+import { resetShoppingLifecycleState } from '../core/services/shoppingLifecycle';
 
 interface DurableStore extends DurableState {
   hydrated: boolean;
@@ -191,14 +192,12 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         const normalized = initializeReplicaState({ ...loaded, items: consolidatePantryItems(loaded.items) }, replicaId);
         lastSnapshotAt = normalized.updatedAt;
         lastLocalSnapshot = normalized;
-        set({ ...normalized, hydrated: true });
+        set({ ...normalized, hydrated: false });
         void runObservedOperation('storage.normalize', () => saveDurable(normalized));
-      } else {
-        set({ hydrated: true });
       }
       void runObservedOperation('widgets.hydrate', () => refreshWidgets(get().items));
-      // Start real-time sync listeners once hydrated
       await startSyncEngine();
+      set({ hydrated: true });
     },
 
     addItem: (input) => {
@@ -316,13 +315,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     },
 
     resetShoppingList: () => {
-      set((s) => ({
-        items: s.items.map((item) =>
-          item.status === 'low' || item.status === 'expiring'
-            ? { ...item, status: 'stocked', storeId: null, updatedAt: now() }
-            : item
-        ),
-      }));
+      set((s) => resetShoppingLifecycleState(s, now()));
       persist('shopping.reset');
       void refreshGeofencedStoreData();
     },

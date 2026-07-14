@@ -81,10 +81,10 @@ export default function ShoppingScreen() {
   const stores     = useDurableStore((s) => s.stores);
   const priceHistory = useDurableStore((s) => s.priceHistory);
   const updateItem = useDurableStore((s) => s.updateItem);
-  const resetShoppingList = useDurableStore((s) => s.resetShoppingList);
   const assignItemsToStore = useDurableStore((s) => s.assignItemsToStore);
   const session    = useSessionStore((s) => s.session);
   const dispatch   = useSessionStore((s) => s.dispatch);
+  const resetShopping = useSessionStore((s) => s.resetShopping);
   const router     = useRouter();
   const [reassignItem, setReassignItem] = useState<PantryItem | null>(null);
 
@@ -193,16 +193,26 @@ export default function ShoppingScreen() {
     const tripId = `t_${now}`;
     tripStartIdRef.current = tripId;
     const store = storeById(firstStoreId);
-    startShoppingTripOnce({
-      tripId,
-      startTrip: () => dispatch({ type: 'START_TRIP', entries, now }),
-      notifyHousehold: notifyHousehold && store
-        ? () => sendShoppingAlertOnce(
-            tripId,
-            () => sendHouseholdShoppingAlert(store.name, firstStoreId),
-          )
-        : undefined,
-    });
+    try {
+      const started = startShoppingTripOnce({
+        tripId,
+        startTrip: () => dispatch({ type: 'START_TRIP', entries, now }),
+        notifyHousehold: notifyHousehold && store
+          ? () => sendShoppingAlertOnce(
+              tripId,
+              () => sendHouseholdShoppingAlert(store.name, firstStoreId),
+            )
+          : undefined,
+      });
+      if (!started || useSessionStore.getState().session.tripId !== tripId) {
+        resetShoppingTripStartGuard(tripId);
+        tripStartIdRef.current = null;
+        return;
+      }
+    } catch (error) {
+      tripStartIdRef.current = null;
+      throw error;
+    }
     if (await isGeofencingRunning()) {
       const result = await startGeofencing(stores, nextItems);
       if (result === 'no_permission') {
@@ -271,7 +281,7 @@ export default function ShoppingScreen() {
         {
           text: 'Reset',
           style: 'destructive',
-          onPress: resetShoppingList,
+          onPress: resetShopping,
         },
       ],
     );

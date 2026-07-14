@@ -104,6 +104,7 @@ export default function RootLayout() {
   const syncReplica = useDurableStore((s) => s.syncMeta?.replicaId ?? null);
   const itemCount = useDurableStore((s) => s.items.length);
   const hydrateSession = useSessionStore((s) => s.hydrateSession);
+  const hydratedSession = useSessionStore((s) => s.hydrated);
   const hydrateOnboarding = useOnboardingStore((s) => s.hydrate);
   const onboardingHydrated = useOnboardingStore((s) => s.hydrated);
   const onboardingCompleted = useOnboardingStore((s) => s.completed);
@@ -127,19 +128,19 @@ export default function RootLayout() {
   const [initialUrlChecked, setInitialUrlChecked] = useState(false);
   const verified = isEmailVerified(user);
   const unlocked = verified || guestMode;
-  const ready = fontsLoaded && hydratedDurable && hydratedHousehold && !authInitializing && onboardingHydrated;
+  const ready = fontsLoaded && hydratedDurable && hydratedHousehold && hydratedSession && !authInitializing && onboardingHydrated;
   const rootNavigationState = useRootNavigationState();
   const segments = useSegments();
 
   useEffect(() => {
     void runObservedOperation('app.hydrate', async () => {
       await Promise.all([
-        hydrateDurable(),
         hydrateHousehold(),
-        hydrateSession(),
         hydrateOnboarding(),
         setupNotifications(),
       ]);
+      await hydrateDurable();
+      await hydrateSession();
     });
   }, [hydrateDurable, hydrateHousehold, hydrateSession, hydrateOnboarding]);
 

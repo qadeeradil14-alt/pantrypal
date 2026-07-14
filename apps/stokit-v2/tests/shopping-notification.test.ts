@@ -120,7 +120,7 @@ test('remote active session is reconciled into local shopping session', () => {
   assert.ok(sessionSrc.includes('AsyncStorage.removeItem(SESSION_KEY)'), 'remote trip end must clear persisted active session');
   assert.ok(replicaSrc.includes('sessionEntries'), 'concurrent same-trip entries must merge by per-entry Lamport stamps');
   assert.ok(replicaSrc.includes('sessionEntryTombstones'), 'remote removals must not resurrect stale session entries');
-  assert.ok(sessionSrc.includes('set({ session: remoteSession as ShoppingSession })'), 'session store must render the already-merged replica result exactly');
+  assert.ok(sessionSrc.includes('set({ session: next })'), 'session store must render the already-merged replica result exactly');
 });
 
 test('local active session mutations publish full fresh snapshots', () => {
@@ -140,7 +140,7 @@ test('local active session mutations publish full fresh snapshots', () => {
 test('remote active session fully replaces local partial session and null clears storage', () => {
   const sessionPath = path.join(__dirname, '../store/session-store.ts');
   const sessionSrc = fs.readFileSync(sessionPath, 'utf-8');
-  assert.ok(sessionSrc.includes('set({ session: remoteSession as ShoppingSession })'), 'remote activeSession must replace local session for non-active/non-merged cases');
+  assert.ok(sessionSrc.includes('set({ session: next })'), 'remote activeSession must replace local session for non-active/non-merged cases');
   assert.ok(!sessionSrc.includes('ACTIVE_STATUSES.has(previous.status)'), 'remote end must clear an actively-shopping local session');
   assert.ok(sessionSrc.includes("AsyncStorage.removeItem(SESSION_KEY)"), 'remote null/end must clear persisted local active session');
   assert.ok(sessionSrc.includes('remoteShoppingSessionAction(remoteSession)'), 'remote end/null policy must gate the storage-clear and replace paths');
@@ -149,8 +149,8 @@ test('remote active session fully replaces local partial session and null clears
 test('stale AsyncStorage cannot override newer remote active session', () => {
   const sessionPath = path.join(__dirname, '../store/session-store.ts');
   const sessionSrc = fs.readFileSync(sessionPath, 'utf-8');
-  assert.ok(sessionSrc.includes('durableSession && (durableSession.startedAt ?? 0) > (saved.startedAt ?? 0)'), 'hydrate must prefer newer remote activeSession over stale storage');
-  assert.ok(sessionSrc.includes('active_session_storage_rehydrate_ignored reason=remote_newer'), 'ignored stale storage must be logged');
+  assert.ok(sessionSrc.includes('resolveHydratedShoppingSession(initialSession, useDurableStore.getState().activeSession)'), 'hydrate must use the converged durable activeSession');
+  assert.ok(!sessionSrc.includes('AsyncStorage.getItem(SESSION_KEY)'), 'standalone storage must not override the durable activeSession');
 });
 
 test('missed realtime event is corrected by foreground snapshot pull', () => {
