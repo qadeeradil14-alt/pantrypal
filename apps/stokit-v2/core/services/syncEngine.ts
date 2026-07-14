@@ -13,6 +13,7 @@ import {
 } from './replicaSync';
 import { reconcileShoppingSession } from './shoppingEntrySync';
 import { resetSyncWatermark } from './syncWatermark';
+import { runObservedOperation, setCrashContext } from './crashReporter';
 
 const LEGACY_CLOUD_TABLE = 'household_snapshots';
 const REPLICA_TABLE = 'household_sync_replicas';
@@ -157,6 +158,7 @@ async function prepareLatestState(context: SyncContext): Promise<DurableState> {
 }
 
 async function pushLatestReplica(options?: { isDeferredRetry?: boolean }): Promise<void> {
+  setCrashContext({ operation: 'sync.push' });
   const context = await syncContext();
   if (!context) return;
   const prepared = await prepareLatestState(context);
@@ -183,10 +185,10 @@ async function pushLatestReplica(options?: { isDeferredRetry?: boolean }): Promi
       deferredRetryScheduled = true;
       setTimeout(() => {
         deferredRetryScheduled = false;
-        void (async () => {
+        void runObservedOperation('sync.retry', async () => {
           const store = await durableStore();
           await pushLocalState(durableSnapshot(store.getState()), { isDeferredRetry: true });
-        })();
+        });
       }, RETRY_BASE_DELAY_MS * (RETRY_ATTEMPTS + 1));
     }
     return;
@@ -222,6 +224,7 @@ function logMergeDecision(decision: SyncMergeDecision): void {
 }
 
 async function pullLatestReplicas(): Promise<void> {
+  setCrashContext({ operation: 'sync.pull' });
   const context = await syncContext();
   if (!context) return;
   const store = await durableStore();
@@ -335,24 +338,28 @@ export async function startSyncEngine(): Promise<void> {
         table: REPLICA_TABLE,
         filter: `household_id=eq.${context.householdId}`,
       },
-      () => { void pullFromSupabase(); },
+      () => { void runObservedOperation('sync.realtime', pullFromSupabase); },
     )
     .subscribe((status) => {
-      if (status === 'SUBSCRIBED') void pullFromSupabase();
+      if (status === 'SUBSCRIBED') void runObservedOperation('sync.subscribed', pullFromSupabase);
     });
 }
 
 export function stopSyncEngine(): void {
-  if (syncChannel) void supabase.removeChannel(syncChannel);
+  if (syncChannel) void runObservedOperation('sync.unsubscribe', async () => {
+    await supabase.removeChannel(syncChannel!);
+  });
   syncChannel = null;
   activeHouseholdId = null;
   resetSyncWatermark();
 }
 
 export async function refreshGeofencedStoreData(): Promise<void> {
-  const { isGeofencingRunning, startGeofencing } = await import('./geofencing');
-  if (await isGeofencingRunning()) {
-    const { stores, items } = (await durableStore()).getState();
-    await startGeofencing(stores, items);
-  }
+  await runObservedOperation('geofencing.refresh', async () => {
+    const { isGeofencingRunning, startGeofencing } = await import('./geofencing');
+    if (await isGeofencingRunning()) {
+      const { stores, items } = (await durableStore()).getState();
+      await startGeofencing(stores, items);
+    }
+  });
 }

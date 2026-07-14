@@ -7,7 +7,6 @@ import {
   Text,
   TextInput,
   View,
-  LayoutAnimation,
 } from 'react-native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { useRouter } from 'expo-router';
@@ -17,7 +16,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { Logo } from '../../components/shared/Logo';
 import { EmptyState } from '../../components/shared/EmptyState';
-import { Fab } from '../../components/shared/Fab';
 import { MemberAvatars } from '../../components/shared/MemberAvatars';
 import { SummaryCard } from '../../components/shared/SummaryCard';
 import { AddItemSheet } from '../../components/pantry/AddItemSheet';
@@ -37,6 +35,7 @@ import { RecipeDetailSheet } from '../../components/recipes/RecipeDetailSheet';
 import type { PantryItem, } from '../../types';
 import type { RecipeSuggestion, RawMealData } from '../../core/services/recipes';
 import { ItemAvatar } from '../../components/shared/ItemAvatar';
+import { runObservedOperation } from '../../core/services/crashReporter';
 
 function getGreeting(): string {
   const h = new Date().getHours();
@@ -119,8 +118,7 @@ export default function PantryScreen() {
   }, [query, itemNameSet]);
 
   const handleAddFromCatalog = (catalogItem: PantryCatalogItem) => {
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    void runObservedOperation('haptics.itemAdded', () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
     addItem({ name: catalogItem.name, quantity: 1, unit: catalogItem.defaultUnit, storeId: null, status: 'low' });
     setSearchQuery('');
     Keyboard.dismiss();
@@ -128,22 +126,19 @@ export default function PantryScreen() {
 
   const handleAddCustom = () => {
     if (!searchQuery.trim()) return;
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    void runObservedOperation('haptics.itemAdded', () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
     addItem({ name: searchQuery.trim(), quantity: 1, unit: 'unit', storeId: null, status: 'low' });
     setSearchQuery('');
     Keyboard.dismiss();
   };
 
   const animatedSetStatus = (id: string, status: 'stocked' | 'low') => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    void runObservedOperation('haptics.itemStatus', () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
     setItemStatus(id, status);
   };
 
   const animatedDelete = (id: string) => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    void runObservedOperation('haptics.itemDelete', () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
     deleteItem(id);
   };
 
@@ -151,7 +146,8 @@ export default function PantryScreen() {
   // on sign-up), offer to join a shared household. Only fires once per install.
   useEffect(() => {
     if (!household?.isPersonal) return;
-    AsyncStorage.getItem('stokit:v2:onboarding:join-shown').then((seen) => {
+    void runObservedOperation('home.joinPrompt', async () => {
+      const seen = await AsyncStorage.getItem('stokit:v2:onboarding:join-shown');
       if (!seen) setJoinVisible(true);
     });
   }, [household?.isPersonal]);
@@ -174,7 +170,8 @@ export default function PantryScreen() {
       });
     } else {
       // First load: fetch raw data from TheMealDB
-      fetchRawRecipes(atHomeItems).then((raws) => {
+      void runObservedOperation('home.recipes', async () => {
+        const raws = await fetchRawRecipes(atHomeItems);
         if (!active) return;
         rawMealsRef.current = raws;
         rawMealsKeyRef.current = recipeKey;
@@ -234,7 +231,7 @@ export default function PantryScreen() {
           />
         </View>
 
-        <Pressable style={styles.searchBar} onPress={() => searchInputRef.current?.focus()}>
+        <View style={styles.searchBar}>
           <Ionicons name="search" size={16} color={query ? colors.primary : colors.muted} style={{ marginRight: 8 }} />
           <TextInput
             ref={searchInputRef}
@@ -247,7 +244,16 @@ export default function PantryScreen() {
             clearButtonMode="while-editing"
             onSubmitEditing={handleAddCustom}
           />
-        </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Add item"
+            hitSlop={6}
+            onPress={() => setAddVisible(true)}
+            style={styles.searchAddButton}
+          >
+            <Ionicons name="add" size={20} color="#FFFFFF" />
+          </Pressable>
+        </View>
 
         {query ? (
           <View style={styles.catalogDropdown}>
@@ -413,10 +419,8 @@ export default function PantryScreen() {
             <RecipeSuggestionsCard recipes={recipes} onPress={setSelectedRecipe} />
           </View>
         ) : null}
-        <View style={{ height: 96 }} />
+        <View style={{ height: spacing.lg }} />
       </ScrollView>
-
-      <Fab position="bottom" onPress={() => setAddVisible(true)} />
 
       <AddItemSheet
         visible={addVisible}
@@ -432,7 +436,7 @@ export default function PantryScreen() {
         visible={joinVisible}
         onClose={() => {
           setJoinVisible(false);
-          void AsyncStorage.setItem('stokit:v2:onboarding:join-shown', '1');
+          void runObservedOperation('home.joinPrompt.dismiss', () => AsyncStorage.setItem('stokit:v2:onboarding:join-shown', '1'));
         }}
       />
       <RecipeDetailSheet
@@ -645,8 +649,9 @@ function makeStyles(c: AppColors) {
     moreSubtitle:      { fontFamily: fonts.sans, fontSize: 13, color: c.muted, marginTop: 2 },
     dashboardSection:  { backgroundColor: c.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: c.borderSoft, padding: spacing.lg, ...shadow.card },
     summaryRow:       { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.lg },
-    searchBar:        { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: radii.md, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.md, paddingVertical: 10, marginTop: spacing.sm, marginBottom: spacing.xs },
+    searchBar:        { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: radii.md, borderWidth: 1, borderColor: c.border, paddingLeft: spacing.md, paddingRight: 6, paddingVertical: 6, marginTop: spacing.sm, marginBottom: spacing.xs },
     searchInput:      { flex: 1, fontFamily: fonts.sans, fontSize: 15, color: c.ink, padding: 0 },
+    searchAddButton:  { width: 34, height: 34, borderRadius: 10, backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
     catalogDropdown:  { backgroundColor: c.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.md, marginBottom: spacing.md, overflow: 'hidden', ...shadow.card },
     catalogRow:       { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: 10, minHeight: 60 },
     catalogCopy:      { flex: 1 },

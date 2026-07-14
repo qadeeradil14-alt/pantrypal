@@ -11,6 +11,7 @@ import {
 } from '../core/services/household';
 import type { HouseholdIdentity, HouseholdMember } from '../types';
 import { createAvatarSignedUrl } from '../core/services/profileAvatar';
+import { runObservedOperation } from '../core/services/crashReporter';
 
 const STORAGE_KEY = 'stokit:v2:household';
 let householdChannel: ReturnType<typeof supabase.channel> | null = null;
@@ -91,7 +92,7 @@ async function applyPayload(payload: HouseholdPayload | null, set: (state: Parti
   set({ household, members, partnerHasToken, syncStatus: 'synced' });
   persist({ household, members: members.map((member) => ({ ...member, avatarUrl: null })) });
   if (subscribedHouseholdId !== household.id) {
-    if (householdChannel) void supabase.removeChannel(householdChannel);
+    if (householdChannel) void runObservedOperation('household.members.unsubscribe', async () => { await supabase.removeChannel(householdChannel!); });
     subscribedHouseholdId = household.id;
     householdChannel = supabase
       .channel(`household-members:${household.id}`)
@@ -100,11 +101,11 @@ async function applyPayload(payload: HouseholdPayload | null, set: (state: Parti
         schema: 'public',
         table: 'household_members',
         filter: `household_id=eq.${household.id}`,
-      }, () => { void useHouseholdStore.getState().refresh(); })
+      }, () => { void runObservedOperation('household.members.realtime', async () => { await useHouseholdStore.getState().refresh(); }); })
       .subscribe();
   }
   if (subscribedProfileHouseholdId !== household.id) {
-    if (profileChannel) void supabase.removeChannel(profileChannel);
+    if (profileChannel) void runObservedOperation('household.profiles.unsubscribe', async () => { await supabase.removeChannel(profileChannel!); });
     subscribedProfileHouseholdId = household.id;
     profileChannel = supabase
       .channel(`household-profiles:${household.id}`)
@@ -113,7 +114,7 @@ async function applyPayload(payload: HouseholdPayload | null, set: (state: Parti
         schema: 'public',
         table: 'profiles',
         filter: `household_id=eq.${household.id}`,
-      }, () => { void useHouseholdStore.getState().refresh(); })
+      }, () => { void runObservedOperation('household.profiles.realtime', async () => { await useHouseholdStore.getState().refresh(); }); })
       .subscribe();
   }
 }
@@ -191,8 +192,8 @@ export const useHouseholdStore = create<HouseholdState>((set, get) => ({
   },
 
   clearLocal: async () => {
-    if (householdChannel) void supabase.removeChannel(householdChannel);
-    if (profileChannel) void supabase.removeChannel(profileChannel);
+    if (householdChannel) void runObservedOperation('household.members.unsubscribe', async () => { await supabase.removeChannel(householdChannel!); });
+    if (profileChannel) void runObservedOperation('household.profiles.unsubscribe', async () => { await supabase.removeChannel(profileChannel!); });
     householdChannel = null;
     profileChannel = null;
     subscribedHouseholdId = null;

@@ -31,6 +31,12 @@ import { isEmailVerified, useAuthStore } from '../store/auth-store';
 import { pullFromSupabase, startSyncEngine } from '../core/services/syncEngine';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { normalizeInviteCode } from '../core/services/household';
+import {
+  flushPendingCrashReport,
+  installFatalExceptionReporter,
+  runObservedOperation,
+  setCrashContext,
+} from '../core/services/crashReporter';
 
 const PENDING_JOIN_KEY = 'stokit:v2:pending-join';
 
@@ -56,6 +62,7 @@ defineGeofenceTask(
 // during cold headless background launches (when React never mounts). This is
 // idempotent — calling it again from the useEffect below is safe.
 setupNotifications();
+installFatalExceptionReporter();
 
 // Eager OTA catch-up: runs while the loading spinner is visible.
 // If the native loader missed a new update (timeout or no network at boot),
@@ -92,6 +99,10 @@ export default function RootLayout() {
   const hydrateHousehold = useHouseholdStore((s) => s.hydrate);
   const hydratedHousehold = useHouseholdStore((s) => s.hydrated);
   const ensureHousehold = useHouseholdStore((s) => s.ensureHousehold);
+  const householdId = useHouseholdStore((s) => s.household?.id ?? null);
+  const syncClock = useDurableStore((s) => s.syncMeta?.clock ?? 0);
+  const syncReplica = useDurableStore((s) => s.syncMeta?.replicaId ?? null);
+  const itemCount = useDurableStore((s) => s.items.length);
   const hydrateSession = useSessionStore((s) => s.hydrateSession);
   const hydrateOnboarding = useOnboardingStore((s) => s.hydrate);
   const onboardingHydrated = useOnboardingStore((s) => s.hydrated);
@@ -121,12 +132,24 @@ export default function RootLayout() {
   const segments = useSegments();
 
   useEffect(() => {
-    void hydrateDurable();
-    void hydrateHousehold();
-    void hydrateSession();
-    void hydrateOnboarding();
-    void setupNotifications();
+    void runObservedOperation('app.hydrate', async () => {
+      await Promise.all([
+        hydrateDurable(),
+        hydrateHousehold(),
+        hydrateSession(),
+        hydrateOnboarding(),
+        setupNotifications(),
+      ]);
+    });
   }, [hydrateDurable, hydrateHousehold, hydrateSession, hydrateOnboarding]);
+
+  useEffect(() => {
+    setCrashContext({
+      screen: pathname,
+      householdId,
+      syncState: { clock: syncClock, replicaId: syncReplica, itemCount },
+    });
+  }, [householdId, itemCount, pathname, syncClock, syncReplica]);
 
   // Capture invite deep links before the auth guard runs.
   // Cold start: getInitialURL resolves once and sets initialUrlChecked so the
@@ -138,7 +161,7 @@ export default function RootLayout() {
         if (code) setInviteTrigger({ code, t: Date.now() });
       }
       setInitialUrlChecked(true);
-    });
+    }).catch((error) => { void runObservedOperation('linking.initialUrl', async () => { throw error; }); });
 
     const sub = Linking.addEventListener('url', ({ url }) => {
       const code = parseInviteCodeFromUrl(url);
@@ -203,7 +226,7 @@ export default function RootLayout() {
   // stores (logos) are restored even when items already exist locally.
   useEffect(() => {
     if (!user || !hydratedDurable || !hydratedHousehold) return;
-    void (async () => {
+    void runObservedOperation('app.startup', async () => {
       await ensureHousehold();
 
       // Apply a pending household join from the /join sign-up flow.
@@ -223,7 +246,8 @@ export default function RootLayout() {
       await pullFromSupabase();
       await startSyncEngine();
       await registerPushToken(user.id);
-    })();
+      await flushPendingCrashReport();
+    });
   }, [user, hydratedDurable, hydratedHousehold, ensureHousehold]);
 
   // Re-attempt push token registration whenever the app returns to foreground.
@@ -234,11 +258,12 @@ export default function RootLayout() {
     if (!user) return;
     const sub = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
-        void (async () => {
+        void runObservedOperation('app.foreground', async () => {
           await useHouseholdStore.getState().refresh();
           await pullFromSupabase();
           await registerPushToken(user.id);
-        })();
+          await flushPendingCrashReport();
+        });
       }
     });
     return () => sub.remove();

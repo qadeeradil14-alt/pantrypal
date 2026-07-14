@@ -43,6 +43,7 @@ import { isDuplicatePriceEntry, isValidPrice } from '../core/services/priceHisto
 import { refreshWidgets } from '../core/services/widgets';
 import { findDuplicateStore } from '../core/services/storeDuplicates';
 import { initializeReplicaState, recordLocalMutation } from '../core/services/replicaSync';
+import { runObservedOperation } from '../core/services/crashReporter';
 
 interface DurableStore extends DurableState {
   hydrated: boolean;
@@ -144,7 +145,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       const diagnostic = snap.syncMeta?.lastOperation;
       console.log(`[Sync] local operation=${operation} entity=${diagnostic?.entityIds.join(',') || 'state'} timestamp=${updatedAt} device=${replicaId} sequence=${diagnostic?.sequence ?? 0}`);
     }
-    void refreshWidgets(snap.items);
+    void runObservedOperation('widgets.refresh', () => refreshWidgets(snap.items));
     persistQueue = persistQueue
       .then(async () => {
         if (epoch !== persistEpoch) return;
@@ -158,7 +159,8 @@ export const useDurableStore = create<DurableStore>((set, get) => {
   const syncShoppingItem = (item: PantryItem | null, itemId: string) => {
     const event = shoppingEntryEventForItem(get().activeSession, item, itemId);
     if (!event) return;
-    void import('./session-store').then(({ useSessionStore }) => {
+    void runObservedOperation('shopping.session.sync', async () => {
+      const { useSessionStore } = await import('./session-store');
       useSessionStore.getState().dispatch(event);
     });
   };
@@ -190,13 +192,13 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         lastSnapshotAt = normalized.updatedAt;
         lastLocalSnapshot = normalized;
         set({ ...normalized, hydrated: true });
-        void saveDurable(normalized);
+        void runObservedOperation('storage.normalize', () => saveDurable(normalized));
       } else {
         set({ hydrated: true });
       }
-      void refreshWidgets(get().items);
+      void runObservedOperation('widgets.hydrate', () => refreshWidgets(get().items));
       // Start real-time sync listeners once hydrated
-      startSyncEngine();
+      await startSyncEngine();
     },
 
     addItem: (input) => {
@@ -515,14 +517,15 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       }
       if ('activeSession' in patch) {
         const remoteSession = patch.activeSession ?? null;
-        void import('./session-store').then(({ useSessionStore }) => {
+        void runObservedOperation('shopping.session.applyRemote', async () => {
+          const { useSessionStore } = await import('./session-store');
           useSessionStore.getState().applyRemoteSession(remoteSession);
         });
       }
       // Save to disk (AsyncStorage) so we have it offline, but do NOT call persist()
       // because persist() triggers the syncEngine push loop.
-      void saveDurable(snapshot(get()));
-      void refreshWidgets(get().items);
+      void runObservedOperation('storage.remotePatch', () => saveDurable(snapshot(get())));
+      void runObservedOperation('widgets.remotePatch', () => refreshWidgets(get().items));
     },
   };
 });

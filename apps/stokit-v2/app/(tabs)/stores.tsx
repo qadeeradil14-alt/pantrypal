@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { Alert, Pressable, StyleSheet, Text, View, Image, Linking, Platform, ActionSheetIOS, LayoutAnimation } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View, Image, Linking, Platform, ActionSheetIOS } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../../components/shared/Screen';
@@ -180,7 +180,6 @@ export default function StoresScreen() {
           style: 'destructive',
           onPress: () => {
             void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
             deleteStore(store.id);
           },
         },

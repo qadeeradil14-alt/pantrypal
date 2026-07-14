@@ -23,7 +23,6 @@ import {
   Text,
   TextInput,
   View,
-  LayoutAnimation,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
@@ -730,7 +729,6 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                   onPress={() => {
                     if (e.outOfStock) return;
                     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                     dispatch({ type: 'TOGGLE_PICK', itemId: e.itemId });
                   }}
                   onLongPress={() => {
@@ -749,7 +747,6 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                           style: 'destructive',
                           onPress: () => {
                             void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                             dispatch({ type: 'REMOVE_ENTRY', itemId: e.itemId });
                           },
                         },
@@ -1746,7 +1743,6 @@ function ActiveTripShell(props: SubProps) {
   const { session } = props;
 
   useEffect(() => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
   }, [session.status]);
 
   if (session.status === 'receipt_prompt') return <ReceiptPrompt {...props} />;
