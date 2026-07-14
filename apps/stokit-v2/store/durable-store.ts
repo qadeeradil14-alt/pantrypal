@@ -172,14 +172,14 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       const loaded = await loadDurable();
       if (loaded) {
         const normalized = { ...loaded, items: consolidatePantryItems(loaded.items) };
-        set({ ...normalized, hydrated: true });
+        set({ ...normalized, hydrated: false });
         void saveDurable(normalized);
       } else {
-        set({ hydrated: true });
+        set({ hydrated: false });
       }
       void refreshWidgets(get().items);
-      // Start real-time sync listeners once hydrated
-      startSyncEngine();
+      await startSyncEngine();
+      set({ hydrated: true });
     },
 
     addItem: (input) => {

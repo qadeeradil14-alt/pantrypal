@@ -12,6 +12,24 @@ const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24 * 7;
 const RETRY_ATTEMPTS = 3;
 const RETRY_BASE_DELAY_MS = 500;
 
+function isEmptySharedSnapshot(state: DurableState): boolean {
+  return state.items.length === 0
+    && state.stores.length === 0
+    && state.priceHistory.length === 0
+    && state.receipts.length === 0
+    && state.trips.length === 0
+    && state.activity.length === 0
+    && state.activeSession == null;
+}
+
+function hasSharedSnapshotContent(state: DurableState): boolean {
+  return !isEmptySharedSnapshot(state);
+}
+
+function isFreshInstallState(state: DurableState): boolean {
+  return state.updatedAt === 0 && isEmptySharedSnapshot(state);
+}
+
 function retryDelay(attempt: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, RETRY_BASE_DELAY_MS * attempt));
 }
@@ -100,6 +118,10 @@ export async function pushLocalState(state: DurableState, options?: { isDeferred
 
   try {
     const consistentState = durableSnapshot(state);
+    if (isEmptySharedSnapshot(consistentState)) {
+      if (__DEV__) console.warn('[Sync Engine] empty_snapshot_push_blocked');
+      return;
+    }
     const receipts = await Promise.all(consistentState.receipts.map((receipt) => uploadReceipt(id, receipt)));
     const cloudReceipts = receipts.map((receipt) =>
       !receipt.imagePath && receipt.imageUri?.startsWith('file://')
@@ -226,8 +248,10 @@ export async function pullFromSupabase(): Promise<void> {
   const remoteUpdatedAt = (remote.updatedAt ?? data.updated_at ?? 0) as number;
   const hasActiveSession = 'activeSession' in remote;
 
-  const localUpdatedAt = store.getState().updatedAt;
-  if (!shouldApplyRemoteSnapshot(remoteUpdatedAt, localUpdatedAt)) {
+  const local = store.getState();
+  const localUpdatedAt = local.updatedAt;
+  const freshInstallHydration = isFreshInstallState(local) && hasSharedSnapshotContent(remote);
+  if (!freshInstallHydration && !shouldApplyRemoteSnapshot(remoteUpdatedAt, localUpdatedAt)) {
     const reason = remoteSkipReason(remoteUpdatedAt, localUpdatedAt);
     console.log(`[Shopping Sync] active_session_reconcile_skipped reason=${reason} version/updatedAt=${remoteUpdatedAt} localUpdatedAt=${localUpdatedAt}`);
     // The cloud snapshot is strictly older than this device's durable state
@@ -257,7 +281,9 @@ export async function pullFromSupabase(): Promise<void> {
   // Local state may have advanced while signed URLs were being fetched (a
   // user edit or a concurrent pull) — re-check so a now-stale snapshot cannot
   // clobber it after the await.
-  if (!shouldApplyRemoteSnapshot(remoteUpdatedAt, store.getState().updatedAt)) {
+  const current = store.getState();
+  const stillFreshInstallHydration = isFreshInstallState(current) && hasSharedSnapshotContent(remote);
+  if (!stillFreshInstallHydration && !shouldApplyRemoteSnapshot(remoteUpdatedAt, current.updatedAt)) {
     console.log(`[Shopping Sync] active_session_reconcile_skipped reason=${remoteSkipReason(remoteUpdatedAt, store.getState().updatedAt)} version/updatedAt=${remoteUpdatedAt} phase=post_sign`);
     return;
   }
@@ -287,6 +313,8 @@ export async function startSyncEngine(): Promise<void> {
   if (!id || activeHouseholdId === id) return;
   stopSyncEngine();
   activeHouseholdId = id;
+
+  await pullFromSupabase();
 
   syncChannel = supabase
     .channel(`household-snapshot:${id}`)
