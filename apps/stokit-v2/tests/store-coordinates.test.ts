@@ -32,3 +32,9 @@ test('rejects incomplete saves and offers legacy location recovery', () => {
   assert.match(storesScreen, /const backfill = await geocodeLocation\(query\)/);
   assert.match(storesScreen, /text: 'Update location'/);
 });
+
+test('retries nearby-store search when device location becomes available', () => {
+  assert.match(addStoreSheet, /const \[locationReady, setLocationReady\] = useState\(false\)/);
+  assert.match(addStoreSheet, /setLocationReady\(true\)/);
+  assert.match(addStoreSheet, /runAutocomplete\(name, zip\)/);
+});

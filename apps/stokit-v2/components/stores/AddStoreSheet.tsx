@@ -64,6 +64,7 @@ export function AddStoreContent({
   const [suggestions, setSuggestions] = useState<AutocompleteSuggestion[]>([]);
   const [loadingSuggestion, setLoadingSuggestion] = useState(false);
   const [searchError, setSearchError] = useState('');
+  const [locationReady, setLocationReady] = useState(false);
 
   const userLocRef = useRef<{lat: number, lng: number} | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -97,8 +98,9 @@ export function AddStoreContent({
         return null;
       })
       .then(loc => {
-        if (loc) {
+        if (loc && hasValidStoreCoordinates(loc.coords.latitude, loc.coords.longitude)) {
           userLocRef.current = { lat: loc.coords.latitude, lng: loc.coords.longitude };
+          setLocationReady(true);
         }
       })
       .catch(() => { /* silently ignore */ });
@@ -154,6 +156,12 @@ export function AddStoreContent({
       }
     }, 400);
   }, []);
+
+  useEffect(() => {
+    if (isActive && locationReady && name.trim().length >= 2) {
+      runAutocomplete(name, zip);
+    }
+  }, [isActive, locationReady]);
 
   useEffect(() => {
     if (isActive && storeToUpdate) runAutocomplete(storeToUpdate.name, '');
