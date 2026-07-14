@@ -20,7 +20,7 @@ test('fresh install hydrates server data before the durable store becomes intera
     syncSource.indexOf('export async function startSyncEngine'),
     syncSource.indexOf('export function stopSyncEngine'),
   );
-  assert.match(startSync, /await pullFromSupabase\(\);/,
+  assert.match(startSync, /await pullFromSupabase\(\{ forceServerHydration: true \}\);/,
     'sync bootstrap must pull the server snapshot before subscribing');
 });
 
@@ -29,4 +29,17 @@ test('a populated server snapshot still hydrates a fresh device even with an unu
     'fresh-device hydration must be explicit rather than relying only on timestamp ordering');
   assert.match(syncSource, /hasSharedSnapshotContent\(remote\)/,
     'the timestamp exception must require actual shared server content');
+});
+
+test('the first authenticated push waits for an initial household pull', () => {
+  assert.match(syncSource, /initialHouseholdSyncComplete/,
+    'sync readiness must be tracked per household after authentication');
+  const pushSource = syncSource.slice(
+    syncSource.indexOf('export async function pushLocalState'),
+    syncSource.indexOf('export async function pullFromSupabase'),
+  );
+  assert.match(pushSource, /await pullFromSupabase\(\{ forceServerHydration: true \}\);/,
+    'a device must pull server state before its first authenticated push');
+  assert.match(pushSource, /if \(!initialHouseholdSyncComplete\.has\(id\)\) return;/,
+    'failed bootstrap must block the write instead of guessing');
 });

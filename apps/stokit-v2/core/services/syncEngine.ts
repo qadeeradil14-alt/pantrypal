@@ -36,6 +36,7 @@ function retryDelay(attempt: number): Promise<void> {
 
 let syncChannel: ReturnType<typeof supabase.channel> | null = null;
 let activeHouseholdId: string | null = null;
+const initialHouseholdSyncComplete = new Set<string>();
 
 function activeSessionStats(state: DurableState): { itemCount: number; pickedCount: number; sessionId: string } {
   const entries = state.activeSession?.entries ?? [];
@@ -48,6 +49,10 @@ function activeSessionStats(state: DurableState): { itemCount: number; pickedCou
 
 async function durableStore() {
   return (await import('../../store/durable-store')).useDurableStore;
+}
+
+async function hasPersistedDurableState(): Promise<boolean> {
+  return (await import('../../store/durable-store')).hasPersistedDurableState();
 }
 
 /**
@@ -116,6 +121,12 @@ export async function pushLocalState(state: DurableState, options?: { isDeferred
   const id = await householdId();
   if (!id) return;
 
+  if (!initialHouseholdSyncComplete.has(id)) {
+    await pullFromSupabase({ forceServerHydration: true });
+    if (!initialHouseholdSyncComplete.has(id)) return;
+    return;
+  }
+
   try {
     const consistentState = durableSnapshot(state);
     if (isEmptySharedSnapshot(consistentState)) {
@@ -172,7 +183,7 @@ export async function pushLocalState(state: DurableState, options?: { isDeferred
   }
 }
 
-export async function pullFromSupabase(): Promise<void> {
+export async function pullFromSupabase(options?: { forceServerHydration?: boolean }): Promise<void> {
   const id = await householdId();
   if (!id) return;
   const store = await durableStore();
@@ -185,6 +196,7 @@ export async function pullFromSupabase(): Promise<void> {
   if (error) return;
 
   if (!data?.state) {
+    initialHouseholdSyncComplete.add(id);
     const local = store.getState();
     if (local.items.length || local.stores.length || local.receipts.length || local.trips.length) {
       await pushLocalState({ ...durableSnapshot(local), updatedAt: Date.now() });
@@ -250,10 +262,14 @@ export async function pullFromSupabase(): Promise<void> {
 
   const local = store.getState();
   const localUpdatedAt = local.updatedAt;
+  const forceServerHydration = Boolean(options?.forceServerHydration)
+    && !(await hasPersistedDurableState())
+    && hasSharedSnapshotContent(remote);
   const freshInstallHydration = isFreshInstallState(local) && hasSharedSnapshotContent(remote);
-  if (!freshInstallHydration && !shouldApplyRemoteSnapshot(remoteUpdatedAt, localUpdatedAt)) {
+  if (!forceServerHydration && !freshInstallHydration && !shouldApplyRemoteSnapshot(remoteUpdatedAt, localUpdatedAt)) {
     const reason = remoteSkipReason(remoteUpdatedAt, localUpdatedAt);
     console.log(`[Shopping Sync] active_session_reconcile_skipped reason=${reason} version/updatedAt=${remoteUpdatedAt} localUpdatedAt=${localUpdatedAt}`);
+    initialHouseholdSyncComplete.add(id);
     // The cloud snapshot is strictly older than this device's durable state
     // (e.g. edits made offline whose push never reached Supabase). Reconcile
     // by pushing the newer local state up so other members converge on it,
@@ -283,11 +299,12 @@ export async function pullFromSupabase(): Promise<void> {
   // clobber it after the await.
   const current = store.getState();
   const stillFreshInstallHydration = isFreshInstallState(current) && hasSharedSnapshotContent(remote);
-  if (!stillFreshInstallHydration && !shouldApplyRemoteSnapshot(remoteUpdatedAt, current.updatedAt)) {
+  if (!forceServerHydration && !stillFreshInstallHydration && !shouldApplyRemoteSnapshot(remoteUpdatedAt, current.updatedAt)) {
     console.log(`[Shopping Sync] active_session_reconcile_skipped reason=${remoteSkipReason(remoteUpdatedAt, store.getState().updatedAt)} version/updatedAt=${remoteUpdatedAt} phase=post_sign`);
     return;
   }
   store.getState().applyRemotePatch(reconciledRemote);
+  initialHouseholdSyncComplete.add(id);
   if (hasActiveSession) console.log('[Shopping Sync] local_state_reconciled');
   if (!isSelfEcho(remoteUpdatedAt)) {
     markRemoteApplied(remoteUpdatedAt);
@@ -314,7 +331,7 @@ export async function startSyncEngine(): Promise<void> {
   stopSyncEngine();
   activeHouseholdId = id;
 
-  await pullFromSupabase();
+  await pullFromSupabase({ forceServerHydration: true });
 
   syncChannel = supabase
     .channel(`household-snapshot:${id}`)
@@ -335,6 +352,7 @@ export function stopSyncEngine(): void {
   if (syncChannel) void supabase.removeChannel(syncChannel);
   syncChannel = null;
   activeHouseholdId = null;
+  initialHouseholdSyncComplete.clear();
   resetSyncWatermark();
 }
 

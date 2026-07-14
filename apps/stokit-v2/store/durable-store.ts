@@ -43,6 +43,12 @@ import { isDuplicatePriceEntry, isValidPrice } from '../core/services/priceHisto
 import { refreshWidgets } from '../core/services/widgets';
 import { findDuplicateStore } from '../core/services/storeDuplicates';
 
+let persistedDurableState = false;
+
+export function hasPersistedDurableState(): boolean {
+  return persistedDurableState;
+}
+
 interface DurableStore extends DurableState {
   hydrated: boolean;
 
@@ -170,6 +176,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
 
     hydrate: async () => {
       const loaded = await loadDurable();
+      persistedDurableState = loaded != null;
       if (loaded) {
         const normalized = { ...loaded, items: consolidatePantryItems(loaded.items) };
         set({ ...normalized, hydrated: false });
