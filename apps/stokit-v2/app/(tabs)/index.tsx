@@ -17,7 +17,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { Logo } from '../../components/shared/Logo';
 import { EmptyState } from '../../components/shared/EmptyState';
-import { Fab } from '../../components/shared/Fab';
 import { MemberAvatars } from '../../components/shared/MemberAvatars';
 import { SummaryCard } from '../../components/shared/SummaryCard';
 import { AddItemSheet } from '../../components/pantry/AddItemSheet';
@@ -234,7 +233,7 @@ export default function PantryScreen() {
           />
         </View>
 
-        <Pressable style={styles.searchBar} onPress={() => searchInputRef.current?.focus()}>
+        <View style={styles.searchBar}>
           <Ionicons name="search" size={16} color={query ? colors.primary : colors.muted} style={{ marginRight: 8 }} />
           <TextInput
             ref={searchInputRef}
@@ -247,7 +246,17 @@ export default function PantryScreen() {
             clearButtonMode="while-editing"
             onSubmitEditing={handleAddCustom}
           />
-        </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Add item"
+            accessibilityHint="Opens the add item form"
+            hitSlop={4}
+            onPress={() => setAddVisible(true)}
+            style={styles.searchAddButton}
+          >
+            <Ionicons name="add" size={22} color={colors.onPrimary} />
+          </Pressable>
+        </View>
 
         {query ? (
           <View style={styles.catalogDropdown}>
@@ -413,10 +422,8 @@ export default function PantryScreen() {
             <RecipeSuggestionsCard recipes={recipes} onPress={setSelectedRecipe} />
           </View>
         ) : null}
-        <View style={{ height: 96 }} />
+        <View style={{ height: spacing.xl }} />
       </ScrollView>
-
-      <Fab position="bottom" onPress={() => setAddVisible(true)} />
 
       <AddItemSheet
         visible={addVisible}
@@ -645,8 +652,9 @@ function makeStyles(c: AppColors) {
     moreSubtitle:      { fontFamily: fonts.sans, fontSize: 13, color: c.muted, marginTop: 2 },
     dashboardSection:  { backgroundColor: c.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: c.borderSoft, padding: spacing.lg, ...shadow.card },
     summaryRow:       { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.lg },
-    searchBar:        { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: radii.md, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.md, paddingVertical: 10, marginTop: spacing.sm, marginBottom: spacing.xs },
-    searchInput:      { flex: 1, fontFamily: fonts.sans, fontSize: 15, color: c.ink, padding: 0 },
+    searchBar:        { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: radii.md, borderWidth: 1, borderColor: c.border, paddingLeft: spacing.md, paddingRight: 6, paddingVertical: 6, marginTop: spacing.sm, marginBottom: spacing.xs, minHeight: 52 },
+    searchInput:      { flex: 1, minHeight: 40, fontFamily: fonts.sans, fontSize: 15, color: c.ink, padding: 0 },
+    searchAddButton:  { width: 40, height: 40, borderRadius: 20, backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center', marginLeft: spacing.sm },
     catalogDropdown:  { backgroundColor: c.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.md, marginBottom: spacing.md, overflow: 'hidden', ...shadow.card },
     catalogRow:       { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: 10, minHeight: 60 },
     catalogCopy:      { flex: 1 },
