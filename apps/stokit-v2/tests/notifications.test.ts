@@ -27,7 +27,7 @@ const geofencingSource = readFileSync(
 );
 
 const settingsSource = readFileSync(
-  new URL('../app/(tabs)/settings.tsx', import.meta.url),
+  new URL('../app/settings/store-arrival-alerts.tsx', import.meta.url),
   'utf8',
 );
 

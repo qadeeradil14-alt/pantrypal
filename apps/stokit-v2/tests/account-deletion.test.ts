@@ -8,7 +8,7 @@ const edgeFn = fs.readFileSync(
   'utf-8',
 );
 const authStore = fs.readFileSync(path.join(__dirname, '../store/auth-store.ts'), 'utf-8');
-const settings = fs.readFileSync(path.join(__dirname, '../app/(tabs)/settings.tsx'), 'utf-8');
+const accountSettings = fs.readFileSync(path.join(__dirname, '../app/settings/account.tsx'), 'utf-8');
 
 // ── Edge Function policy ──────────────────────────────────────────────────────
 
@@ -63,11 +63,11 @@ test('successful deletion purges local data and signs out locally', () => {
   );
 });
 
-test('settings routes to welcome after deletion and offers household settings when blocked', () => {
-  assert.ok(settings.includes("router.replace('/(auth)/welcome')"), 'must return to Welcome');
-  assert.ok(settings.includes('Go to Household Settings'), 'blocked alert must offer household settings');
+test('account settings routes to welcome after deletion and offers household settings when blocked', () => {
+  assert.ok(accountSettings.includes("router.replace('/(auth)/welcome')"), 'must return to Welcome');
+  assert.ok(accountSettings.includes('Go to Household'), 'blocked alert must offer household settings');
   assert.ok(
-    settings.includes('Transfer ownership or remove all household members'),
+    accountSettings.includes('Transfer ownership or remove all household members'),
     'blocked alert must use the approved copy',
   );
 });

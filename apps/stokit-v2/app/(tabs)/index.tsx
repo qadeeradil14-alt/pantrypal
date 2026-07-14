@@ -37,8 +37,6 @@ import { RecipeDetailSheet } from '../../components/recipes/RecipeDetailSheet';
 import type { PantryItem, } from '../../types';
 import type { RecipeSuggestion, RawMealData } from '../../core/services/recipes';
 import { ItemAvatar } from '../../components/shared/ItemAvatar';
-import * as Updates from 'expo-updates';
-import { OTA_SEQ } from '../../constants/version';
 
 function getGreeting(): string {
   const h = new Date().getHours();
@@ -197,12 +195,7 @@ export default function PantryScreen() {
               <Text style={styles.wordmarkText}>Stokit</Text>
             </View>
             <View style={styles.topRowRight}>
-              <MemberAvatars members={members} onPress={() => router.push('/settings')} />
-              <View style={styles.syncPill}>
-                <Text style={styles.syncPillText}>
-                  {Updates.updateId ? `v${OTA_SEQ}` : 'dev'}
-                </Text>
-              </View>
+              <MemberAvatars members={members} onPress={() => router.push('/household')} />
               <Pressable onPress={() => router.push('/settings')} style={styles.settings} hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}>
                 <Ionicons name="settings-outline" size={24} color={colors.primary} />
               </Pressable>
@@ -639,8 +632,6 @@ function makeStyles(c: AppColors) {
     topRowRight:      { flexDirection: 'row', alignItems: 'center', gap: 8 },
     wordmark:         { flexDirection: 'row', alignItems: 'center', gap: 7 },
     wordmarkText:     { fontFamily: fonts.sansSemibold, fontSize: 18, color: c.ink, letterSpacing: -0.3 },
-    syncPill:         { backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
-    syncPillText:     { fontFamily: fonts.mono, fontSize: 10, color: c.muted, fontVariant: ['tabular-nums'] },
     greeting:         { fontFamily: fonts.sans, fontSize: 14, color: c.muted, marginBottom: 2 },
     title:            { fontFamily: fonts.serifItalic, fontSize: 28, lineHeight: 34, color: c.ink, marginBottom: spacing.xs },
     tagline:          { fontFamily: fonts.sans, fontSize: 15, color: c.muted, fontVariant: ['tabular-nums'] },

@@ -85,7 +85,7 @@ test('membership changes clear local household data and refresh in foreground', 
 });
 
 test('settings requires confirmations and exposes only role-appropriate actions', () => {
-  const settings = readFileSync(join(process.cwd(), 'app/(tabs)/settings.tsx'), 'utf8');
+  const settings = readFileSync(join(process.cwd(), 'app/household.tsx'), 'utf8');
 
   assert.match(settings, /Transfer household ownership\?/);
   assert.match(settings, /Delete shared household\?/);

@@ -314,7 +314,7 @@ test('item mutations reuse the existing refreshGeofencedStoreData path, not a se
 
 test('diagnostics surface a staleness warning when live eligible count diverges from last registration', () => {
   const service = readFileSync(new URL('../core/services/geofencing.ts', import.meta.url), 'utf8');
-  const settings = readFileSync(new URL('../app/(tabs)/settings.tsx', import.meta.url), 'utf8');
+  const settings = readFileSync(new URL('../app/settings/store-arrival-alerts.tsx', import.meta.url), 'utf8');
 
   assert.match(service, /registrationOutOfDate/, 'GeofenceDiagnostics must expose registrationOutOfDate');
   assert.match(
@@ -388,7 +388,7 @@ test('truly ineligible stores keep their own per-store skip reason untouched', (
 });
 
 test('settings.tsx renders skipped stores from a single source — no duplicate rows', () => {
-  const settings = readFileSync(new URL('../app/(tabs)/settings.tsx', import.meta.url), 'utf8');
+  const settings = readFileSync(new URL('../app/settings/store-arrival-alerts.tsx', import.meta.url), 'utf8');
 
   // The old local `skippedStores`/`hasActiveItem` duplicate list must be gone.
   assert.doesNotMatch(
@@ -410,7 +410,7 @@ test('settings.tsx renders skipped stores from a single source — no duplicate 
 });
 
 test('trip-inactive state is shown as separate informational text, not folded into skip reasons', () => {
-  const settings = readFileSync(new URL('../app/(tabs)/settings.tsx', import.meta.url), 'utf8');
+  const settings = readFileSync(new URL('../app/settings/store-arrival-alerts.tsx', import.meta.url), 'utf8');
   assert.match(
     settings,
     /Shopping trip inactive — arrival reminders still active\./,
@@ -468,7 +468,7 @@ test('getGeofenceDiagnostics reads lastArrivalAt to compute cooldown end times',
 });
 
 test('settings screen shows cooldown state and offers a reset button', () => {
-  const settings = readFileSync(new URL('../app/(tabs)/settings.tsx', import.meta.url), 'utf8');
+  const settings = readFileSync(new URL('../app/settings/store-arrival-alerts.tsx', import.meta.url), 'utf8');
   assert.match(settings, /clearArrivalCooldown/, 'settings.tsx must import and use clearArrivalCooldown');
   assert.match(settings, /cooldownEndsAt/, 'settings.tsx must read cooldownEndsAt from store diagnostics');
   assert.match(settings, /Reset arrival cooldown/, 'settings.tsx must render a reset cooldown button label');
