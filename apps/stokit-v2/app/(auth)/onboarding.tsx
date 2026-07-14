@@ -18,6 +18,8 @@ import { ONBOARDING_SLIDES } from '../../constants/onboarding';
 import { OnboardingPage, PageDots } from '../../components/onboarding/OnboardingKit';
 import { authBackground } from '../../components/auth/AuthKit';
 
+const DARK_ONBOARDING_BACKGROUND = '#050606';
+
 export default function OnboardingScreen() {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -59,7 +61,7 @@ export default function OnboardingScreen() {
   const isLast = index === count - 1;
 
   return (
-    <View style={[styles.root, { backgroundColor: authBackground(colors, isDark) }]}>
+    <View style={[styles.root, { backgroundColor: isDark ? DARK_ONBOARDING_BACKGROUND : authBackground(colors, false) }]}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
 
       {/* Top bar: progress + Skip */}
@@ -117,10 +119,28 @@ function makeStyles(colors: AppColors) {
   return StyleSheet.create({
     flex: { flex: 1 },
     root: { flex: 1, backgroundColor: colors.background },
-    topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.xxl, marginBottom: spacing.md },
+    topBar: {
+      width: '100%',
+      maxWidth: 560,
+      alignSelf: 'center',
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: spacing.xxl,
+      marginBottom: spacing.md,
+    },
     progress: { fontFamily: fonts.monoMedium, fontSize: 13, color: colors.muted, fontVariant: ['tabular-nums'] },
     skip: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.primary },
-    bottomBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.xxl, paddingTop: spacing.md },
+    bottomBar: {
+      width: '100%',
+      maxWidth: 560,
+      alignSelf: 'center',
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: spacing.xxl,
+      paddingTop: spacing.md,
+    },
     nextBtn: {
       width: 56,
       height: 56,

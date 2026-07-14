@@ -1,9 +1,8 @@
 /**
  * Onboarding slide content + theme-aware illustration selection.
  *
- * Each slide carries BOTH a light and a dark illustration. The dark files are
- * currently identical copies of the light art (placeholders); dropping the
- * final dark PNGs at the same paths swaps them in with ZERO code changes.
+ * Each slide carries both a light and a dark illustration so artwork remains
+ * legible without a contrasting panel in either theme.
  */
 import type { ImageSourcePropType } from 'react-native';
 
