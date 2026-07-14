@@ -11,6 +11,8 @@
     "postinstall": "patch-package",
     "test:unit": "tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
+    "verify:redesign-release": "APP_VARIANT=redesign tsx scripts/verify-redesign-release.ts",
+    "ota:redesign": "APP_VARIANT=redesign bash scripts/publish-redesign-ota.sh",
     "assets:generate": "tsx scripts/generate-asset-map.ts"
   },
   "dependencies": {
