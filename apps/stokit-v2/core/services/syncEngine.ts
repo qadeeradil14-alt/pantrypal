@@ -31,6 +31,12 @@ type ReplicaRow = {
   updated_at: string;
 };
 
+type RealtimeReplicaRecord = {
+  user_id?: string;
+  replica_id?: string;
+  client_clock?: number;
+};
+
 let syncChannel: ReturnType<typeof supabase.channel> | null = null;
 let activeHouseholdId: string | null = null;
 let pushRequested = false;
@@ -51,6 +57,24 @@ function activeSessionStats(state: DurableState): { itemCount: number; pickedCou
     pickedCount: entries.filter((entry) => entry.picked).length,
     sessionId: state.activeSession?.tripId ?? 'none',
   };
+}
+
+function shoppingSyncTrace(
+  operation: string,
+  state: DurableState,
+  details: Record<string, string | number | null> = {},
+): void {
+  const stats = activeSessionStats(state);
+  const fields = Object.entries({
+    operation,
+    sessionId: stats.sessionId,
+    sessionStatus: state.activeSession?.status ?? 'idle',
+    currentStore: state.activeSession?.storeQueue[state.activeSession.currentIndex] ?? 'none',
+    sequence: state.syncMeta?.clock ?? 0,
+    device: state.syncMeta?.replicaId ?? 'unknown',
+    ...details,
+  }).map(([key, value]) => `${key}=${value ?? 'none'}`);
+  console.log(`[Shopping Sync] ${fields.join(' ')}`);
 }
 
 async function durableStore() {
@@ -279,6 +303,10 @@ async function pullLatestReplicas(): Promise<void> {
     store.getState().applyRemotePatch(signed);
     if (__DEV__) console.log(`[Sync] replica.pull applied entity=state operation=merge timestamp=${merged.updatedAt} device=${localReplicaId} sequence=${merged.syncMeta!.clock} reason=deterministic_replica_merge`);
   }
+  shoppingSyncTrace('pull.merge', merged, {
+    replicaRows: rows.length,
+    localChanged: String(localChanged),
+  });
 
   if (!ownRow || replicaEnvelopeDigest(ownRow.state) !== replicaEnvelopeDigest(merged)) {
     await pushLocalState(merged);
@@ -340,10 +368,31 @@ export async function startSyncEngine(): Promise<void> {
         table: REPLICA_TABLE,
         filter: `household_id=eq.${context.householdId}`,
       },
-      () => { void runObservedOperation('sync.realtime', pullFromSupabase); },
+      (payload) => {
+        const record = payload.new as RealtimeReplicaRecord | undefined;
+        void runObservedOperation('sync.realtime', async () => {
+          const store = await durableStore();
+          shoppingSyncTrace('realtime.received', durableSnapshot(store.getState()), {
+            event: payload.eventType,
+            sourceUser: record?.user_id ?? null,
+            sourceReplica: record?.replica_id ?? null,
+            sourceClock: record?.client_clock ?? null,
+          });
+          await pullFromSupabase();
+        });
+      },
     )
     .subscribe((status) => {
-      if (status === 'SUBSCRIBED') void runObservedOperation('sync.subscribed', pullFromSupabase);
+      const traceSubscription = async () => {
+        const store = await durableStore();
+        shoppingSyncTrace('realtime.subscription', durableSnapshot(store.getState()), { status });
+        if (status === 'SUBSCRIBED') await pullFromSupabase();
+      };
+      if (status === 'SUBSCRIBED') {
+        void runObservedOperation('sync.subscribed', traceSubscription);
+      } else {
+        void runObservedOperation('sync.subscription', traceSubscription);
+      }
     });
 }
 

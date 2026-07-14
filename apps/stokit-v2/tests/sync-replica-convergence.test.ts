@@ -255,6 +255,28 @@ test('a new trip can start after the deleted trip tombstone converges', () => {
   assert.equal(merged.activeSession?.status, 'shopping_store');
 });
 
+test('a planning device promotes the household active trip when it pulls a missed replica update', () => {
+  let iphone = initializeReplicaState({ ...emptyState(), items: [item(0)] }, 'iphone-device');
+  for (let index = 0; index < 8; index += 1) {
+    iphone = recordLocalMutation(iphone, {
+      ...iphone,
+      items: iphone.items.map((entry) => ({ ...entry, quantity: entry.quantity + 1 })),
+    }, 'iphone-device', `item.quantity.${index}`);
+  }
+
+  const ipadBase = mergeReplicaStates([iphone], 'ipad-device');
+  const ipadActive = recordLocalMutation(ipadBase, {
+    ...ipadBase,
+    activeSession: { ...shoppingSession(1), tripId: 'shared-trip', startedAt: 100 },
+  }, 'ipad-device', 'shopping.START_TRIP');
+
+  const merged = mergeReplicaStates([iphone, ipadActive], 'iphone-device');
+
+  assert.equal(iphone.activeSession, null);
+  assert.equal(merged.activeSession?.tripId, 'shared-trip');
+  assert.equal(merged.activeSession?.status, 'shopping_store');
+});
+
 test('offline changes survive serialization and converge after reconnect', () => {
   const base = addItemsRapidly(initializeReplicaState(emptyState(), 'seed-device'), 'seed-device', 20);
   let offline = mergeReplicaStates([base], 'offline-device');

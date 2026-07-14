@@ -9,7 +9,7 @@
  *   next_store_ready → pick next store / skip stores / finish early
  *   trip_summary   → full bird's-eye summary with per-store breakdown
  */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -26,7 +26,7 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect, useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Animated } from 'react-native';
 import { Screen } from '../../components/shared/Screen';
@@ -52,6 +52,8 @@ import { isGeofencingRunning, startGeofencing } from '../../core/services/geofen
 import { sendHouseholdShoppingAlert } from '../../core/services/notifications';
 import { sendShoppingAlertOnce } from '../../core/services/shoppingAlertOnce';
 import { resetShoppingTripStartGuard, startShoppingTripOnce } from '../../core/services/shoppingTripStart';
+import { pullFromSupabase } from '../../core/services/syncEngine';
+import { runObservedOperation } from '../../core/services/crashReporter';
 import type { ReceiptReviewItem } from '../../core/services/shoppingUx';
 import type { PantryItem, ShoppingEntry, Store } from '../../types';
 import { useTheme } from '../../hooks/useTheme';
@@ -110,6 +112,12 @@ export default function ShoppingScreen() {
     previousSessionStatusRef.current = session.status;
   }, [session.status]);
 
+  useFocusEffect(
+    useCallback(() => {
+      void runObservedOperation('shopping.focus.sync', pullFromSupabase);
+    }, []),
+  );
+
   useEffect(() => {
     if (action === 'scan' && session.status === 'idle') {
       setQuickScanStorePicker(true);
@@ -167,7 +175,11 @@ export default function ShoppingScreen() {
   );
 
   const startTripAt = async (firstStoreId: string, notifyHousehold = false) => {
-    if (tripStartIdRef.current) return;
+    if (tripStartIdRef.current) {
+      if (useSessionStore.getState().session.status !== 'idle') return;
+      resetShoppingTripStartGuard(tripStartIdRef.current);
+      tripStartIdRef.current = null;
+    }
     const shoppable = items.filter((i) => i.status === 'low' || i.status === 'expiring');
     shoppable
       .filter((i) => !i.storeId)
@@ -287,7 +299,9 @@ export default function ShoppingScreen() {
     );
   };
 
-  const handleStartShopping = () => {
+  const handleStartShopping = async () => {
+    await pullFromSupabase();
+    if (useSessionStore.getState().session.status !== 'idle') return;
     const entries = Array.from(plan.entries());
     if (entries.length === 0) return;
     if (entries.length === 1) {

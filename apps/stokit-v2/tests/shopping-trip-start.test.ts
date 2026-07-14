@@ -73,7 +73,9 @@ test('duplicate trip-start invocation does not send duplicate alerts', async () 
 test('manual trip-start paths enable the alert without changing geofence auto-start', () => {
   const source = readFileSync(join(process.cwd(), 'app/(tabs)/shopping.tsx'), 'utf8');
 
-  assert.match(source, /if \(tripStartIdRef\.current\) return;/);
+  assert.match(source, /if \(tripStartIdRef\.current\) \{/);
+  assert.match(source, /resetShoppingTripStartGuard\(tripStartIdRef\.current\)/);
+  assert.match(source, /tripStartIdRef\.current = null;/);
   assert.match(source, /startTripAt\(entries\[0\]\[0\], true\)/);
   assert.match(source, /startTripAt\(storeId, true\)/);
   assert.match(source, /startTripAt\(arrivalStoreId\);/);

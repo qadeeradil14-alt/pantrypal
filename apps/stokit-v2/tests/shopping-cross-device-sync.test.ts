@@ -20,3 +20,12 @@ test('remote trip end cannot leave persisted state to resurrect after restart', 
   assert.match(source, /set\(\{ session: initialSession \}\)/);
   assert.match(source, /AsyncStorage\.removeItem\(SESSION_KEY\)/);
 });
+
+test('shopping focus and Start Shopping preflight recover a missed remote trip promotion', () => {
+  const source = readFileSync(join(process.cwd(), 'app/(tabs)/shopping.tsx'), 'utf8');
+
+  assert.match(source, /useFocusEffect/);
+  assert.match(source, /pullFromSupabase\(\)/);
+  assert.match(source, /await pullFromSupabase\(\)/);
+  assert.match(source, /useSessionStore\.getState\(\)\.session\.status !== 'idle'/);
+});
