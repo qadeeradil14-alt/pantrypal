@@ -2,13 +2,23 @@ import type { ConfigContext, ExpoConfig } from 'expo/config';
 
 const REDESIGN_BUNDLE_ID = 'com.hewadadil.stokit.redesign';
 const REDESIGN_APP_GROUP = 'group.com.hewadadil.stokit.redesign';
+const PRODUCTION_APP_GROUP = 'group.com.hewadadil.pantrypal';
 
 export default ({ config }: ConfigContext): ExpoConfig => {
   const isRedesign = process.env.APP_VARIANT === 'redesign';
   const base = config as ExpoConfig;
 
   if (!isRedesign) {
-    return base;
+    return {
+      ...base,
+      ios: {
+        ...base.ios,
+        entitlements: {
+          ...base.ios?.entitlements,
+          'com.apple.security.application-groups': [PRODUCTION_APP_GROUP],
+        },
+      },
+    };
   }
 
   return {
