@@ -8,7 +8,7 @@ import { SubScreenHeader } from '../../components/shared/SubScreenHeader';
 import { Card } from '../../components/shared/ui';
 import { fonts, spacing, type AppColors } from '../../theme';
 import { useTheme } from '../../hooks/useTheme';
-import { CURRENT_OTA_LABEL, formatInstalledUpdate } from '../../constants/version';
+import { CURRENT_OTA_LABEL, formatAppVersion, formatInstalledUpdate } from '../../constants/version';
 import { isExpoGo } from '../../core/services/geofencing';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -19,6 +19,7 @@ export default function AboutScreen() {
   const { colors } = useTheme();
   const inExpoGo = isExpoGo();
   const [devMode, setDevMode] = useState(false);
+  const [showBuildType, setShowBuildType] = useState(false);
   const [showUpdateDetails, setShowUpdateDetails] = useState(false);
   const [, setDevTapCount] = useState(0);
   const devTapTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -57,14 +58,20 @@ export default function AboutScreen() {
           </View>
           <Text style={styles.statValue}>Stokit</Text>
         </View>
-        <Pressable style={styles.statRow} onPress={handleDevTap} accessibilityRole="button" accessibilityLabel="Version info">
+        <Pressable
+          style={styles.statRow}
+          onPress={handleDevTap}
+          onLongPress={() => setShowBuildType(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Version info"
+        >
           <View style={styles.aboutLabel}>
             <Ionicons name="git-branch-outline" size={16} color={colors.muted} />
             <Text style={styles.statLabel}>Version</Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <Text style={styles.statValue}>
-              {Constants.expoConfig?.version ?? '1.0.0'} ({Constants.nativeBuildVersion ?? '—'})
+              {formatAppVersion(Constants.expoConfig?.version ?? '1.0.0', Constants.nativeBuildVersion)}
             </Text>
             {devMode && (
               <View style={styles.devModeBadge}>
@@ -105,15 +112,17 @@ export default function AboutScreen() {
             </View>
           </View>
         )}
-        <View style={[styles.statRow, { borderBottomWidth: 0 }]}>
-          <View style={styles.aboutLabel}>
-            <Ionicons name="cube-outline" size={16} color={colors.muted} />
-            <Text style={styles.statLabel}>Build Type</Text>
+        {(devMode || showBuildType) && (
+          <View style={[styles.statRow, { borderBottomWidth: 0 }]}>
+            <View style={styles.aboutLabel}>
+              <Ionicons name="cube-outline" size={16} color={colors.muted} />
+              <Text style={styles.statLabel}>Build Type</Text>
+            </View>
+            <Text style={styles.statValue}>
+              {Updates.channel === 'production' ? 'Production' : (Updates.channel ?? (inExpoGo ? 'Expo Go' : 'Standalone'))}
+            </Text>
           </View>
-          <Text style={styles.statValue}>
-            {Updates.channel === 'production' ? 'Production' : (Updates.channel ?? (inExpoGo ? 'Expo Go' : 'Standalone'))}
-          </Text>
-        </View>
+        )}
       </Card>
     </Screen>
   );
