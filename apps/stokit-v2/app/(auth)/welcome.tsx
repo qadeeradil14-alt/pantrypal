@@ -7,9 +7,10 @@ import React, { useCallback } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import * as Updates from 'expo-updates';
 import { fonts, spacing } from '../../theme';
 import { useTheme } from '../../hooks/useTheme';
-import { OTA_SEQ } from '../../constants/version';
+import { formatInstalledUpdate } from '../../constants/version';
 import { AuthScreen, BrandHeader, AuthHeading, AuthButton, AuthDivider } from '../../components/auth/AuthKit';
 
 export default function WelcomeScreen() {
@@ -35,7 +36,7 @@ export default function WelcomeScreen() {
         <AuthDivider />
         <AuthButton label="Join with invite code" variant="outline" icon="person-add-outline" onPress={goJoin} />
       </View>
-      <Text style={styles.version}>v1.0.0 · OTA {OTA_SEQ}</Text>
+      <Text style={styles.version}>v1.0.0 · {formatInstalledUpdate(Updates.updateId)}</Text>
     </AuthScreen>
   );
 }

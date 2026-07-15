@@ -1,5 +1,3 @@
-/** 
- * Increment this OTA number before every OTA publish.
- * Bump this once per OTA push — the only place the sequence number lives. 
- */
-export const OTA_SEQ = 333;
+export function formatInstalledUpdate(updateId: string | null | undefined): string {
+  return updateId ? `Update ${updateId.slice(0, 8)}` : 'Embedded update';
+}

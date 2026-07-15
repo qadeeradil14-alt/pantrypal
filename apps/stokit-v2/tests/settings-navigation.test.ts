@@ -21,7 +21,8 @@ test('subscreens go back when possible and fall back to Settings', () => {
   assert.match(subScreenHeader, /router\.canGoBack\(\) \? router\.back\(\) : router\.replace\('\/settings'\)/);
 });
 
-test('version and OTA information live under About', () => {
-  assert.match(about, /OTA_SEQ/);
+test('version and installed update information live under About', () => {
+  assert.match(about, /Updates\.updateId/);
+  assert.match(about, /formatInstalledUpdate/);
   assert.match(about, /title="About"/);
 });

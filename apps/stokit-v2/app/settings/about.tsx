@@ -1,13 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Constants from 'expo-constants';
+import * as Updates from 'expo-updates';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../../components/shared/Screen';
 import { SubScreenHeader } from '../../components/shared/SubScreenHeader';
 import { Card } from '../../components/shared/ui';
 import { fonts, spacing, type AppColors } from '../../theme';
 import { useTheme } from '../../hooks/useTheme';
-import { OTA_SEQ } from '../../constants/version';
+import { formatInstalledUpdate } from '../../constants/version';
 import { isExpoGo } from '../../core/services/geofencing';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -61,7 +62,7 @@ export default function AboutScreen() {
             <Text style={styles.statLabel}>Version</Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Text style={styles.statValue}>{Constants.expoConfig?.version ?? '1.0.0'} (OTA {OTA_SEQ})</Text>
+            <Text style={styles.statValue}>{Constants.expoConfig?.version ?? '1.0.0'} ({formatInstalledUpdate(Updates.updateId)})</Text>
             {devMode && (
               <View style={styles.devModeBadge}>
                 <Text style={styles.devModeBadgeText}>DEV</Text>
