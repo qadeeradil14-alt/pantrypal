@@ -13,7 +13,7 @@
       "supportsTablet": false,
       "icon": "./assets/icon-dark.png",
       "bundleIdentifier": "com.hewadadil.pantrypal",
-      "buildNumber": "108",
+      "buildNumber": "109",
       "deploymentTarget": "16.4",
       "appleTeamId": "4AJ8TH5QF7",
       "infoPlist": {
@@ -195,7 +195,7 @@
       [
         "./plugins/with-ios-xcode27-build-settings",
         {
-          "buildNumber": "108",
+          "buildNumber": "109",
           "deploymentTarget": "16.4"
         }
       ]

@@ -7,8 +7,8 @@ const appRoot = path.resolve(import.meta.dirname, '..');
 const repoRoot = path.resolve(appRoot, '../..');
 const app = JSON.parse(readFileSync(path.join(appRoot, 'app.json'), 'utf8')).expo;
 
-test('Build 108 permission prompts describe every production use', () => {
-  assert.equal(app.ios.buildNumber, '108');
+test('Build 109 permission prompts describe every production use', () => {
+  assert.equal(app.ios.buildNumber, '109');
   assert.equal(
     app.plugins.find((plugin: unknown) => Array.isArray(plugin) && plugin[0] === 'expo-image-picker')[1].cameraPermission,
     'Stokit uses your camera to scan receipts and take a profile photo you choose.',

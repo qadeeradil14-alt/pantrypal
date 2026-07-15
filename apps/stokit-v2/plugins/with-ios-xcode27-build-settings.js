@@ -30,19 +30,38 @@ function patchPodfile(contents, deploymentTarget) {
       :ccache_enabled => ccache_enabled?(podfile_properties),
     )
 `;
-  const patch = `${marker}
-    installer.pods_project.targets.each do |target|
+  const additions = [];
+
+  if (!contents.includes("config.build_settings['IPHONEOS_DEPLOYMENT_TARGET']")) {
+    additions.push(`    installer.pods_project.targets.each do |target|
       target.build_configurations.each do |config|
         config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '${deploymentTarget}'
       end
     end
-`;
+`);
+  }
 
-  if (contents.includes("config.build_settings['IPHONEOS_DEPLOYMENT_TARGET']")) {
+  if (!contents.includes('reachability_privacy_manifest')) {
+    additions.push(`    reachability_privacy_manifest = File.join(
+      installer.sandbox.root.to_s,
+      'ReachabilitySwift',
+      'Sources',
+      'PrivacyInfo.xcprivacy'
+    )
+
+    if File.exist?(reachability_privacy_manifest)
+      reachability_privacy = Xcodeproj::Plist.read_from_path(reachability_privacy_manifest)
+      reachability_privacy['NSPrivacyCollectedDataTypes'] = []
+      Xcodeproj::Plist.write_to_path(reachability_privacy, reachability_privacy_manifest)
+    end
+`);
+  }
+
+  if (additions.length === 0) {
     return contents;
   }
 
-  return contents.replace(marker, patch);
+  return contents.replace(marker, `${marker}\n${additions.join('\n')}`);
 }
 
 function patchProjectFile(contents, buildNumber) {
@@ -78,3 +97,5 @@ module.exports = function withIosXcode27BuildSettings(config, props = {}) {
 
   return config;
 };
+
+module.exports.patchPodfile = patchPodfile;
