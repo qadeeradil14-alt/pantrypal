@@ -70,11 +70,11 @@ test('duplicate trip-start invocation does not send duplicate alerts', async () 
   assert.equal(alerts, 1);
 });
 
-test('manual trip-start paths enable the alert without changing geofence auto-start', () => {
+test('trip start never sends a household alert without the Notify Family button', () => {
   const source = readFileSync(join(process.cwd(), 'app/(tabs)/shopping.tsx'), 'utf8');
 
   assert.match(source, /if \(tripStartIdRef\.current\) return;/);
-  assert.match(source, /startTripAt\(entries\[0\]\[0\], true\)/);
-  assert.match(source, /startTripAt\(storeId, true\)/);
+  assert.doesNotMatch(source, /startTripAt\([^)]*, true\)/);
   assert.match(source, /startTripAt\(arrivalStoreId\);/);
+  assert.equal(source.match(/sendHouseholdShoppingAlert\(/g)?.length, 1);
 });

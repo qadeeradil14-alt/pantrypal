@@ -79,8 +79,17 @@ test('partner arrival Shopping context adds item directly to that store', () => 
   assert.ok(src.includes('partnerAddStoreName'), 'Shopping must preserve partner store name after params are cleared');
   assert.ok(src.includes('Add something for {partnerStoreLabel}'), 'Shopping must visibly show the partner store context');
   assert.ok(src.includes('defaultStatus="low"'), 'partner add sheet must create shopping-list items');
-  assert.ok(src.includes('defaultStoreId={partnerAddStoreId}'), 'partner add sheet must assign to the alerted store');
+  assert.ok(src.includes('defaultStoreId={partnerContextStoreId}'), 'partner add sheet must assign to the current active store');
   assert.ok(src.includes('hideStorePicker={true}'), 'partner add sheet must not let the item lose store context');
+});
+
+test('partner banner prefers the current active stop over stale notification context', () => {
+  const shoppingPath = path.join(__dirname, '../app/(tabs)/shopping.tsx');
+  const src = fs.readFileSync(shoppingPath, 'utf-8');
+  assert.ok(src.includes('const activeSession = useDurableStore((s) => s.activeSession);'));
+  assert.ok(src.includes('const activeStoreId = activeSession?.storeQueue[activeSession.currentIndex] ?? currentStoreId(session);'));
+  assert.ok(src.includes('const partnerContextStoreId = activeStoreId ?? partnerAddStoreId;'));
+  assert.ok(src.includes('defaultStoreId={partnerContextStoreId}'));
 });
 
 test('active shopping session ingests live household items for current store', () => {

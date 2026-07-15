@@ -85,6 +85,7 @@ export default function ShoppingScreen() {
   const updateItem = useDurableStore((s) => s.updateItem);
   const resetShoppingList = useDurableStore((s) => s.resetShoppingList);
   const assignItemsToStore = useDurableStore((s) => s.assignItemsToStore);
+  const activeSession = useDurableStore((s) => s.activeSession);
   const session    = useSessionStore((s) => s.session);
   const dispatch   = useSessionStore((s) => s.dispatch);
   const router     = useRouter();
@@ -175,7 +176,7 @@ export default function ShoppingScreen() {
     [items],
   );
 
-  const startTripAt = async (firstStoreId: string, notifyHousehold = false) => {
+  const startTripAt = async (firstStoreId: string) => {
     if (tripStartIdRef.current) return;
     const shoppable = items.filter((i) => i.status === 'low' || i.status === 'expiring');
     shoppable
@@ -201,16 +202,9 @@ export default function ShoppingScreen() {
     const now = Date.now();
     const tripId = `t_${now}`;
     tripStartIdRef.current = tripId;
-    const store = storeById(firstStoreId);
     startShoppingTripOnce({
       tripId,
       startTrip: () => dispatch({ type: 'START_TRIP', entries, now }),
-      notifyHousehold: notifyHousehold && store
-        ? () => sendShoppingAlertOnce(
-            tripId,
-            () => sendHouseholdShoppingAlert(store.name, firstStoreId),
-          )
-        : undefined,
     });
     if (await isGeofencingRunning()) {
       const result = await startGeofencing(stores, nextItems);
@@ -290,7 +284,7 @@ export default function ShoppingScreen() {
     const entries = Array.from(plan.entries());
     if (entries.length === 0) return;
     if (entries.length === 1) {
-      void startTripAt(entries[0][0], true);
+      void startTripAt(entries[0][0]);
       return;
     }
     setShowStoreChooser(true);
@@ -354,7 +348,7 @@ export default function ShoppingScreen() {
                   <Text style={nsStyles.storeItems}>{list.length} item{list.length !== 1 ? 's' : ''}</Text>
                 </View>
                 <Pressable
-                  onPress={() => { setShowStoreChooser(false); void startTripAt(storeId, true); }}
+                  onPress={() => { setShowStoreChooser(false); void startTripAt(storeId); }}
                   style={({ pressed }) => [nsStyles.startBtn, { borderColor: barColor }, pressed && { opacity: 0.8 }]}
                 >
                   <Text style={[nsStyles.startBtnText, { color: barColor }]}>Start</Text>
@@ -370,9 +364,11 @@ export default function ShoppingScreen() {
     );
   }
   const shoppableCount = totalItems + unassignedCount;
-  const partnerStore = partnerAddStoreId ? storeById(partnerAddStoreId) : undefined;
+  const activeStoreId = activeSession?.storeQueue[activeSession.currentIndex] ?? currentStoreId(session);
+  const partnerContextStoreId = activeStoreId ?? partnerAddStoreId;
+  const partnerStore = partnerContextStoreId ? storeById(partnerContextStoreId) : undefined;
   const partnerStoreLabel = partnerStore?.name ?? partnerAddStoreName ?? 'this store';
-  const partnerContext = partnerAddStoreId ? (
+  const partnerContext = partnerContextStoreId ? (
     <Card style={styles.partnerContextCard}>
       <StoreChip store={partnerStore} name={partnerStore?.name ?? partnerAddStoreName ?? 'Store'} size={40} />
       <View style={{ flex: 1 }}>
@@ -553,7 +549,7 @@ export default function ShoppingScreen() {
         visible={partnerAddSheetVisible}
         onClose={() => setPartnerAddSheetVisible(false)}
         defaultStatus="low"
-        defaultStoreId={partnerAddStoreId}
+        defaultStoreId={partnerContextStoreId}
         hideStorePicker={true}
         title={`Add to ${partnerStoreLabel}`}
         subtitle="Add items your household should pick up here."
