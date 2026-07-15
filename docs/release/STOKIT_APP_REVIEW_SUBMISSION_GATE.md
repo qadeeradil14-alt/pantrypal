@@ -56,7 +56,7 @@ Release mode: Manual release only
 
 ## Screenshot checklist — do not upload without approval
 
-Create six 6.9-inch iPhone portrait images at an accepted size such as 1320×2868. Use Build 108 UI and sanitized data.
+Create six iPhone portrait images at one of the sizes currently accepted for this version: 1242×2688 or 1284×2778. Use Build 108 UI and sanitized data.
 
 1. Pantry/home household overview.
 2. Shared pantry and two-device collaboration.
