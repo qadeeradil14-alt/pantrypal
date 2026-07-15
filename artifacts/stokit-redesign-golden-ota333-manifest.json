@@ -1,0 +1,28 @@
+{
+  "repository": "https://github.com/qadeeradil14-alt/pantrypal.git",
+  "commit": "d1934a43a86f96eb3663ec44311bdb336a5e0139",
+  "tag": "stokit-redesign-golden-ota333",
+  "goldenBranch": "golden/stokit-redesign-ota333",
+  "ota": 333,
+  "otaGroup": "b82154de-06a1-4488-9a8e-4e0d0313cdd4",
+  "iosUpdateId": "019f6318-fd27-7150-a8d9-9e4bd9524d9d",
+  "appName": "Stokit Redesign",
+  "bundleId": "com.hewadadil.stokit.redesign",
+  "runtime": "1.0.0",
+  "channel": "shopping-redesign-test",
+  "createdAt": "2026-07-14T20:36:23-04:00",
+  "sourceArchive": {
+    "localPath": "/tmp/pantrypal-emergency-restore-ota321/artifacts/stokit-redesign-golden-ota333-source.tar.gz",
+    "sha256": "40458c9c9d28d0fbf509dc573a6353d2acbccc734ad403eadb0095f2e3707aa5",
+    "tracked": false
+  },
+  "restoreCommands": [
+    "git fetch origin golden/stokit-redesign-ota333 --tags",
+    "git switch -c recovery/stokit-redesign-ota333 stokit-redesign-golden-ota333",
+    "cd apps/stokit-v2",
+    "APP_VARIANT=redesign npx expo config --type public --json",
+    "npm run typecheck",
+    "npm run ota:redesign -- \"OTA <new-number>: recovery from golden OTA 333\""
+  ],
+  "productionIsolationStatement": "Production OTA 309 is isolated and must never be altered, merged into, or published through this recovery process."
+}
