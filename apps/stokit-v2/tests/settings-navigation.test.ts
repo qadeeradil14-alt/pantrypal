@@ -23,6 +23,7 @@ test('subscreens go back when possible and fall back to Settings', () => {
 
 test('version and installed update information live under About', () => {
   assert.match(about, /Updates\.updateId/);
-  assert.match(about, /formatInstalledUpdate/);
+  assert.match(about, /CURRENT_OTA_LABEL/);
+  assert.match(about, /showUpdateDetails/);
   assert.match(about, /title="About"/);
 });

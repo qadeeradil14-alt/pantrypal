@@ -8,7 +8,7 @@ import { SubScreenHeader } from '../../components/shared/SubScreenHeader';
 import { Card } from '../../components/shared/ui';
 import { fonts, spacing, type AppColors } from '../../theme';
 import { useTheme } from '../../hooks/useTheme';
-import { formatInstalledUpdate } from '../../constants/version';
+import { CURRENT_OTA_LABEL, formatInstalledUpdate } from '../../constants/version';
 import { isExpoGo } from '../../core/services/geofencing';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -19,6 +19,7 @@ export default function AboutScreen() {
   const { colors } = useTheme();
   const inExpoGo = isExpoGo();
   const [devMode, setDevMode] = useState(false);
+  const [showUpdateDetails, setShowUpdateDetails] = useState(false);
   const [, setDevTapCount] = useState(0);
   const devTapTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -54,7 +55,7 @@ export default function AboutScreen() {
             <Ionicons name="phone-portrait-outline" size={16} color={colors.muted} />
             <Text style={styles.statLabel}>App</Text>
           </View>
-          <Text style={styles.statValue}>Stokit V2</Text>
+          <Text style={styles.statValue}>Stokit</Text>
         </View>
         <Pressable style={styles.statRow} onPress={handleDevTap} accessibilityRole="button" accessibilityLabel="Version info">
           <View style={styles.aboutLabel}>
@@ -62,7 +63,9 @@ export default function AboutScreen() {
             <Text style={styles.statLabel}>Version</Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Text style={styles.statValue}>{Constants.expoConfig?.version ?? '1.0.0'} ({formatInstalledUpdate(Updates.updateId)})</Text>
+            <Text style={styles.statValue}>
+              {Constants.expoConfig?.version ?? '1.0.0'} ({Constants.nativeBuildVersion ?? '—'})
+            </Text>
             {devMode && (
               <View style={styles.devModeBadge}>
                 <Text style={styles.devModeBadgeText}>DEV</Text>
@@ -70,13 +73,45 @@ export default function AboutScreen() {
             )}
           </View>
         </Pressable>
+        <Pressable
+          style={styles.statRow}
+          onPress={() => setShowUpdateDetails((visible) => !visible)}
+          accessibilityRole="button"
+          accessibilityLabel="Update details"
+          accessibilityState={{ expanded: showUpdateDetails }}
+        >
+          <View style={styles.aboutLabel}>
+            <Ionicons name="cloud-download-outline" size={16} color={colors.muted} />
+            <Text style={styles.statLabel}>Update</Text>
+          </View>
+          <View style={styles.updateValue}>
+            <Text style={styles.statValue}>{CURRENT_OTA_LABEL}</Text>
+            <Ionicons name={showUpdateDetails ? 'chevron-up' : 'chevron-down'} size={16} color={colors.muted} />
+          </View>
+        </Pressable>
+        {showUpdateDetails && (
+          <View style={styles.updateDetails}>
+            <View style={styles.updateDetailRow}>
+              <Text style={styles.updateDetailLabel}>Expo Update ID</Text>
+              <Text style={styles.updateDetailValue} selectable>{formatInstalledUpdate(Updates.updateId)}</Text>
+            </View>
+            <View style={styles.updateDetailRow}>
+              <Text style={styles.updateDetailLabel}>Runtime Version</Text>
+              <Text style={styles.updateDetailValue}>{Updates.runtimeVersion ?? 'Unavailable'}</Text>
+            </View>
+            <View style={styles.updateDetailRow}>
+              <Text style={styles.updateDetailLabel}>Channel</Text>
+              <Text style={styles.updateDetailValue}>{Updates.channel ?? 'Unavailable'}</Text>
+            </View>
+          </View>
+        )}
         <View style={[styles.statRow, { borderBottomWidth: 0 }]}>
           <View style={styles.aboutLabel}>
             <Ionicons name="cube-outline" size={16} color={colors.muted} />
-            <Text style={styles.statLabel}>Build</Text>
+            <Text style={styles.statLabel}>Build Type</Text>
           </View>
           <Text style={styles.statValue}>
-            {inExpoGo ? 'Expo Go' : 'Standalone'}
+            {Updates.channel === 'production' ? 'Production' : (Updates.channel ?? (inExpoGo ? 'Expo Go' : 'Standalone'))}
           </Text>
         </View>
       </Card>
@@ -100,6 +135,11 @@ function makeStyles(colors: AppColors) {
     statLabel: { fontFamily: fonts.sans, fontSize: 15, color: colors.inkSoft },
     statValue: { fontFamily: fonts.monoMedium, fontSize: 14, color: colors.ink },
     aboutLabel: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    updateValue: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+    updateDetails: { gap: spacing.sm, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
+    updateDetailRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.md },
+    updateDetailLabel: { flex: 1, fontFamily: fonts.sans, fontSize: 13, color: colors.inkSoft },
+    updateDetailValue: { flex: 1.5, fontFamily: fonts.monoMedium, fontSize: 12, color: colors.ink, textAlign: 'right' },
     devModeBadge: {
       backgroundColor: colors.primary,
       borderRadius: 4,
