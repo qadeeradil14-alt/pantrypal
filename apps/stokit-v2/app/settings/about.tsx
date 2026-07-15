@@ -71,7 +71,10 @@ export default function AboutScreen() {
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <Text style={styles.statValue}>
-              {formatAppVersion(Constants.expoConfig?.version ?? '1.0.0', Constants.nativeBuildVersion)}
+              {formatAppVersion(
+                Constants.expoConfig?.version ?? '1.0.0',
+                Constants.nativeBuildVersion ?? Constants.platform?.ios?.buildNumber,
+              )}
             </Text>
             {devMode && (
               <View style={styles.devModeBadge}>

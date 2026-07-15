@@ -5,7 +5,7 @@ import test from 'node:test';
 import { CURRENT_OTA_LABEL, formatAppVersion, formatInstalledUpdate } from '../constants/version';
 
 test('keeps the production OTA label in one centralized version source', () => {
-  assert.equal(CURRENT_OTA_LABEL, 'OTA 313');
+  assert.equal(CURRENT_OTA_LABEL, 'OTA 314');
 });
 
 test('uses the full installed Expo update identity only in developer details', () => {
@@ -35,6 +35,7 @@ test('About keeps developer update metadata expandable and Welcome hides it', ()
   assert.match(about, /Updates\.channel/);
   assert.match(about, /showUpdateDetails/);
   assert.match(about, /Constants\.nativeBuildVersion/);
+  assert.match(about, /Constants\.platform\?\.ios\?\.buildNumber/);
   assert.match(about, /formatAppVersion/);
   assert.match(about, /devMode \|\| showBuildType/);
   assert.match(about, /onLongPress/);
