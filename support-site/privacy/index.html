@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Stokit Privacy Policy</title>
+    <style>
+      :root { color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #211c18; background: #fbf7f0; }
+      body { margin: 0; }
+      main { width: min(760px, calc(100% - 40px)); margin: 0 auto; padding: 56px 0; }
+      h1 { font-size: 42px; line-height: 1.05; margin: 0 0 12px; }
+      h2 { margin-top: 36px; padding-top: 24px; border-top: 1px solid #dfd4c7; }
+      p, li { font-size: 17px; line-height: 1.6; }
+      a { color: #8b4f25; font-weight: 700; }
+      .meta { color: #6e6258; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Stokit Privacy Policy</h1>
+      <p class="meta">Effective July 15, 2026 · Developer: Abdul Adil</p>
+      <p>Stokit is a household pantry manager and shopping assistant. This policy explains what information Stokit processes, why it is needed, where it is stored, and how you can delete it.</p>
+
+      <h2>Information Stokit processes</h2>
+      <ul>
+        <li><strong>Account information:</strong> email address, Supabase user ID, and a display name you choose. Supabase Auth manages passwords; Stokit does not receive or store your password.</li>
+        <li><strong>Household content:</strong> household names, memberships and roles, pantry items, quantities, shopping lists and trips, saved stores, receipt details, prices, spending history, preferences, and activity entries.</li>
+        <li><strong>Images:</strong> a profile photo or receipt image only when you choose to take or attach one.</li>
+        <li><strong>Push identifiers:</strong> an Expo push token associated with your account and household when you enable notifications.</li>
+        <li><strong>Location:</strong> precise coordinates when you request nearby-store search, and on-device geofence events when you enable arrival reminders.</li>
+      </ul>
+      <p>Stokit does not sell personal information, show third-party advertising, use tracking identifiers, or collect contacts, microphone audio, health data, behavioral analytics, or developer crash telemetry.</p>
+
+      <h2>How information is used</h2>
+      <p>Account identifiers authenticate you and connect you to a household. Pantry, shopping, store, receipt, history, and activity data provide the app’s shared household features. Push tokens deliver notifications requested by household members. Location provides store search and optional arrival reminders.</p>
+      <p>In guest mode, no account or household data is uploaded to Stokit cloud storage. If recipe suggestions are displayed, pantry ingredient names may be sent to TheMealDB without an account identifier.</p>
+
+      <h2>Household sharing</h2>
+      <p>Pantry, shopping, store, receipt, history, and activity data are shared with members of the household you join. Members can see one another’s display name and optional profile photo. Email addresses and push tokens are not displayed to household members.</p>
+
+      <h2>Camera, photos, receipts, and profile photos</h2>
+      <p>Stokit uses your camera to scan a receipt or take a profile photo you choose. It uses your photo library to attach a receipt image or select a profile photo. Receipt images are stored locally and may be uploaded to a private Supabase Storage bucket for household access.</p>
+      <p>If you choose receipt scanning, the receipt image may be processed by a Supabase Edge Function and an OpenAI-compatible vision service. OCR may instead use Google Cloud Vision or OCR.space when configured. These services receive the receipt image only to extract receipt details.</p>
+
+      <h2>Location and stores</h2>
+      <p>When you request nearby-store search, coordinates or a store-name query may be sent to Google Places, Geoapify, or OpenStreetMap services. Saved-store coordinates may be stored with the shared household data. Arrival reminders use on-device geofencing; Stokit does not keep a location history.</p>
+
+      <h2>Notifications</h2>
+      <p>Expo and Apple APNs process push tokens and notification payloads to deliver notifications. Stokit uses push tokens only for app functionality, not advertising or tracking. A household shopping alert is sent only when a member explicitly uses Notify Family or another clearly presented notification feature.</p>
+
+      <h2>Storage and service providers</h2>
+      <p>Stokit uses Supabase for authentication, cloud snapshots, private image storage, and Edge Functions; Expo for app updates and push relay; Apple APNs for iOS push delivery; Google Places, Geoapify, or OpenStreetMap for store search; OpenAI-compatible vision, Google Cloud Vision, or OCR.space for optional receipt extraction; and TheMealDB for recipe suggestions. Each provider processes information under its own privacy terms.</p>
+
+      <h2>Retention and security</h2>
+      <p>Account and cloud database records are retained while your account is active. Local data remains until you delete it, delete your account, sign out where applicable, or remove the app. Supabase backup copies may persist for up to 30 days. Data is transmitted using HTTPS, household database access is protected by authentication and row-level policies, and private images use access-controlled storage.</p>
+
+      <h2 id="choices">Your privacy choices and account deletion</h2>
+      <p>You can decline camera, photo-library, location, and notification access and continue using features that do not require them. You can manage permissions in iOS Settings.</p>
+      <p>Delete your account in Stokit under <strong>Settings → Account → Delete Account</strong>. Account deletion removes your authentication record, local app data, personal household database records, membership, and push token. A non-owner leaving a shared household does not delete content that remains shared with other members. An owner must transfer ownership or remove remaining members first.</p>
+      <p>Profile images and receipt images belonging to a personal or sole-member household are deleted before the account is removed. Receipt images that remain shared with another household are retained for that household. You may request deletion confirmation, access, correction, or a portable copy by emailing <a href="mailto:qadeeradil14@gmail.com">qadeeradil14@gmail.com</a>.</p>
+
+      <h2>Children</h2>
+      <p>Stokit is not directed to children under 13 in the United States or under 16 in the European Economic Area. Contact us if you believe a child has created an account.</p>
+
+      <h2>Contact</h2>
+      <p>Privacy, support, and deletion questions: <a href="mailto:qadeeradil14@gmail.com">qadeeradil14@gmail.com</a>.</p>
+      <p><a href="/">Return to Stokit Support</a></p>
+    </main>
+  </body>
+</html>

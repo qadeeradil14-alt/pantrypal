@@ -1,6 +1,6 @@
 # Privacy Policy — Stokit
 
-**Effective date:** July 2, 2026  
+**Effective date:** July 15, 2026
 **App name:** Stokit  
 **Developer:** Abdul Adil
 **Contact:** qadeeradil14@gmail.com
@@ -25,7 +25,7 @@ When you create an account you provide:
 
 Your Supabase user ID (a random UUID) is generated automatically when you sign up.
 
-**Guest mode:** Stokit supports a guest mode. In guest mode no account is created and no data leaves your device.
+**Guest mode:** Stokit supports a guest mode. In guest mode, no account or household data is uploaded to Stokit cloud storage. If recipe suggestions are displayed, pantry ingredient names may be sent to TheMealDB to retrieve matching recipes. No account identifier is included with those requests.
 
 ### 1.2 Pantry and Shopping Data
 
@@ -47,9 +47,9 @@ This includes:
 
 If you take or attach a photo of a receipt:
 
-- The **photo** is saved locally on your device in the app's private document directory (`receipts/`).
+- The **photo** is saved locally on your device in the app's private document directory (`receipts/`). Camera and photo-library access may also be used when you explicitly choose to create or replace a profile photo.
 - The photo is also **uploaded to Supabase Storage** (a private bucket named `receipts`) keyed to your household ID. Only members of your household can access it via a time-limited signed URL.
-- If the **AI receipt scan** feature is enabled (requires a configured server endpoint), the image is sent as a base64-encoded string to a Supabase Edge Function (`scan-receipt`). That function calls an OpenAI-compatible API (GPT-4o Vision) and returns structured line-item data (store name, date, items, prices). **The scan endpoint processes the image only to return receipt data. Stokit does not intentionally store the image in that endpoint beyond the request.**
+- If the **AI receipt scan** feature is enabled, the image is sent as a base64-encoded string to a Supabase Edge Function (`scan-receipt`). That function calls an OpenAI-compatible vision service and returns structured line-item data (store name, date, items, prices). **The scan endpoint processes the image only to return receipt data. Stokit does not intentionally store a separate copy of the image in that endpoint beyond the request.**
 - If the **OCR total extraction** feature is enabled (via ocr.space or Google Cloud Vision), the image is sent to the respective provider's API to extract a dollar total. Neither provider receives identifying account information along with the image.
 
 Receipt scan is strictly opt-in. If no scan keys are configured, tapping "Scan receipt" is a no-op and no image is transmitted.
@@ -73,7 +73,7 @@ If you allow notifications:
 
 - Your **Expo push token** is stored in the `household_members` table in Supabase, associated with your user ID and household ID.
 - The token is used only to deliver one type of notification: a **"Shopping alert"** sent by a household member to tell you they are at a store. The token is never used for marketing.
-- Notifications are delivered via **Expo's push notification infrastructure**, which relays to Apple APNs or Google FCM. Expo does not store message content.
+- Notifications are delivered through **Expo's push notification infrastructure**, which relays to Apple APNs or Google FCM. Expo and Apple or Google process the push token and notification payload according to their own privacy policies. Stokit does not use push tokens for advertising or tracking.
 
 ### 1.6 Recipe Suggestions
 
@@ -93,7 +93,7 @@ The Pantry home screen suggests recipes based on items currently in your pantry.
 
 Stokit supports shared households. When you join a shared household via an invite code:
 
-- Your **display name** and **Expo push token** become visible to other members of that household.
+- Your **display name** and optional profile photo are visible to other members of that household. Your Expo push token is associated with your membership for notification delivery but is not displayed in the app.
 - Your **pantry data, shopping history, and receipts** are shared with all members of the household in real time.
 - The **household owner** can see member display names and remove members. Members cannot see each other's email addresses.
 
@@ -139,7 +139,7 @@ None of this local data is shared with third parties except as described in this
 
 ## 5. Data Retention
 
-- **Account and cloud data:** retained until you delete your account (see §6). Supabase may retain backups for up to 30 days after deletion in accordance with its own retention policy.
+- **Account and cloud database records:** retained until you delete your account (see §6). Supabase may retain backup copies for up to 30 days after deletion in accordance with its own retention policy.
 - **Receipt images:** retained in Supabase Storage until you delete your account or manually delete individual receipts.
 - **Local device data:** retained until you delete the app or delete your account. Deleting the app removes all AsyncStorage and document-directory data on iOS.
 - **Notification log:** kept only in AsyncStorage, maximum 50 entries, never transmitted.
@@ -148,15 +148,17 @@ None of this local data is shared with third parties except as described in this
 
 ## 6. Account Deletion
 
-You can delete your account at any time from **Settings → Delete Account**.
+You can delete your account at any time from **Settings → Account → Delete Account**.
 
 When you delete your account:
 
 1. A Supabase Edge Function (`delete-account`) permanently deletes your auth user record server-side.
 2. All local app data (pantry state, household identity, session) is wiped from the device.
 3. All receipt photos stored on the device are deleted.
-4. Your household snapshot and receipts in Supabase Storage are removed (subject to Supabase's 30-day backup window).
-5. Your push token is removed from `household_members`.
+4. Your personal household database records and membership are removed. If you are a non-owner member of a shared household, the shared household data remains available to its other members.
+5. Your push token is removed with your household membership.
+
+Profile images and receipt images belonging to a personal or sole-member household are deleted from Supabase Storage before the account is removed. Receipt images that remain shared with another household are retained for that household. You may request deletion confirmation at **qadeeradil14@gmail.com**.
 
 **Household owners:** You cannot delete your account while other members remain in your shared household. You must transfer ownership or remove all members first.
 

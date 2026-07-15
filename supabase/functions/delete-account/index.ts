@@ -24,6 +24,35 @@ function householdMeta(row: MemberRow): HouseholdMeta {
   return Array.isArray(meta) ? (meta[0] ?? null) : (meta ?? null);
 }
 
+async function removeHouseholdReceiptFiles(
+  serviceSupabase: ReturnType<typeof createClient>,
+  householdId: string,
+): Promise<string | null> {
+  const paths: string[] = [];
+  let offset = 0;
+
+  while (true) {
+    const { data, error } = await serviceSupabase.storage
+      .from('receipts')
+      .list(householdId, { limit: 100, offset });
+    if (error) return error.message;
+
+    const page = data ?? [];
+    paths.push(...page.filter((entry) => entry.id).map((entry) => `${householdId}/${entry.name}`));
+    if (page.length < 100) break;
+    offset += page.length;
+  }
+
+  for (let index = 0; index < paths.length; index += 100) {
+    const { error } = await serviceSupabase.storage
+      .from('receipts')
+      .remove(paths.slice(index, index + 100));
+    if (error) return error.message;
+  }
+
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') {
     return new Response('Method not allowed', { status: 405 });
@@ -61,6 +90,7 @@ Deno.serve(async (req) => {
   }
 
   const rows = (memberRows ?? []) as MemberRow[];
+  const ownedHouseholdIdsToDelete = new Set<string>();
 
   // Guard: an owner whose household still has other members must transfer
   // ownership or remove them first. `auth.admin.deleteUser` would otherwise
@@ -92,6 +122,29 @@ Deno.serve(async (req) => {
         },
         409,
       );
+    }
+    ownedHouseholdIdsToDelete.add(row.household_id);
+  }
+
+  const avatarPath = `${user.id}/avatar.jpg`;
+  const { error: avatarRemoveError } = await serviceSupabase.storage.from('avatars').remove([avatarPath]);
+  if (avatarRemoveError) {
+    console.error('delete-account avatar cleanup failed', {
+      userId: user.id,
+      error: avatarRemoveError.message,
+    });
+    return json({ error: 'storage_cleanup_failed' }, 500);
+  }
+
+  for (const householdId of ownedHouseholdIdsToDelete) {
+    const cleanupError = await removeHouseholdReceiptFiles(serviceSupabase, householdId);
+    if (cleanupError) {
+      console.error('delete-account receipt cleanup failed', {
+        userId: user.id,
+        householdId,
+        error: cleanupError,
+      });
+      return json({ error: 'storage_cleanup_failed' }, 500);
     }
   }
 
