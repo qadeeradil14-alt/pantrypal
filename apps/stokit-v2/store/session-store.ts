@@ -20,6 +20,7 @@ import { useDurableStore } from './durable-store';
 import type { SharedShoppingSession } from '../types';
 import { remoteShoppingSessionAction } from '../core/services/shoppingSessionSyncPolicy';
 import { normalizeShoppingSession, resolveHydratedShoppingSession, shoppingTransitionTrace } from '../core/services/shoppingLifecycle';
+import { mergeShoppingEntries } from '../core/services/shoppingEntrySync';
 
 const SESSION_KEY = 'stokit:v2:active-session';
 
@@ -97,6 +98,29 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       set({ session: initialSession });
       AsyncStorage.removeItem(SESSION_KEY).catch(() => {});
       console.log(trace('remote', 'REMOTE_CLEAR', previous, initialSession));
+      return;
+    }
+
+    if (
+      previous.status === 'shopping_store'
+      && normalized.status === 'shopping_store'
+      && previous.tripId === normalized.tripId
+    ) {
+      const removedItemIds = Array.from(
+        new Set([...(previous.removedItemIds ?? []), ...(normalized.removedItemIds ?? [])]),
+      );
+      const merged: ShoppingSession = {
+        ...previous,
+        storeQueue: [
+          ...previous.storeQueue,
+          ...normalized.storeQueue.filter((storeId) => !previous.storeQueue.includes(storeId)),
+        ],
+        entries: mergeShoppingEntries(previous.entries, normalized.entries, removedItemIds),
+        removedItemIds,
+      };
+      set({ session: merged });
+      persistSession(merged);
+      console.log(trace('remote', 'REMOTE_MERGE', previous, merged));
       return;
     }
 

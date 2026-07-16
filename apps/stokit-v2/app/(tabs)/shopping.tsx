@@ -174,12 +174,8 @@ export default function ShoppingScreen() {
     [items],
   );
 
-  const startTripAt = async (firstStoreId: string, notifyHousehold = false) => {
-    if (tripStartIdRef.current) {
-      if (useSessionStore.getState().session.status !== 'idle') return;
-      resetShoppingTripStartGuard(tripStartIdRef.current);
-      tripStartIdRef.current = null;
-    }
+  const startTripAt = async (firstStoreId: string) => {
+    if (tripStartIdRef.current) return;
     const shoppable = items.filter((i) => i.status === 'low' || i.status === 'expiring');
     shoppable
       .filter((i) => !i.storeId)
@@ -204,27 +200,10 @@ export default function ShoppingScreen() {
     const now = Date.now();
     const tripId = `t_${now}`;
     tripStartIdRef.current = tripId;
-    const store = storeById(firstStoreId);
-    try {
-      const started = startShoppingTripOnce({
-        tripId,
-        startTrip: () => dispatch({ type: 'START_TRIP', entries, now }),
-        notifyHousehold: notifyHousehold && store
-          ? () => sendShoppingAlertOnce(
-              tripId,
-              () => sendHouseholdShoppingAlert(store.name, firstStoreId),
-            )
-          : undefined,
-      });
-      if (!started || useSessionStore.getState().session.tripId !== tripId) {
-        resetShoppingTripStartGuard(tripId);
-        tripStartIdRef.current = null;
-        return;
-      }
-    } catch (error) {
-      tripStartIdRef.current = null;
-      throw error;
-    }
+    startShoppingTripOnce({
+      tripId,
+      startTrip: () => dispatch({ type: 'START_TRIP', entries, now }),
+    });
     if (await isGeofencingRunning()) {
       const result = await startGeofencing(stores, nextItems);
       if (result === 'no_permission') {
@@ -299,13 +278,11 @@ export default function ShoppingScreen() {
     );
   };
 
-  const handleStartShopping = async () => {
-    await pullFromSupabase();
-    if (useSessionStore.getState().session.status !== 'idle') return;
+  const handleStartShopping = () => {
     const entries = Array.from(plan.entries());
     if (entries.length === 0) return;
     if (entries.length === 1) {
-      void startTripAt(entries[0][0], true);
+      void startTripAt(entries[0][0]);
       return;
     }
     setShowStoreChooser(true);
@@ -369,7 +346,7 @@ export default function ShoppingScreen() {
                   <Text style={nsStyles.storeItems}>{list.length} item{list.length !== 1 ? 's' : ''}</Text>
                 </View>
                 <Pressable
-                  onPress={() => { setShowStoreChooser(false); void startTripAt(storeId, true); }}
+                  onPress={() => { setShowStoreChooser(false); void startTripAt(storeId); }}
                   style={({ pressed }) => [nsStyles.startBtn, { borderColor: barColor }, pressed && { opacity: 0.8 }]}
                 >
                   <Text style={[nsStyles.startBtnText, { color: barColor }]}>Start</Text>

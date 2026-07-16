@@ -165,10 +165,10 @@ test('shopping tab remains mounted and renders the idle planner after reset', ()
   assert.doesNotMatch(shoppingScreen, /router\.(?:replace|dismiss|back)\([^)]*RESET/);
 });
 
-test('rejected trip start releases the one-shot guard for retry', () => {
+test('golden trip-start guard remains one-shot until the session returns idle', () => {
   const shoppingScreen = readFileSync(join(process.cwd(), 'app/(tabs)/shopping.tsx'), 'utf8');
 
-  assert.match(shoppingScreen, /useSessionStore\.getState\(\)\.session\.tripId !== tripId/);
-  assert.match(shoppingScreen, /resetShoppingTripStartGuard\(tripId\)/);
+  assert.match(shoppingScreen, /if \(tripStartIdRef\.current\) return;/);
+  assert.match(shoppingScreen, /if \(tripStartIdRef\.current\) resetShoppingTripStartGuard\(tripStartIdRef\.current\)/);
   assert.match(shoppingScreen, /tripStartIdRef\.current = null/);
 });
