@@ -7,7 +7,13 @@ import {
   shoppingEntryEventForItem,
 } from '../core/services/shoppingEntrySync';
 import { initialSession, reduce, type ShoppingSession } from '../core/shopping-machine';
-import type { PantryItem, ShoppingEntry } from '../types';
+import {
+  initializeReplicaState,
+  mergeReplicaStates,
+  recordLocalMutation,
+  syncStateDigest,
+} from '../core/services/replicaSync';
+import type { DurableState, PantryItem, ShoppingEntry } from '../types';
 
 function item(overrides: Partial<PantryItem> = {}): PantryItem {
   return {
@@ -50,13 +56,32 @@ function active(entries: ShoppingEntry[] = [entry()]): ShoppingSession {
   };
 }
 
-test('server pantry truth repairs a stale active-trip store without dropping progress', () => {
+function durable(activeSession: ShoppingSession, items: PantryItem[] = [item()]): DurableState {
+  return {
+    items,
+    stores: [],
+    priceHistory: [],
+    receipts: [],
+    trips: [],
+    activity: [],
+    prefs: {
+      householdName: 'Home',
+      defaultUnit: 'unit',
+      expiringWindowDays: 3,
+      weeklyBudget: 200,
+    },
+    activeSession,
+    updatedAt: 1,
+  };
+}
+
+test('active-trip store and picked progress remain stable when pantry metadata changes', () => {
   const session = reconcileShoppingSession(
     active([entry({ picked: true })]),
     [item({ storeId: 'sams' })],
   );
 
-  assert.equal(session.entries[0].storeId, 'sams');
+  assert.equal(session.entries[0].storeId, 'target');
   assert.equal(session.entries[0].picked, true);
 });
 
@@ -70,7 +95,7 @@ test('remote entry metadata wins over stale local metadata while completion rema
   assert.deepEqual(merged[0], entry({ name: 'Banana', quantity: 4, storeId: 'sams', picked: true }));
 });
 
-test('valid names, capitalization, emoji metadata, and quantity survive reconciliation', () => {
+test('active-trip names, capitalization, emoji metadata, and quantity survive reconciliation', () => {
   const items = [
     item({ id: 'apple', name: 'Apple' }),
     item({ id: 'banana', name: 'Banana' }),
@@ -87,13 +112,41 @@ test('valid names, capitalization, emoji metadata, and quantity survive reconcil
 
   const reconciled = reconcileShoppingSession(active(entries), items).entries;
 
-  assert.deepEqual(reconciled.map(({ itemId, name, quantity }) => ({ itemId, name, quantity })), [
-    { itemId: 'apple', name: 'Apple', quantity: 1 },
-    { itemId: 'banana', name: 'Banana', quantity: 1 },
-    { itemId: 'orange', name: 'Orange', quantity: 1 },
-    { itemId: 'milk', name: '🥛 Milk', quantity: 3 },
-    { itemId: 'green-apple', name: 'Green Apple', quantity: 1 },
-  ]);
+  assert.deepEqual(reconciled.map(({ itemId, name, quantity }) => ({ itemId, name, quantity })), entries.map(
+    ({ itemId, name, quantity }) => ({ itemId, name, quantity }),
+  ));
+});
+
+test('low and expiring pantry status changes do not remove active-trip entries', () => {
+  for (const status of ['low', 'expiring'] as const) {
+    const session = reconcileShoppingSession(
+      active([]),
+      [item({ status, quantity: 4, storeId: 'target' })],
+    );
+    const reconciled = reconcileShoppingSession(
+      session,
+      [item({ status: 'stocked', quantity: 1, storeId: 'sams' })],
+    );
+
+    assert.equal(reconciled.tripId, 'trip-1');
+    assert.deepEqual(reconciled.entries, session.entries, `${status} entry must remain stable`);
+  }
+});
+
+test('picked entry remains after its pantry status changes', () => {
+  const session = active([entry({ picked: true, quantity: 3 })]);
+  const reconciled = reconcileShoppingSession(session, [item({ status: 'stocked' })]);
+
+  assert.deepEqual(reconciled.entries, session.entries);
+  assert.equal(reconciled.entries[0].picked, true);
+});
+
+test('unpicked entry remains after its pantry status changes', () => {
+  const session = active([entry({ picked: false, quantity: 2 })]);
+  const reconciled = reconcileShoppingSession(session, [item({ status: 'stocked' })]);
+
+  assert.deepEqual(reconciled.entries, session.entries);
+  assert.equal(reconciled.entries[0].picked, false);
 });
 
 test('same product name with distinct item IDs is not collapsed by trip reconciliation', () => {
@@ -140,12 +193,14 @@ test('local add, edit, quantity, and store moves generate one active-session ups
   });
 });
 
-test('local delete or non-shopping status removes the active entry', () => {
-  assert.deepEqual(shoppingEntryEventForItem(active(), null, 'banana'), { type: 'REMOVE_ENTRY', itemId: 'banana' });
-  assert.deepEqual(
-    shoppingEntryEventForItem(active(), item({ status: 'stocked' }), 'banana'),
-    { type: 'REMOVE_ENTRY', itemId: 'banana' },
-  );
+test('explicit removal records a tombstone while a pantry status change does not', () => {
+  const remove = shoppingEntryEventForItem(active(), null, 'banana');
+  assert.deepEqual(remove, { type: 'REMOVE_ENTRY', itemId: 'banana' });
+  assert.equal(shoppingEntryEventForItem(active(), item({ status: 'stocked' }), 'banana'), null);
+
+  const removed = reduce(active(), remove!);
+  assert.equal(removed.entries.length, 0);
+  assert.deepEqual(removed.removedItemIds, ['banana']);
 });
 
 test('active ADD_ENTRY refreshes metadata and store without duplicating the item', () => {
@@ -156,4 +211,60 @@ test('active ADD_ENTRY refreshes metadata and store without duplicating the item
 
   assert.equal(next.entries.length, 1);
   assert.deepEqual(next.entries[0], entry({ name: 'BANANA', quantity: 6, storeId: 'sams', picked: true }));
+});
+
+test('force-close and reopen preserves entries after pantry status changes', () => {
+  const session = active([entry({ picked: true, quantity: 4, storeId: 'target' })]);
+  const reconciled = reconcileShoppingSession(session, [item({ status: 'stocked', quantity: 1, storeId: 'sams' })]);
+  const reopened = JSON.parse(JSON.stringify(durable(reconciled, [item({ status: 'stocked' })]))) as DurableState;
+
+  assert.equal(reopened.activeSession?.tripId, 'trip-1');
+  assert.deepEqual(reopened.activeSession?.entries, session.entries);
+});
+
+test('two devices converge without losing an entry whose pantry status changed', () => {
+  const base = initializeReplicaState(durable(active()), 'seed');
+  const iphone = recordLocalMutation(base, {
+    ...base,
+    items: [item({ status: 'stocked', updatedAt: 3 })],
+    activeSession: reconcileShoppingSession(base.activeSession!, [item({ status: 'stocked', updatedAt: 3 })]),
+    updatedAt: 3,
+  }, 'iphone', 'item.status');
+  const ipad = initializeReplicaState(base, 'ipad');
+  const iphoneFirst = mergeReplicaStates([iphone, ipad], 'iphone');
+  const ipadFirst = mergeReplicaStates([ipad, iphone], 'ipad');
+
+  assert.equal(syncStateDigest(iphoneFirst), syncStateDigest(ipadFirst));
+  assert.deepEqual(iphoneFirst.activeSession?.entries, active().entries);
+});
+
+test('offline reconnect preserves status-changed entries and picked progress', () => {
+  const base = initializeReplicaState(durable(active()), 'seed');
+  const offline = JSON.parse(JSON.stringify(recordLocalMutation(base, {
+    ...base,
+    items: [item({ status: 'stocked', updatedAt: 4 })],
+    activeSession: reconcileShoppingSession(base.activeSession!, [item({ status: 'stocked', updatedAt: 4 })]),
+    updatedAt: 4,
+  }, 'offline', 'item.status'))) as DurableState;
+  const onlineSession = reduce(active(), { type: 'SET_PICK', itemId: 'banana', picked: true });
+  const online = recordLocalMutation(initializeReplicaState(base, 'online'), {
+    ...base,
+    activeSession: onlineSession,
+    updatedAt: 5,
+  }, 'online', 'shopping.SET_PICK');
+  const merged = mergeReplicaStates([offline, online], 'offline');
+
+  assert.equal(merged.activeSession?.entries.length, 1);
+  assert.equal(merged.activeSession?.entries[0].picked, true);
+});
+
+test('stale realtime state cannot resurrect an explicitly removed entry', () => {
+  const base = initializeReplicaState(durable(active()), 'seed');
+  const removedSession = reduce(active(), { type: 'REMOVE_ENTRY', itemId: 'banana' });
+  const removed = recordLocalMutation(base, { ...base, activeSession: removedSession, updatedAt: 3 }, 'iphone', 'shopping.REMOVE_ENTRY');
+  const stale = initializeReplicaState(base, 'ipad');
+  const merged = mergeReplicaStates([stale, removed], 'ipad');
+
+  assert.equal(merged.activeSession?.entries.some((value) => value.itemId === 'banana'), false);
+  assert.deepEqual(merged.activeSession?.removedItemIds, ['banana']);
 });

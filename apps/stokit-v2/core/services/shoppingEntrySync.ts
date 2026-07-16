@@ -34,31 +34,9 @@ export function reconcileShoppingSession<T extends SharedShoppingSession>(
   items: PantryItem[],
 ): T {
   if (session.status !== 'shopping_store') return session;
-  const byId = new Map(items.map((item) => [item.id, item]));
   const removedItemIds = new Set(session.removedItemIds ?? []);
-  let changed = false;
-  const entries = session.entries.flatMap((entry) => {
-    if (entry.itemId === '__quick_scan__') return [entry];
-    const item = byId.get(entry.itemId);
-    if (!item || !isShoppingItem(item)) {
-      changed = true;
-      return [];
-    }
-    const next: ShoppingEntry = {
-      ...entry,
-      name: item.name,
-      quantity: item.quantity,
-      unit: item.unit,
-      storeId: item.storeId!,
-    };
-    if (
-      next.name !== entry.name ||
-      next.quantity !== entry.quantity ||
-      next.unit !== entry.unit ||
-      next.storeId !== entry.storeId
-    ) changed = true;
-    return [next];
-  });
+  const entries = session.entries.filter((entry) => !removedItemIds.has(entry.itemId));
+  let changed = entries.length !== session.entries.length;
   const entryIds = new Set(entries.map((entry) => entry.itemId));
   for (const item of items) {
     if (!isShoppingItem(item) || entryIds.has(item.id) || removedItemIds.has(item.id)) continue;
@@ -102,6 +80,7 @@ export function shoppingEntryEventForItem(
       },
     };
   }
+  if (item) return null;
   return session.entries.some((entry) => entry.itemId === itemId)
     ? { type: 'REMOVE_ENTRY', itemId }
     : null;
