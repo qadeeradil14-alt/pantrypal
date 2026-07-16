@@ -87,8 +87,8 @@ test('choose store then select items cannot be cleared by an older queued remote
 test('remote same-trip reconciliation cannot make an item disappear', () => {
   const source = readFileSync(join(process.cwd(), 'store/session-store.ts'), 'utf8');
 
-  assert.match(source, /previous\.tripId === normalized\.tripId/);
-  assert.match(source, /mergeShoppingEntries\(previous\.entries, normalized\.entries, removedItemIds\)/);
+  assert.match(source, /previous\.tripId === next\.tripId/);
+  assert.match(source, /mergeShoppingEntries\(previous\.entries, next\.entries, removedItemIds\)/);
 });
 
 test('trip start never notifies the household without explicit Notify Family', () => {

@@ -94,28 +94,39 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   applyRemoteSession: (remoteSession) => {
     const previous = get().session;
     const normalized = normalizeShoppingSession(remoteSession);
-    if (!normalized || remoteShoppingSessionAction(normalized) === 'clear') {
+    const durable = useDurableStore.getState();
+    const remoteAction = remoteShoppingSessionAction(normalized, {
+      activeTripId: previous.tripId,
+      activeSessionStamp: durable.syncMeta?.singletons.activeSession,
+      sessionTombstones: durable.syncMeta?.sessionTombstones,
+    });
+    if (remoteAction === 'ignore') {
+      console.log(trace('remote', 'REMOTE_IGNORE_STALE_CLEAR', previous, previous));
+      return;
+    }
+    if (remoteAction === 'clear') {
       set({ session: initialSession });
       AsyncStorage.removeItem(SESSION_KEY).catch(() => {});
       console.log(trace('remote', 'REMOTE_CLEAR', previous, initialSession));
       return;
     }
+    const next = normalized as ShoppingSession;
 
     if (
       previous.status === 'shopping_store'
-      && normalized.status === 'shopping_store'
-      && previous.tripId === normalized.tripId
+      && next.status === 'shopping_store'
+      && previous.tripId === next.tripId
     ) {
       const removedItemIds = Array.from(
-        new Set([...(previous.removedItemIds ?? []), ...(normalized.removedItemIds ?? [])]),
+        new Set([...(previous.removedItemIds ?? []), ...(next.removedItemIds ?? [])]),
       );
       const merged: ShoppingSession = {
         ...previous,
         storeQueue: [
           ...previous.storeQueue,
-          ...normalized.storeQueue.filter((storeId) => !previous.storeQueue.includes(storeId)),
+          ...next.storeQueue.filter((storeId) => !previous.storeQueue.includes(storeId)),
         ],
-        entries: mergeShoppingEntries(previous.entries, normalized.entries, removedItemIds),
+        entries: mergeShoppingEntries(previous.entries, next.entries, removedItemIds),
         removedItemIds,
       };
       set({ session: merged });
@@ -124,7 +135,6 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       return;
     }
 
-    const next = normalized as ShoppingSession;
     set({ session: next });
     persistSession(next);
     console.log(trace('remote', 'REMOTE_APPLY', previous, next));

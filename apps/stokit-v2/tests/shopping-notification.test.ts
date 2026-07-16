@@ -143,7 +143,8 @@ test('remote active session fully replaces local partial session and null clears
   assert.ok(sessionSrc.includes('set({ session: next })'), 'remote activeSession must replace local session for non-active/non-merged cases');
   assert.ok(!sessionSrc.includes('ACTIVE_STATUSES.has(previous.status)'), 'remote end must clear an actively-shopping local session');
   assert.ok(sessionSrc.includes("AsyncStorage.removeItem(SESSION_KEY)"), 'remote null/end must clear persisted local active session');
-  assert.ok(sessionSrc.includes('remoteShoppingSessionAction(normalized)'), 'normalized remote end/null policy must gate the storage-clear and replace paths');
+  assert.ok(sessionSrc.includes('remoteShoppingSessionAction(normalized,'), 'normalized remote end/null policy must gate the storage-clear and replace paths');
+  assert.ok(sessionSrc.includes("remoteAction === 'ignore'"), 'stale clear without the active trip tombstone must be ignored');
 });
 
 test('stale AsyncStorage cannot override newer remote active session', () => {

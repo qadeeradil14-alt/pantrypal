@@ -45,7 +45,7 @@ import { findDuplicateStore } from '../core/services/storeDuplicates';
 import { initializeReplicaState, recordLocalMutation } from '../core/services/replicaSync';
 import { runObservedOperation } from '../core/services/crashReporter';
 import { normalizeShoppingSession, resetShoppingLifecycleState } from '../core/services/shoppingLifecycle';
-import { createRemoteShoppingSessionProjection } from '../core/services/shoppingSessionSyncPolicy';
+import { createRemoteShoppingSessionProjection, remoteShoppingSessionAction } from '../core/services/shoppingSessionSyncPolicy';
 
 const remoteShoppingSessionProjection = createRemoteShoppingSessionProjection<SharedShoppingSession | null>();
 
@@ -493,6 +493,20 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     },
 
     applyRemotePatch: (patch) => {
+      const previousSession = normalizeShoppingSession(get().activeSession);
+      const incomingSession = 'activeSession' in patch
+        ? normalizeShoppingSession(patch.activeSession)
+        : previousSession;
+      const sessionAction = remoteShoppingSessionAction(incomingSession, {
+        activeTripId: previousSession?.tripId ?? null,
+        activeSessionStamp: patch.syncMeta?.singletons.activeSession,
+        sessionTombstones: patch.syncMeta?.sessionTombstones,
+      });
+      const projectedSession = sessionAction === 'ignore'
+        ? previousSession
+        : sessionAction === 'clear'
+          ? null
+          : incomingSession;
       set((s) => ({
         ...s,
         ...patch,
@@ -504,7 +518,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         receipts:     Array.isArray(patch.receipts)     ? patch.receipts     : s.receipts,
         trips:        Array.isArray(patch.trips)        ? patch.trips        : s.trips,
         activity:     Array.isArray(patch.activity)     ? patch.activity     : s.activity,
-        activeSession: 'activeSession' in patch ? patch.activeSession ?? null : s.activeSession ?? null,
+        activeSession: 'activeSession' in patch ? projectedSession : s.activeSession ?? null,
       }));
       if (patch.syncMeta) {
         replicaId = patch.syncMeta.replicaId;
