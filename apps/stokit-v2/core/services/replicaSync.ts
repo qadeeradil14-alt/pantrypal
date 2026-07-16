@@ -149,6 +149,13 @@ export function recordLocalMutation(
   operation: string,
 ): DurableState {
   const baseline = initializeReplicaState(previous, replicaId);
+  const beforeSession = normalizeShoppingSession(baseline.activeSession);
+  const normalizedCurrentSession = normalizeShoppingSession(current.activeSession);
+  const currentSessionInvalid = current.activeSession != null && normalizedCurrentSession == null;
+  const afterSession = currentSessionInvalid && beforeSession
+    ? beforeSession
+    : normalizedCurrentSession;
+  const normalizedCurrent = { ...current, activeSession: afterSession };
   const meta = cloneMetadata(baseline.syncMeta!, replicaId);
   const changedIds: string[] = [];
   const nextStamp = (entityId: string): SyncStamp => {
@@ -159,7 +166,7 @@ export function recordLocalMutation(
 
   for (const collection of COLLECTIONS) {
     const before = new Map(collectionValues(baseline, collection).map((value) => [value.id, value]));
-    const after = new Map(collectionValues(current, collection).map((value) => [value.id, value]));
+    const after = new Map(collectionValues(normalizedCurrent, collection).map((value) => [value.id, value]));
     for (const [id, value] of after) {
       if (stableStringify(value) !== stableStringify(before.get(id))) {
         meta.entities[collection][id] = nextStamp(`${collection}:${id}`);
@@ -170,20 +177,18 @@ export function recordLocalMutation(
     }
   }
 
-  if (stableStringify(baseline.prefs) !== stableStringify(current.prefs)) {
+  if (stableStringify(baseline.prefs) !== stableStringify(normalizedCurrent.prefs)) {
     meta.singletons.prefs = nextStamp('prefs');
   }
-  if (stableStringify(sessionStructure(baseline.activeSession)) !== stableStringify(sessionStructure(current.activeSession))) {
+  if (stableStringify(sessionStructure(beforeSession)) !== stableStringify(sessionStructure(afterSession))) {
     meta.singletons.activeSession = nextStamp('activeSession');
   }
 
-  const beforeSession = baseline.activeSession;
-  const afterSession = current.activeSession;
   if (beforeSession?.tripId && beforeSession.tripId !== afterSession?.tripId) {
     meta.sessionTombstones![beforeSession.tripId] = nextStamp(`shoppingSession:${beforeSession.tripId}`);
   }
   if (afterSession) {
-    const beforeEntries = beforeSession?.tripId === afterSession.tripId
+    const beforeEntries = beforeSession && beforeSession.tripId === afterSession.tripId
       ? new Map(beforeSession.entries.map((entry) => [entry.itemId, entry]))
       : new Map<string, typeof afterSession.entries[number]>();
     const afterEntries = new Map(afterSession.entries.map((entry) => [entry.itemId, entry]));
@@ -201,7 +206,7 @@ export function recordLocalMutation(
       }
     }
 
-    const beforeReceipts = beforeSession?.tripId === afterSession.tripId
+    const beforeReceipts = beforeSession && beforeSession.tripId === afterSession.tripId
       ? new Map(beforeSession.receipts.map((receipt) => [receipt.id, normalizeReceiptForSync(receipt)]))
       : new Map<string, typeof afterSession.receipts[number]>();
     const afterReceipts = new Map(afterSession.receipts.map((receipt) => [receipt.id, normalizeReceiptForSync(receipt)]));
@@ -221,7 +226,7 @@ export function recordLocalMutation(
     sequence: meta.clock,
     entityIds: changedIds,
   };
-  return { ...current, syncMeta: meta };
+  return { ...normalizedCurrent, syncMeta: meta };
 }
 
 function maxMetadata(states: DurableState[], localReplicaId: string): DurableSyncMetadata {

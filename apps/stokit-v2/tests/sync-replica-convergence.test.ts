@@ -85,6 +85,69 @@ test('100 rapid item creates converge without missing or duplicate items', () =>
   assert.deepEqual(new Set(merged.items.map((entry) => entry.id)), new Set(owner.items.map((entry) => entry.id)));
 });
 
+test('malformed cached session cannot crash or duplicate item create and update mutations', () => {
+  const malformed = {
+    ...emptyState(),
+    activeSession: {} as SharedShoppingSession,
+  };
+  const createdItem = item(0);
+
+  const created = recordLocalMutation(
+    malformed,
+    { ...malformed, items: [createdItem], updatedAt: 1 },
+    'iphone-device',
+    'item.create',
+  );
+  const updated = recordLocalMutation(
+    created,
+    {
+      ...created,
+      items: created.items.map((entry) => entry.id === createdItem.id
+        ? { ...entry, quantity: 2, updatedAt: 2 }
+        : entry),
+      updatedAt: 2,
+    },
+    'iphone-device',
+    'item.update',
+  );
+
+  assert.equal(created.activeSession, null);
+  assert.equal(updated.activeSession, null);
+  assert.equal(updated.items.length, 1);
+  assert.equal(updated.items[0].quantity, 2);
+  assert.equal(updated.syncMeta?.lastOperation?.operation, 'item.update');
+  assert.deepEqual(updated.syncMeta?.lastOperation?.entityIds, ['items:item-0']);
+});
+
+test('valid canonical session survives an item mutation after malformed local cache recovery', () => {
+  const malformedLocal = {
+    ...emptyState(),
+    activeSession: {} as SharedShoppingSession,
+  };
+  const canonical = initializeReplicaState({
+    ...emptyState(),
+    activeSession: shoppingSession(1, 'canonical-trip'),
+  }, 'canonical-device');
+  const recovered = mergeReplicaStates([malformedLocal, canonical], 'iphone-device');
+
+  const mutated = recordLocalMutation(
+    recovered,
+    {
+      ...recovered,
+      items: [item(1)],
+      activeSession: {} as SharedShoppingSession,
+      updatedAt: 1,
+    },
+    'iphone-device',
+    'item.create',
+  );
+
+  assert.equal(mutated.activeSession?.tripId, 'canonical-trip');
+  assert.equal(mutated.activeSession?.entries.length, 1);
+  assert.equal(mutated.items.length, 1);
+  assert.equal(new Set(mutated.items.map((entry) => entry.id)).size, 1);
+});
+
 test('simultaneous edits, deletes, and creates converge independent of merge order', () => {
   const seeded = addItemsRapidly(initializeReplicaState(emptyState(), 'seed-device'), 'seed-device', 100);
   let owner = mergeReplicaStates([seeded], 'owner-device');
