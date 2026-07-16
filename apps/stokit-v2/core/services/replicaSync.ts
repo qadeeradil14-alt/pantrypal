@@ -81,6 +81,13 @@ function sessionKey(session: SharedShoppingSession, entityId: string): string {
   return `${session.tripId ?? 'idle'}:${entityId}`;
 }
 
+function quarantinedSessionTripId(state: DurableState): string | null {
+  if (state.syncMeta?.lastOperation?.operation !== 'shopping.invalid_session_quarantine') return null;
+  const entityId = state.syncMeta.lastOperation.entityIds.find((id) => id.startsWith('shoppingSession:'));
+  const tripId = entityId?.slice('shoppingSession:'.length) ?? '';
+  return tripId || null;
+}
+
 function sessionStructure(session: SharedShoppingSession | null): unknown {
   if (!session) return null;
   const { entries: _entries, receipts: _receipts, removedItemIds: _removed, ...structure } = session;
@@ -133,6 +140,9 @@ function stampAll(state: DurableState, replicaId: string): DurableSyncMetadata {
 export function initializeReplicaState(state: DurableState, replicaId: string): DurableState {
   const normalizedSession = normalizeShoppingSession(state.activeSession);
   const invalidSession = state.activeSession != null && normalizedSession == null;
+  const invalidatedTripId = invalidSession && typeof state.activeSession?.tripId === 'string'
+    ? state.activeSession.tripId
+    : null;
   const normalizedState = { ...state, activeSession: normalizedSession };
   const meta = state.syncMeta
     ? cloneMetadata(state.syncMeta, replicaId)
@@ -141,11 +151,12 @@ export function initializeReplicaState(state: DurableState, replicaId: string): 
     meta.clock += 1;
     const stamp = { clock: meta.clock, replicaId };
     meta.singletons.activeSession = stamp;
+    if (invalidatedTripId) meta.sessionTombstones![invalidatedTripId] = stamp;
     meta.lastOperation = {
       operation: 'shopping.invalid_session_quarantine',
       at: Date.now(),
       sequence: meta.clock,
-      entityIds: ['activeSession'],
+      entityIds: invalidatedTripId ? [`shoppingSession:${invalidatedTripId}`] : ['activeSession'],
     };
   }
   return {
@@ -308,8 +319,19 @@ function matchingValue(
 }
 
 function mergeSession(states: DurableState[], meta: DurableSyncMetadata): SharedShoppingSession | null {
-  const baseState = highestSingletonState(states, 'activeSession');
-  const base = baseState.activeSession;
+  let baseState = highestSingletonState(states, 'activeSession');
+  let base = baseState.activeSession;
+  if (!base) {
+    const quarantinedTripId = quarantinedSessionTripId(baseState);
+    if (!quarantinedTripId) return null;
+    const preservedStates = states.filter((state) => {
+      const tripId = state.activeSession?.tripId;
+      return Boolean(tripId && tripId !== quarantinedTripId && !meta.sessionTombstones?.[tripId]);
+    });
+    if (preservedStates.length === 0) return null;
+    baseState = highestSingletonState(preservedStates, 'activeSession');
+    base = baseState.activeSession;
+  }
   if (!base) return null;
   if (base.tripId && meta.sessionTombstones?.[base.tripId]) return null;
   const tripPrefix = `${base.tripId ?? 'idle'}:`;
@@ -369,12 +391,13 @@ export function mergeReplicaStates(
   const states = rawStates.map((state, index) => initializeReplicaState(state, state.syncMeta?.replicaId ?? `legacy-${index}`));
   const meta = maxMetadata(states, localReplicaId);
   for (const quarantined of states) {
-    if (quarantined.syncMeta?.lastOperation?.operation !== 'shopping.invalid_session_quarantine') continue;
-    const quarantineStamp = quarantined.syncMeta.singletons.activeSession;
+    const quarantinedTripId = quarantinedSessionTripId(quarantined);
+    if (!quarantinedTripId) continue;
+    const quarantineStamp = quarantined.syncMeta?.singletons.activeSession;
     if (!quarantineStamp) continue;
     for (const candidate of states) {
       const tripId = candidate.activeSession?.tripId;
-      if (!tripId || compareStamp(quarantineStamp, candidate.syncMeta?.singletons.activeSession) < 0) continue;
+      if (tripId !== quarantinedTripId || compareStamp(quarantineStamp, candidate.syncMeta?.singletons.activeSession) < 0) continue;
       if (compareStamp(quarantineStamp, meta.sessionTombstones?.[tripId]) > 0) {
         meta.sessionTombstones![tripId] = quarantineStamp;
       }

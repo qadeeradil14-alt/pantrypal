@@ -53,10 +53,10 @@ function addItemsRapidly(state: DurableState, replicaId: string, count: number):
   return current;
 }
 
-function shoppingSession(count: number): SharedShoppingSession {
+function shoppingSession(count: number, tripId = 'trip-1'): SharedShoppingSession {
   return {
     status: 'shopping_store',
-    tripId: 'trip-1',
+    tripId,
     startedAt: 1,
     storeQueue: ['store-1'],
     currentIndex: 0,
@@ -180,14 +180,81 @@ test('shopping reset converges without resurrecting a stale active store', () =>
   assert.equal(merged.items[0].storeId, null);
 });
 
-test('malformed local active session is quarantined and tombstones its valid remote twin', () => {
-  const remote = initializeReplicaState({ ...emptyState(), activeSession: shoppingSession(1) }, 'device-1');
-  const corrupted = { ...remote, activeSession: {} as SharedShoppingSession };
+test('malformed trip A does not destroy a valid concurrent trip B', () => {
+  const tripA = initializeReplicaState({ ...emptyState(), activeSession: shoppingSession(1, 'trip-a') }, 'device-a');
+  const corruptedA = {
+    ...tripA,
+    activeSession: { ...tripA.activeSession!, storeQueue: [] },
+  };
+  const tripB = initializeReplicaState({ ...emptyState(), activeSession: shoppingSession(1, 'trip-b') }, 'device-b');
+
+  const aFirst = mergeReplicaStates([corruptedA, tripB], 'observer-a');
+  const bFirst = mergeReplicaStates([tripB, corruptedA], 'observer-b');
+
+  assert.equal(aFirst.activeSession?.tripId, 'trip-b');
+  assert.equal(bFirst.activeSession?.tripId, 'trip-b');
+  assert.equal(syncStateDigest(aFirst), syncStateDigest(bFirst));
+  assert.ok(aFirst.syncMeta?.sessionTombstones?.['trip-a']);
+  assert.equal(aFirst.syncMeta?.sessionTombstones?.['trip-b'], undefined);
+});
+
+test('malformed local active session quarantines its valid remote twin with the same trip id', () => {
+  const remote = initializeReplicaState({ ...emptyState(), activeSession: shoppingSession(1, 'trip-a') }, 'device-1');
+  const corrupted = {
+    ...remote,
+    activeSession: { ...remote.activeSession!, storeQueue: [] },
+  };
 
   const merged = mergeReplicaStates([corrupted, remote], 'device-1');
 
   assert.equal(merged.activeSession, null);
-  assert.ok(merged.syncMeta?.sessionTombstones?.['trip-1']);
+  assert.ok(merged.syncMeta?.sessionTombstones?.['trip-a']);
+});
+
+test('force-close and reopen preserves a valid session outside the quarantined trip lineage', () => {
+  const tripA = initializeReplicaState({ ...emptyState(), activeSession: shoppingSession(1, 'trip-a') }, 'device-a');
+  const quarantinedA = initializeReplicaState({
+    ...tripA,
+    activeSession: { ...tripA.activeSession!, storeQueue: [] },
+  }, 'device-a');
+  const tripB = initializeReplicaState({ ...emptyState(), activeSession: shoppingSession(1, 'trip-b') }, 'device-b');
+  const reopenedA = JSON.parse(JSON.stringify(quarantinedA)) as DurableState;
+  const reopenedB = JSON.parse(JSON.stringify(tripB)) as DurableState;
+
+  const merged = mergeReplicaStates([reopenedA, reopenedB], 'reopened-device');
+
+  assert.equal(merged.activeSession?.tripId, 'trip-b');
+});
+
+test('realtime merge preserves a valid session from a different trip lineage', () => {
+  const tripA = initializeReplicaState({ ...emptyState(), activeSession: shoppingSession(1, 'trip-a') }, 'device-a');
+  const realtimeMalformedA = {
+    ...tripA,
+    activeSession: { ...tripA.activeSession!, storeQueue: [] },
+  };
+  const localTripB = initializeReplicaState({ ...emptyState(), activeSession: shoppingSession(1, 'trip-b') }, 'device-b');
+
+  const firstRealtimePull = mergeReplicaStates([localTripB, realtimeMalformedA], 'device-b');
+  const echoedRealtimePull = mergeReplicaStates([firstRealtimePull, realtimeMalformedA], 'device-b');
+
+  assert.equal(firstRealtimePull.activeSession?.tripId, 'trip-b');
+  assert.equal(echoedRealtimePull.activeSession?.tripId, 'trip-b');
+});
+
+test('offline reconnect preserves a valid session outside the quarantined trip lineage', () => {
+  const tripA = initializeReplicaState({ ...emptyState(), activeSession: shoppingSession(1, 'trip-a') }, 'online-device');
+  const onlineMalformedA = {
+    ...tripA,
+    activeSession: { ...tripA.activeSession!, status: 'shopping_store' as const, tripId: 'trip-a', storeQueue: [] },
+  };
+  const offlineTripB = initializeReplicaState({ ...emptyState(), activeSession: shoppingSession(1, 'trip-b') }, 'offline-device');
+
+  const onlineFirst = mergeReplicaStates([onlineMalformedA, offlineTripB], 'online-device');
+  const offlineFirst = mergeReplicaStates([offlineTripB, onlineMalformedA], 'offline-device');
+
+  assert.equal(onlineFirst.activeSession?.tripId, 'trip-b');
+  assert.equal(offlineFirst.activeSession?.tripId, 'trip-b');
+  assert.equal(syncStateDigest(onlineFirst), syncStateDigest(offlineFirst));
 });
 
 test('offline post-reset shopping transitions cannot resurrect a deleted trip on reconnect', () => {
