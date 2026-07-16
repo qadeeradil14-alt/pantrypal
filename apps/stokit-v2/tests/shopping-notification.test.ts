@@ -134,7 +134,7 @@ test('local active session mutations publish full fresh snapshots', () => {
   assert.ok(sessionSrc.includes('durable.setActiveSession'), 'every session reducer mutation must request activeSession sync');
   assert.ok(durableSrc.includes('active_session_snapshot_write_requested'), 'local activeSession write requests must be logged');
   assert.ok(durableSrc.includes('recordLocalMutation'), 'each local session mutation must receive deterministic replica metadata');
-  assert.ok(syncSrc.includes('replica.push accepted'), 'successful replica writes must be logged');
+  assert.ok(syncSrc.includes('canonical.commit'), 'successful canonical writes must be logged');
 });
 
 test('remote active session fully replaces local partial session and null clears storage', () => {
@@ -143,7 +143,7 @@ test('remote active session fully replaces local partial session and null clears
   assert.ok(sessionSrc.includes('set({ session: next })'), 'remote activeSession must replace local session for non-active/non-merged cases');
   assert.ok(!sessionSrc.includes('ACTIVE_STATUSES.has(previous.status)'), 'remote end must clear an actively-shopping local session');
   assert.ok(sessionSrc.includes("AsyncStorage.removeItem(SESSION_KEY)"), 'remote null/end must clear persisted local active session');
-  assert.ok(sessionSrc.includes('remoteShoppingSessionAction(remoteSession)'), 'remote end/null policy must gate the storage-clear and replace paths');
+  assert.ok(sessionSrc.includes('remoteShoppingSessionAction(normalized)'), 'normalized remote end/null policy must gate the storage-clear and replace paths');
 });
 
 test('stale AsyncStorage cannot override newer remote active session', () => {

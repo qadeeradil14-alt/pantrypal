@@ -343,7 +343,7 @@ test('seeded concurrent random operations converge without ghosts or duplicates'
   assert.equal(syncStateDigest(ownerFirst), syncStateDigest(mergeReplicaStates([memberFirst, ownerFirst], 'observer-c')));
 });
 
-test('database migration provides isolated household replicas and realtime recovery', () => {
+test('database migration preserves replica recovery while runtime uses one canonical queue', () => {
   const migrationsDir = join(process.cwd(), '../../supabase/migrations');
   const migrationName = readdirSync(migrationsDir).find((name) => name.includes('deterministic_household_sync'));
   const migration = migrationName ? readFileSync(join(migrationsDir, migrationName), 'utf8') : '';
@@ -357,7 +357,7 @@ test('database migration provides isolated household replicas and realtime recov
   assert.match(migration, /alter publication supabase_realtime add table public\.household_sync_replicas/i);
   assert.match(engine, /household_sync_replicas/);
   assert.match(engine, /SUBSCRIBED/);
-  assert.match(engine, /syncPullQueue/);
-  assert.match(engine, /replica_id/);
-  assert.doesNotMatch(engine, /\.from\(CLOUD_TABLE\)\.upsert/);
+  assert.match(engine, /canonicalSyncQueue/);
+  assert.match(engine, /CANONICAL_CLOUD_TABLE/);
+  assert.doesNotMatch(engine, /from\(REPLICA_TABLE\)\.upsert/);
 });

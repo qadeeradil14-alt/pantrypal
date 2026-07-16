@@ -24,6 +24,7 @@ import { StorePickerSheet } from '../../components/pantry/StorePickerSheet';
 import { JoinHouseholdSheet } from '../../components/household/JoinHouseholdSheet';
 import { fonts, radii, shadow, spacing, type AppColors } from '../../theme';
 import { useDurableStore } from '../../store/durable-store';
+import { canonicalHomeCounts } from '../../core/services/canonicalSync';
 import { useHouseholdStore } from '../../store/household-store';
 import { useTheme } from '../../hooks/useTheme';
 import { classifyItem } from '../../core/services/itemClassifier';
@@ -84,11 +85,9 @@ export default function PantryScreen() {
     [items],
   );
 
-  const shoppingCount = listItems.length;
-  const pantryCount = atHomeItems.length;
-  const expiringCount = useMemo(
-    () => listItems.filter((item) => item.status === 'expiring').length,
-    [listItems],
+  const { shopping: shoppingCount, pantry: pantryCount, expiring: expiringCount } = useMemo(
+    () => canonicalHomeCounts(useDurableStore.getState()),
+    [items],
   );
   const storeCount = useMemo(
     () => new Set(listItems.filter((item) => item.storeId).map((item) => item.storeId)).size,

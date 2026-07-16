@@ -441,6 +441,6 @@ export function syncStateDigest(state: DurableState): string {
 export function replicaEnvelopeDigest(state: DurableState): string {
   const initialized = state.syncMeta ? state : initializeReplicaState(state, 'legacy-digest');
   const meta = initialized.syncMeta!;
-  const { lastOperation: _lastOperation, ...stableMeta } = meta;
+  const { lastOperation: _lastOperation, replicaId: _replicaId, ...stableMeta } = meta;
   return stableStringify({ data: JSON.parse(syncStateDigest(initialized)), syncMeta: stableMeta });
 }

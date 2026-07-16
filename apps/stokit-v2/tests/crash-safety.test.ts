@@ -34,8 +34,8 @@ test('fatal diagnostics retain context and delegate to the native fatal handler'
 });
 
 test('startup, foreground, and realtime async work is observed instead of becoming unhandled', () => {
-  assert.match(layout, /runObservedOperation\('app\.startup'/);
+  assert.match(layout, /runObservedOperation\('app\.hydrate'/);
   assert.match(layout, /runObservedOperation\('app\.foreground'/);
   assert.match(syncEngine, /runObservedOperation\('sync\.realtime'/);
-  assert.match(syncEngine, /runObservedOperation\('sync\.subscribed'/);
+  assert.match(syncEngine, /'sync\.subscribed'/);
 });

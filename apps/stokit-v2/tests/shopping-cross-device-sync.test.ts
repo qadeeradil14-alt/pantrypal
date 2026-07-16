@@ -16,7 +16,7 @@ test('remote trip end cannot leave persisted state to resurrect after restart', 
   const source = readFileSync(join(process.cwd(), 'store/session-store.ts'), 'utf8');
 
   assert.doesNotMatch(source, /remoteEnded\s*&&\s*ACTIVE_STATUSES/);
-  assert.match(source, /remoteShoppingSessionAction\(remoteSession\) === 'clear'/);
+  assert.match(source, /remoteShoppingSessionAction\(normalized\) === 'clear'/);
   assert.match(source, /set\(\{ session: initialSession \}\)/);
   assert.match(source, /AsyncStorage\.removeItem\(SESSION_KEY\)/);
 });

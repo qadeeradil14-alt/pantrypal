@@ -19,7 +19,7 @@ import {
 import { useDurableStore } from './durable-store';
 import type { SharedShoppingSession } from '../types';
 import { remoteShoppingSessionAction } from '../core/services/shoppingSessionSyncPolicy';
-import { resolveHydratedShoppingSession, shoppingTransitionTrace } from '../core/services/shoppingLifecycle';
+import { normalizeShoppingSession, resolveHydratedShoppingSession, shoppingTransitionTrace } from '../core/services/shoppingLifecycle';
 
 const SESSION_KEY = 'stokit:v2:active-session';
 
@@ -92,14 +92,15 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
   applyRemoteSession: (remoteSession) => {
     const previous = get().session;
-    if (!remoteSession || remoteShoppingSessionAction(remoteSession) === 'clear') {
+    const normalized = normalizeShoppingSession(remoteSession);
+    if (!normalized || remoteShoppingSessionAction(normalized) === 'clear') {
       set({ session: initialSession });
       AsyncStorage.removeItem(SESSION_KEY).catch(() => {});
       console.log(trace('remote', 'REMOTE_CLEAR', previous, initialSession));
       return;
     }
 
-    const next = remoteSession as ShoppingSession;
+    const next = normalized as ShoppingSession;
     set({ session: next });
     persistSession(next);
     console.log(trace('remote', 'REMOTE_APPLY', previous, next));

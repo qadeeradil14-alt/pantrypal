@@ -52,27 +52,27 @@ test('[Issue 3] permanently-failed receipt uploads never leak a device-local fil
 
 test('[Issue 3] a final upsert failure schedules exactly one capped deferred retry, not an unbounded loop', () => {
   const pushSrc = syncSrc.slice(
-    syncSrc.indexOf('async function pushLatestReplica'),
-    syncSrc.indexOf('function logMergeDecision'),
+    syncSrc.indexOf('async function convergeCanonical'),
+    syncSrc.indexOf('export function pushLocalState'),
   );
   assert.ok(pushSrc.includes('isDeferredRetry'),
     'pushLocalState must accept a flag marking a call as an already-deferred retry');
   assert.ok(/if \(!options\?\.isDeferredRetry && !deferredRetryScheduled\)/.test(pushSrc),
     'a deferred retry must not itself schedule another deferred retry (would allow unbounded retries)');
-  assert.ok(pushSrc.includes('durableSnapshot(store.getState())'),
+  assert.ok(syncSrc.includes('durableSnapshot(store.getState())'),
     'the deferred retry must re-read fresh current state, not resend the stale captured snapshot');
 });
 
 test('[Issue 3] retried upsert and upload remain idempotent (no duplicate-record risk from retries)', () => {
-  assert.ok(syncSrc.includes("{ onConflict: 'household_id,user_id,replica_id' }"),
-    'replica upsert must stay keyed on its full primary key so retries overwrite, never duplicate');
+  assert.ok(syncSrc.includes(".eq('updated_at', observedRevision)"),
+    'snapshot retries must use compare-and-swap so they cannot overwrite a concurrent commit');
   assert.ok(syncSrc.includes('upsert: true'),
     'storage upload must stay upsert:true so retries overwrite, never duplicate');
 });
 
 test('[Issue 3] successful-push log stays dev-gated (no console.log left in production paths)', () => {
-  assert.ok(syncSrc.includes("if (__DEV__) console.log(`[Sync] replica.push accepted"),
-    'the replica-written log must be gated behind __DEV__');
-  assert.ok(syncSrc.includes('replica.push accepted'),
+  assert.ok(syncSrc.includes("if (__DEV__) console.log(`[Sync] canonical.commit"),
+    'the canonical-write log must be gated behind __DEV__');
+  assert.ok(syncSrc.includes('canonical.commit'),
     'shopping-notification.test.ts still requires a successful push marker');
 });

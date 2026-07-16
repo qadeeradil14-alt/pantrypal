@@ -1,50 +1,41 @@
-import { File } from 'expo-file-system';
 import { decode } from 'base64-arraybuffer';
+import { File } from 'expo-file-system';
 import { supabase } from '../../lib/supabase';
 import type { DurableState, Receipt } from '../../types';
 import { emptyDurableState } from '../repositories/durableRepository';
 import {
+  isCanonicalState,
+  mergeCanonicalSources,
+  shouldProcessRealtimeRevision,
+} from './canonicalSync';
+import { runObservedOperation, setCrashContext } from './crashReporter';
+import {
   initializeReplicaState,
-  mergeReplicaStates,
   recordLocalMutation,
   replicaEnvelopeDigest,
   syncStateDigest,
-  type SyncMergeDecision,
 } from './replicaSync';
 import { reconcileShoppingSession } from './shoppingEntrySync';
-import { resetSyncWatermark } from './syncWatermark';
-import { runObservedOperation, setCrashContext } from './crashReporter';
 
-const LEGACY_CLOUD_TABLE = 'household_snapshots';
+const CANONICAL_CLOUD_TABLE = 'household_snapshots';
 const REPLICA_TABLE = 'household_sync_replicas';
 const RECEIPT_BUCKET = 'receipts';
 const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24 * 7;
 const RETRY_ATTEMPTS = 3;
 const RETRY_BASE_DELAY_MS = 500;
 
-type SyncContext = { householdId: string; userId: string };
-type ReplicaRow = {
-  user_id: string;
-  replica_id: string;
-  state: DurableState;
-  client_clock: number;
-  updated_at: string;
-};
-
-type RealtimeReplicaRecord = {
-  user_id?: string;
-  replica_id?: string;
-  client_clock?: number;
-};
+type SyncContext = { householdId: string };
+type CanonicalRow = { state: DurableState; updated_at: number };
+type ReplicaRow = { state: DurableState };
+type RealtimeCanonicalRecord = { updated_at?: number };
 
 let syncChannel: ReturnType<typeof supabase.channel> | null = null;
 let activeHouseholdId: string | null = null;
-let pushRequested = false;
-let pushDrain: Promise<void> | null = null;
-let pushRetryOptions: { isDeferredRetry?: boolean } | undefined;
+let canonicalSyncRequested = false;
+let canonicalSyncQueue: Promise<void> | null = null;
+let canonicalRetryOptions: { isDeferredRetry?: boolean } | undefined;
 let deferredRetryScheduled = false;
-let pullRequested = false;
-let syncPullQueue: Promise<void> | null = null;
+let lastAppliedRevision = 0;
 
 function retryDelay(attempt: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, RETRY_BASE_DELAY_MS * attempt));
@@ -117,7 +108,7 @@ async function syncContext(): Promise<SyncContext | null> {
   const householdStore = (await import('../../store/household-store')).useHouseholdStore;
   if (!householdStore.getState().household) await householdStore.getState().ensureHousehold();
   const householdId = householdStore.getState().household?.id;
-  return householdId ? { householdId, userId: session.user.id } : null;
+  return householdId ? { householdId } : null;
 }
 
 async function withSignedReceiptUrls(state: DurableState): Promise<DurableState> {
@@ -162,181 +153,202 @@ async function uploadReceipt(householdId: string, receipt: Receipt): Promise<Rec
 async function prepareLatestState(context: SyncContext): Promise<DurableState> {
   const store = await durableStore();
   const initial = durableSnapshot(store.getState());
-
   const uploadedReceipts = await Promise.all(initial.receipts.map((receipt) => uploadReceipt(context.householdId, receipt)));
   const uploadedActiveReceipts = initial.activeSession
     ? await Promise.all(initial.activeSession.receipts.map((receipt) => uploadReceipt(context.householdId, receipt)))
     : [];
-
   const paths = new Map<string, string>();
-  for (const r of uploadedReceipts) if (r.imagePath) paths.set(r.id, r.imagePath);
-  for (const r of uploadedActiveReceipts) if (r.imagePath) paths.set(r.id, r.imagePath);
+  for (const receipt of uploadedReceipts) if (receipt.imagePath) paths.set(receipt.id, receipt.imagePath);
+  for (const receipt of uploadedActiveReceipts) if (receipt.imagePath) paths.set(receipt.id, receipt.imagePath);
 
   const latest = durableSnapshot(store.getState());
-  const replicaId = latest.syncMeta?.replicaId;
-  if (!replicaId) return initializeReplicaState(latest, `replica-${Date.now().toString(36)}`);
-
-  const receipts = latest.receipts.map(r => paths.has(r.id) ? { ...r, imagePath: paths.get(r.id)! } : r);
-  const activeReceipts = latest.activeSession
-    ? latest.activeSession.receipts.map(r => paths.has(r.id) ? { ...r, imagePath: paths.get(r.id)! } : r)
-    : [];
-
-  const uploaded = {
-    ...latest,
-    receipts,
-    activeSession: latest.activeSession ? { ...latest.activeSession, receipts: activeReceipts } : null,
+  const replicaId = latest.syncMeta?.replicaId ?? `replica-${Date.now().toString(36)}`;
+  const initialized = initializeReplicaState(latest, replicaId);
+  const uploaded: DurableState = {
+    ...initialized,
+    receipts: initialized.receipts.map((receipt) => paths.has(receipt.id)
+      ? { ...receipt, imagePath: paths.get(receipt.id)! }
+      : receipt),
+    activeSession: initialized.activeSession
+      ? {
+          ...initialized.activeSession,
+          receipts: initialized.activeSession.receipts.map((receipt) => paths.has(receipt.id)
+            ? { ...receipt, imagePath: paths.get(receipt.id)! }
+            : receipt),
+        }
+      : null,
   };
-
-  const prepared = syncStateDigest(uploaded) === syncStateDigest(latest)
-    ? latest
-    : recordLocalMutation(latest, uploaded, replicaId, 'receipt.upload');
-  if (prepared !== latest) store.getState().applyRemotePatch(prepared);
+  const prepared = syncStateDigest(uploaded) === syncStateDigest(initialized)
+    ? initialized
+    : recordLocalMutation(initialized, uploaded, replicaId, 'receipt.upload');
+  if (replicaEnvelopeDigest(prepared) !== replicaEnvelopeDigest(latest)) {
+    store.getState().applyRemotePatch(prepared);
+  }
   return prepared;
 }
 
-async function pushLatestReplica(options?: { isDeferredRetry?: boolean }): Promise<void> {
-  setCrashContext({ operation: 'sync.push' });
+function reconcileState(state: DurableState, replicaId: string): DurableState {
+  if (!state.activeSession) return state;
+  const reconciled = { ...state, activeSession: reconcileShoppingSession(state.activeSession, state.items) };
+  return syncStateDigest(reconciled) === syncStateDigest(state)
+    ? state
+    : recordLocalMutation(state, reconciled, replicaId, 'shopping.reconcile');
+}
+
+async function readCanonical(context: SyncContext): Promise<{
+  row: CanonicalRow | null;
+  migrationReplicas: DurableState[];
+}> {
+  const { data, error } = await supabase
+    .from(CANONICAL_CLOUD_TABLE)
+    .select('state, updated_at')
+    .eq('household_id', context.householdId)
+    .maybeSingle();
+  if (error) throw error;
+  const row = data ? data as CanonicalRow : null;
+  if (isCanonicalState(row?.state)) return { row, migrationReplicas: [] };
+
+  const { data: replicaRows, error: replicaError } = await supabase
+    .from(REPLICA_TABLE)
+    .select('state')
+    .eq('household_id', context.householdId);
+  if (replicaError) throw replicaError;
+  return {
+    row,
+    migrationReplicas: ((replicaRows ?? []) as ReplicaRow[]).map((replica) => replica.state),
+  };
+}
+
+async function compareAndSwapCanonical(
+  context: SyncContext,
+  observedRevision: number | null,
+  state: DurableState,
+  revision: number,
+): Promise<boolean> {
+  if (observedRevision == null) {
+    const { data, error } = await supabase
+      .from(CANONICAL_CLOUD_TABLE)
+      .insert({ household_id: context.householdId, state, updated_at: revision })
+      .select('updated_at')
+      .maybeSingle();
+    if (error?.code === '23505') return false;
+    if (error) throw error;
+    return Boolean(data);
+  }
+
+  const { data, error } = await supabase
+    .from(CANONICAL_CLOUD_TABLE)
+    .update({ state, updated_at: revision })
+    .eq('household_id', context.householdId)
+    .eq('updated_at', observedRevision)
+    .select('updated_at')
+    .maybeSingle();
+  if (error) throw error;
+  return Boolean(data);
+}
+
+async function applyCanonicalState(
+  committed: DurableState,
+  revision: number,
+  localReplicaId: string,
+): Promise<boolean> {
+  lastAppliedRevision = Math.max(lastAppliedRevision, revision);
+  const store = await durableStore();
+  const current = durableSnapshot(store.getState());
+  const merged = reconcileState(
+    mergeCanonicalSources(current, committed, [], localReplicaId),
+    localReplicaId,
+  );
+  const needsFollowup = syncStateDigest(merged) !== syncStateDigest(committed)
+    || replicaEnvelopeDigest(merged) !== replicaEnvelopeDigest(committed);
+  const signed = await withSignedReceiptUrls(merged);
+  store.getState().applyRemotePatch(signed);
+  return needsFollowup;
+}
+
+async function convergeCanonical(options?: { isDeferredRetry?: boolean }): Promise<void> {
+  setCrashContext({ operation: 'sync.canonical' });
   const context = await syncContext();
   if (!context) return;
-  const prepared = await prepareLatestState(context);
-  const snapshot = cloudSnapshot(prepared);
-  const replicaId = snapshot.syncMeta!.replicaId;
-  let error: { message: string } | null = null;
+  await prepareLatestState(context);
 
+  let lastError: unknown = null;
   for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt += 1) {
-    const result = await supabase.from(REPLICA_TABLE).upsert({
-      household_id: context.householdId,
-      user_id: context.userId,
-      replica_id: replicaId,
-      state: snapshot,
-      client_clock: snapshot.syncMeta!.clock,
-    }, { onConflict: 'household_id,user_id,replica_id' });
-    error = result.error;
-    if (!error) break;
-    if (__DEV__) console.warn(`[Sync] replica.push attempt=${attempt} device=${replicaId} sequence=${snapshot.syncMeta!.clock} reason=${error.message}`);
-    if (attempt < RETRY_ATTEMPTS) await retryDelay(attempt);
-  }
+    try {
+      const store = await durableStore();
+      const local = durableSnapshot(store.getState());
+      const localReplicaId = local.syncMeta?.replicaId ?? `replica-${Date.now().toString(36)}`;
+      const { row, migrationReplicas } = await readCanonical(context);
+      const observedRevision = row ? Number(row.updated_at) : null;
+      let merged = mergeCanonicalSources(local, row?.state ?? null, migrationReplicas, localReplicaId);
+      merged = reconcileState(merged, localReplicaId);
+      const remoteIsCanonical = isCanonicalState(row?.state);
+      const remoteMatches = remoteIsCanonical
+        && syncStateDigest(row.state) === syncStateDigest(merged)
+        && replicaEnvelopeDigest(row.state) === replicaEnvelopeDigest(merged);
 
-  if (error) {
-    if (!options?.isDeferredRetry && !deferredRetryScheduled) {
-      deferredRetryScheduled = true;
-      setTimeout(() => {
+      if (remoteMatches && observedRevision != null) {
+        const needsFollowup = await applyCanonicalState(merged, observedRevision, localReplicaId);
+        if (needsFollowup) canonicalSyncRequested = true;
         deferredRetryScheduled = false;
-        void runObservedOperation('sync.retry', async () => {
-          const store = await durableStore();
-          await pushLocalState(durableSnapshot(store.getState()), { isDeferredRetry: true });
-        });
-      }, RETRY_BASE_DELAY_MS * (RETRY_ATTEMPTS + 1));
+        return;
+      }
+
+      const revision = Math.max(Date.now(), (observedRevision ?? 0) + 1, merged.updatedAt + 1);
+      const committed = cloudSnapshot({ ...merged, updatedAt: revision });
+      if (!await compareAndSwapCanonical(context, observedRevision, committed, revision)) {
+        if (attempt < RETRY_ATTEMPTS) await retryDelay(attempt);
+        continue;
+      }
+
+      lastAppliedRevision = revision;
+      const needsFollowup = await applyCanonicalState(committed, revision, localReplicaId);
+      if (needsFollowup) canonicalSyncRequested = true;
+      deferredRetryScheduled = false;
+      const stats = activeSessionStats(committed);
+      if (__DEV__) console.log(`[Sync] canonical.commit revision=${revision} device=${localReplicaId} sequence=${committed.syncMeta?.clock ?? 0} itemCount=${committed.items.length} sessionId=${stats.sessionId} pickedCount=${stats.pickedCount}`);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt < RETRY_ATTEMPTS) await retryDelay(attempt);
     }
-    return;
   }
 
-  deferredRetryScheduled = false;
-  const stats = activeSessionStats(snapshot);
-  if (__DEV__) console.log(`[Sync] replica.push accepted entity=state operation=upsert timestamp=${snapshot.updatedAt} device=${replicaId} sequence=${snapshot.syncMeta!.clock} itemCount=${snapshot.items.length} sessionId=${stats.sessionId} pickedCount=${stats.pickedCount}`);
+  if (__DEV__) console.warn('[Sync] canonical convergence failed', lastError);
+  if (!options?.isDeferredRetry && !deferredRetryScheduled) {
+    deferredRetryScheduled = true;
+    setTimeout(() => {
+      deferredRetryScheduled = false;
+      void runObservedOperation('sync.retry', () => requestCanonicalSync({ isDeferredRetry: true }));
+    }, RETRY_BASE_DELAY_MS * (RETRY_ATTEMPTS + 1));
+  }
+}
+
+function requestCanonicalSync(options?: { isDeferredRetry?: boolean }): Promise<void> {
+  canonicalSyncRequested = true;
+  canonicalRetryOptions = options;
+  if (!canonicalSyncQueue) {
+    canonicalSyncQueue = (async () => {
+      while (canonicalSyncRequested) {
+        canonicalSyncRequested = false;
+        const nextOptions = canonicalRetryOptions;
+        canonicalRetryOptions = undefined;
+        await convergeCanonical(nextOptions);
+      }
+    })().finally(() => { canonicalSyncQueue = null; });
+  }
+  return canonicalSyncQueue;
 }
 
 export function pushLocalState(
   _state: DurableState,
   options?: { isDeferredRetry?: boolean },
 ): Promise<void> {
-  pushRequested = true;
-  pushRetryOptions = options;
-  if (!pushDrain) {
-    pushDrain = (async () => {
-      while (pushRequested) {
-        pushRequested = false;
-        const nextOptions = pushRetryOptions;
-        pushRetryOptions = undefined;
-        await pushLatestReplica(nextOptions);
-      }
-    })().finally(() => { pushDrain = null; });
-  }
-  return pushDrain;
-}
-
-function logMergeDecision(decision: SyncMergeDecision): void {
-  if (!__DEV__) return;
-  console.log(`[Sync] merge entity=${decision.entityId} operation=${decision.operation} device=${decision.originatingDevice} sequence=${decision.sequence} decision=accept reason=${decision.reason}`);
-}
-
-async function pullLatestReplicas(): Promise<void> {
-  setCrashContext({ operation: 'sync.pull' });
-  const context = await syncContext();
-  if (!context) return;
-  const store = await durableStore();
-  const local = durableSnapshot(store.getState());
-  const localReplicaId = local.syncMeta?.replicaId ?? `replica-${Date.now().toString(36)}`;
-  const [{ data: replicaRows, error: replicaError }, { data: legacyRow }] = await Promise.all([
-    supabase
-      .from(REPLICA_TABLE)
-      .select('user_id, replica_id, state, client_clock, updated_at')
-      .eq('household_id', context.householdId),
-    supabase
-      .from(LEGACY_CLOUD_TABLE)
-      .select('state, updated_at')
-      .eq('household_id', context.householdId)
-      .maybeSingle(),
-  ]);
-  if (replicaError) {
-    if (__DEV__) console.warn(`[Sync] replica.pull reason=${replicaError.message}`);
-    return;
-  }
-
-  const rows = (replicaRows ?? []) as ReplicaRow[];
-  let merged: DurableState;
-  if (rows.length === 0) {
-    const legacy = legacyRow?.state as DurableState | undefined;
-    const baseline = legacy && Number(legacy.updatedAt ?? legacyRow?.updated_at ?? 0) > local.updatedAt
-      ? legacy
-      : local;
-    merged = initializeReplicaState(baseline, localReplicaId);
-  } else {
-    merged = mergeReplicaStates(
-      [local, ...rows.map((row) => row.state)],
-      localReplicaId,
-      logMergeDecision,
-    );
-  }
-
-  const reconciled = merged.activeSession
-    ? { ...merged, activeSession: reconcileShoppingSession(merged.activeSession, merged.items) }
-    : merged;
-  if (syncStateDigest(reconciled) !== syncStateDigest(merged)) {
-    merged = recordLocalMutation(merged, reconciled, localReplicaId, 'shopping.reconcile');
-  } else {
-    merged = reconciled;
-  }
-
-  const ownRow = rows.find((row) => row.user_id === context.userId && row.replica_id === localReplicaId);
-  const localChanged = syncStateDigest(local) !== syncStateDigest(merged)
-    || replicaEnvelopeDigest(local) !== replicaEnvelopeDigest(merged);
-  if (localChanged) {
-    const signed = await withSignedReceiptUrls(merged);
-    store.getState().applyRemotePatch(signed);
-    if (__DEV__) console.log(`[Sync] replica.pull applied entity=state operation=merge timestamp=${merged.updatedAt} device=${localReplicaId} sequence=${merged.syncMeta!.clock} reason=deterministic_replica_merge`);
-  }
-  shoppingSyncTrace('pull.merge', merged, {
-    replicaRows: rows.length,
-    localChanged: String(localChanged),
-  });
-
-  if (!ownRow || replicaEnvelopeDigest(ownRow.state) !== replicaEnvelopeDigest(merged)) {
-    await pushLocalState(merged);
-  }
+  return requestCanonicalSync(options);
 }
 
 export function pullFromSupabase(): Promise<void> {
-  pullRequested = true;
-  if (!syncPullQueue) {
-    syncPullQueue = (async () => {
-      while (pullRequested) {
-        pullRequested = false;
-        await pullLatestReplicas();
-      }
-    })().finally(() => { syncPullQueue = null; });
-  }
-  return syncPullQueue;
+  return requestCanonicalSync();
 }
 
 export async function clearCloudState(): Promise<DurableState> {
@@ -353,12 +365,9 @@ export async function clearCloudState(): Promise<DurableState> {
   store.getState().applyRemotePatch(cleared);
   await pushLocalState(cleared);
   if (context) {
-    await Promise.all([
-      supabase.from(LEGACY_CLOUD_TABLE).delete().eq('household_id', context.householdId),
-      supabase.storage.from(RECEIPT_BUCKET).remove(
-        current.receipts.map((receipt) => receipt.imagePath).filter((path): path is string => Boolean(path)),
-      ),
-    ]);
+    await supabase.storage.from(RECEIPT_BUCKET).remove(
+      current.receipts.map((receipt) => receipt.imagePath).filter((path): path is string => Boolean(path)),
+    );
   }
   return cleared;
 }
@@ -368,29 +377,25 @@ export async function startSyncEngine(): Promise<void> {
   if (!context || activeHouseholdId === context.householdId) return;
   stopSyncEngine();
   activeHouseholdId = context.householdId;
-
   await pullFromSupabase();
 
   syncChannel = supabase
-    .channel(`household-replicas:${context.householdId}`)
+    .channel(`household-canonical:${context.householdId}`)
     .on(
       'postgres_changes',
       {
         event: '*',
         schema: 'public',
-        table: REPLICA_TABLE,
+        table: CANONICAL_CLOUD_TABLE,
         filter: `household_id=eq.${context.householdId}`,
       },
       (payload) => {
-        const record = payload.new as RealtimeReplicaRecord | undefined;
+        const record = payload.new as RealtimeCanonicalRecord | undefined;
+        const revision = Number(record?.updated_at ?? 0);
+        if (!shouldProcessRealtimeRevision(revision, lastAppliedRevision)) return;
         void runObservedOperation('sync.realtime', async () => {
           const store = await durableStore();
-          shoppingSyncTrace('realtime.received', durableSnapshot(store.getState()), {
-            event: payload.eventType,
-            sourceUser: record?.user_id ?? null,
-            sourceReplica: record?.replica_id ?? null,
-            sourceClock: record?.client_clock ?? null,
-          });
+          shoppingSyncTrace('realtime.received', durableSnapshot(store.getState()), { revision });
           await pullFromSupabase();
         });
       },
@@ -401,21 +406,18 @@ export async function startSyncEngine(): Promise<void> {
         shoppingSyncTrace('realtime.subscription', durableSnapshot(store.getState()), { status });
         if (status === 'SUBSCRIBED') await pullFromSupabase();
       };
-      if (status === 'SUBSCRIBED') {
-        void runObservedOperation('sync.subscribed', traceSubscription);
-      } else {
-        void runObservedOperation('sync.subscription', traceSubscription);
-      }
+      void runObservedOperation(status === 'SUBSCRIBED' ? 'sync.subscribed' : 'sync.subscription', traceSubscription);
     });
 }
 
 export function stopSyncEngine(): void {
-  if (syncChannel) void runObservedOperation('sync.unsubscribe', async () => {
-    await supabase.removeChannel(syncChannel!);
-  });
+  if (syncChannel) {
+    const channel = syncChannel;
+    void runObservedOperation('sync.unsubscribe', () => supabase.removeChannel(channel));
+  }
   syncChannel = null;
   activeHouseholdId = null;
-  resetSyncWatermark();
+  lastAppliedRevision = 0;
 }
 
 export async function refreshGeofencedStoreData(): Promise<void> {
