@@ -161,19 +161,32 @@ async function uploadReceipt(householdId: string, receipt: Receipt): Promise<Rec
 
 async function prepareLatestState(context: SyncContext): Promise<DurableState> {
   const store = await durableStore();
+  const initial = durableSnapshot(store.getState());
+
+  const uploadedReceipts = await Promise.all(initial.receipts.map((receipt) => uploadReceipt(context.householdId, receipt)));
+  const uploadedActiveReceipts = initial.activeSession
+    ? await Promise.all(initial.activeSession.receipts.map((receipt) => uploadReceipt(context.householdId, receipt)))
+    : [];
+
+  const paths = new Map<string, string>();
+  for (const r of uploadedReceipts) if (r.imagePath) paths.set(r.id, r.imagePath);
+  for (const r of uploadedActiveReceipts) if (r.imagePath) paths.set(r.id, r.imagePath);
+
   const latest = durableSnapshot(store.getState());
   const replicaId = latest.syncMeta?.replicaId;
   if (!replicaId) return initializeReplicaState(latest, `replica-${Date.now().toString(36)}`);
 
-  const receipts = await Promise.all(latest.receipts.map((receipt) => uploadReceipt(context.householdId, receipt)));
+  const receipts = latest.receipts.map(r => paths.has(r.id) ? { ...r, imagePath: paths.get(r.id)! } : r);
   const activeReceipts = latest.activeSession
-    ? await Promise.all(latest.activeSession.receipts.map((receipt) => uploadReceipt(context.householdId, receipt)))
+    ? latest.activeSession.receipts.map(r => paths.has(r.id) ? { ...r, imagePath: paths.get(r.id)! } : r)
     : [];
+
   const uploaded = {
     ...latest,
     receipts,
     activeSession: latest.activeSession ? { ...latest.activeSession, receipts: activeReceipts } : null,
   };
+
   const prepared = syncStateDigest(uploaded) === syncStateDigest(latest)
     ? latest
     : recordLocalMutation(latest, uploaded, replicaId, 'receipt.upload');
