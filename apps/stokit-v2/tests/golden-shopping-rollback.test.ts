@@ -9,6 +9,7 @@ import {
   recordLocalMutation,
   syncStateDigest,
 } from '../core/services/replicaSync';
+import { createRemoteShoppingSessionProjection } from '../core/services/shoppingSessionSyncPolicy';
 import type { DurableState, PantryItem, SharedShoppingSession, ShoppingEntry } from '../types';
 
 function emptyState(): DurableState {
@@ -58,6 +59,31 @@ test('selected store and active trip persist through canonical serialization', (
   assert.equal(restored.activeSession?.status, 'shopping_store');
 });
 
+test('choose store then select items cannot be cleared by an older queued remote projection', () => {
+  const projection = createRemoteShoppingSessionProjection<SharedShoppingSession | null>();
+  const staleClear = projection.issue();
+  const started = activeSession('trip-150');
+  const selected = reduce(started as ReturnType<typeof reduce>, {
+    type: 'SET_PICK',
+    itemId: 'milk',
+    picked: true,
+  });
+  const projectedAfterLocalSelection = projection.resolve(staleClear, selected);
+
+  assert.equal(projectedAfterLocalSelection?.status, 'shopping_store');
+  assert.equal(projectedAfterLocalSelection?.tripId, started.tripId);
+  assert.equal(projectedAfterLocalSelection?.storeQueue[0], 'store-a');
+  assert.equal(projectedAfterLocalSelection?.entries.find((value) => value.itemId === 'milk')?.picked, true);
+
+  const canonicalApply = projection.issue();
+  assert.equal(projection.resolve(staleClear, null), undefined);
+  const projected = projection.resolve(canonicalApply, selected);
+  assert.equal(projected?.status, 'shopping_store');
+  assert.equal(projected?.tripId, started.tripId);
+  assert.equal(projected?.storeQueue[0], 'store-a');
+  assert.equal(projected?.entries.find((value) => value.itemId === 'milk')?.picked, true);
+});
+
 test('remote same-trip reconciliation cannot make an item disappear', () => {
   const source = readFileSync(join(process.cwd(), 'store/session-store.ts'), 'utf8');
 
@@ -74,6 +100,7 @@ test('trip start never notifies the household without explicit Notify Family', (
 });
 
 test('force-close and reopen restores the current canonical active trip', () => {
+  const durableSource = readFileSync(join(process.cwd(), 'store/durable-store.ts'), 'utf8');
   const session = activeSession('trip-200');
   const canonical = initializeReplicaState({
     ...emptyState(),
@@ -87,6 +114,9 @@ test('force-close and reopen restores the current canonical active trip', () => 
 
   assert.equal(restored.activeSession?.tripId, session.tripId);
   assert.deepEqual(restored.activeSession?.entries.map((value) => value.itemId).sort(), ['bread', 'milk']);
+  assert.match(durableSource, /await runObservedOperation\('storage\.normalize'/);
+  assert.match(durableSource, /persistQueue = persistQueue[\s\S]*storage\.remotePatch/);
+  assert.doesNotMatch(durableSource, /void runObservedOperation\('storage\.remotePatch'/);
 });
 
 test('two devices converge active-trip quantity and checked state without item loss', () => {

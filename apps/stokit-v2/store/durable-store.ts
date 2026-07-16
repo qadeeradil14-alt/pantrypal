@@ -44,7 +44,10 @@ import { refreshWidgets } from '../core/services/widgets';
 import { findDuplicateStore } from '../core/services/storeDuplicates';
 import { initializeReplicaState, recordLocalMutation } from '../core/services/replicaSync';
 import { runObservedOperation } from '../core/services/crashReporter';
-import { resetShoppingLifecycleState } from '../core/services/shoppingLifecycle';
+import { normalizeShoppingSession, resetShoppingLifecycleState } from '../core/services/shoppingLifecycle';
+import { createRemoteShoppingSessionProjection } from '../core/services/shoppingSessionSyncPolicy';
+
+const remoteShoppingSessionProjection = createRemoteShoppingSessionProjection<SharedShoppingSession | null>();
 
 interface DurableStore extends DurableState {
   hydrated: boolean;
@@ -193,7 +196,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         lastSnapshotAt = normalized.updatedAt;
         lastLocalSnapshot = normalized;
         set({ ...normalized, hydrated: false });
-        void runObservedOperation('storage.normalize', () => saveDurable(normalized));
+        await runObservedOperation('storage.normalize', () => saveDurable(normalized));
       }
       void runObservedOperation('widgets.hydrate', () => refreshWidgets(get().items));
       await startSyncEngine();
@@ -509,15 +512,27 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         lastLocalSnapshot = snapshot(get());
       }
       if ('activeSession' in patch) {
-        const remoteSession = patch.activeSession ?? null;
+        const projectionSequence = remoteShoppingSessionProjection.issue();
         void runObservedOperation('shopping.session.applyRemote', async () => {
           const { useSessionStore } = await import('./session-store');
+          const remoteSession = remoteShoppingSessionProjection.resolve(
+            projectionSequence,
+            normalizeShoppingSession(get().activeSession),
+          );
+          if (remoteSession === undefined) return;
           useSessionStore.getState().applyRemoteSession(remoteSession);
         });
       }
       // Save to disk (AsyncStorage) so we have it offline, but do NOT call persist()
       // because persist() triggers the syncEngine push loop.
-      void runObservedOperation('storage.remotePatch', () => saveDurable(snapshot(get())));
+      const epoch = persistEpoch;
+      const remoteSnapshot = snapshot(get());
+      persistQueue = persistQueue
+        .then(async () => {
+          if (epoch !== persistEpoch) return;
+          await runObservedOperation('storage.remotePatch', () => saveDurable(remoteSnapshot));
+        })
+        .catch((err) => { if (__DEV__) console.warn('[durable-store] remote persist failed', err); });
       void runObservedOperation('widgets.remotePatch', () => refreshWidgets(get().items));
     },
   };
