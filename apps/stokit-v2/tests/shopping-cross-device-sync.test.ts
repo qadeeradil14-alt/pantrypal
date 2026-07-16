@@ -7,6 +7,17 @@ import { initialSession, reduce } from '../core/shopping-machine';
 import { remoteShoppingSessionAction } from '../core/services/shoppingSessionSyncPolicy';
 import type { ShoppingEntry } from '../types';
 
+type PolicySession = { status: string; tripId?: string | null } | null;
+
+function projectSession(
+  current: PolicySession,
+  remote: PolicySession,
+  context?: Parameters<typeof remoteShoppingSessionAction>[1],
+): PolicySession {
+  const action = remoteShoppingSessionAction(remote, context);
+  return action === 'apply' ? remote : action === 'clear' ? null : current;
+}
+
 const tappedEntry: ShoppingEntry = {
   itemId: 'banana',
   name: 'Banana',
@@ -16,11 +27,36 @@ const tappedEntry: ShoppingEntry = {
   picked: false,
 };
 
-test('remote completed trip clears an active local shopping session', () => {
-  assert.equal(remoteShoppingSessionAction(null), 'clear');
-  assert.equal(remoteShoppingSessionAction({ status: 'idle' }), 'clear');
-  assert.equal(remoteShoppingSessionAction({ status: 'trip_summary' }), 'clear');
+test('remote clear without a proven trip lineage is rejected', () => {
+  assert.equal(remoteShoppingSessionAction(null), 'ignore');
+  assert.equal(remoteShoppingSessionAction({ status: 'idle' }), 'ignore');
+  assert.equal(remoteShoppingSessionAction({ status: 'trip_summary' }), 'ignore');
   assert.equal(remoteShoppingSessionAction({ status: 'shopping_store' }), 'apply');
+});
+
+test('idle device hydrates a valid canonical active trip', () => {
+  const canonical = { status: 'shopping_store', tripId: 'trip-current' };
+
+  assert.deepEqual(projectSession(null, canonical, {
+    activeTripId: null,
+    activeSessionStamp: { clock: 20, replicaId: 'iphone' },
+    sessionTombstones: {},
+  }), canonical);
+});
+
+test('malformed null without a same-trip tombstone cannot replace a hydrated canonical trip', () => {
+  const canonical = { status: 'shopping_store', tripId: 'trip-current' };
+  const hydrated = projectSession(null, canonical, {
+    activeTripId: null,
+    activeSessionStamp: { clock: 20, replicaId: 'iphone' },
+    sessionTombstones: {},
+  });
+
+  assert.deepEqual(projectSession(hydrated, null, {
+    activeTripId: hydrated?.tripId ?? null,
+    activeSessionStamp: { clock: 20, replicaId: 'iphone' },
+    sessionTombstones: {},
+  }), canonical);
 });
 
 test('remote trip end cannot leave persisted state to resurrect after restart', () => {
@@ -66,6 +102,66 @@ test('same-trip tombstone still authorizes an explicit remote trip clear', () =>
     activeSessionStamp: { clock: 20, replicaId: 'iphone' },
     sessionTombstones: { 'trip-1': { clock: 21, replicaId: 'ipad' } },
   }), 'clear');
+});
+
+test('stale same-trip tombstone cannot clear an active canonical trip', () => {
+  assert.equal(remoteShoppingSessionAction(null, {
+    activeTripId: 'trip-1',
+    activeSessionStamp: { clock: 20, replicaId: 'iphone' },
+    sessionTombstones: { 'trip-1': { clock: 19, replicaId: 'ipad' } },
+  }), 'ignore');
+});
+
+test('two devices converge from idle and active projections to the canonical active trip', () => {
+  const canonical = { status: 'shopping_store', tripId: 'trip-current' };
+  const context = {
+    activeSessionStamp: { clock: 20, replicaId: 'iphone' },
+    sessionTombstones: {},
+  };
+
+  const ipad = projectSession(null, canonical, { ...context, activeTripId: null });
+  const iphone = projectSession(canonical, canonical, { ...context, activeTripId: 'trip-current' });
+
+  assert.deepEqual(ipad, canonical);
+  assert.deepEqual(iphone, canonical);
+});
+
+test('force-close and reopen keeps the canonical trip after a rejected malformed clear', () => {
+  const canonical = { status: 'shopping_store', tripId: 'trip-current' };
+  const projected = projectSession(canonical, null, {
+    activeTripId: 'trip-current',
+    activeSessionStamp: { clock: 20, replicaId: 'iphone' },
+    sessionTombstones: {},
+  });
+  const reopened = JSON.parse(JSON.stringify(projected)) as PolicySession;
+
+  assert.deepEqual(reopened, canonical);
+});
+
+test('offline reconnect hydrates canonical active state before rejecting a stale null echo', () => {
+  const canonical = { status: 'shopping_store', tripId: 'trip-current' };
+  const reconnected = projectSession(null, canonical, {
+    activeTripId: null,
+    activeSessionStamp: { clock: 20, replicaId: 'iphone' },
+    sessionTombstones: {},
+  });
+  const afterEcho = projectSession(reconnected, null, {
+    activeTripId: reconnected?.tripId ?? null,
+    activeSessionStamp: { clock: 20, replicaId: 'iphone' },
+    sessionTombstones: {},
+  });
+
+  assert.deepEqual(afterEcho, canonical);
+});
+
+test('durable projection rejects an unauthorized clear before persisting canonical metadata', () => {
+  const source = readFileSync(join(process.cwd(), 'store/durable-store.ts'), 'utf8');
+  const policy = source.indexOf('const sessionAction = remoteShoppingSessionAction');
+  const rejection = source.indexOf("if ('activeSession' in patch && sessionAction === 'ignore') return;", policy);
+  const mutation = source.indexOf('set((s) => ({', policy);
+
+  assert.ok(rejection > policy);
+  assert.ok(rejection < mutation);
 });
 
 test('shopping item rows contain no trip-start or reset action', () => {

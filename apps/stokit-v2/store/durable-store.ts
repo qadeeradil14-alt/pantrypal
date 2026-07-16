@@ -502,6 +502,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         activeSessionStamp: patch.syncMeta?.singletons.activeSession,
         sessionTombstones: patch.syncMeta?.sessionTombstones,
       });
+      if ('activeSession' in patch && sessionAction === 'ignore') return;
       const projectedSession = sessionAction === 'ignore'
         ? previousSession
         : sessionAction === 'clear'

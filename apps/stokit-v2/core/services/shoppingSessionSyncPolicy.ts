@@ -34,7 +34,7 @@ export function remoteShoppingSessionAction(
   if (remoteSession && remoteSession.status !== 'idle' && remoteSession.status !== 'trip_summary') {
     return 'apply';
   }
-  if (!context?.activeTripId) return 'clear';
+  if (!context?.activeTripId) return 'ignore';
   const tombstone = context.sessionTombstones?.[context.activeTripId];
   return compareStamp(tombstone, context.activeSessionStamp) >= 0 && Boolean(tombstone)
     ? 'clear'
