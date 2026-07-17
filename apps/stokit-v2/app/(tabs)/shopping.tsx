@@ -30,6 +30,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Animated } from 'react-native';
+import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { Screen } from '../../components/shared/Screen';
 import { Button, Card, PageTitle, Pill, StoreChip } from '../../components/shared/ui';
 import { EmptyState } from '../../components/shared/EmptyState';
@@ -641,11 +642,13 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
 
   useEffect(() => {
     const entryIds = new Set(session.entries.map((entry) => entry.itemId));
+    const removedItemIds = new Set(session.removedItemIds);
     items
       .filter((item) =>
         item.storeId === storeId &&
         (item.status === 'low' || item.status === 'expiring') &&
-        !entryIds.has(item.id)
+        !entryIds.has(item.id) &&
+        !removedItemIds.has(item.id)
       )
       .forEach((item) => {
         dispatch({
@@ -653,7 +656,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
           entry: { itemId: item.id, name: item.name, quantity: item.quantity, unit: item.unit, storeId, picked: false },
         });
       });
-  }, [items, storeId, session.entries, dispatch]);
+  }, [items, storeId, session.entries, session.removedItemIds, dispatch]);
 
   const handleNotifyHousehold = async () => {
     const store = storeById(storeId);
@@ -733,6 +736,18 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
         {entries.map((e, idx) => (
           <View key={e.itemId}>
                 {idx > 0 && <View style={styles.rowDivider} />}
+                <Swipeable
+                  renderRightActions={() => (
+                    <View style={styles.shoppingSwipeActionRight}>
+                      <Ionicons name="trash-outline" size={24} color="#FFF" />
+                    </View>
+                  )}
+                  onSwipeableWillOpen={() => {
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    dispatch({ type: 'REMOVE_ENTRY', itemId: e.itemId });
+                  }}
+                  containerStyle={{ overflow: 'hidden' }}
+                >
                 <Pressable
                   style={({ pressed }) => [styles.pickRow, e.picked && styles.pickRowDone, e.outOfStock && { opacity: 0.5 }, pressed && { opacity: 0.72 }]}
                   onPress={() => {
@@ -745,21 +760,12 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                     Alert.alert(
                       e.name,
-                      e.outOfStock ? 'Mark as available again?' : 'Mark as out of stock, or remove it?',
+                      e.outOfStock ? 'Mark as available again?' : 'Mark this item as out of stock?',
                       [
                         { text: 'Cancel', style: 'cancel' },
                         {
                           text: e.outOfStock ? 'Available' : 'Out of stock',
                           onPress: () => dispatch({ type: 'MARK_OUT_OF_STOCK', itemId: e.itemId }),
-                        },
-                        {
-                          text: 'Remove item',
-                          style: 'destructive',
-                          onPress: () => {
-                            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                            dispatch({ type: 'REMOVE_ENTRY', itemId: e.itemId });
-                          },
                         },
                       ],
                     );
@@ -833,6 +839,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                     <Text style={styles.planMeta}>×{e.quantity}</Text>
                   )}
                 </Pressable>
+                </Swipeable>
           </View>
         ))}
       </Card> : null}
@@ -2070,6 +2077,7 @@ function makeStyles(colors: AppColors) {
     listCountBadge: { minWidth: 28, height: 28, paddingHorizontal: spacing.sm, borderRadius: 14, backgroundColor: colors.surfaceRaised, alignItems: 'center', justifyContent: 'center' },
     listCountText: { fontFamily: fonts.monoMedium, fontSize: 12, color: colors.ink, fontVariant: ['tabular-nums'] },
     shoppingListCard: { paddingVertical: spacing.xs, marginBottom: spacing.sm },
+    shoppingSwipeActionRight: { backgroundColor: colors.danger, justifyContent: 'center', alignItems: 'flex-end', paddingRight: 20, flex: 1 },
     pickRow:      { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 64, paddingVertical: spacing.md, paddingHorizontal: spacing.xs, borderRadius: radii.sm },
     pickRowDone: { backgroundColor: colors.successSoft + '55' },
     pickControl: { width: 28, height: 28, borderRadius: 14, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.backgroundElevated, alignItems: 'center', justifyContent: 'center' },
