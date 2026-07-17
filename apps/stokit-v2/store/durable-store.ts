@@ -22,7 +22,8 @@ import type {
   Trip,
   Unit,
 } from '../types';
-import { shoppingEntryEventForItem } from '../core/services/shoppingEntrySync';
+import { shoppingEntryEventForItem, mergeShoppingEntries } from '../core/services/shoppingEntrySync';
+import { remoteShoppingSessionAction } from '../core/services/shoppingSessionSyncPolicy';
 import { hasValidStoreCoordinates } from '../core/services/storeCoordinates';
 export type { StorageLocation as StorageLocationImport };
 import { uid, now } from '../core/services/id';
@@ -112,6 +113,39 @@ interface DurableStore extends DurableState {
   
   // Sync Engine support: updates local state from remote WITHOUT pushing back
   applyRemotePatch: (patch: Partial<DurableState>) => void;
+}
+
+// Applies the same gating policy as session-store.ts's applyRemoteSession, so
+// durableStore.activeSession can never hold an unvalidated remote session that
+// an unrelated persist() would silently push back to the server.
+function gateRemoteActiveSession(
+  previous: SharedShoppingSession | null,
+  remoteSession: SharedShoppingSession | null,
+): SharedShoppingSession | null {
+  if (!remoteSession || remoteShoppingSessionAction(remoteSession) === 'clear') {
+    return null;
+  }
+
+  if (
+    previous?.status === 'shopping_store' &&
+    remoteSession.status === 'shopping_store' &&
+    previous.tripId === remoteSession.tripId
+  ) {
+    const removedItemIds = Array.from(
+      new Set([...(previous.removedItemIds ?? []), ...(remoteSession.removedItemIds ?? [])]),
+    );
+    return {
+      ...previous,
+      storeQueue: [
+        ...previous.storeQueue,
+        ...remoteSession.storeQueue.filter((storeId) => !previous.storeQueue.includes(storeId)),
+      ],
+      entries: mergeShoppingEntries(previous.entries, remoteSession.entries, removedItemIds),
+      removedItemIds,
+    };
+  }
+
+  return remoteSession;
 }
 
 function snapshot(s: DurableState): DurableState {
@@ -493,6 +527,9 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     },
 
     applyRemotePatch: (patch) => {
+      const gatedActiveSession = 'activeSession' in patch
+        ? gateRemoteActiveSession(get().activeSession ?? null, patch.activeSession ?? null)
+        : undefined;
       set((s) => ({
         ...s,
         ...patch,
@@ -504,7 +541,9 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         receipts:     Array.isArray(patch.receipts)     ? patch.receipts     : s.receipts,
         trips:        Array.isArray(patch.trips)        ? patch.trips        : s.trips,
         activity:     Array.isArray(patch.activity)     ? patch.activity     : s.activity,
-        activeSession: 'activeSession' in patch ? patch.activeSession ?? null : s.activeSession ?? null,
+        // Gated: never write an unvalidated remote session — same policy as
+        // session-store.ts's applyRemoteSession (clear guard + same-trip merge).
+        activeSession: 'activeSession' in patch ? gatedActiveSession ?? null : s.activeSession ?? null,
       }));
       if ('activeSession' in patch) {
         const remoteSession = patch.activeSession ?? null;
