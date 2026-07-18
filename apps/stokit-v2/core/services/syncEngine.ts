@@ -126,7 +126,6 @@ export async function pushLocalState(state: DurableState, options?: { isDeferred
   if (!initialHouseholdSyncComplete.has(id)) {
     await pullFromSupabase({ forceServerHydration: true });
     if (!initialHouseholdSyncComplete.has(id)) return;
-    return;
   }
 
   try {
