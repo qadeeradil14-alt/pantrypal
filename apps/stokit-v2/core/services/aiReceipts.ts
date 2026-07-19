@@ -81,39 +81,59 @@ export async function extractReceiptItems(
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token ?? '';
 
-  let res: Response | null = null;
+  // Use XMLHttpRequest (React Native's native XHR networking) rather than the
+  // global fetch. On Expo SDK 56 the global fetch is expo/fetch (winter
+  // runtime), whose native module segfaults — EXC_BAD_ACCESS on
+  // expo.modules.fetch.RequestQueue during JavaScriptPromise.reject — when a
+  // large-body request (the multi-MB base64 receipt image) rejects. That native
+  // crash kills the app before any JS catch runs. XHR is unaffected.
+  type XhrResult = { status: number; text: string; retryAfter: number | null };
+  const postReceipt = (): Promise<XhrResult> =>
+    new Promise<XhrResult>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', config.receiptScanUrl);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      xhr.timeout = 45000;
+      xhr.onload = () => {
+        const ra = xhr.getResponseHeader('retry-after');
+        resolve({ status: xhr.status, text: xhr.responseText ?? '', retryAfter: ra ? parseInt(ra, 10) : null });
+      };
+      xhr.onerror = () => reject(new Error('network'));
+      xhr.ontimeout = () => reject(new Error('timeout'));
+      xhr.send(JSON.stringify(body));
+    });
+
+  let result: XhrResult | null = null;
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      res = await fetch(config.receiptScanUrl, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(body),
-      });
-    } catch (networkErr) {
+      result = await postReceipt();
+    } catch {
       if (attempt === 2) throw new Error('Network error. Check your connection and try again.');
-      await new Promise(r => setTimeout(r, 1500));
+      await new Promise((r) => setTimeout(r, 1500));
       continue;
     }
-    if (res.status !== 429 && res.status !== 503) break;
+    if (result.status !== 429 && result.status !== 503) break;
     if (attempt < 2) {
-      const retryAfter = parseInt(res.headers.get('retry-after') ?? '4', 10);
-      await new Promise(r => setTimeout(r, Math.min(retryAfter * 1000, 8000)));
+      await new Promise((r) => setTimeout(r, Math.min((result!.retryAfter ?? 4) * 1000, 8000)));
     }
   }
 
-  if (!res!.ok) {
-    const errorText = await res!.text();
-    if (__DEV__) console.error('[AI] OpenAI API Error:', res!.status, errorText);
-    if (res!.status === 401) throw new Error('Receipt scan is not configured. Please contact support.');
-    if (res!.status === 429) throw new Error('Too many requests. Please wait a moment and try again.');
-    if (res!.status === 400) throw new Error('The image could not be processed. Try a clearer, well-lit photo.');
-    throw new Error(`Receipt scan failed (${res!.status}). Please try again.`);
+  if (!result || result.status < 200 || result.status >= 300) {
+    const status = result?.status ?? 0;
+    if (__DEV__) console.error('[AI] Receipt scan API error:', status, result?.text);
+    if (status === 401) throw new Error('Receipt scan is not configured. Please contact support.');
+    if (status === 429) throw new Error('Too many requests. Please wait a moment and try again.');
+    if (status === 400) throw new Error('The image could not be processed. Try a clearer, well-lit photo.');
+    throw new Error(`Receipt scan failed (${status}). Please try again.`);
   }
 
-  const data = await res!.json();
+  let data: unknown;
+  try {
+    data = JSON.parse(result.text);
+  } catch {
+    data = result.text;
+  }
   const text = typeof data === 'string' ? data : JSON.stringify(data);
 
   if (!text) {
