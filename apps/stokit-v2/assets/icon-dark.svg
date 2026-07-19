@@ -1,10 +1,7 @@
 <svg viewBox="0 0 1024 1024" width="1024" height="1024" xmlns="http://www.w3.org/2000/svg">
-  <rect width="1024" height="1024" fill="#111827"/>
-  <path d="M 283 488 L 283 370 C 283 260 346 197 512 197 C 678 197 740 260 740 370 L 740 488"
-        stroke="#FFFFFF" stroke-opacity="0.13" stroke-width="47" stroke-linecap="round" fill="none"/>
-  <path d="M 150 488 C 118 488 102 520 110 559 L 197 866 C 197 906 236 921 268 921 L 756 921 C 788 921 827 906 827 866 L 914 559 C 922 520 906 488 874 488 Z"
-        fill="#FFFFFF" fill-opacity="0.05" stroke="#FFFFFF" stroke-opacity="0.11" stroke-width="9"/>
-  <text x="512" y="800" text-anchor="middle"
-        font-family="'Helvetica Neue', Helvetica, Arial, sans-serif"
-        font-size="600" font-weight="700" fill="#E8432D">S</text>
+  <rect width="1024" height="1024" fill="#0F1117"/>
+  <path d="M238 218Q238 178 278 178H634Q670 178 695 203L820 328Q842 350 842 382V788Q842 836 794 836H286Q238 836 238 788Z" fill="#FFFFFF" fill-opacity=".055" stroke="#FFFFFF" stroke-opacity=".14" stroke-width="20"/>
+  <circle cx="690" cy="312" r="28" fill="#FFFFFF" fill-opacity=".14"/>
+  <text x="512" y="672" text-anchor="middle" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="480" font-weight="700" fill="#FF765F">S</text>
+  <path d="M374 742H650M430 700V742M512 688V742M594 700V742" stroke="#FFFFFF" stroke-opacity=".15" stroke-width="18" stroke-linecap="round"/>
 </svg>

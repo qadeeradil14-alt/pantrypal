@@ -18,22 +18,22 @@ export type OnboardingSlide = {
 export const ONBOARDING_SLIDES: OnboardingSlide[] = [
   {
     key: 'pantry',
-    title: ['Shop smarter,', 'stock better.'],
-    subtitle: 'Find the best deals and keep your pantry always ready.',
+    title: ['Your pantry,', 'in order.'],
+    subtitle: 'See what you have and what to buy.',
     light: require('../assets/onboarding/onboarding-pantry.png'),
     dark: require('../assets/onboarding/onboarding-pantry-dark.png'),
   },
   {
     key: 'household',
-    title: ['One household,', 'everyone in sync.'],
-    subtitle: 'Share lists, update in real time, and never miss a thing.',
+    title: ['One list,', 'together.'],
+    subtitle: 'Keep everyone in sync, wherever they are.',
     light: require('../assets/onboarding/onboarding-household.png'),
     dark: require('../assets/onboarding/onboarding-household-dark.png'),
   },
   {
     key: 'receipts',
-    title: ['Track receipts,', 'know your spending.'],
-    subtitle: 'Upload receipts, track spending by store, and make smarter decisions.',
+    title: ['Receipts,', 'simplified.'],
+    subtitle: 'Track what you spend, store by store.',
     light: require('../assets/onboarding/onboarding-receipts.png'),
     dark: require('../assets/onboarding/onboarding-receipts-dark.png'),
   },

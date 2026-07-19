@@ -8,6 +8,7 @@ import {
   BrandHeader,
   AuthHeading,
   AuthButton,
+  AuthLink,
   AuthMessage,
 } from '../../components/auth/AuthKit';
 
@@ -61,8 +62,8 @@ export default function VerifyEmailScreen() {
         {message ? <AuthMessage text={message} tone={tone} /> : null}
         <AuthButton label="I verified my email" onPress={() => void checkVerification()} />
         <AuthButton label="Resend email" variant="outline" onPress={() => void resendEmail()} />
-        <AuthButton label="Use a different email" variant="ghost" onPress={() => void useDifferentEmail()} />
       </View>
+      <AuthLink action="Use a different email" onPress={() => void useDifferentEmail()} />
     </AuthScreen>
   );
 }

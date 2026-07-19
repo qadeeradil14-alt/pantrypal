@@ -30,16 +30,16 @@ export const AUTH_FIELD_HEIGHT = 54;
 export const AUTH_BUTTON_HEIGHT = 56;
 export const AUTH_RADIUS = radii.auth;
 export function authBackground(colors: AppColors, isDark: boolean) {
-  return isDark ? colors.background : authBackgroundLight;
+  return isDark ? '#0F1117' : authBackgroundLight;
 }
 
 /** Full-screen scaffold: safe areas, themed background, keyboard avoidance,
  *  and a vertically-centred scroll area so short and tall screens both work. */
-export function AuthScreen({ children }: { children: React.ReactNode }) {
+export function AuthScreen({ children, backgroundColor }: { children: React.ReactNode; backgroundColor?: string }) {
   const { colors, isDark } = useTheme();
   const styles = React.useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   return (
-    <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
+    <SafeAreaView style={[styles.screen, backgroundColor ? { backgroundColor } : undefined]} edges={['top', 'bottom']}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView
           contentContainerStyle={styles.scrollContent}
@@ -170,11 +170,11 @@ export function AuthDivider({ label = 'or' }: { label?: string }) {
 }
 
 /** Inline centred text link ("Already have an account? Sign in"). */
-export function AuthLink({ prefix, action, onPress }: { prefix?: string; action: string; onPress: () => void }) {
+export function AuthLink({ prefix, action, onPress, compact = false }: { prefix?: string; action: string; onPress: () => void; compact?: boolean }) {
   const { colors } = useTheme();
   const styles = React.useMemo(() => makeStyles(colors, false), [colors]);
   return (
-    <Text style={styles.linkRow}>
+    <Text style={[styles.linkRow, compact && styles.linkRowCompact]}>
       {prefix ? <Text style={styles.linkPrefix}>{prefix} </Text> : null}
       <Text style={styles.linkAction} onPress={onPress} accessibilityRole="link">{action}</Text>
     </Text>
@@ -215,7 +215,7 @@ function makeStyles(colors: AppColors, isDark: boolean) {
     brandTagline: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.muted, marginTop: 2 },
 
     headingBlock: { marginBottom: spacing.xl },
-    title: { fontFamily: fonts.sansSemibold, fontSize: 28, lineHeight: 34, color: colors.ink },
+    title: { fontFamily: fonts.serifItalic, fontSize: 32, lineHeight: 39, color: colors.ink },
     subtitle: { fontFamily: fonts.sans, fontSize: 15, lineHeight: 22, color: colors.muted, marginTop: spacing.sm },
 
     field: {
@@ -257,6 +257,7 @@ function makeStyles(colors: AppColors, isDark: boolean) {
     dividerText: { fontFamily: fonts.sans, fontSize: 13, color: colors.muted },
 
     linkRow: { textAlign: 'center', marginTop: spacing.xl },
+    linkRowCompact: { marginTop: 0 },
     linkPrefix: { fontFamily: fonts.sans, fontSize: 15, color: colors.muted },
     linkAction: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.primary },
 

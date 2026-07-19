@@ -79,7 +79,7 @@ export const radii = {
 
 // Warm cream surface for the whole auth/onboarding flow in light mode — matches
 // the reference and the illustration artwork so the art blends seamlessly.
-// Dark mode uses the theme's dark background instead (see AuthKit.authBackground).
+// Dark auth/onboarding uses #0F1117 (see AuthKit.authBackground).
 export const authBackgroundLight = '#FEF9F1';
 
 export const darkColors = {

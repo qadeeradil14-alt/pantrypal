@@ -17,8 +17,9 @@ import { useOnboardingStore } from '../../store/onboarding';
 import { ONBOARDING_SLIDES } from '../../constants/onboarding';
 import { OnboardingPage, PageDots } from '../../components/onboarding/OnboardingKit';
 import { authBackground } from '../../components/auth/AuthKit';
+import { Logo } from '../../components/shared/Logo';
 
-const DARK_ONBOARDING_BACKGROUND = '#050606';
+const DARK_ONBOARDING_BACKGROUND = '#0F1117';
 
 export default function OnboardingScreen() {
   const { colors, isDark } = useTheme();
@@ -64,10 +65,14 @@ export default function OnboardingScreen() {
     <View style={[styles.root, { backgroundColor: isDark ? DARK_ONBOARDING_BACKGROUND : authBackground(colors, false) }]}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
 
-      {/* Top bar: progress + Skip */}
+      {/* Top bar: brand, progress, and Skip */}
       <View style={[styles.topBar, { marginTop: Math.max(insets.top, 16) + 8 }]}>
+        <View style={styles.brandSlot}>
+          <Logo size={22} color={colors.ink} accent={colors.primary} />
+          <Text style={styles.wordmark}>Stokit</Text>
+        </View>
         <Text style={styles.progress}>{index + 1}/{count}</Text>
-        <Pressable onPress={skip} hitSlop={16} accessibilityRole="button" accessibilityLabel="Skip onboarding">
+        <Pressable onPress={skip} hitSlop={16} accessibilityRole="button" accessibilityLabel="Skip onboarding" style={styles.skipButton}>
           <Text style={styles.skip}>Skip</Text>
         </Pressable>
       </View>
@@ -125,11 +130,14 @@ function makeStyles(colors: AppColors) {
       alignSelf: 'center',
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
+      justifyContent: 'center',
       paddingHorizontal: spacing.xxl,
       marginBottom: spacing.md,
     },
-    progress: { fontFamily: fonts.monoMedium, fontSize: 13, color: colors.muted, fontVariant: ['tabular-nums'] },
+    brandSlot: { position: 'absolute', left: spacing.xxl, flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+    wordmark: { fontFamily: fonts.serifItalic, fontSize: 17, lineHeight: 22, color: colors.ink },
+    progress: { fontFamily: fonts.monoMedium, fontSize: 12, color: colors.muted, fontVariant: ['tabular-nums'] },
+    skipButton: { position: 'absolute', right: spacing.xxl },
     skip: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.primary },
     bottomBar: {
       width: '100%',
@@ -142,9 +150,9 @@ function makeStyles(colors: AppColors) {
       paddingTop: spacing.md,
     },
     nextBtn: {
-      width: 56,
-      height: 56,
-      borderRadius: 28,
+      width: 50,
+      height: 50,
+      borderRadius: 25,
       backgroundColor: colors.primary,
       alignItems: 'center',
       justifyContent: 'center',

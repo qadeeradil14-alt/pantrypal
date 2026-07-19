@@ -10,7 +10,6 @@ import {
   AuthHeading,
   AuthField,
   AuthButton,
-  AuthDivider,
   AuthMessage,
   AuthLink,
 } from '../../components/auth/AuthKit';
@@ -84,11 +83,12 @@ export default function SignInScreen() {
           <Text style={styles.forgot}>Forgot password?</Text>
         </Pressable>
         <AuthButton label="Sign in" onPress={() => void submit()} loading={loading} />
-        <AuthDivider />
-        <AuthButton label="Join with invite code" variant="outline" icon="person-add-outline" onPress={() => router.push('/(auth)/join')} />
       </View>
 
-      <AuthLink prefix="Don't have an account?" action="Create one" onPress={() => router.replace('/(auth)/sign-up')} />
+      <View style={styles.footerLinks}>
+        <AuthLink prefix="Don't have an account?" action="Create one" onPress={() => router.replace('/(auth)/sign-up')} compact />
+        <AuthLink action="Use invite code" onPress={() => router.push('/(auth)/join')} compact />
+      </View>
     </AuthScreen>
   );
 }
@@ -98,5 +98,6 @@ function makeStyles(colors: AppColors) {
     form: { gap: spacing.md },
     forgotWrap: { alignSelf: 'flex-end', marginTop: -spacing.xs, marginBottom: spacing.xs },
     forgot: { fontFamily: fonts.sansSemibold, fontSize: 13, color: colors.primary },
+    footerLinks: { alignItems: 'center', gap: spacing.md, marginTop: spacing.xl },
   });
 }

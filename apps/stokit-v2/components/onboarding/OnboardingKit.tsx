@@ -56,14 +56,6 @@ export function OnboardingPage({
   return (
     <View style={[styles.page, { width: pageWidth }]}>
       <Animated.View style={[styles.pageInner, animatedStyle]}>
-        <View style={styles.textBlock}>
-          <Text style={[styles.title, { color: colors.ink }]}>
-            {slide.title[0]}
-            {'\n'}
-            <Text style={{ color: colors.primary }}>{slide.title[1]}</Text>
-          </Text>
-          <Text style={[styles.subtitle, { color: colors.muted }]}>{slide.subtitle}</Text>
-        </View>
         <View style={styles.artArea}>
           <Image
             source={slideArtwork(slide, isDark)}
@@ -71,6 +63,14 @@ export function OnboardingPage({
             resizeMode="contain"
             accessibilityIgnoresInvertColors
           />
+        </View>
+        <View style={styles.textBlock}>
+          <Text style={[styles.title, { color: colors.ink }]}>
+            {slide.title[0]}
+            {'\n'}
+            <Text>{slide.title[1]}</Text>
+          </Text>
+          <Text style={[styles.subtitle, { color: colors.muted }]}>{slide.subtitle}</Text>
         </View>
       </Animated.View>
     </View>
@@ -87,11 +87,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xxl,
     alignItems: 'center',
   },
-  textBlock: { alignItems: 'center', marginBottom: spacing.lg },
-  title: { ...type.slideTitle, textAlign: 'center' },
-  subtitle: { fontFamily: fonts.sans, fontSize: 15, lineHeight: 22, textAlign: 'center', marginTop: spacing.md, paddingHorizontal: spacing.md },
-  artArea: { flex: 1, minHeight: 0, width: '100%', alignItems: 'center', justifyContent: 'center' },
-  art: { flex: 1, width: '100%', maxWidth: 360 },
+  artArea: { height: 290, width: '100%', alignItems: 'center', justifyContent: 'center' },
+  art: { height: '100%', width: '100%', maxWidth: 360 },
+  textBlock: { alignItems: 'center', marginTop: spacing.lg },
+  title: { ...type.slideTitle, fontFamily: fonts.serifItalic, fontSize: 31, lineHeight: 36, textAlign: 'center' },
+  subtitle: { fontFamily: fonts.sans, fontSize: 14, lineHeight: 20, textAlign: 'center', marginTop: spacing.sm, paddingHorizontal: spacing.lg },
   dotsRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   dot: { height: 8, borderRadius: 4 },
 });

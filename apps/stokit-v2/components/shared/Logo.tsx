@@ -1,13 +1,8 @@
 import React from 'react';
-import Svg, { Path, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, Path, Text as SvgText } from 'react-native-svg';
 
 /**
- * Stokit "Midnight S" mark — a faithful in-app copy of the approved app icon
- * (assets/icon-light.svg / icon-dark.svg): a faint ghost shopping bag with a
- * bold red "S" as the hero. Transparent background so it sits on any surface.
- *
- *  - `color`  drives the ghost bag (pass the theme ink so it adapts light/dark).
- *  - `accent` is the bold S; defaults to the brand red used by the icon.
+ * Stokit "Pantry Label" mark. Transparent background so it sits on any surface.
  */
 export function Logo({
   size = 40,
@@ -20,36 +15,28 @@ export function Logo({
 }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 1024 1024" fill="none">
-      {/* Bag handle — faint ghost */}
       <Path
-        d="M 283 488 L 283 370 C 283 260 346 197 512 197 C 678 197 740 260 740 370 L 740 488"
-        stroke={color}
-        strokeOpacity={0.12}
-        strokeWidth={47}
-        strokeLinecap="round"
-        fill="none"
-      />
-      {/* Bag body — faint ghost */}
-      <Path
-        d="M 150 488 C 118 488 102 520 110 559 L 197 866 C 197 906 236 921 268 921 L 756 921 C 788 921 827 906 827 866 L 914 559 C 922 520 906 488 874 488 Z"
+        d="M 238 218 Q 238 178 278 178 H 634 Q 670 178 695 203 L 820 328 Q 842 350 842 382 V 788 Q 842 836 794 836 H 286 Q 238 836 238 788 Z"
         fill={color}
-        fillOpacity={0.045}
+        fillOpacity={0.055}
         stroke={color}
-        strokeOpacity={0.1}
-        strokeWidth={9}
+        strokeOpacity={0.14}
+        strokeWidth={20}
       />
-      {/* Bold S — the hero, matches the icon exactly */}
+      <Circle cx={690} cy={312} r={28} fill={color} fillOpacity={0.14} />
       <SvgText
         x={512}
-        y={800}
+        y={672}
         textAnchor="middle"
         fontFamily="Helvetica Neue"
-        fontSize={600}
+        fontSize={480}
         fontWeight="700"
         fill={accent}
       >
         S
       </SvgText>
+      <Path d="M 374 742 H 650" stroke={color} strokeOpacity={0.15} strokeWidth={18} strokeLinecap="round" />
+      <Path d="M 430 700 V 742 M 512 688 V 742 M 594 700 V 742" stroke={color} strokeOpacity={0.15} strokeWidth={16} strokeLinecap="round" />
     </Svg>
   );
 }
