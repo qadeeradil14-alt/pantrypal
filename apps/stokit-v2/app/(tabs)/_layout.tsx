@@ -2,11 +2,17 @@ import React from 'react';
 import { Platform } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fonts } from '../../theme';
 import { useTheme } from '../../hooks/useTheme';
 
 export default function TabsLayout() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  // Size the bar off the device's bottom safe-area inset so icons + labels
+  // never get crammed against the home indicator. Falls back to a small
+  // padding on devices without an inset (older phones / Android).
+  const bottomInset = insets.bottom;
 
   return (
     <Tabs
@@ -18,8 +24,9 @@ export default function TabsLayout() {
           backgroundColor: colors.backgroundElevated,
           borderTopColor: colors.border,
           borderTopWidth: 1,
-          height: Platform.OS === 'ios' ? 88 : 68,
+          height: 60 + bottomInset,
           paddingTop: 8,
+          paddingBottom: bottomInset > 0 ? bottomInset : Platform.OS === 'ios' ? 6 : 10,
         },
         tabBarLabelStyle: {
           fontFamily: fonts.sansMedium,

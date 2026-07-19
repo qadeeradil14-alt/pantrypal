@@ -269,7 +269,7 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
   const freshInstallHydration = isFreshInstallState(local) && hasSharedSnapshotContent(remote);
   if (!forceServerHydration && !freshInstallHydration && !shouldApplyRemoteSnapshot(remoteUpdatedAt, localUpdatedAt)) {
     const reason = remoteSkipReason(remoteUpdatedAt, localUpdatedAt);
-    console.log(`[Shopping Sync] active_session_reconcile_skipped reason=${reason} version/updatedAt=${remoteUpdatedAt} localUpdatedAt=${localUpdatedAt}`);
+    if (__DEV__) console.log(`[Shopping Sync] active_session_reconcile_skipped reason=${reason} version/updatedAt=${remoteUpdatedAt} localUpdatedAt=${localUpdatedAt}`);
     initialHouseholdSyncComplete.add(id);
     // The cloud snapshot is strictly older than this device's durable state
     // (e.g. edits made offline whose push never reached Supabase). Reconcile
@@ -277,7 +277,7 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
     // instead of leaving the stale blob in the cloud. Equal timestamps mean
     // already-in-sync — no push, or realtime would fan out on every launch.
     if (localUpdatedAt > remoteUpdatedAt && !isSelfEcho(remoteUpdatedAt)) {
-      console.log(`[Shopping Sync] stale_remote_reconcile_push localUpdatedAt=${localUpdatedAt} remoteUpdatedAt=${remoteUpdatedAt}`);
+      if (__DEV__) console.log(`[Shopping Sync] stale_remote_reconcile_push localUpdatedAt=${localUpdatedAt} remoteUpdatedAt=${remoteUpdatedAt}`);
       await pushLocalState(durableSnapshot(store.getState()));
     }
     return;
@@ -285,9 +285,9 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
 
   if (hasActiveSession) {
     const { itemCount, pickedCount, sessionId } = activeSessionStats(remote);
-    console.log(`[Shopping Sync] remote_active_session_snapshot_received version/updatedAt=${remoteUpdatedAt} itemCount=${itemCount} pickedCount=${pickedCount} sessionId=${sessionId}`);
+    if (__DEV__) console.log(`[Shopping Sync] remote_active_session_snapshot_received version/updatedAt=${remoteUpdatedAt} itemCount=${itemCount} pickedCount=${pickedCount} sessionId=${sessionId}`);
   }
-  if (hasActiveSession && !remote.activeSession) console.log('[Shopping Sync] remote_trip_end_received');
+  if (hasActiveSession && !remote.activeSession && __DEV__) console.log('[Shopping Sync] remote_trip_end_received');
   const signedRemote = await withSignedReceiptUrls(remote);
   const reconciledRemote: DurableState = {
     ...signedRemote,
@@ -301,12 +301,12 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
   const current = store.getState();
   const stillFreshInstallHydration = isFreshInstallState(current) && hasSharedSnapshotContent(remote);
   if (!forceServerHydration && !stillFreshInstallHydration && !shouldApplyRemoteSnapshot(remoteUpdatedAt, current.updatedAt)) {
-    console.log(`[Shopping Sync] active_session_reconcile_skipped reason=${remoteSkipReason(remoteUpdatedAt, store.getState().updatedAt)} version/updatedAt=${remoteUpdatedAt} phase=post_sign`);
+    if (__DEV__) console.log(`[Shopping Sync] active_session_reconcile_skipped reason=${remoteSkipReason(remoteUpdatedAt, store.getState().updatedAt)} version/updatedAt=${remoteUpdatedAt} phase=post_sign`);
     return;
   }
   store.getState().applyRemotePatch(reconciledRemote);
   initialHouseholdSyncComplete.add(id);
-  if (hasActiveSession) console.log('[Shopping Sync] local_state_reconciled');
+  if (hasActiveSession && __DEV__) console.log('[Shopping Sync] local_state_reconciled');
   if (!isSelfEcho(remoteUpdatedAt)) {
     markRemoteApplied(remoteUpdatedAt);
   }
@@ -345,12 +345,12 @@ export async function startSyncEngine(): Promise<void> {
         filter: `household_id=eq.${id}`,
       },
       (payload) => {
-        console.log(`[Shopping Sync] realtime_snapshot_event event=${payload.eventType} householdId=${id}`);
+        if (__DEV__) console.log(`[Shopping Sync] realtime_snapshot_event event=${payload.eventType} householdId=${id}`);
         realtimePullScheduler.schedule();
       },
     )
     .subscribe((status, error) => {
-      console.log(`[Shopping Sync] realtime_subscription_status status=${status} householdId=${id}${error ? ` error=${error.message}` : ''}`);
+      if (__DEV__) console.log(`[Shopping Sync] realtime_subscription_status status=${status} householdId=${id}${error ? ` error=${error.message}` : ''}`);
     });
 }
 
