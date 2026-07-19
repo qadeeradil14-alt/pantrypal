@@ -37,3 +37,11 @@ test('Store Arrival Alerts fix-location actions route to the Stores tab', () => 
   assert.match(stores, /setLocationRecoveryStore\(store\)/);
   assert.match(stores, /setAddOpen\(true\)/);
 });
+
+test('Store Arrival Alerts distinguishes missing coordinates from missing shopping items', () => {
+  assert.match(storeArrivalAlerts, /if \(value && gpsStores\.length === 0\)/);
+  assert.match(storeArrivalAlerts, /if \(value && monitorableStores\.length === 0\)/);
+  assert.match(storeArrivalAlerts, /No shopping items assigned/);
+  assert.match(storeArrivalAlerts, /pathname: '\/\(tabs\)\/shopping'/);
+  assert.match(storeArrivalAlerts, /text: 'Add item'/);
+});

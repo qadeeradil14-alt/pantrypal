@@ -172,6 +172,20 @@ export default function StoreArrivalAlertsScreen() {
     }
   }, [openStoresScreen, stores]);
 
+  const showNoShoppingItemsAlert = useCallback(() => {
+    Alert.alert(
+      'No shopping items assigned',
+      'Add a low or expiring item to your shopping list and assign it to a store before enabling arrival reminders.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Add item',
+          onPress: () => router.push({ pathname: '/(tabs)/shopping' } as never),
+        },
+      ],
+    );
+  }, [router]);
+
   const toggleGeofence = useCallback(async (value: boolean) => {
     if (value && gpsStores.length === 0) {
       Alert.alert(
@@ -182,6 +196,10 @@ export default function StoreArrivalAlertsScreen() {
           { text: 'Fix location', onPress: openFirstMissingStoreLocation },
         ],
       );
+      return;
+    }
+    if (value && monitorableStores.length === 0) {
+      showNoShoppingItemsAlert();
       return;
     }
     setGeofenceLoading(true);
@@ -213,14 +231,7 @@ export default function StoreArrivalAlertsScreen() {
             setGeofenceOn(false);
             break;
           case 'no_stores':
-            Alert.alert(
-              'No store coordinates',
-              'Use the Fix store locations section below to update at least one saved store with GPS coordinates.',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Fix location', onPress: openFirstMissingStoreLocation },
-              ],
-            );
+            showNoShoppingItemsAlert();
             setGeofenceOn(false);
             break;
           case 'expo_go':
@@ -245,7 +256,7 @@ export default function StoreArrivalAlertsScreen() {
       setGeofenceLoading(false);
       void refreshDiagnostics();
     }
-  }, [stores, items, gpsStores.length, refreshDiagnostics, openFirstMissingStoreLocation]);
+  }, [stores, items, gpsStores.length, monitorableStores.length, refreshDiagnostics, openFirstMissingStoreLocation, showNoShoppingItemsAlert]);
 
   const sendArrivalNotification = useCallback(async (source: 'test' | 'manual') => {
     setTestNotifLoading(true);
