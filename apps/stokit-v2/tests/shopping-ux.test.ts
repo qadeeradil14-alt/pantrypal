@@ -68,6 +68,20 @@ test('reviewReceiptItems leaves an empty scan with no rows', () => {
   assert.deepEqual(reviewReceiptItems([]), []);
 });
 
+test('reviewReceiptItems does not crash on null/missing/non-string names (Walmart receipt regression)', () => {
+  // The AI model can return rows whose name is null, missing, or numeric.
+  // reviewReceiptItems must coerce safely instead of throwing on .trim().
+  const rows = reviewReceiptItems([
+    { name: null as unknown as string },
+    { name: undefined as unknown as string },
+    { name: 12345 as unknown as string },
+    { name: 'Bananas' },
+  ]);
+  assert.equal(rows.length, 4);
+  assert.equal(rows[3].item.name, 'Bananas');
+  assert.equal(rows[3].selected, true);
+});
+
 test('all-caps garbled OCR text needs review even without digits or a single token', () => {
   const [result] = reviewReceiptItems([{ name: 'LB BANNSANML' }]);
   assert.equal(result.needsReview, true);

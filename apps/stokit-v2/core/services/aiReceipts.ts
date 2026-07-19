@@ -131,14 +131,43 @@ export async function extractReceiptItems(
     throw new Error('Could not read the receipt data. Please try a clearer photo.');
   }
 
+  // The model returns untrusted JSON: names can be null/numeric/missing and
+  // prices can arrive as strings. Sanitize every field here — the boundary
+  // where model output enters the app — so a malformed Walmart row can't crash
+  // the review sheet (item.name.trim / total_amount.toFixed / price.toFixed).
+  const toNum = (v: unknown): number | null => {
+    const n = typeof v === 'string' ? parseFloat(v.replace(/[^0-9.\-]/g, '')) : Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  parsed.store_name = typeof parsed.store_name === 'string' ? parsed.store_name : null;
+  parsed.transaction_date = typeof parsed.transaction_date === 'string' ? parsed.transaction_date : null;
+  parsed.total_amount = toNum(parsed.total_amount);
   parsed.total = parsed.total_amount;
-  if (parsed.items) {
-    parsed.items = parsed.items.map(item => ({
-      ...item,
-      price: item.unit_price ?? item.total_price ?? undefined,
-      unit: 'unit',
-    }));
-  }
+
+  const rawItems = Array.isArray(parsed.items) ? parsed.items : [];
+  parsed.items = rawItems
+    .map((item): ScannedItem => {
+      const name = String((item as { name?: unknown })?.name ?? '').trim();
+      const q = toNum(item?.quantity);
+      const unit_price = toNum(item?.unit_price);
+      const total_price = toNum(item?.total_price);
+      const category = (item as { item_category?: unknown })?.item_category;
+      const item_category: ItemCategory =
+        category === 'household' || category === 'personal_care' || category === 'non_grocery'
+          ? category
+          : 'food';
+      return {
+        name,
+        quantity: q != null && q > 0 ? q : 1,
+        unit_price,
+        total_price,
+        item_category,
+        price: unit_price ?? total_price ?? undefined,
+        unit: 'unit',
+      };
+    })
+    .filter((item) => item.name.length > 0);
 
   return parsed;
 }

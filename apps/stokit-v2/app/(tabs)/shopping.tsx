@@ -291,7 +291,10 @@ export default function ShoppingScreen() {
     const entries = Array.from(plan.entries());
     if (entries.length === 0) return;
     if (entries.length === 1) {
-      void startTripAt(entries[0][0], true);
+      // Do NOT auto-notify the household on trip start. Notifying is an explicit
+      // choice via the in-trip "Notify household" button (handleNotifyHousehold),
+      // per the Notify Family screen. Auto-firing here pinged family prematurely.
+      void startTripAt(entries[0][0], false);
       return;
     }
     setShowStoreChooser(true);
@@ -355,7 +358,7 @@ export default function ShoppingScreen() {
                   <Text style={nsStyles.storeItems}>{list.length} item{list.length !== 1 ? 's' : ''}</Text>
                 </View>
                 <Pressable
-                  onPress={() => { setShowStoreChooser(false); void startTripAt(storeId, true); }}
+                  onPress={() => { setShowStoreChooser(false); void startTripAt(storeId, false); }}
                   style={({ pressed }) => [nsStyles.startBtn, { borderColor: barColor }, pressed && { opacity: 0.8 }]}
                 >
                   <Text style={[nsStyles.startBtnText, { color: barColor }]}>Start</Text>

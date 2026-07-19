@@ -70,11 +70,16 @@ test('duplicate trip-start invocation does not send duplicate alerts', async () 
   assert.equal(alerts, 1);
 });
 
-test('manual trip-start paths enable the alert without changing geofence auto-start', () => {
+test('trip start never auto-notifies the household; notifying is an explicit button action', () => {
   const source = readFileSync(join(process.cwd(), 'app/(tabs)/shopping.tsx'), 'utf8');
 
   assert.match(source, /if \(tripStartIdRef\.current\) return;/);
-  assert.match(source, /startTripAt\(entries\[0\]\[0\], true\)/);
-  assert.match(source, /startTripAt\(storeId, true\)/);
+  // No trip-start path may pass notifyHousehold=true — that pinged family
+  // prematurely. Notifying is done via the explicit in-trip button.
+  assert.doesNotMatch(source, /startTripAt\([^)]*,\s*true\)/);
+  assert.match(source, /startTripAt\(entries\[0\]\[0\], false\)/);
+  assert.match(source, /startTripAt\(storeId, false\)/);
   assert.match(source, /startTripAt\(arrivalStoreId\);/);
+  // The sole notify trigger is the explicit household button handler.
+  assert.match(source, /handleNotifyHousehold/);
 });

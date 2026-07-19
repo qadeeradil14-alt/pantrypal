@@ -45,10 +45,11 @@ function looksLikeCode(name: string): boolean {
 export function reviewReceiptItems<T extends { name: string }>(items: T[]): ReceiptReviewItem<T>[] {
   const seen = new Set<string>();
   return items.map((item, index) => {
-    const key = item.name.trim().toLowerCase();
+    const safeName = String(item?.name ?? '').trim();
+    const key = safeName.toLowerCase();
     const isDuplicate = seen.has(key);
     seen.add(key);
-    const isCodeLike = !isDuplicate && looksLikeCode(item.name);
+    const isCodeLike = !isDuplicate && looksLikeCode(safeName);
     const needsReview = isDuplicate || isCodeLike;
     return {
       rowId: `${index}-${key}`,
