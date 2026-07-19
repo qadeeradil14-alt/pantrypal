@@ -40,6 +40,7 @@ import { ItemAvatar } from '../../components/shared/ItemAvatar';
 import { PricePromptSheet } from '../../components/shopping/PricePromptSheet';
 import { AddStoreContent } from '../../components/stores/AddStoreSheet';
 import { fonts, radii, shadow, spacing, type AppColors } from '../../theme';
+import { getCategoryColors } from '../../theme/categoryPalette';
 import { useDurableStore } from '../../store/durable-store';
 import { useHouseholdStore } from '../../store/household-store';
 import { useSessionStore } from '../../store/session-store';
@@ -1021,6 +1022,10 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
   const [reviewRows, setReviewRows] = useState<ReceiptReviewItem<any>[]>([]);
   const [editingScanIndex, setEditingScanIndex] = useState<number | null>(null);
   const [editingScanText, setEditingScanText] = useState('');
+  // The "needs a look" group (duplicates / OCR noise) stays collapsed by
+  // default so a messy receipt doesn't bury the clean items the user actually
+  // wants — see receipt review redesign.
+  const [showUnclear, setShowUnclear] = useState(false);
   const addItem = useDurableStore((s) => s.addItem);
   const recordPrice = useDurableStore((s) => s.recordPrice);
 
@@ -1030,8 +1035,12 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
   useEffect(() => {
     setReviewRows(reviewReceiptItems(scanResult?.items ?? []));
     setEditingScanIndex(null);
+    setShowUnclear(false);
   }, [scanResult]);
   const selectedScanCount = reviewRows.filter((r) => r.selected).length;
+  const selectedScanTotal = reviewRows
+    .filter((r) => r.selected)
+    .reduce((sum, r) => sum + (typeof r.item.price === 'number' ? r.item.price : 0), 0);
   const toggleScanItem = (i: number) =>
     setReviewRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, selected: !r.selected } : r)));
   const beginEditScanItem = (i: number) => {
@@ -1339,101 +1348,141 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
       </Screen>
 
       <Sheet visible={!!scanResult} title="Receipt scanned" onClose={skipScanItems}>
-        <Text style={{ fontFamily: fonts.sans, fontSize: 15, color: colors.ink, marginBottom: spacing.xs }}>
-          Found {scanResult?.items?.length} possible items. Review before saving.
-        </Text>
-        <Text style={{ fontFamily: fonts.sans, fontSize: 13, color: colors.muted, marginBottom: spacing.lg }}>
-          Unchecked items will be skipped. Select only the items you recognize.
-        </Text>
-        <ScrollView style={{ maxHeight: 300, marginBottom: spacing.lg }}>
-          {reviewRows.map((row, i: number) => {
+        {(() => {
+          const indexed = reviewRows.map((row, i) => ({ row, i }));
+          const readyRows = indexed.filter(({ row }) => !row.needsReview);
+          const unclearRows = indexed.filter(({ row }) => row.needsReview);
+
+          const renderRow = ({ row, i, compact }: { row: ReceiptReviewItem<any>; i: number; compact: boolean }) => {
             const item = row.item;
             const cat = item.item_category ?? 'food';
-            const iconName =
-              cat === 'household'    ? 'home-outline' :
-              cat === 'personal_care'? 'person-outline' :
-              cat === 'non_grocery'  ? 'bag-outline' :
-                                       'nutrition-outline';
+            const dotColor = getCategoryColors(
+              cat === 'household' ? 'household' : cat === 'personal_care' ? 'personal_care' : cat === 'non_grocery' ? 'other' : 'produce_fruit',
+              isDark,
+            ).fg;
             const isSelected = row.selected;
-            const needsReview = row.needsReview;
             const isEditing = editingScanIndex === i;
+
+            if (isEditing) {
+              return (
+                <View key={row.rowId} style={{ padding: spacing.sm, backgroundColor: colors.surfaceRaised, borderRadius: radii.md, marginBottom: spacing.xs }}>
+                  <TextInput
+                    value={editingScanText}
+                    onChangeText={setEditingScanText}
+                    placeholder="Item name"
+                    placeholderTextColor={colors.muted}
+                    autoFocus
+                    onSubmitEditing={commitEditScanItem}
+                    style={{ fontFamily: fonts.sansMedium, fontSize: 15, color: colors.ink, borderBottomWidth: 1, borderBottomColor: colors.primary, paddingVertical: 2 }}
+                  />
+                  <View style={{ flexDirection: 'row', marginTop: spacing.xs }}>
+                    <Pressable onPress={commitEditScanItem} hitSlop={8} style={{ marginRight: spacing.lg }}>
+                      <Text style={{ fontFamily: fonts.sansMedium, fontSize: 13, color: colors.primary }}>Save</Text>
+                    </Pressable>
+                    <Pressable onPress={cancelEditScanItem} hitSlop={8}>
+                      <Text style={{ fontFamily: fonts.sans, fontSize: 13, color: colors.muted }}>Cancel</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              );
+            }
+
             return (
               <Pressable
                 key={row.rowId}
                 onPress={() => toggleScanItem(i)}
-                disabled={isEditing}
-                style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm, padding: spacing.sm, backgroundColor: colors.surfaceRaised, borderRadius: radii.md }}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+                  paddingVertical: compact ? 9 : spacing.sm, paddingHorizontal: spacing.xs,
+                  borderBottomWidth: 1, borderBottomColor: colors.borderSoft,
+                }}
               >
                 <Ionicons
                   name={isSelected ? 'checkbox' : 'square-outline'}
-                  size={22}
+                  size={20}
                   color={isSelected ? colors.primary : colors.muted}
                 />
-                <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', marginLeft: spacing.sm }}>
-                  <Ionicons name={iconName as any} size={20} color={colors.primary} />
-                </View>
-                <View style={{ marginLeft: spacing.sm, flex: 1 }}>
-                  {isEditing ? (
-                    <View>
-                      <TextInput
-                        value={editingScanText}
-                        onChangeText={setEditingScanText}
-                        placeholder="Item name"
-                        placeholderTextColor={colors.muted}
-                        autoFocus
-                        onSubmitEditing={commitEditScanItem}
-                        style={{ fontFamily: fonts.sansMedium, fontSize: 15, color: colors.ink, borderBottomWidth: 1, borderBottomColor: colors.primary, paddingVertical: 2 }}
-                      />
-                      <View style={{ flexDirection: 'row', marginTop: spacing.xs }}>
-                        <Pressable onPress={commitEditScanItem} hitSlop={8} style={{ marginRight: spacing.lg }}>
-                          <Text style={{ fontFamily: fonts.sansMedium, fontSize: 13, color: colors.primary }}>Save</Text>
-                        </Pressable>
-                        <Pressable onPress={cancelEditScanItem} hitSlop={8}>
-                          <Text style={{ fontFamily: fonts.sans, fontSize: 13, color: colors.muted }}>Cancel</Text>
-                        </Pressable>
-                      </View>
-                    </View>
-                  ) : (
-                    <>
-                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Pressable onPress={() => beginEditScanItem(i)} hitSlop={6} style={{ flexShrink: 1 }}>
-                          <Text style={{ fontFamily: fonts.sansMedium, fontSize: 15, color: colors.ink }}>{item.name}</Text>
-                        </Pressable>
-                        {needsReview && <Pill label="Unclear" tone="low" style={{ marginLeft: spacing.sm }} />}
-                      </View>
-                      <Text style={{ fontFamily: fonts.mono, fontSize: 13, color: colors.muted }}>
-                        ×{item.quantity}{item.price ? ` · $${item.price.toFixed(2)}` : ''}
-                      </Text>
-                      {needsReview && (
-                        <Text style={{ fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 2 }}>
-                          Looks like receipt text. Skipped unless selected.
-                        </Text>
-                      )}
-                      <Pressable onPress={() => beginEditScanItem(i)} hitSlop={6} style={{ marginTop: 2 }}>
-                        <Text style={{ fontFamily: fonts.sansMedium, fontSize: 12, color: colors.primary }}>Edit</Text>
-                      </Pressable>
-                    </>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: dotColor }} />
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Pressable onPress={() => beginEditScanItem(i)} hitSlop={6} style={{ flexShrink: 1 }}>
+                      <Text style={{ fontFamily: fonts.sans, fontSize: 15, color: colors.ink }} numberOfLines={1}>{item.name}</Text>
+                    </Pressable>
+                    {row.needsReview && <Pill label="Unclear" tone="low" style={{ marginLeft: spacing.sm }} />}
+                  </View>
+                  {!compact && (
+                    <Text style={{ fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 2 }}>
+                      Looks like receipt text — edit the name or leave unchecked to skip.
+                    </Text>
                   )}
                 </View>
+                {item.price ? (
+                  <Text style={{ fontFamily: fonts.mono, fontSize: 13, color: colors.muted }}>${item.price.toFixed(2)}</Text>
+                ) : null}
               </Pressable>
             );
-          })}
-        </ScrollView>
-        <Button
-          label={
-            selectedScanCount === 0
-              ? 'Select items to add'
-              : `Add ${selectedScanCount} confirmed item${selectedScanCount === 1 ? '' : 's'}`
-          }
-          disabled={selectedScanCount === 0}
-          onPress={addScanItems}
-        />
-        <Button
-          label="Skip for now"
-          variant="ghost"
-          onPress={skipScanItems}
-          style={{ marginTop: spacing.sm, marginBottom: spacing.lg }}
-        />
+          };
+
+          return (
+            <>
+              <View style={{
+                flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                backgroundColor: colors.surface, borderRadius: radii.md,
+                paddingVertical: spacing.sm, paddingHorizontal: spacing.md, marginBottom: spacing.md,
+              }}>
+                <Text style={{ fontFamily: fonts.sansMedium, fontSize: 13, color: colors.ink }}>
+                  {scanResult?.total_amount != null ? `$${Number(scanResult.total_amount).toFixed(2)} total` : `${scanResult?.items?.length ?? 0} items found`}
+                </Text>
+                <Text style={{ fontFamily: fonts.sans, fontSize: 12, color: colors.muted }}>
+                  {readyRows.length} ready{unclearRows.length > 0 ? ` · ${unclearRows.length} need a look` : ''}
+                </Text>
+              </View>
+
+              <ScrollView style={{ maxHeight: 340, marginBottom: spacing.md }}>
+                {readyRows.length > 0 && (
+                  <Text style={{ fontFamily: fonts.sansSemibold, fontSize: 11, letterSpacing: 0.6, color: colors.muted, marginBottom: spacing.xs }}>
+                    READY TO ADD
+                  </Text>
+                )}
+                {readyRows.map(({ row, i }) => renderRow({ row, i, compact: true }))}
+
+                {unclearRows.length > 0 && (
+                  <Pressable
+                    onPress={() => setShowUnclear((v) => !v)}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                      backgroundColor: colors.surface, borderRadius: radii.md,
+                      paddingVertical: spacing.sm, paddingHorizontal: spacing.md,
+                      marginTop: spacing.md,
+                    }}
+                  >
+                    <Text style={{ fontFamily: fonts.sans, fontSize: 13, color: colors.ink }}>
+                      {unclearRows.length} item{unclearRows.length === 1 ? '' : 's'} need a look
+                    </Text>
+                    <Ionicons name={showUnclear ? 'chevron-down' : 'chevron-forward'} size={16} color={colors.muted} />
+                  </Pressable>
+                )}
+                {showUnclear && unclearRows.map(({ row, i }) => renderRow({ row, i, compact: false }))}
+              </ScrollView>
+
+              <Button
+                label={
+                  selectedScanCount === 0
+                    ? 'Select items to add'
+                    : `Add ${selectedScanCount} item${selectedScanCount === 1 ? '' : 's'}${selectedScanTotal > 0 ? ` · $${selectedScanTotal.toFixed(2)}` : ''}`
+                }
+                disabled={selectedScanCount === 0}
+                onPress={addScanItems}
+              />
+              <Button
+                label="Skip for now"
+                variant="ghost"
+                onPress={skipScanItems}
+                style={{ marginTop: spacing.sm, marginBottom: spacing.lg }}
+              />
+            </>
+          );
+        })()}
       </Sheet>
     </KeyboardAvoidingView>
   );

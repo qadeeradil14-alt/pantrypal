@@ -29,15 +29,19 @@ test('unplanned stores excludes every store already in the active trip', () => {
 test('shopping UI exposes receipt review and new-store actions', () => {
   const source = readFileSync(join(process.cwd(), 'app/(tabs)/shopping.tsx'), 'utf8');
   assert.match(source, /title="Receipt scanned"/);
-  assert.match(source, /Unchecked items will be skipped\. Select only the items you recognize\./);
-  // Suspicious rows are flagged "Unclear" (not "Needs review") with plain-English helper copy.
+  // Redesigned review sheet: ready items shown compactly by default, unclear
+  // (duplicate / OCR-noise) items collapsed behind a disclosure so a messy
+  // receipt doesn't bury the clean items — see receipt review redesign.
+  assert.match(source, /READY TO ADD/);
+  assert.match(source, /const \[showUnclear, setShowUnclear\] = useState\(false\)/);
+  assert.match(source, /need a look/);
+  // Suspicious rows are still flagged "Unclear" (not "Needs review").
   assert.match(source, /label="Unclear"/);
   assert.doesNotMatch(source, /label="Needs review"/);
-  assert.match(source, /Looks like receipt text\. Skipped unless selected\./);
-  // Button copy counts confirmed items, not raw "selected".
-  assert.match(source, /'Select items to add'\s*\n\s*: `Add \$\{selectedScanCount\} confirmed item/);
-  // Inline edit affordance + rename handler wired up.
-  assert.match(source, />Edit<\/Text>/);
+  // Button copy counts + totals selected items.
+  assert.match(source, /'Select items to add'\s*\n\s*: `Add \$\{selectedScanCount\} item/);
+  assert.match(source, /selectedScanTotal/);
+  // Inline edit affordance + rename handler still wired up.
   assert.match(source, /renameReviewItem\(r, editingScanText\)/);
   assert.match(source, /label="Skip for now"/);
   assert.match(source, /label="Add a new store"/);
