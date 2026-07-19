@@ -40,6 +40,35 @@ let activeHouseholdId: string | null = null;
 const initialHouseholdSyncComplete = new Set<string>();
 const realtimePullScheduler = createDebouncedPullScheduler(() => pullFromSupabase(), 150);
 
+// Persistent offline flush. When a push fails (typically no connectivity) the
+// engine keeps retrying on a capped exponential backoff instead of giving up
+// after a single deferred attempt. This is what carries edits made while
+// offline to other devices the moment connectivity returns — without needing a
+// fresh mutation or an app foreground. Cleared on the first successful push.
+let pendingFlushTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingFlushDelayMs = 0;
+const FLUSH_MAX_DELAY_MS = 30_000;
+
+function scheduleOfflineFlush(): void {
+  if (pendingFlushTimer) return;
+  pendingFlushDelayMs = pendingFlushDelayMs > 0 ? Math.min(pendingFlushDelayMs * 2, FLUSH_MAX_DELAY_MS) : 2_000;
+  pendingFlushTimer = setTimeout(() => {
+    pendingFlushTimer = null;
+    void (async () => {
+      const store = await durableStore();
+      await pushLocalState(durableSnapshot(store.getState()), { isDeferredRetry: true });
+    })();
+  }, pendingFlushDelayMs);
+}
+
+function clearOfflineFlush(): void {
+  if (pendingFlushTimer) {
+    clearTimeout(pendingFlushTimer);
+    pendingFlushTimer = null;
+  }
+  pendingFlushDelayMs = 0;
+}
+
 function activeSessionStats(state: DurableState): { itemCount: number; pickedCount: number; sessionId: string } {
   const entries = state.activeSession?.entries ?? [];
   return {
@@ -133,6 +162,7 @@ export async function pushLocalState(state: DurableState, options?: { isDeferred
     const consistentState = durableSnapshot(state);
     if (isEmptySharedSnapshot(consistentState)) {
       if (__DEV__) console.warn('[Sync Engine] empty_snapshot_push_blocked');
+      clearOfflineFlush();
       return;
     }
     const receipts = await Promise.all(consistentState.receipts.map((receipt) => uploadReceipt(id, receipt)));
@@ -157,17 +187,12 @@ export async function pushLocalState(state: DurableState, options?: { isDeferred
     }
 
     if (error) {
-      if (!options?.isDeferredRetry) {
-        setTimeout(() => {
-          void (async () => {
-            const store = await durableStore();
-            await pushLocalState(durableSnapshot(store.getState()), { isDeferredRetry: true });
-          })();
-        }, RETRY_BASE_DELAY_MS * (RETRY_ATTEMPTS + 1));
-      }
+      // Keep retrying on backoff until connectivity returns — do not give up.
+      scheduleOfflineFlush();
       return;
     }
 
+    clearOfflineFlush();
     markPushed(snapshot.updatedAt);
     const { itemCount, pickedCount, sessionId } = activeSessionStats(snapshot);
     if (__DEV__) console.log(`[Shopping Sync] active_session_snapshot_written version/updatedAt=${snapshot.updatedAt} itemCount=${itemCount} pickedCount=${pickedCount} sessionId=${sessionId}`);
@@ -182,6 +207,9 @@ export async function pushLocalState(state: DurableState, options?: { isDeferred
     store.getState().applyRemotePatch({ receipts: currentReceipts });
   } catch (err) {
     if (__DEV__) console.warn('[Sync Engine] Offline or push failed.', err);
+    // Receipt upload or upsert threw (e.g. offline mid-request) — keep retrying
+    // on backoff so pending edits still reach other devices on reconnect.
+    scheduleOfflineFlush();
   }
 }
 

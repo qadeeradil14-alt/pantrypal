@@ -50,17 +50,24 @@ test('[Issue 3] permanently-failed receipt uploads never leak a device-local fil
     'push must build a distinct cloud-bound receipts array so the null-out never touches the local store patch');
 });
 
-test('[Issue 3] a final upsert failure schedules exactly one capped deferred retry, not an unbounded loop', () => {
-  const pushSrc = syncSrc.slice(
-    syncSrc.indexOf('export async function pushLocalState'),
-    syncSrc.indexOf('export async function pullFromSupabase'),
-  );
-  assert.ok(pushSrc.includes('isDeferredRetry'),
-    'pushLocalState must accept a flag marking a call as an already-deferred retry');
-  assert.ok(pushSrc.includes('if (!options?.isDeferredRetry)'),
-    'a deferred retry must not itself schedule another deferred retry (would allow unbounded retries)');
-  assert.ok(pushSrc.includes('durableSnapshot(store.getState())'),
-    'the deferred retry must re-read fresh current state, not resend the stale captured snapshot');
+test('[Issue 3 → reconnect flush] a failed push keeps retrying on capped backoff, not a tight or unbounded loop', () => {
+  // Superseded behaviour: the original fix scheduled EXACTLY ONE deferred retry
+  // then gave up, to avoid an unbounded loop. That also meant edits made while
+  // offline never reached other devices on reconnect (no NetInfo listener) —
+  // they only synced after a fresh mutation. The retry is now persistent but
+  // safe: a single timer (no stacking), capped exponential backoff (≤30s, so
+  // no tight spin), re-reading fresh state, and cleared on the first success.
+  // See offline-flush-retry.test.ts for the reconnect-recovery gate.
+  assert.ok(/function scheduleOfflineFlush\(\): void/.test(syncSrc),
+    'push failures must schedule a persistent backoff flush');
+  assert.ok(syncSrc.includes('if (pendingFlushTimer) return;'),
+    'only one flush timer may be pending at a time (no stacked/tight loop)');
+  assert.ok(/Math\.min\(pendingFlushDelayMs \* 2, FLUSH_MAX_DELAY_MS\)/.test(syncSrc),
+    'the retry delay must grow with a hard cap so it never becomes a tight loop');
+  assert.ok(syncSrc.includes('durableSnapshot(store.getState())'),
+    'the retry must re-read fresh current state, not resend the stale captured snapshot');
+  assert.ok(/clearOfflineFlush\(\);\s*\n\s*markPushed/.test(syncSrc),
+    'a successful push must stop the retry loop');
 });
 
 test('[Issue 3] retried upsert and upload remain idempotent (no duplicate-record risk from retries)', () => {
