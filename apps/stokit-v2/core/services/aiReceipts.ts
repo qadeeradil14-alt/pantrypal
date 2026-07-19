@@ -43,6 +43,9 @@ ITEMS — include every purchasable line item. Rules:
 - Skip tax lines, subtotals, totals, discounts/coupons, and loyalty-card savings lines — these are NOT items.
 - If a line shows a discount for an item (e.g. "MEMBER SAVINGS -1.00"), skip it — do not list it as a separate item.
 - Strip store PLU codes, item numbers, and UPC digits from item names. Return only the human-readable product name.
+- Expand abbreviations into full, real words where the product is identifiable (e.g. "ORG BANANA" → "Organic Banana", "WHIP CRM" → "Whipped Cream") — do not invent details, just decode the abbreviation into the closest plain-English product name.
+- Return item names in Title Case (e.g. "Whole Milk", not "WHOLE MILK" or "whole milk") — even though the receipt prints in all caps. This lets the app tell a real product name apart from raw unreadable receipt text.
+- If the printed text is genuinely too fragmentary or ambiguous to name a real product (e.g. a bare SKU-like code), leave it as-is rather than guessing — do not fabricate a plausible-sounding product name for text you cannot confidently read.
 - If the receipt is multi-column, read left column first, then right column for the same row.
 - If an item quantity is blank or unclear, default to 1.
 - If a price is negative (refund/coupon), omit that line.

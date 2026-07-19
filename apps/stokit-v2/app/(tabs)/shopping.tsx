@@ -1438,7 +1438,11 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
                 </Text>
               </View>
 
-              <ScrollView style={{ maxHeight: 340, marginBottom: spacing.md }}>
+              {/* No inner ScrollView here — Sheet already wraps its children in one.
+                  Nesting a second ScrollView caused the status bar to scroll away
+                  from the list independently, clipping rows against the sheet's
+                  rounded top corner. Everything scrolls together as one surface. */}
+              <View style={{ marginBottom: spacing.md }}>
                 {readyRows.length > 0 && (
                   <Text style={{ fontFamily: fonts.sansSemibold, fontSize: 11, letterSpacing: 0.6, color: colors.muted, marginBottom: spacing.xs }}>
                     READY TO ADD
@@ -1463,7 +1467,7 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
                   </Pressable>
                 )}
                 {showUnclear && unclearRows.map(({ row, i }) => renderRow({ row, i, compact: false }))}
-              </ScrollView>
+              </View>
 
               <Button
                 label={
