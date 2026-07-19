@@ -2,31 +2,35 @@
 
 ## Current Golden
 
-- OTA: 346
+- OTA: 359
+- App: Stokit (`com.hewadadil.pantrypal`)
 - Branch: production
 - Runtime: 1.0.0
-- Update group: 22b36123-06d1-448c-b1ca-36d7d4409f1d
-- iOS update ID: 019f7a59-014e-7fa0-be00-bfe638bd5eff
-- Android update ID: 019f7a59-014e-7b39-866b-667d295e10a4
-- Message: OTA 346: simplify receipt scanned total copy
-- Source worktree: /Users/hewadadil/Documents/PantryPal-release-ota346-20260719
-- Base commit: 19764ba8f7a67fc9f82071d6efdcad50f9e91f10
+- Update group: 480a72c9-f497-453a-8967-7769613960fe
+- iOS update ID: 019f7c5a-34af-70ac-ac8b-242f666aa5ec
+- Android update ID: 019f7c5a-34af-7718-9000-c7557cd7b32a
+- Message: OTA 359: mirror approved onboarding artwork in dark mode
+- Source commit: ab3be78265a00e570f770711f81e1db99cf937c7
+- Golden tag: stokit-golden-ota359
+- Golden branch: golden/stokit-main-ota359
 
 ## Why This Is Golden
 
-- Includes OTA 345 shopping sync/offline retry fixes.
-- Simplifies receipt scanned flow to show the full receipt total on the action button.
-- Removes the confusing "likely tax" explanation.
-- Keeps the simple Add / Skip receipt path.
+- Includes all production fixes through OTA 359.
+- Uses the approved onboarding composition in both light and dark mode.
+- Dark artwork backgrounds blend cleanly into the onboarding screen.
+- Preserves the production Stokit app, shopping, receipt, sync, geofencing, and family notification behavior.
 
 ## Verification
 
-- Typecheck passed from clean OTA 346 release worktree.
-- Receipt UX targeted test passed from clean OTA 346 release worktree.
-- Production update confirmed on EAS production branch.
+- Typecheck passed from a clean OTA 359 release worktree.
+- Unit tests passed: 378/378.
+- iOS export passed.
+- All three dark onboarding screens passed simulator visual QA.
+- Production update confirmed on the EAS production branch.
 
-## Backup Golden
+## Recovery
 
-- Keep OTA 345 as the previous backup baseline.
-- Do not delete older OTA history.
-- If OTA 346 has a hidden issue, roll forward by publishing the previous known-good code as a newer OTA.
+- Restore from Git tag `stokit-golden-ota359` or branch `golden/stokit-main-ota359`.
+- Publish the restored code as a new production OTA; EAS OTA numbers are append-only.
+- Do not delete older EAS update history.
