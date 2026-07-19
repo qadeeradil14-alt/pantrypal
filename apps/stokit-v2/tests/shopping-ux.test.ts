@@ -48,6 +48,17 @@ test('shopping UI exposes receipt review and new-store actions', () => {
   assert.match(source, /<AddStoreContent/);
 });
 
+test('receipt review explains the gap between the item subtotal and the printed receipt total', () => {
+  const source = readFileSync(join(process.cwd(), 'app/(tabs)/shopping.tsx'), 'utf8');
+  // The CTA total is a sum of SELECTED item prices (pre-tax); the status bar
+  // shows the parsed receipt's real total. These will legitimately differ
+  // (tax, unselected/unparsed lines) — the gap must be explained, not silent,
+  // or two disagreeing dollar figures on one sheet reads as broken math.
+  assert.match(source, /subtotal`/);
+  assert.match(source, /const totalsGap = receiptTotal != null \? receiptTotal - selectedScanTotal : null;/);
+  assert.match(source, /Receipt total is \$\{receiptTotal!\.toFixed\(2\)\}/);
+});
+
 test('post-add flow uses StorePickerSheet, not IndividualAssignSheet', () => {
   const indexSource = readFileSync(join(process.cwd(), 'app/(tabs)/index.tsx'), 'utf8');
   assert.doesNotMatch(indexSource, /IndividualAssignSheet/);
