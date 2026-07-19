@@ -17,7 +17,6 @@ import { useOnboardingStore } from '../../store/onboarding';
 import { ONBOARDING_SLIDES } from '../../constants/onboarding';
 import { OnboardingPage, PageDots } from '../../components/onboarding/OnboardingKit';
 import { authBackground } from '../../components/auth/AuthKit';
-import { Logo } from '../../components/shared/Logo';
 
 const DARK_ONBOARDING_BACKGROUND = '#0F1117';
 
@@ -68,7 +67,6 @@ export default function OnboardingScreen() {
       {/* Top bar: brand, progress, and Skip */}
       <View style={[styles.topBar, { marginTop: Math.max(insets.top, 16) + 8 }]}>
         <View style={styles.brandSlot}>
-          <Logo size={22} color={colors.ink} accent={colors.primary} />
           <Text style={styles.wordmark}>Stokit</Text>
         </View>
         <Text style={styles.progress}>{index + 1}/{count}</Text>
@@ -134,8 +132,8 @@ function makeStyles(colors: AppColors) {
       paddingHorizontal: spacing.xxl,
       marginBottom: spacing.md,
     },
-    brandSlot: { position: 'absolute', left: spacing.xxl, flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-    wordmark: { fontFamily: fonts.serifItalic, fontSize: 17, lineHeight: 22, color: colors.ink },
+    brandSlot: { position: 'absolute', left: spacing.xxl },
+    wordmark: { fontFamily: fonts.serifRegular, fontSize: 23, lineHeight: 28, color: colors.ink },
     progress: { fontFamily: fonts.monoMedium, fontSize: 12, color: colors.muted, fontVariant: ['tabular-nums'] },
     skipButton: { position: 'absolute', right: spacing.xxl },
     skip: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.primary },
