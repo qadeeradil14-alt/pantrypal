@@ -55,16 +55,16 @@ export function AuthScreen({ children, backgroundColor }: { children: React.Reac
 
 /** Brand lockup: the "S" mark, the Stokit wordmark, and the tagline. Left
  *  aligned to match the reference. */
-export function BrandHeader({ align = 'left' }: { align?: 'left' | 'center' }) {
+export function BrandHeader({ align = 'center' }: { align?: 'left' | 'center' }) {
   const { colors } = useTheme();
   const styles = React.useMemo(() => makeStyles(colors, false), [colors]);
   return (
     <View style={[styles.brandRow, align === 'center' && styles.brandCenter]}>
-      <View style={styles.brandMark}>
-        <Logo size={30} color={colors.ink} accent={colors.primary} />
+      <View style={styles.brandLockup}>
+        <Logo size={34} color={colors.ink} accent={colors.primary} />
+        <Text style={styles.brandWordmark}>Stokit</Text>
       </View>
-      <Text style={styles.brandWordmark}>Stokit</Text>
-      <Text style={styles.brandTagline}>
+      <Text style={[styles.brandTagline, align === 'center' && styles.brandTaglineCenter]}>
         Your kitchen, <Text style={{ color: colors.primary, fontFamily: fonts.sansSemibold }}>always</Text> in order.
       </Text>
     </View>
@@ -72,7 +72,7 @@ export function BrandHeader({ align = 'left' }: { align?: 'left' | 'center' }) {
 }
 
 /** Screen title + optional subtitle, consistent scale everywhere. */
-export function AuthHeading({ title, subtitle, align = 'left' }: { title: string; subtitle?: string; align?: 'left' | 'center' }) {
+export function AuthHeading({ title, subtitle, align = 'center' }: { title: string; subtitle?: string; align?: 'left' | 'center' }) {
   const { colors } = useTheme();
   const styles = React.useMemo(() => makeStyles(colors, false), [colors]);
   return (
@@ -193,28 +193,16 @@ function makeStyles(colors: AppColors, isDark: boolean) {
   return StyleSheet.create({
     flex: { flex: 1 },
     screen: { flex: 1, backgroundColor: authBackground(colors, isDark) },
-    scrollContent: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: spacing.xl, paddingVertical: spacing.xxl },
+    scrollContent: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: spacing.xl, paddingVertical: spacing.xl },
 
-    brandRow: { alignItems: 'flex-start', marginBottom: spacing.xxl },
+    brandRow: { alignItems: 'flex-start', marginBottom: spacing.xl },
     brandCenter: { alignItems: 'center' },
-    brandMark: {
-      width: 46,
-      height: 46,
-      borderRadius: 13,
-      backgroundColor: colors.surface,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginBottom: spacing.sm,
-      shadowColor: '#000',
-      shadowOpacity: 0.06,
-      shadowRadius: 10,
-      shadowOffset: { width: 0, height: 4 },
-      elevation: 2,
-    },
-    brandWordmark: { fontFamily: fonts.serifItalic, fontSize: 30, lineHeight: 34, color: colors.ink },
-    brandTagline: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.muted, marginTop: 2 },
+    brandLockup: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    brandWordmark: { fontFamily: fonts.serifItalic, fontSize: 29, lineHeight: 34, color: colors.ink },
+    brandTagline: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.muted, marginTop: spacing.xs },
+    brandTaglineCenter: { textAlign: 'center' },
 
-    headingBlock: { marginBottom: spacing.xl },
+    headingBlock: { marginBottom: spacing.xl, alignItems: 'center' },
     title: { fontFamily: fonts.serifItalic, fontSize: 32, lineHeight: 39, color: colors.ink },
     subtitle: { fontFamily: fonts.sans, fontSize: 15, lineHeight: 22, color: colors.muted, marginTop: spacing.sm },
 
