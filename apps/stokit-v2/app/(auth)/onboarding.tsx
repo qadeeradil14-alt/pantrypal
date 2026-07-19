@@ -18,7 +18,7 @@ import { ONBOARDING_SLIDES } from '../../constants/onboarding';
 import { OnboardingPage, PageDots } from '../../components/onboarding/OnboardingKit';
 import { authBackground } from '../../components/auth/AuthKit';
 
-const DARK_ONBOARDING_BACKGROUNDS = ['#0B0C10', '#101115', '#101216'];
+const DARK_ONBOARDING_BACKGROUNDS = ['#06070C', '#0B0B0D', '#0B0C10'];
 
 export default function OnboardingScreen() {
   const { colors, isDark } = useTheme();
