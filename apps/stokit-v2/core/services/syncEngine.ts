@@ -75,6 +75,7 @@ function durableSnapshot(state: DurableState): DurableState {
       ? reconcileShoppingSession(state.activeSession, state.items)
       : null,
     updatedAt: state.updatedAt,
+    deletedItems: state.deletedItems ?? [],
   };
 }
 
@@ -271,10 +272,23 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
     const reason = remoteSkipReason(remoteUpdatedAt, localUpdatedAt);
     if (__DEV__) console.log(`[Shopping Sync] active_session_reconcile_skipped reason=${reason} version/updatedAt=${remoteUpdatedAt} localUpdatedAt=${localUpdatedAt}`);
     initialHouseholdSyncComplete.add(id);
+    // The whole-snapshot watermark rejects this remote (its top-level updatedAt
+    // is not newer than ours). But the per-item merge is non-destructive, so
+    // still fold in any items/tombstones the other device has that we are
+    // missing — this recovers items added on another device whose snapshot lost
+    // the wall-clock timestamp race (clock skew). Our own updatedAt is preserved
+    // so folding does not itself churn the watermark.
+    if (!isSelfEcho(remoteUpdatedAt) && (Array.isArray(remote.items) || Array.isArray(remote.deletedItems))) {
+      store.getState().applyRemotePatch({
+        items: remote.items,
+        deletedItems: remote.deletedItems,
+        updatedAt: store.getState().updatedAt,
+      });
+    }
     // The cloud snapshot is strictly older than this device's durable state
-    // (e.g. edits made offline whose push never reached Supabase). Reconcile
-    // by pushing the newer local state up so other members converge on it,
-    // instead of leaving the stale blob in the cloud. Equal timestamps mean
+    // (e.g. edits made offline whose push never reached Supabase). Reconcile by
+    // pushing the (now item-merged) local state up so other members converge on
+    // it, instead of leaving the stale blob in the cloud. Equal timestamps mean
     // already-in-sync — no push, or realtime would fan out on every launch.
     if (localUpdatedAt > remoteUpdatedAt && !isSelfEcho(remoteUpdatedAt)) {
       if (__DEV__) console.log(`[Shopping Sync] stale_remote_reconcile_push localUpdatedAt=${localUpdatedAt} remoteUpdatedAt=${remoteUpdatedAt}`);
@@ -302,6 +316,15 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
   const stillFreshInstallHydration = isFreshInstallState(current) && hasSharedSnapshotContent(remote);
   if (!forceServerHydration && !stillFreshInstallHydration && !shouldApplyRemoteSnapshot(remoteUpdatedAt, current.updatedAt)) {
     if (__DEV__) console.log(`[Shopping Sync] active_session_reconcile_skipped reason=${remoteSkipReason(remoteUpdatedAt, store.getState().updatedAt)} version/updatedAt=${remoteUpdatedAt} phase=post_sign`);
+    // Non-destructive item/tombstone fold even when the whole-snapshot watermark
+    // rejects — same rationale as the pre-sign skip above.
+    if (!isSelfEcho(remoteUpdatedAt) && (Array.isArray(reconciledRemote.items) || Array.isArray(reconciledRemote.deletedItems))) {
+      store.getState().applyRemotePatch({
+        items: reconciledRemote.items,
+        deletedItems: reconciledRemote.deletedItems,
+        updatedAt: store.getState().updatedAt,
+      });
+    }
     return;
   }
   store.getState().applyRemotePatch(reconciledRemote);

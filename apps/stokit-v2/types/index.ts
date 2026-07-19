@@ -214,6 +214,16 @@ export interface HouseholdPrefs {
   dismissedBudgetWarningWeekOf?: number;
 }
 
+/**
+ * Tombstone for a deleted pantry item. Kept in the synced snapshot so a
+ * per-item cross-device merge can distinguish "deleted here" from "not yet
+ * synced there" — without it, a union merge would resurrect deleted items.
+ */
+export interface ItemTombstone {
+  id: string;
+  deletedAt: number;
+}
+
 /** Everything persisted to disk. */
 export interface DurableState {
   items: PantryItem[];
@@ -225,4 +235,6 @@ export interface DurableState {
   prefs: HouseholdPrefs;
   activeSession: SharedShoppingSession | null;
   updatedAt: number;
+  /** Tombstones for deleted items (optional: absent in pre-OTA-340 snapshots). */
+  deletedItems?: ItemTombstone[];
 }

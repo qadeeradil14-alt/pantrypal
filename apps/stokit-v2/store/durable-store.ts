@@ -41,6 +41,7 @@ import {
   startSyncEngine,
 } from '../core/services/syncEngine';
 import { consolidatePantryItems, normalizeItemName } from '../core/services/pantryItems';
+import { mergePantryItems, mergeTombstones } from '../core/services/mergePantryState';
 import { isDuplicatePriceEntry, isValidPrice } from '../core/services/priceHistory';
 import { refreshWidgets } from '../core/services/widgets';
 import { findDuplicateStore } from '../core/services/storeDuplicates';
@@ -159,6 +160,7 @@ function snapshot(s: DurableState): DurableState {
     prefs: s.prefs,
     activeSession: s.activeSession ?? null,
     updatedAt: s.updatedAt,
+    deletedItems: s.deletedItems ?? [],
   };
 }
 
@@ -359,7 +361,13 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     },
 
     deleteItem: (id) => {
-      set((s) => ({ items: s.items.filter((it) => it.id !== id) }));
+      const at = now();
+      set((s) => ({
+        items: s.items.filter((it) => it.id !== id),
+        // Record a tombstone so the deletion syncs across devices instead of the
+        // item being resurrected by the other device's per-item merge.
+        deletedItems: [...(s.deletedItems ?? []).filter((t) => t.id !== id), { id, deletedAt: at }],
+      }));
       persist();
       syncShoppingItem(null, id);
       // Deleting the last active item assigned to a store removes that
@@ -530,21 +538,32 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       const gatedActiveSession = 'activeSession' in patch
         ? gateRemoteActiveSession(get().activeSession ?? null, patch.activeSession ?? null)
         : undefined;
-      set((s) => ({
-        ...s,
-        ...patch,
-        // Defensive: guard every array field against old cloud snapshots that
-        // pre-date newly-added fields (e.g. priceHistory added in OTA 120).
-        items:        patch.items        ? consolidatePantryItems(patch.items) : s.items,
-        stores:       Array.isArray(patch.stores)       ? patch.stores       : s.stores,
-        priceHistory: Array.isArray(patch.priceHistory) ? patch.priceHistory : s.priceHistory,
-        receipts:     Array.isArray(patch.receipts)     ? patch.receipts     : s.receipts,
-        trips:        Array.isArray(patch.trips)        ? patch.trips        : s.trips,
-        activity:     Array.isArray(patch.activity)     ? patch.activity     : s.activity,
-        // Gated: never write an unvalidated remote session — same policy as
-        // session-store.ts's applyRemoteSession (clear guard + same-trip merge).
-        activeSession: 'activeSession' in patch ? gatedActiveSession ?? null : s.activeSession ?? null,
-      }));
+      set((s) => {
+        // Union delete tombstones first, then merge items per-item (union by id,
+        // last-writer-wins by updatedAt, honoring tombstones) so an item added
+        // on one device is never dropped by the other device's snapshot — while
+        // deletions still propagate. Replaces the old whole-array overwrite.
+        const mergedTombstones = mergeTombstones(s.deletedItems, patch.deletedItems);
+        const mergedItems = patch.items
+          ? consolidatePantryItems(mergePantryItems(s.items, patch.items, mergedTombstones))
+          : s.items;
+        return {
+          ...s,
+          ...patch,
+          items: mergedItems,
+          // Defensive: guard every array field against old cloud snapshots that
+          // pre-date newly-added fields (e.g. priceHistory added in OTA 120).
+          stores:       Array.isArray(patch.stores)       ? patch.stores       : s.stores,
+          priceHistory: Array.isArray(patch.priceHistory) ? patch.priceHistory : s.priceHistory,
+          receipts:     Array.isArray(patch.receipts)     ? patch.receipts     : s.receipts,
+          trips:        Array.isArray(patch.trips)        ? patch.trips        : s.trips,
+          activity:     Array.isArray(patch.activity)     ? patch.activity     : s.activity,
+          // Gated: never write an unvalidated remote session — same policy as
+          // session-store.ts's applyRemoteSession (clear guard + same-trip merge).
+          activeSession: 'activeSession' in patch ? gatedActiveSession ?? null : s.activeSession ?? null,
+          deletedItems: mergedTombstones,
+        };
+      });
       if ('activeSession' in patch) {
         const remoteSession = patch.activeSession ?? null;
         void import('./session-store').then(({ useSessionStore }) => {
