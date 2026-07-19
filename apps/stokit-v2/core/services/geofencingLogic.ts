@@ -1,18 +1,13 @@
 import type { PantryItem, Store } from '../../types';
 
 /**
- * True while a pantry item still keeps its assigned store "needed" for arrival
- * reminders — i.e. it is assigned to a store and has not yet been purchased /
- * picked up.
- *
- * Low/expiring status is pantry *intelligence* (restock hints, suggestions) and
- * must NOT be a geofence requirement: a normal `stocked` item the user manually
- * assigned to a store (e.g. "ice cream" at 7-Eleven) is a real shopping
- * intention and should still trigger an arrival reminder. Only `purchased`
- * (completed / picked up) drops a store from eligibility.
+ * True when an item belongs on the active shopping list for arrival reminders.
+ * Geofencing must mirror Shopping: only low/expiring assigned items should
+ * wake the user at a store. Stocked pantry items can keep store memory, but
+ * they must not trigger arrival alerts.
  */
 export function isActivePantryItem(item: PantryItem): boolean {
-  return item.storeId != null && item.status !== 'purchased';
+  return item.storeId != null && (item.status === 'low' || item.status === 'expiring');
 }
 
 export function geofenceableStores(
@@ -34,7 +29,7 @@ export function geofenceableStores(
 
 export function arrivalItemCount(items: PantryItem[], storeId: string): number {
   return items.filter(
-    (item) => item.storeId === storeId && item.status !== 'purchased',
+    (item) => item.storeId === storeId && isActivePantryItem(item),
   ).length;
 }
 
@@ -46,7 +41,7 @@ export function arrivalItemCount(items: PantryItem[], storeId: string): number {
  */
 export function arrivalItemNames(items: PantryItem[], storeId: string): string[] {
   return items
-    .filter((item) => item.storeId === storeId && item.status !== 'purchased')
+    .filter((item) => item.storeId === storeId && isActivePantryItem(item))
     .map((item) => item.name);
 }
 

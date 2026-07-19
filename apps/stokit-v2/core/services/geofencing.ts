@@ -29,7 +29,7 @@ import Constants from 'expo-constants';
 import { notifyArrival, requestNotificationPermission, appendNotificationLog } from './notifications';
 import type { PantryItem, Store } from '../../types';
 import { loadDurable } from '../repositories/durableRepository';
-import { arrivalItemNames, decideStoreArrival, geofenceableStores, type StoreCandidate } from './geofencingLogic';
+import { arrivalItemNames, decideStoreArrival, geofenceableStores, isActivePantryItem, type StoreCandidate } from './geofencingLogic';
 
 // ── Constants (match V1 values) ───────────────────────────────────────────────
 
@@ -234,7 +234,7 @@ async function writeLastArrivalAt(storeId: string, at: number): Promise<void> {
 
 function countAssignedItems(items: PantryItem[], storeId: string): number {
   return items.filter((item) =>
-    item.storeId === storeId && item.status !== 'purchased'
+    item.storeId === storeId && isActivePantryItem(item)
   ).length;
 }
 
@@ -254,7 +254,7 @@ function skippedReasonForStore(store: Store, items: PantryItem[]): string | null
   const hasAnyCoordinate = store.lat != null || store.lng != null;
   if (!hasAnyCoordinate) return 'no coordinates';
   if (!Number.isFinite(store.lat) || !Number.isFinite(store.lng)) return 'invalid lat/lng';
-  if (countAssignedItems(items, store.id) === 0) return 'no assigned active items';
+  if (countAssignedItems(items, store.id) === 0) return 'no assigned shopping-list items';
   return null;
 }
 
@@ -366,7 +366,7 @@ export async function getGeofenceDiagnostics(
   const skippedStores = consideredStores
     .filter((store) => !(store.eligible && expectedIds.has(store.id)) || globalSkipReason)
     .map((store) => {
-      if (!store.eligible) return store; // keep its real per-store reason (no coordinates, invalid lat/lng, no assigned active items)
+      if (!store.eligible) return store; // keep its real per-store reason (no coordinates, invalid lat/lng, no assigned shopping-list items)
       if (globalSkipReason) return { ...store, skippedReason: globalSkipReason };
       if (!expectedIds.has(store.id)) return { ...store, skippedReason: 'over iOS region monitoring limit' };
       return store;

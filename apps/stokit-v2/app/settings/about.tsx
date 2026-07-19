@@ -53,7 +53,7 @@ export default function AboutScreen() {
             <Ionicons name="phone-portrait-outline" size={16} color={colors.muted} />
             <Text style={styles.statLabel}>App</Text>
           </View>
-          <Text style={styles.statValue}>Stokit V2</Text>
+          <Text style={styles.statValue}>Stokit</Text>
         </View>
         <Pressable style={styles.statRow} onPress={handleDevTap} accessibilityRole="button" accessibilityLabel="Version info">
           <View style={styles.aboutLabel}>

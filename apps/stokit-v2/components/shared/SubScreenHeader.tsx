@@ -16,7 +16,7 @@ export function SubScreenHeader({ title, eyebrow }: { title: string; eyebrow?: s
       <Pressable
         onPress={() => (router.canGoBack() ? router.back() : router.replace('/settings'))}
         style={({ pressed }) => [styles.backButton, pressed && { opacity: 0.7 }]}
-        hitSlop={8}
+        hitSlop={12}
         accessibilityRole="button"
         accessibilityLabel="Go back"
       >
@@ -35,8 +35,13 @@ function makeStyles(colors: AppColors) {
       alignItems: 'center',
       alignSelf: 'flex-start',
       gap: 2,
-      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
       marginBottom: spacing.sm,
+      borderRadius: 999,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.borderSoft,
     },
     backLabel: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.primary },
   });

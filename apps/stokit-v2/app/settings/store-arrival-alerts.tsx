@@ -33,6 +33,7 @@ import {
   type MyPushDiagnostics,
   type HouseholdPushDiagnostics,
 } from '../../core/services/notifications';
+import { isActivePantryItem } from '../../core/services/geofencingLogic';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const IOS_GEOFENCE_LIMIT = 20;
@@ -216,12 +217,14 @@ export default function StoreArrivalAlertsScreen() {
     setTestNotifStatus(null);
     try {
       const targetStore = monitorableStores[0];
+      if (!targetStore) {
+        setTestNotifStatus('✗ No shopping-list store alerts to test.');
+        return;
+      }
       const storeName = targetStore?.name ?? 'Test Store';
-      const itemNames = targetStore
-        ? items
-            .filter((i) => i.storeId === targetStore.id && i.status !== 'purchased')
-            .map((i) => i.name)
-        : ['Test item'];
+      const itemNames = items
+        .filter((i) => i.storeId === targetStore.id && isActivePantryItem(i))
+        .map((i) => i.name);
       const itemCount = Math.max(1, itemNames.length);
       const result = await notifyArrival(storeName, itemCount, source, {
         storeId: targetStore?.id,

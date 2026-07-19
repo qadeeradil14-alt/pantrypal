@@ -67,27 +67,23 @@ test('arrival reminders count every active (non-purchased) assigned item for the
   const items = [
     item('aldi', 'low'),
     item('aldi', 'expiring'),
-    item('aldi', 'stocked'),    // normal assigned item still counts
+    item('aldi', 'stocked'),    // stocked pantry item — excluded from shopping alerts
     item('aldi', 'purchased'),  // picked up — must NOT count
     item('other', 'low'),
   ];
-  // low + expiring + stocked = 3; purchased excluded; 'other' store excluded.
-  assert.equal(arrivalItemCount(items, 'aldi'), 3);
+  // low + expiring = 2; stocked/purchased excluded; 'other' store excluded.
+  assert.equal(arrivalItemCount(items, 'aldi'), 2);
 });
 
-// ── Eligibility: any active assigned item, not only low/expiring ──────────────
-// Product rule: a store is eligible for arrival reminders when it has GPS
-// coordinates AND at least one assigned item that is still needed (not
-// purchased). Low/expiring is pantry intelligence, NOT a geofence requirement.
+// ── Eligibility: shopping-list items only ─────────────────────────────────────
+// Product rule: geofencing mirrors Shopping. A store is eligible for arrival
+// reminders when it has GPS coordinates AND at least one assigned low/expiring
+// item. Stocked pantry items must not trigger arrival alerts.
 
-test('a normal (stocked) assigned item makes a GPS store eligible', () => {
+test('a normal (stocked) assigned item does NOT make a GPS store eligible', () => {
   const stores = [store('seven-eleven', 1, 1)];
-  const items = [item('seven-eleven', 'stocked')]; // e.g. manually added "ice cream"
-  assert.deepEqual(
-    geofenceableStores(stores, 20, items).map(({ id }) => id),
-    ['seven-eleven'],
-    'A manually assigned stocked item must still register the store',
-  );
+  const items = [item('seven-eleven', 'stocked')];
+  assert.equal(geofenceableStores(stores, 20, items).length, 0);
 });
 
 test('a low assigned item makes a GPS store eligible', () => {
@@ -112,13 +108,13 @@ test('a purchased (completed/picked-up) item does NOT make a store eligible', ()
   );
 });
 
-test('a GPS store with no assigned active items is ignored', () => {
+test('a GPS store with no assigned shopping-list items is ignored', () => {
   const stores = [store('costco', 1, 1)];
   const items: PantryItem[] = []; // coordinates present, but nothing assigned to it
   assert.equal(
     geofenceableStores(stores, 20, items).length,
     0,
-    'A store with coordinates but no assigned active items must never be registered',
+    'A store with coordinates but no assigned shopping-list items must never be registered',
   );
 });
 
@@ -383,7 +379,7 @@ test('truly ineligible stores keep their own per-store skip reason untouched', (
   assert.match(
     service,
     /if \(!store\.eligible\) return store;/,
-    'an ineligible store must keep its original skippedReason (no coordinates / invalid lat-lng / no assigned active items), not be overwritten',
+    'an ineligible store must keep its original skippedReason (no coordinates / invalid lat-lng / no assigned shopping-list items), not be overwritten',
   );
 });
 
@@ -431,7 +427,7 @@ test('diagnostics record registration attempts and clear stale errors on success
 test('diagnostics record skipped store reasons and registration failures', () => {
   const service = readFileSync(new URL('../core/services/geofencing.ts', import.meta.url), 'utf8');
 
-  assert.match(service, /no assigned active items/);
+  assert.match(service, /no assigned shopping-list items/);
   assert.match(service, /invalid lat\/lng/);
   assert.match(service, /registrationResult: 'failed'/);
   assert.match(service, /registrationErrorStack/);
@@ -783,18 +779,19 @@ test('arrivalItemNames returns only the matched store active items, never an agg
   const items = [
     item('target', 'low'),       // name === 'low'
     item('target', 'expiring'),  // name === 'expiring'
-    item('target', 'stocked'),   // manually-assigned, still active
+    item('target', 'stocked'),   // stocked — excluded from shopping alerts
     item('target', 'purchased'), // picked up — excluded
     item('other', 'low'),        // different store — excluded
   ];
   const names = arrivalItemNames(items, 'target');
-  assert.deepEqual(names, ['low', 'expiring', 'stocked'],
-    'names must be store-scoped, exclude purchased, and never include other stores');
+  assert.deepEqual(names, ['low', 'expiring'],
+    'names must be store-scoped shopping-list items, exclude stocked/purchased, and never include other stores');
 });
 
 test('arrivalItemNames length always matches arrivalItemCount for the same store', () => {
   const items = [
     item('aldi', 'low'),
+    item('aldi', 'expiring'),
     item('aldi', 'stocked'),
     item('aldi', 'purchased'),
     item('bravo', 'low'),
