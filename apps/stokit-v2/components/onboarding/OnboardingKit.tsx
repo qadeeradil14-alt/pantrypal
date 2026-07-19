@@ -53,24 +53,33 @@ export function OnboardingPage({
   pageWidth: number;
   animatedStyle?: any;
 }) {
+  const artStyle =
+    slide.key === 'pantry'
+      ? styles.pantryArt
+      : slide.key === 'household'
+        ? styles.householdArt
+        : styles.receiptArt;
+
   return (
     <View style={[styles.page, { width: pageWidth }]}>
       <Animated.View style={[styles.pageInner, animatedStyle]}>
-        <View style={styles.artArea}>
-          <Image
-            source={slideArtwork(slide, isDark)}
-            style={styles.art}
-            resizeMode="contain"
-            accessibilityIgnoresInvertColors
-          />
-        </View>
-        <View style={styles.textBlock}>
-          <Text style={[styles.title, { color: colors.ink }]}>
-            {slide.title[0]}
-            {'\n'}
-            <Text>{slide.title[1]}</Text>
-          </Text>
-          <Text style={[styles.subtitle, { color: colors.muted }]}>{slide.subtitle}</Text>
+        <View style={styles.contentGroup}>
+          <View style={styles.artArea}>
+            <Image
+              source={slideArtwork(slide, isDark)}
+              style={[styles.art, artStyle]}
+              resizeMode="contain"
+              accessibilityIgnoresInvertColors
+            />
+          </View>
+          <View style={styles.textBlock}>
+            <Text style={[styles.title, { color: colors.ink }]}>
+              {slide.title[0]}
+              {'\n'}
+              <Text>{slide.title[1]}</Text>
+            </Text>
+            <Text style={[styles.subtitle, { color: colors.muted }]}>{slide.subtitle}</Text>
+          </View>
         </View>
       </Animated.View>
     </View>
@@ -84,14 +93,27 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 560,
     alignSelf: 'center',
-    paddingHorizontal: spacing.xxl,
+    paddingHorizontal: spacing.xl,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  artArea: { height: 290, width: '100%', alignItems: 'center', justifyContent: 'center' },
-  art: { height: '100%', width: '100%', maxWidth: 360 },
-  textBlock: { alignItems: 'center', marginTop: spacing.lg },
-  title: { ...type.slideTitle, fontFamily: fonts.serifItalic, fontSize: 31, lineHeight: 36, textAlign: 'center' },
-  subtitle: { fontFamily: fonts.sans, fontSize: 14, lineHeight: 20, textAlign: 'center', marginTop: spacing.sm, paddingHorizontal: spacing.lg },
+  contentGroup: { width: '100%', alignItems: 'center', marginTop: -spacing.xl },
+  artArea: { height: 310, width: '100%', alignItems: 'center', justifyContent: 'center' },
+  art: { height: '100%' },
+  pantryArt: { width: '100%', maxWidth: 420 },
+  householdArt: { width: '100%', maxWidth: 420, transform: [{ scale: 1.14 }] },
+  receiptArt: { width: '100%', maxWidth: 400, transform: [{ scale: 1.14 }] },
+  textBlock: { alignItems: 'center', marginTop: spacing.xl, width: '100%' },
+  title: { ...type.slideTitle, fontFamily: fonts.serifItalic, fontSize: 40, lineHeight: 46, textAlign: 'center' },
+  subtitle: {
+    fontFamily: fonts.sans,
+    fontSize: 17,
+    lineHeight: 24,
+    textAlign: 'center',
+    marginTop: spacing.lg,
+    paddingHorizontal: spacing.md,
+    maxWidth: 340,
+  },
   dotsRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  dot: { height: 8, borderRadius: 4 },
+  dot: { height: 9, borderRadius: 5 },
 });

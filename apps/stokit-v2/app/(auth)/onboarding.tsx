@@ -70,9 +70,11 @@ export default function OnboardingScreen() {
           <Text style={styles.wordmark}>Stokit</Text>
         </View>
         <Text style={styles.progress}>{index + 1}/{count}</Text>
-        <Pressable onPress={skip} hitSlop={16} accessibilityRole="button" accessibilityLabel="Skip onboarding" style={styles.skipButton}>
-          <Text style={styles.skip}>Skip</Text>
-        </Pressable>
+        {!isLast ? (
+          <Pressable onPress={skip} hitSlop={16} accessibilityRole="button" accessibilityLabel="Skip onboarding" style={styles.skipButton}>
+            <Text style={styles.skip}>Skip</Text>
+          </Pressable>
+        ) : null}
       </View>
 
       <Animated.ScrollView
@@ -129,14 +131,14 @@ function makeStyles(colors: AppColors) {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      paddingHorizontal: spacing.xxl,
-      marginBottom: spacing.md,
+      paddingHorizontal: spacing.xl,
+      marginBottom: spacing.xs,
     },
-    brandSlot: { position: 'absolute', left: spacing.xxl },
-    wordmark: { fontFamily: fonts.serifRegular, fontSize: 23, lineHeight: 28, color: colors.ink },
-    progress: { fontFamily: fonts.monoMedium, fontSize: 12, color: colors.muted, fontVariant: ['tabular-nums'] },
-    skipButton: { position: 'absolute', right: spacing.xxl },
-    skip: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.primary },
+    brandSlot: { position: 'absolute', left: spacing.xl },
+    wordmark: { fontFamily: fonts.serifRegular, fontSize: 26, lineHeight: 32, color: colors.ink },
+    progress: { fontFamily: fonts.sansMedium, fontSize: 15, color: colors.muted, fontVariant: ['tabular-nums'] },
+    skipButton: { position: 'absolute', right: spacing.xl },
+    skip: { fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.primary },
     bottomBar: {
       width: '100%',
       maxWidth: 560,
@@ -144,13 +146,13 @@ function makeStyles(colors: AppColors) {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingHorizontal: spacing.xxl,
-      paddingTop: spacing.md,
+      paddingHorizontal: spacing.xl,
+      paddingTop: spacing.sm,
     },
     nextBtn: {
-      width: 50,
-      height: 50,
-      borderRadius: 25,
+      width: 58,
+      height: 58,
+      borderRadius: 29,
       backgroundColor: colors.primary,
       alignItems: 'center',
       justifyContent: 'center',
