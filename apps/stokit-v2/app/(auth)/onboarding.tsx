@@ -18,7 +18,7 @@ import { ONBOARDING_SLIDES } from '../../constants/onboarding';
 import { OnboardingPage, PageDots } from '../../components/onboarding/OnboardingKit';
 import { authBackground } from '../../components/auth/AuthKit';
 
-const DARK_ONBOARDING_BACKGROUND = '#0F1117';
+const DARK_ONBOARDING_BACKGROUNDS = ['#0B0C10', '#101115', '#101216'];
 
 export default function OnboardingScreen() {
   const { colors, isDark } = useTheme();
@@ -59,9 +59,16 @@ export default function OnboardingScreen() {
   const onMomentumEnd = (e: any) => setIndex(Math.round(e.nativeEvent.contentOffset.x / width));
 
   const isLast = index === count - 1;
+  const backgroundColor = isDark
+    ? scrollX.interpolate({
+        inputRange: ONBOARDING_SLIDES.map((_, i) => i * width),
+        outputRange: DARK_ONBOARDING_BACKGROUNDS,
+        extrapolate: 'clamp',
+      })
+    : authBackground(colors, false);
 
   return (
-    <View style={[styles.root, { backgroundColor: isDark ? DARK_ONBOARDING_BACKGROUND : authBackground(colors, false) }]}>
+    <Animated.View style={[styles.root, { backgroundColor }]}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
 
       {/* Top bar: brand, progress, and Skip */}
@@ -116,7 +123,7 @@ export default function OnboardingScreen() {
           <Ionicons name={isLast ? 'checkmark' : 'arrow-forward'} size={24} color={colors.onPrimary} />
         </Pressable>
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
