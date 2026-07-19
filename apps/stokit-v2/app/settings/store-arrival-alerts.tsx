@@ -153,7 +153,7 @@ export default function StoreArrivalAlertsScreen() {
     if (value && gpsStores.length === 0) {
       Alert.alert(
         'No store coordinates',
-        'Add stores using "Find stores near me" first — that gives each store GPS coordinates needed for arrival detection.',
+        'Use the Fix store locations section below to update at least one saved store with GPS coordinates.',
       );
       return;
     }
@@ -188,7 +188,7 @@ export default function StoreArrivalAlertsScreen() {
           case 'no_stores':
             Alert.alert(
               'No store coordinates',
-              'At least one saved store needs GPS coordinates before arrival reminders can be enabled. Use "Find stores near me" to add them.',
+              'Use the Fix store locations section below to update at least one saved store with GPS coordinates.',
             );
             setGeofenceOn(false);
             break;
