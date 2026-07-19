@@ -1352,12 +1352,12 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
           const indexed = reviewRows.map((row, i) => ({ row, i }));
           const readyRows = indexed.filter(({ row }) => !row.needsReview);
           const unclearRows = indexed.filter(({ row }) => row.needsReview);
-          // The CTA subtotal (sum of selected item prices, pre-tax) will not equal
-          // the printed receipt total — tax isn't itemized, and unselected/unparsed
-          // lines aren't counted. Surface that gap explicitly instead of showing
-          // two disagreeing dollar figures with no explanation.
+          // Show the full receipt total (the actual amount spent) on the CTA
+          // rather than a pre-tax item subtotal — simpler, and it's the number
+          // the user cares about. Falls back to the item subtotal only when the
+          // receipt total couldn't be read.
           const receiptTotal = scanResult?.total_amount != null ? Number(scanResult.total_amount) : null;
-          const totalsGap = receiptTotal != null ? receiptTotal - selectedScanTotal : null;
+          const ctaAmount = receiptTotal != null ? receiptTotal : selectedScanTotal > 0 ? selectedScanTotal : null;
 
           const renderRow = ({ row, i, compact }: { row: ReceiptReviewItem<any>; i: number; compact: boolean }) => {
             const item = row.item;
@@ -1479,16 +1479,11 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
                 label={
                   selectedScanCount === 0
                     ? 'Select items to add'
-                    : `Add ${selectedScanCount} item${selectedScanCount === 1 ? '' : 's'}${selectedScanTotal > 0 ? ` · $${selectedScanTotal.toFixed(2)} subtotal` : ''}`
+                    : `Add ${selectedScanCount} item${selectedScanCount === 1 ? '' : 's'}${ctaAmount != null ? ` · $${ctaAmount.toFixed(2)} total` : ''}`
                 }
                 disabled={selectedScanCount === 0}
                 onPress={addScanItems}
               />
-              {totalsGap != null && Math.abs(totalsGap) > 0.5 && (
-                <Text style={{ fontFamily: fonts.sans, fontSize: 12, color: colors.muted, textAlign: 'center', marginTop: spacing.sm }}>
-                  Receipt total is ${receiptTotal!.toFixed(2)} — the ${Math.abs(totalsGap).toFixed(2)} difference is likely tax{unclearRows.length > 0 ? ' and items still needing a look' : ''}.
-                </Text>
-              )}
               <Button
                 label="Skip for now"
                 variant="ghost"
