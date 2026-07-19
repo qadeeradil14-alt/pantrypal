@@ -151,7 +151,13 @@ export default function StoreArrivalAlertsScreen() {
 
   const openStoresScreen = useCallback((storeId?: string) => {
     if (storeId) {
-      router.push({ pathname: '/(tabs)/stores', params: { fixLocationStoreId: storeId } } as never);
+      router.push({
+        pathname: '/(tabs)/stores',
+        params: {
+          fixLocationStoreId: storeId,
+          fixLocationRequest: String(Date.now()),
+        },
+      } as never);
     } else {
       router.push('/(tabs)/stores' as never);
     }

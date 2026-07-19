@@ -6,6 +6,7 @@ const home = readFileSync(new URL('../app/(tabs)/index.tsx', import.meta.url), '
 const settings = readFileSync(new URL('../app/(tabs)/settings.tsx', import.meta.url), 'utf8');
 const about = readFileSync(new URL('../app/settings/about.tsx', import.meta.url), 'utf8');
 const storeArrivalAlerts = readFileSync(new URL('../app/settings/store-arrival-alerts.tsx', import.meta.url), 'utf8');
+const stores = readFileSync(new URL('../app/(tabs)/stores.tsx', import.meta.url), 'utf8');
 const subScreenHeader = readFileSync(new URL('../components/shared/SubScreenHeader.tsx', import.meta.url), 'utf8');
 
 test('Home routes avatars to Household and gear to Settings', () => {
@@ -30,4 +31,9 @@ test('version and OTA information live under About', () => {
 test('Store Arrival Alerts fix-location actions route to the Stores tab', () => {
   assert.match(storeArrivalAlerts, /pathname: '\/\(tabs\)\/stores'/);
   assert.match(storeArrivalAlerts, /fixLocationStoreId/);
+  assert.match(storeArrivalAlerts, /fixLocationRequest: String\(Date\.now\(\)\)/);
+  assert.match(stores, /useGlobalSearchParams/);
+  assert.match(stores, /handledFixLocationRef\.current === fixLocationRequest/);
+  assert.match(stores, /setLocationRecoveryStore\(store\)/);
+  assert.match(stores, /setAddOpen\(true\)/);
 });

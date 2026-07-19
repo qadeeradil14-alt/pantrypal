@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useGlobalSearchParams, useRouter } from 'expo-router';
 import { Alert, Pressable, StyleSheet, Text, View, Image, Linking, Platform, ActionSheetIOS, LayoutAnimation } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
@@ -94,7 +94,10 @@ function EditStoreSheet({
 
 export default function StoresScreen() {
   const router = useRouter();
-  const { fixLocationStoreId } = useLocalSearchParams<{ fixLocationStoreId?: string }>();
+  const { fixLocationStoreId, fixLocationRequest } = useGlobalSearchParams<{
+    fixLocationStoreId?: string;
+    fixLocationRequest?: string;
+  }>();
   const { colors } = useTheme();
   const stores = useDurableStore((s) => s.stores);
   const items = useDurableStore((s) => s.items);
@@ -137,15 +140,17 @@ export default function StoresScreen() {
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  useEffect(() => {
-    if (!fixLocationStoreId || handledFixLocationRef.current === fixLocationStoreId) return;
-    const store = stores.find((candidate) => candidate.id === fixLocationStoreId);
-    if (!store) return;
-    handledFixLocationRef.current = fixLocationStoreId;
-    setLocationRecoveryStore(store);
-    setAddOpen(true);
-    router.setParams({ fixLocationStoreId: undefined });
-  }, [fixLocationStoreId, router, stores]);
+  useFocusEffect(
+    useCallback(() => {
+      if (!fixLocationStoreId || !fixLocationRequest || handledFixLocationRef.current === fixLocationRequest) return;
+      const store = stores.find((candidate) => candidate.id === fixLocationStoreId);
+      if (!store) return;
+      handledFixLocationRef.current = fixLocationRequest;
+      setLocationRecoveryStore(store);
+      setAddOpen(true);
+      router.setParams({ fixLocationStoreId: undefined, fixLocationRequest: undefined });
+    }, [fixLocationRequest, fixLocationStoreId, router, stores]),
+  );
 
   const countFor = (storeId: string) =>
     items.filter((i) => i.storeId === storeId).length;
