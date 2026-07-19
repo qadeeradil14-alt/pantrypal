@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Platform, Pressable, StyleSheet, Switch, Text, View, useColorScheme } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../../components/shared/Screen';
 import { SubScreenHeader } from '../../components/shared/SubScreenHeader';
@@ -34,6 +35,7 @@ import {
   type HouseholdPushDiagnostics,
 } from '../../core/services/notifications';
 import { isActivePantryItem } from '../../core/services/geofencingLogic';
+import { hasValidStoreCoordinates } from '../../core/services/storeCoordinates';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const IOS_GEOFENCE_LIMIT = 20;
@@ -63,6 +65,7 @@ function stageColor(stage: NotificationLogEntry['stage'], colors: AppColors): st
 }
 
 export default function StoreArrivalAlertsScreen() {
+  const router = useRouter();
   const { isDark, colors } = useTheme();
   const { isDark: storedTheme } = useThemeStore();
   const systemScheme = useColorScheme();
@@ -76,7 +79,8 @@ export default function StoreArrivalAlertsScreen() {
   const [geofenceLoading, setGeofenceLoading] = useState(false);
   const [geofenceDiagnostics, setGeofenceDiagnostics] = useState<GeofenceDiagnostics | null>(null);
   const [geofencingRunningNow, setGeofencingRunningNow] = useState<boolean | null>(null);
-  const gpsStores = stores.filter((s) => s.lat != null && s.lng != null);
+  const gpsStores = stores.filter((s) => hasValidStoreCoordinates(s.lat, s.lng));
+  const storesMissingCoordinates = stores.filter((s) => !hasValidStoreCoordinates(s.lat, s.lng));
   const monitorableStores = geofenceableStores(stores, IOS_GEOFENCE_LIMIT, items);
   const storesMissingLocation = stores.length - gpsStores.length;
   const inExpoGo = isExpoGo();
@@ -270,6 +274,47 @@ export default function StoreArrivalAlertsScreen() {
             {storesMissingLocation} store{storesMissingLocation === 1 ? '' : 's'} need
             {storesMissingLocation === 1 ? 's' : ''} a location before arrival alerts can work.
           </Text>
+        )}
+
+        {storesMissingCoordinates.length > 0 && (
+          <View style={styles.locationFixSection}>
+            <View style={styles.locationFixHeader}>
+              <Ionicons name="map-outline" size={18} color={colors.primary} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.locationFixTitle}>Fix store locations</Text>
+                <Text style={styles.locationFixNote}>
+                  {gpsStores.length} of {stores.length} saved store{stores.length === 1 ? '' : 's'} are GPS-ready.
+                </Text>
+              </View>
+            </View>
+            {storesMissingCoordinates.slice(0, 3).map((store) => (
+              <Pressable
+                key={store.id}
+                style={({ pressed }) => [styles.locationFixRow, pressed && { opacity: 0.7 }]}
+                onPress={() => router.push({ pathname: '/stores', params: { fixLocationStoreId: store.id } } as never)}
+                accessibilityRole="button"
+                accessibilityLabel={`Fix location for ${store.name}`}
+              >
+                <View style={styles.locationFixRowText}>
+                  <Text style={styles.locationFixStoreName}>{store.name}</Text>
+                  <Text style={styles.locationFixStoreMeta}>Missing GPS location</Text>
+                </View>
+                <Text style={styles.locationFixAction}>Fix</Text>
+              </Pressable>
+            ))}
+            {storesMissingCoordinates.length > 3 ? (
+              <Pressable
+                style={({ pressed }) => [styles.locationFixAllButton, pressed && { opacity: 0.7 }]}
+                onPress={() => router.push('/stores' as never)}
+                accessibilityRole="button"
+                accessibilityLabel="Open Stores to fix more locations"
+              >
+                <Text style={styles.locationFixAllText}>
+                  View {storesMissingCoordinates.length - 3} more in Stores
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
         )}
 
         <View style={styles.testNotifSection}>
@@ -520,7 +565,7 @@ export default function StoreArrivalAlertsScreen() {
           ) : null}
 
           <Text style={styles.geofenceDiagnosticsNote}>
-            iOS can monitor up to {IOS_GEOFENCE_LIMIT} regions. Stores need coordinates and at least one assigned active item (not yet purchased).
+            iOS can monitor up to {IOS_GEOFENCE_LIMIT} regions. Stores need coordinates and at least one assigned low or expiring shopping-list item.
           </Text>
 
           {/* Monitored stores detail */}
@@ -733,6 +778,40 @@ function makeStyles(colors: AppColors) {
       lineHeight: 18,
       marginTop: spacing.xs,
     },
+    locationFixSection: {
+      marginTop: spacing.md,
+      padding: spacing.md,
+      borderRadius: radii.md,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.borderSoft,
+      gap: spacing.sm,
+    },
+    locationFixHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    locationFixTitle: { fontFamily: fonts.sansSemibold, fontSize: 14, color: colors.ink },
+    locationFixNote: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 2, lineHeight: 17 },
+    locationFixRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: spacing.md,
+      minHeight: 48,
+      paddingVertical: spacing.sm,
+      borderTopWidth: 1,
+      borderTopColor: colors.borderSoft,
+    },
+    locationFixRowText: { flex: 1 },
+    locationFixStoreName: { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.ink },
+    locationFixStoreMeta: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 2 },
+    locationFixAction: { fontFamily: fonts.sansSemibold, fontSize: 13, color: colors.primary },
+    locationFixAllButton: {
+      alignSelf: 'flex-start',
+      paddingVertical: spacing.xs,
+      paddingHorizontal: spacing.sm,
+      borderRadius: radii.sm,
+      backgroundColor: colors.primarySoft,
+    },
+    locationFixAllText: { fontFamily: fonts.sansSemibold, fontSize: 12, color: colors.primary },
     statRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',

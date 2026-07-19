@@ -48,16 +48,7 @@ const GROUPS: SettingsGroup[] = [
     title: 'App',
     links: [
       { icon: 'contrast-outline', label: 'Appearance', route: '/settings/appearance' },
-      { icon: 'options-outline', label: 'Shopping Preferences', route: '/settings/shopping-preferences' },
       { icon: 'sparkles-outline', label: 'AI Features', route: '/settings/ai-features' },
-    ],
-  },
-  {
-    icon: 'time-outline',
-    title: 'History',
-    links: [
-      { icon: 'receipt-outline', label: 'Receipts', route: '/receipts' },
-      { icon: 'cart-outline', label: 'Shopping', route: '/shopping' },
     ],
   },
   {

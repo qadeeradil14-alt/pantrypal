@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Alert, Pressable, StyleSheet, Text, View, Image, Linking, Platform, ActionSheetIOS, LayoutAnimation } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
@@ -93,6 +93,8 @@ function EditStoreSheet({
 }
 
 export default function StoresScreen() {
+  const router = useRouter();
+  const { fixLocationStoreId } = useLocalSearchParams<{ fixLocationStoreId?: string }>();
   const { colors } = useTheme();
   const stores = useDurableStore((s) => s.stores);
   const items = useDurableStore((s) => s.items);
@@ -102,6 +104,7 @@ export default function StoresScreen() {
   const [editStore, setEditStore] = useState<Store | null>(null);
   const [locationRecoveryStore, setLocationRecoveryStore] = useState<Store | null>(null);
   const backfillInFlightRef = useRef(new Set<string>());
+  const handledFixLocationRef = useRef<string | null>(null);
   // Live open/closed status — fetched fresh from Google on every tab focus, never persisted
   const [liveStatus, setLiveStatus] = useState<Record<string, boolean | undefined>>({});
 
@@ -133,6 +136,16 @@ export default function StoresScreen() {
   );
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  useEffect(() => {
+    if (!fixLocationStoreId || handledFixLocationRef.current === fixLocationStoreId) return;
+    const store = stores.find((candidate) => candidate.id === fixLocationStoreId);
+    if (!store) return;
+    handledFixLocationRef.current = fixLocationStoreId;
+    setLocationRecoveryStore(store);
+    setAddOpen(true);
+    router.setParams({ fixLocationStoreId: undefined });
+  }, [fixLocationStoreId, router, stores]);
 
   const countFor = (storeId: string) =>
     items.filter((i) => i.storeId === storeId).length;
