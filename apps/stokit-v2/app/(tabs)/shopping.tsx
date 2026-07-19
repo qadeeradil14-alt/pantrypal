@@ -23,7 +23,6 @@ import {
   Text,
   TextInput,
   View,
-  LayoutAnimation,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
@@ -756,7 +755,9 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                   onPress={() => {
                     if (e.outOfStock) return;
                     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    // No LayoutAnimation here: on Fabric it can tick over a
+                    // freed Modal shadow node during the receipt flow and crash
+                    // (see ActiveTripShell note).
                     dispatch({ type: 'TOGGLE_PICK', itemId: e.itemId });
                   }}
                   onLongPress={() => {
@@ -1763,9 +1764,12 @@ function NextStoreSelector({ session, dispatch, storeById, styles, nsStyles, col
 function ActiveTripShell(props: SubProps) {
   const { session } = props;
 
-  useEffect(() => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-  }, [session.status]);
+  // NOTE: Do NOT run LayoutAnimation on status change here. On the New
+  // Architecture (Fabric), a LayoutAnimation tick that overlaps the receipt
+  // review Sheet (a Modal, i.e. a separate shadow surface) mounting/unmounting
+  // dereferences a freed shadow node → EXC_BAD_ACCESS (KERN_INVALID_ADDRESS
+  // 0x18) in RCTMountingManager. Confirmed via device crash log. Status changes
+  // now transition without the ease animation, which is the safe trade.
 
   if (session.status === 'receipt_prompt') return <ReceiptPrompt {...props} />;
   if (session.status === 'store_summary' || session.status === 'continue_prompt') return <StoreSummary {...props} />;
