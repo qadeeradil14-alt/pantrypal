@@ -5,6 +5,7 @@ import test from 'node:test';
 const home = readFileSync(new URL('../app/(tabs)/index.tsx', import.meta.url), 'utf8');
 const settings = readFileSync(new URL('../app/(tabs)/settings.tsx', import.meta.url), 'utf8');
 const about = readFileSync(new URL('../app/settings/about.tsx', import.meta.url), 'utf8');
+const storeArrivalAlerts = readFileSync(new URL('../app/settings/store-arrival-alerts.tsx', import.meta.url), 'utf8');
 const subScreenHeader = readFileSync(new URL('../components/shared/SubScreenHeader.tsx', import.meta.url), 'utf8');
 
 test('Home routes avatars to Household and gear to Settings', () => {
@@ -24,4 +25,9 @@ test('subscreens go back when possible and fall back to Settings', () => {
 test('version and OTA information live under About', () => {
   assert.match(about, /OTA_SEQ/);
   assert.match(about, /title="About"/);
+});
+
+test('Store Arrival Alerts fix-location actions route to the Stores tab', () => {
+  assert.match(storeArrivalAlerts, /pathname: '\/\(tabs\)\/stores'/);
+  assert.match(storeArrivalAlerts, /fixLocationStoreId/);
 });

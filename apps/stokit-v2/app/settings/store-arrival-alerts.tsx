@@ -149,14 +149,22 @@ export default function StoreArrivalAlertsScreen() {
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
+  const openStoresScreen = useCallback((storeId?: string) => {
+    if (storeId) {
+      router.push({ pathname: '/(tabs)/stores', params: { fixLocationStoreId: storeId } } as never);
+    } else {
+      router.push('/(tabs)/stores' as never);
+    }
+  }, [router]);
+
   const openFirstMissingStoreLocation = useCallback(() => {
     const store = stores.find((candidate) => !hasValidStoreCoordinates(candidate.lat, candidate.lng));
     if (store) {
-      router.push({ pathname: '/stores', params: { fixLocationStoreId: store.id } } as never);
+      openStoresScreen(store.id);
     } else {
-      router.push('/stores' as never);
+      openStoresScreen();
     }
-  }, [router, stores]);
+  }, [openStoresScreen, stores]);
 
   const toggleGeofence = useCallback(async (value: boolean) => {
     if (value && gpsStores.length === 0) {
@@ -308,7 +316,7 @@ export default function StoreArrivalAlertsScreen() {
               <Pressable
                 key={store.id}
                 style={({ pressed }) => [styles.locationFixRow, pressed && { opacity: 0.7 }]}
-                onPress={() => router.push({ pathname: '/stores', params: { fixLocationStoreId: store.id } } as never)}
+                onPress={() => openStoresScreen(store.id)}
                 accessibilityRole="button"
                 accessibilityLabel={`Fix location for ${store.name}`}
               >
@@ -322,7 +330,7 @@ export default function StoreArrivalAlertsScreen() {
             {storesMissingCoordinates.length > 3 ? (
               <Pressable
                 style={({ pressed }) => [styles.locationFixAllButton, pressed && { opacity: 0.7 }]}
-                onPress={() => router.push('/stores' as never)}
+                onPress={() => openStoresScreen()}
                 accessibilityRole="button"
                 accessibilityLabel="Open Stores to fix more locations"
               >
