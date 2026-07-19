@@ -149,11 +149,24 @@ export default function StoreArrivalAlertsScreen() {
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
+  const openFirstMissingStoreLocation = useCallback(() => {
+    const store = stores.find((candidate) => !hasValidStoreCoordinates(candidate.lat, candidate.lng));
+    if (store) {
+      router.push({ pathname: '/stores', params: { fixLocationStoreId: store.id } } as never);
+    } else {
+      router.push('/stores' as never);
+    }
+  }, [router, stores]);
+
   const toggleGeofence = useCallback(async (value: boolean) => {
     if (value && gpsStores.length === 0) {
       Alert.alert(
         'No store coordinates',
         'Use the Fix store locations section below to update at least one saved store with GPS coordinates.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Fix location', onPress: openFirstMissingStoreLocation },
+        ],
       );
       return;
     }
@@ -189,6 +202,10 @@ export default function StoreArrivalAlertsScreen() {
             Alert.alert(
               'No store coordinates',
               'Use the Fix store locations section below to update at least one saved store with GPS coordinates.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Fix location', onPress: openFirstMissingStoreLocation },
+              ],
             );
             setGeofenceOn(false);
             break;
@@ -214,7 +231,7 @@ export default function StoreArrivalAlertsScreen() {
       setGeofenceLoading(false);
       void refreshDiagnostics();
     }
-  }, [stores, items, gpsStores.length, refreshDiagnostics]);
+  }, [stores, items, gpsStores.length, refreshDiagnostics, openFirstMissingStoreLocation]);
 
   const sendArrivalNotification = useCallback(async (source: 'test' | 'manual') => {
     setTestNotifLoading(true);
@@ -259,7 +276,7 @@ export default function StoreArrivalAlertsScreen() {
             inExpoGo
               ? 'Coming soon'
               : gpsStores.length === 0
-              ? `Add stores via "Find nearby" to enable`
+              ? 'Fix a store location to enable'
               : `Ready for ${monitorableStores.length} assigned store${monitorableStores.length === 1 ? '' : 's'}`
           }
           value={geofenceOn}
