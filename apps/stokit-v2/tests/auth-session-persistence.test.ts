@@ -62,7 +62,7 @@ test('restored verified user routes to Tabs, never Welcome', () => {
 
   assert.ok(tabsRoute >= 0);
   assert.ok(welcomeRoute > tabsRoute);
-  assert.match(layoutSource, /<Stack\.Protected guard=\{unlocked\}>/);
+  assert.match(routingSource, /else if \(unlocked\)/);
 });
 
 test('verification cleanup cannot finish after a subsequent sign-in', () => {
