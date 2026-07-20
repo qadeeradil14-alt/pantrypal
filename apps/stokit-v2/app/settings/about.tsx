@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../../components/shared/Screen';
@@ -69,7 +69,7 @@ export default function AboutScreen() {
             )}
           </View>
         </Pressable>
-        <View style={[styles.statRow, { borderBottomWidth: 0 }]}>
+        <View style={styles.statRow}>
           <View style={styles.aboutLabel}>
             <Ionicons name="cube-outline" size={16} color={colors.muted} />
             <Text style={styles.statLabel}>Build</Text>
@@ -78,6 +78,18 @@ export default function AboutScreen() {
             {inExpoGo ? 'Expo Go' : 'Standalone'}
           </Text>
         </View>
+        <Pressable
+          style={[styles.statRow, { borderBottomWidth: 0 }]}
+          onPress={() => Linking.openURL('https://support-site-xi.vercel.app/privacy')}
+          accessibilityRole="button"
+          accessibilityLabel="Privacy Policy"
+        >
+          <View style={styles.aboutLabel}>
+            <Ionicons name="shield-checkmark-outline" size={16} color={colors.muted} />
+            <Text style={styles.statLabel}>Privacy Policy</Text>
+          </View>
+          <Ionicons name="open-outline" size={16} color={colors.muted} />
+        </Pressable>
       </Card>
     </Screen>
   );

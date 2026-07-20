@@ -319,7 +319,6 @@ export async function sendHouseholdShoppingAlert(
 
     if (error) {
       const detail = await readFunctionError(error);
-      console.warn('[Notify Family] notify-shopping failed', detail.log);
       await appendNotificationLog('household_alert_error', detail.log);
       const errorText = [detail.code, detail.serverMessage, detail.log].filter(Boolean).join(' ');
       if (errorText.includes('no_recipients') || errorText.includes('No household recipients') || errorText.includes('No other members')) {
@@ -331,7 +330,6 @@ export async function sendHouseholdShoppingAlert(
     return { ok: true, sent, result: sent > 0 ? 'sent' : 'no_tokens' };
   } catch (err) {
     const detail = await readFunctionError(err);
-    console.warn('[Notify Family] notify-shopping failed', detail.log);
     await appendNotificationLog('household_alert_error', detail.log);
     return { ok: false, sent: 0, result: `failed:${detail.log}` };
   }

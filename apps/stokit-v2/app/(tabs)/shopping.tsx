@@ -107,7 +107,6 @@ export default function ShoppingScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      console.log('[Shopping Sync] shopping_tab_focus_pull');
       void pullFromSupabase();
     }, []),
   );

@@ -5,12 +5,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'public-anon-key';
 
-if (!process.env.EXPO_PUBLIC_SUPABASE_URL) {
-  console.warn('⚠️ Missing EXPO_PUBLIC_SUPABASE_URL! Supabase sync will not work.');
-}
-if (!process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY) {
-  console.warn('⚠️ Missing EXPO_PUBLIC_SUPABASE_ANON_KEY! Supabase auth will not work.');
-}
 
 /**
  * SESSION BACKUP BOOTSTRAP
@@ -50,9 +44,8 @@ try {
           user: parsed.user,
         })
       );
-      console.log('[Auth] Session backup bootstrapped from Supabase key at startup.');
     }
-  }).catch((e) => console.warn('[Auth] Bootstrap failed:', e));
+  }).catch(() => {});
 } catch (_) {}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
