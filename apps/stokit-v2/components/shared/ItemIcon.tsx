@@ -45,7 +45,7 @@ export function ItemIcon({ asset, size, color }: ItemIconProps) {
 
   return (
     <MaterialCommunityIcons
-      name="image-off-outline"
+      name={asset.icon as React.ComponentProps<typeof MaterialCommunityIcons>['name']}
       size={scale}
       color={color}
     />
