@@ -11,7 +11,10 @@
     "backgroundColor": "#15110C",
     "ios": {
       "supportsTablet": false,
-      "icon": "./assets/icon-dark.png",
+      "icon": {
+        "light": "./assets/icon-light.png",
+        "dark": "./assets/icon-dark.png"
+      },
       "bundleIdentifier": "com.hewadadil.pantrypal",
       "buildNumber": "107",
       "deploymentTarget": "16.4",
