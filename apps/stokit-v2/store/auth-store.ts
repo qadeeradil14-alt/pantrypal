@@ -261,6 +261,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   signOut: async () => {
     set({ loading: true, authError: null });
     _explicitSignOut = true;
+    set({ session: null, user: null, guestMode: false });
     // Clear all local user data so the next account that signs in on this
     // device starts with a clean slate — no cross-account data leakage.
     await Promise.all([
@@ -273,7 +274,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     AsyncStorage.removeItem(SESSION_BACKUP_KEY).catch(() => {});
     AsyncStorage.removeItem('stokit:v2:guestMode').catch(() => {});
     const { error } = await supabase.auth.signOut({ scope: 'local' });
-    set({ session: null, user: null, loading: false, guestMode: false });
+    set({ loading: false });
     if (error) {
       const message = friendlyAuthError(error);
       set({ authError: message });
