@@ -1,8 +1,8 @@
 import React from 'react';
-import Svg, { Circle, Path, Text as SvgText } from 'react-native-svg';
+import Svg, { Path, Text as SvgText } from 'react-native-svg';
 
 /**
- * Stokit "Pantry Label" mark. Transparent background so it sits on any surface.
+ * Stokit bag mark. Transparent background so it sits on any surface.
  */
 export function Logo({
   size = 40,
@@ -16,14 +16,20 @@ export function Logo({
   return (
     <Svg width={size} height={size} viewBox="0 0 1024 1024" fill="none">
       <Path
-        d="M 238 218 Q 238 178 278 178 H 634 Q 670 178 695 203 L 820 328 Q 842 350 842 382 V 788 Q 842 836 794 836 H 286 Q 238 836 238 788 Z"
-        fill={color}
-        fillOpacity={0.055}
+        d="M 352 350 V 272 C 352 124 672 124 672 272 V 350"
         stroke={color}
-        strokeOpacity={0.14}
-        strokeWidth={20}
+        strokeOpacity={0.18}
+        strokeWidth={58}
+        strokeLinecap="round"
       />
-      <Circle cx={690} cy={312} r={28} fill={color} fillOpacity={0.14} />
+      <Path
+        d="M 258 492 V 716 C 258 826 334 890 444 890 H 580 C 690 890 766 826 766 716 V 492"
+        stroke={color}
+        strokeOpacity={0.18}
+        strokeWidth={58}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
       <SvgText
         x={512}
         y={672}
@@ -35,8 +41,6 @@ export function Logo({
       >
         S
       </SvgText>
-      <Path d="M 374 742 H 650" stroke={color} strokeOpacity={0.15} strokeWidth={18} strokeLinecap="round" />
-      <Path d="M 430 700 V 742 M 512 688 V 742 M 594 700 V 742" stroke={color} strokeOpacity={0.15} strokeWidth={16} strokeLinecap="round" />
     </Svg>
   );
 }
