@@ -164,6 +164,15 @@ function skipSentinel(icon: string | undefined): string | undefined {
   return icon && icon !== NO_REAL_ASSET_SENTINEL ? icon : undefined;
 }
 
+function shouldUsePlaceholder(name: string, fallbackEmoji?: string): boolean {
+  const normalized = normalizeForIcon(name);
+  return (
+    lookupTolerant(CATALOG_BY_NAME, normalized)?.icon === NO_REAL_ASSET_SENTINEL ||
+    lookupTolerant(ITEM_ICON, normalized) === NO_REAL_ASSET_SENTINEL ||
+    fallbackEmoji === NO_REAL_ASSET_SENTINEL
+  );
+}
+
 export function resolveItemIconString(name: string, fallbackEmoji?: string): string {
   const normalized = normalizeForIcon(name);
   const catalogItem = lookupTolerant(CATALOG_BY_NAME, normalized);
@@ -191,5 +200,6 @@ export function resolveIconString(icon: string): ResolvedItemAsset {
 
 /** End-to-end: free-text item name -> render-ready asset descriptor. */
 export function resolveItemAsset(name: string, fallbackEmoji?: string): ResolvedItemAsset {
+  if (shouldUsePlaceholder(name, fallbackEmoji)) return { kind: 'placeholder' };
   return resolveIconString(resolveItemIconString(name, fallbackEmoji));
 }

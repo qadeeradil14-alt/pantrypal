@@ -5,8 +5,7 @@ import { getCategoryColors } from '../../theme/categoryPalette';
 import {
   lookupCatalogCategory,
   mapItemCategoryToCatalogCategory,
-  resolveIconString,
-  resolveItemIconString,
+  resolveItemAsset,
 } from '../../constants/itemAssetResolver';
 import { classifyItem } from '../../core/services/itemClassifier';
 import { ItemIcon } from './ItemIcon';
@@ -28,7 +27,7 @@ export function ItemAvatar({ name, size = 44, icon }: ItemAvatarProps) {
   const classification = rawClassification?.category === 'other' ? undefined : rawClassification;
   const category = catalogCategory ?? (classification ? mapItemCategoryToCatalogCategory(classification.category) : 'Other');
   const categoryTheme = getCategoryColors(category, isDark);
-  const asset = resolveIconString(resolveItemIconString(name, icon ?? classification?.emoji));
+  const asset = resolveItemAsset(name, icon ?? classification?.emoji);
 
   return (
     <View
