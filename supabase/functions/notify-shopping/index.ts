@@ -248,16 +248,17 @@ Deno.serve(async (req) => {
     .in('user_id', recipientUserIds)
     .not('push_token', 'is', null);
 
-  // Deduplicate: one notification per recipient (last token row wins, which is
-  // fine since getExpoPushTokenAsync is deterministic for the same device).
-  const tokenByUser = new Map<string, string>();
+  // Deduplicate by the underlying push token, not user_id. Two different
+  // member rows (e.g. stale rows from prior sign-ins/switched accounts on the
+  // same physical device) can share one Expo token — deduping by user_id alone
+  // would still send that device two (or more) copies, including a copy back
+  // to the sender's own device if a different user_id happens to share it.
+  const uniqueTokens = new Set<string>();
   for (const row of (tokenRows ?? []) as Array<{ user_id: string; push_token: string | null }>) {
-    if (row.push_token && !tokenByUser.has(row.user_id)) {
-      tokenByUser.set(row.user_id, row.push_token);
-    }
+    if (row.push_token) uniqueTokens.add(row.push_token);
   }
 
-  if (tokenByUser.size === 0) {
+  if (uniqueTokens.size === 0) {
     console.warn('notify-shopping no recipient tokens found', {
       userId: user.id,
       householdId: senderRow.household_id,
@@ -266,7 +267,7 @@ Deno.serve(async (req) => {
     return json({ error: 'no_recipients', message: 'No household recipients with push tokens found', sent: 0 }, 409);
   }
 
-  const messages = Array.from(tokenByUser.values()).map((token) => ({
+  const messages = Array.from(uniqueTokens).map((token) => ({
     to: token,
     sound: 'default',
     title: `Need anything from ${storeName}?`,

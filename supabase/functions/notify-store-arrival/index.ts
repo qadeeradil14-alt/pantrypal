@@ -49,22 +49,31 @@ Deno.serve(async (req) => {
     return new Response('ok', { status: 200 });
   }
 
-  const messages = members
-    .filter((m: { push_token: string | null }) => m.push_token)
-    .map((m: { push_token: string }) => ({
-      to: m.push_token,
-      sound: 'default',
-      title: `${actorName} is shopping`,
-      body: `${actorName} arrived at ${storeName}. Open the list to add items.`,
-      data: {
-        type: 'partner_arrival',
-        storeId: record.store_id,
-        householdId: record.household_id,
-        arrivalId: record.id,
-        actorName,
-        arrivedAt: record.arrived_at ?? null,
-      },
-    }));
+  // Dedupe by the underlying push token, not member row. Two different member
+  // rows (e.g. stale rows from prior sign-ins/switched accounts on the same
+  // physical device) can share one Expo token — sending per-row would give
+  // that one device multiple copies, including a copy back to the arriving
+  // user's own device if a different member row happens to share their token.
+  const uniqueTokens = new Set(
+    members
+      .map((m: { push_token: string | null }) => m.push_token)
+      .filter((token): token is string => Boolean(token)),
+  );
+
+  const messages = Array.from(uniqueTokens).map((token) => ({
+    to: token,
+    sound: 'default',
+    title: `${actorName} is shopping`,
+    body: `${actorName} arrived at ${storeName}. Open the list to add items.`,
+    data: {
+      type: 'partner_arrival',
+      storeId: record.store_id,
+      householdId: record.household_id,
+      arrivalId: record.id,
+      actorName,
+      arrivedAt: record.arrived_at ?? null,
+    },
+  }));
 
   if (messages.length > 0) {
     await fetch(EXPO_PUSH_URL, {
