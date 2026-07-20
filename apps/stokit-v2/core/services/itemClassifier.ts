@@ -258,7 +258,8 @@ const RULES: Rule[] = [
   { keywords: ['broth', 'stock', 'chicken broth', 'beef broth', 'vegetable broth'], emoji: '🍲', category: 'canned', color: '#D4AC0D' },
   { keywords: ['olive', 'olives', 'kalamata'], emoji: '🫒', category: 'canned', color: '#145A32' },
   { keywords: ['pickle', 'pickles', 'gherkin', 'cornichon'], emoji: '🥒', category: 'canned', color: '#1E8449' },
-  { keywords: ['sauerkraut', 'kimchi'], emoji: '🥬', category: 'canned', color: '#27AE60' },
+  { keywords: ['sauerkraut'], emoji: '🥬', category: 'canned', color: '#27AE60' },
+  { keywords: ['kimchi'], emoji: '🌶️', category: 'canned', color: '#C0392B' },
 
   // ── CONDIMENTS & SAUCES ───────────────────────────────────────────────────
   { keywords: ['ketchup', 'catsup'], emoji: '🍅', category: 'condiment', color: '#C0392B' },
