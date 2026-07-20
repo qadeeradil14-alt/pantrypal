@@ -124,6 +124,10 @@ const RULES: Rule[] = [
   { keywords: ['apricot', 'apricots'], emoji: '🍑', category: 'produce_fruit', color: '#F39C12' },
   { keywords: ['date', 'dates', 'medjool'], emoji: 'mdi:package-variant-closed', category: 'produce_fruit', color: '#7D6608' },
   { keywords: ['raisins', 'golden raisins', 'dried cranberries', 'craisins', 'dried mango', 'dried apricots', 'dried figs', 'dried cherries', 'dried blueberries', 'dried fruit', 'sultanas', 'currants'], emoji: '🍇', category: 'snack', color: '#7D3C98' },
+  { keywords: ['samosa', 'sambusa', 'pierogi', 'dumpling', 'dumplings'], emoji: '🥟', category: 'snack', color: '#D4AC0D' },
+  { keywords: ['falafel'], emoji: '🧆', category: 'snack', color: '#A04000' },
+  { keywords: ['kimbap'], emoji: '🍙', category: 'snack', color: '#27AE60' },
+  { keywords: ['halva', 'baklava'], emoji: '🍯', category: 'snack', color: '#A04000' },
   { keywords: ['lychee', 'lychees'], emoji: '🍡', category: 'produce_fruit', color: '#F1948A' },
 
   // ── PRODUCE: VEGETABLES ────────────────────────────────────────────────────
@@ -148,6 +152,8 @@ const RULES: Rule[] = [
   { keywords: ['bell pepper', 'pepper', 'peppers', 'capsicum'], emoji: '🫑', category: 'produce_veg', color: '#1E8449' },
   { keywords: ['jalapeño', 'jalapeño', 'chili', 'habanero', 'serrano'], emoji: '🌶️', category: 'produce_veg', color: '#C0392B' },
   { keywords: ['eggplant', 'aubergine'], emoji: '🍆', category: 'produce_veg', color: '#6C3483' },
+  { keywords: ['cassava', 'yuca', 'taro'], emoji: '🍠', category: 'produce_veg', color: '#E67E22' },
+  { keywords: ['jackfruit'], emoji: '🍈', category: 'produce_veg', color: '#27AE60' },
   { keywords: ['squash', 'butternut squash', 'acorn squash'], emoji: '🎃', category: 'produce_veg', color: '#E67E22' },
   { keywords: ['pumpkin'], emoji: '🎃', category: 'produce_veg', color: '#E67E22' },
   { keywords: ['celery'], emoji: '🥬', category: 'produce_veg', color: '#27AE60' },
@@ -199,6 +205,7 @@ const RULES: Rule[] = [
   { keywords: ['sour cream', 'crème fraîche'], emoji: '🥛', category: 'dairy', color: '#FDFEFE' },
   { keywords: ['ice cream', 'gelato', 'sorbet', 'frozen yogurt', 'frozen custard'], emoji: '🍦', category: 'dairy', color: '#F9E4B7' },
   { keywords: ['whipped cream', 'cool whip', 'whipped topping'], emoji: '🥛', category: 'dairy', color: '#FDFEFE' },
+  { keywords: ['qurot', 'labneh', 'halloumi', 'paneer'], emoji: '🧀', category: 'dairy', color: '#F0A500' },
 
   // ── EGGS ──────────────────────────────────────────────────────────────────
   { keywords: ['egg', 'eggs', 'dozen eggs', 'free range', 'egg whites', 'quail egg'], emoji: '🥚', category: 'eggs', color: '#F4D03F' },
@@ -210,7 +217,7 @@ const RULES: Rule[] = [
   { keywords: ['croissant', 'croissants'], emoji: '🥐', category: 'bread', color: '#D4AC0D' },
   { keywords: ['baguette', 'french bread'], emoji: '🥖', category: 'bread', color: '#D4AC0D' },
   { keywords: ['tortilla', 'tortillas', 'flour tortilla', 'corn tortilla', 'wrap', 'wraps'], emoji: '🌮', category: 'bread', color: '#F0E6D3' },
-  { keywords: ['pita', 'pita bread', 'naan', 'flatbread', 'lavash', 'paratha', 'roti', 'chapati', 'dosa'], emoji: '🫓', category: 'bread', color: '#F0E6D3' },
+  { keywords: ['pita', 'pita bread', 'naan', 'flatbread', 'lavash', 'paratha', 'roti', 'chapati', 'dosa', 'injera'], emoji: '🫓', category: 'bread', color: '#F0E6D3' },
   { keywords: ['cake', 'birthday cake'], emoji: '🎂', category: 'bread', color: '#F1948A' },
   { keywords: ['pie', 'apple pie', 'pumpkin pie'], emoji: '🥧', category: 'bread', color: '#D4AC0D' },
   { keywords: ['cookie', 'cookies', 'chocolate chip cookie'], emoji: '🍪', category: 'bread', color: '#A04000' },
@@ -233,6 +240,9 @@ const RULES: Rule[] = [
   { keywords: ['chickpeas', 'garbanzo', 'garbanzo beans', 'dried chickpeas'], emoji: '🫘', category: 'grains', color: '#D4AC0D' },
   { keywords: ['tofu', 'firm tofu', 'silken tofu', 'extra firm tofu'], emoji: '🍱', category: 'grains', color: '#F4F6F7' },
   { keywords: ['tempeh', 'seitan', 'miso paste'], emoji: '🍱', category: 'grains', color: '#D4AC0D' },
+  { keywords: ['dal', 'moong dal', 'toor dal', 'masoor dal'], emoji: '🫘', category: 'grains', color: '#784212' },
+  { keywords: ['masa', 'masa harina'], emoji: '🌾', category: 'grains', color: '#D4AC0D' },
+  { keywords: ['natto'], emoji: '🍱', category: 'grains', color: '#D4AC0D' },
 
   // ── PASTA & NOODLES ───────────────────────────────────────────────────────
   { keywords: ['pasta', 'penne', 'rigatoni', 'fusilli', 'farfalle', 'orzo', 'lasagna noodles', 'macaroni'], emoji: '🍝', category: 'pasta', color: '#F4D03F' },
@@ -274,6 +284,11 @@ const RULES: Rule[] = [
   { keywords: ['maple syrup', 'agave', 'corn syrup'], emoji: '🍯', category: 'condiment', color: '#A04000' },
   { keywords: ['tahini'], emoji: '🫙', category: 'condiment', color: '#D4AC0D' },
   { keywords: ['nutella', 'hazelnut spread'], emoji: '🍫', category: 'condiment', color: '#5D4037' },
+  { keywords: ['za\'atar', 'zaatar', 'dukkah', 'sumac'], emoji: '🌿', category: 'condiment', color: '#27AE60' },
+  { keywords: ['harissa', 'berbere', 'gochujang'], emoji: '🌶️', category: 'condiment', color: '#C0392B' },
+  { keywords: ['tamarind', 'tamarind paste'], emoji: '🫙', category: 'condiment', color: '#5D4037' },
+  { keywords: ['jaggery'], emoji: '🍯', category: 'condiment', color: '#A04000' },
+  { keywords: ['adobo', 'sofrito'], emoji: '🫙', category: 'condiment', color: '#922B21' },
 
   // ── OILS & VINEGARS ───────────────────────────────────────────────────────
   { keywords: ['olive oil', 'extra virgin'], emoji: '🫒', category: 'oil', color: '#27AE60' },
@@ -360,6 +375,7 @@ const RULES: Rule[] = [
   { keywords: ['italian seasoning', 'herbs de provence', 'poultry seasoning', 'old bay', 'cajun seasoning', 'everything bagel seasoning'], emoji: '🌿', category: 'spice', color: '#27AE60' },
   { keywords: ['nutmeg', 'clove', 'allspice', 'cardamom', 'ginger powder', 'mace'], emoji: '🌿', category: 'spice', color: '#D4AC0D' },
   { keywords: ['vanilla bean', 'saffron', 'bay leaf', 'bay leaves'], emoji: '🌿', category: 'spice', color: '#27AE60' },
+  { keywords: ['fenugreek'], emoji: '🌿', category: 'spice', color: '#D4AC0D' },
 
   // ── CLEANING PRODUCTS ─────────────────────────────────────────────────────
   { keywords: ['dish soap', 'dish detergent', 'dawn', 'palmolive', 'seventh generation dish'], emoji: '🫧', category: 'cleaning', color: '#2E86C1' },
