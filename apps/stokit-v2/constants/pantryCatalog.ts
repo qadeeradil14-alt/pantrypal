@@ -81,7 +81,7 @@ export const PANTRY_CATALOG: PantryCatalogItem[] = [
 
   // Spices & Condiments
   item('Spices', 'Salt', '🧂'), item('Spices', 'Black pepper', '🧂'), item('Spices', 'Olive oil', '🫒'),
-  item('Spices', 'Vegetable oil', 'mdi:package-variant-closed'), item('Spices', 'Vinegar', 'mdi:bottle-tonic-outline'), item('Spices', 'Soy sauce', '🫙'),
+  item('Spices', 'Vegetable oil', 'custom:vegetable-oil'), item('Spices', 'Vinegar', 'mdi:bottle-tonic-outline'), item('Spices', 'Soy sauce', '🫙'),
   item('Spices', 'Ketchup', 'custom:ketchup'), item('Spices', 'Mustard', 'custom:mustard'),
   item('Spices', 'Mayonnaise', '🫙'), item('Spices', 'Hot sauce', '🌶️'), item('Spices', 'Honey', '🍯'),
   item('Spices', 'Cinnamon', '🧂'), item('Spices', 'Cumin', '🧂'), item('Spices', 'Paprika', '🫑'),
@@ -92,11 +92,11 @@ export const PANTRY_CATALOG: PantryCatalogItem[] = [
   item('Drinks', 'Coffee', '☕'), item('Drinks', 'Tea', '🍵', 'box'), item('Drinks', 'Sparkling water', '🫧', 'pack'),
 
   // Snacks
-  item('Snacks', 'Chips', 'mdi:package-variant-closed', 'pack'), item('Snacks', 'Crackers', '🍘', 'box'), item('Snacks', 'Cookies', '🍪', 'pack'),
+  item('Snacks', 'Chips', 'custom:chips', 'pack'), item('Snacks', 'Crackers', '🍘', 'box'), item('Snacks', 'Cookies', '🍪', 'pack'),
   item('Snacks', 'Popcorn', '🍿', 'box'), item('Snacks', 'Nuts', '🥜', 'pack'), item('Snacks', 'Pretzels', '🥨', 'pack'),
   item('Snacks', 'Chocolate', '🍫', 'pack'), item('Snacks', 'Candy', '🍬', 'pack'), item('Snacks', 'Gum', '🦷', 'pack'),
   item('Snacks', 'Mint', '🍃', 'pack'), item('Snacks', 'Ice cream', '🍦'), item('Snacks', 'Popsicles', '🍧', 'box'),
-  item('Snacks', 'Dates', 'mdi:package-variant-closed', 'pack'), item('Snacks', 'Granola bars', '🌾', 'box'),
+  item('Snacks', 'Dates', 'custom:dates', 'pack'), item('Snacks', 'Granola bars', '🌾', 'box'),
 
   // Kitchen
   item('Kitchen', 'Plates', '🍽️', 'pack'), item('Kitchen', 'Bowls', 'mdi:bowl-outline', 'pack'), item('Kitchen', 'Cups', 'mdi:cup-outline', 'pack'),
@@ -135,13 +135,13 @@ export const PANTRY_CATALOG: PantryCatalogItem[] = [
   item('Automotive', 'Motor oil', 'mdi:oil'), item('Automotive', 'Wiper fluid', 'mdi:wiper-wash'), item('Automotive', 'Car wash soap', 'mdi:car-wash'),
   item('Automotive', 'Air freshener', '🌺'), item('Automotive', 'Jumper cables', '⚡'), item('Automotive', 'Car battery', '🔋'),
   item('Automotive', 'Tire gauge', 'mdi:gauge'), item('Automotive', 'Car wax', '✨'), item('Automotive', 'Window cleaner', 'mdi:spray-bottle'),
-  item('Automotive', 'Funnels', 'mdi:package-variant-closed'), item('Automotive', 'Antifreeze', 'mdi:car-coolant-level'), item('Automotive', 'Brake fluid', 'mdi:car-brake-fluid-level'),
+  item('Automotive', 'Funnels', 'custom:funnels'), item('Automotive', 'Antifreeze', 'mdi:car-coolant-level'), item('Automotive', 'Brake fluid', 'mdi:car-brake-fluid-level'),
 
   // Hardware
-  item('Hardware', 'Light bulbs', '💡', 'pack'), item('Hardware', 'Batteries', '🔋', 'pack'), item('Hardware', 'Duct tape', 'mdi:package-variant-closed'),
-  item('Hardware', 'Zip ties', 'mdi:package-variant-closed', 'pack'), item('Hardware', 'Extension cord', '🔌'), item('Hardware', 'Screws', 'mdi:screw-round-top', 'pack'),
+  item('Hardware', 'Light bulbs', '💡', 'pack'), item('Hardware', 'Batteries', '🔋', 'pack'), item('Hardware', 'Duct tape', 'custom:duct-tape'),
+  item('Hardware', 'Zip ties', 'custom:zip-ties', 'pack'), item('Hardware', 'Extension cord', '🔌'), item('Hardware', 'Screws', 'mdi:screw-round-top', 'pack'),
   item('Hardware', 'Measuring tape', 'mdi:tape-measure'), item('Hardware', 'Paint', 'mdi:format-paint'), item('Hardware', 'WD-40', 'mdi:spray'),
-  item('Hardware', 'Sandpaper', 'mdi:package-variant-closed', 'pack'), item('Hardware', 'Caulk', 'mdi:package-variant-closed'), item('Hardware', 'Superglue', 'mdi:package-variant-closed'),
+  item('Hardware', 'Sandpaper', 'custom:sandpaper', 'pack'), item('Hardware', 'Caulk', 'custom:caulk'), item('Hardware', 'Superglue', 'custom:superglue'),
 
   // Health
   item('Health', 'Vitamins', '💊', 'pack'), item('Health', 'Pain reliever', 'mdi:medication-outline'), item('Health', 'Cold medicine', '🤧'),
@@ -152,6 +152,6 @@ export const PANTRY_CATALOG: PantryCatalogItem[] = [
   // Office
   item('Office', 'Pens', '🖊️', 'pack'), item('Office', 'Pencils', '✏️', 'pack'), item('Office', 'Notebooks', '📓'),
   item('Office', 'Printer paper', '📄', 'pack'), item('Office', 'Printer ink', '🖨️'), item('Office', 'Scissors', '✂️'),
-  item('Office', 'Sticky notes', '🗒️', 'pack'), item('Office', 'Staples', 'mdi:package-variant-closed', 'pack'), item('Office', 'Tape', 'mdi:package-variant-closed'),
+  item('Office', 'Sticky notes', '🗒️', 'pack'), item('Office', 'Staples', 'custom:staples', 'pack'), item('Office', 'Tape', 'custom:tape'),
   item('Office', 'Folders', '📁', 'pack'), item('Office', 'Markers', '🖍️', 'pack'), item('Office', 'Envelopes', '✉️', 'pack'),
 ];

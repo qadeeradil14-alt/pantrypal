@@ -8,20 +8,31 @@ export function getGeneratedCustomAsset(icon: string): any {
     case 'custom:all_purpose_cleaner': return require('../assets/custom-emojis/all_purpose_cleaner.png');
     case 'custom:bleach': return require('../assets/custom-emojis/bleach.png');
     case 'custom:bodywash': return require('../assets/custom-emojis/bodywash.png');
+    case 'custom:caulk': return require('../assets/item-icons/caulk.png');
+    case 'custom:chips': return require('../assets/item-icons/chips.png');
     case 'custom:conditioner': return require('../assets/custom-emojis/conditioner.png');
+    case 'custom:dates': return require('../assets/item-icons/dates.png');
     case 'custom:deodorant': return require('../assets/custom-emojis/deodorant.png');
     case 'custom:dishsoap': return require('../assets/custom-emojis/dishsoap.png');
+    case 'custom:duct-tape': return require('../assets/item-icons/duct-tape.png');
     case 'custom:fabric_softener': return require('../assets/custom-emojis/fabric_softener.png');
+    case 'custom:funnels': return require('../assets/item-icons/funnels.png');
     case 'custom:glass_cleaner': return require('../assets/custom-emojis/glass_cleaner.png');
     case 'custom:handsoap': return require('../assets/custom-emojis/handsoap.png');
     case 'custom:ketchup': return require('../assets/custom-emojis/ketchup.png');
     case 'custom:laundry_detergent': return require('../assets/custom-emojis/laundry_detergent.png');
     case 'custom:lotion': return require('../assets/custom-emojis/lotion.png');
     case 'custom:mustard': return require('../assets/custom-emojis/mustard.png');
+    case 'custom:sandpaper': return require('../assets/item-icons/sandpaper.png');
     case 'custom:shampoo': return require('../assets/custom-emojis/shampoo.png');
+    case 'custom:staples': return require('../assets/item-icons/staples.png');
+    case 'custom:superglue': return require('../assets/item-icons/superglue.png');
+    case 'custom:tape': return require('../assets/item-icons/tape.png');
     case 'custom:toothpaste': return require('../assets/custom-emojis/toothpaste.png');
     case 'custom:trash_bags': return require('../assets/custom-emojis/trash_bags.png');
+    case 'custom:vegetable-oil': return require('../assets/item-icons/vegetable-oil.png');
     case 'custom:wipes': return require('../assets/custom-emojis/wipes.png');
+    case 'custom:zip-ties': return require('../assets/item-icons/zip-ties.png');
     default: return undefined;
   }
 }
