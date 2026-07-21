@@ -232,9 +232,15 @@ Deno.serve(async (req) => {
 
   const recipientUserIds = (sharedMembers ?? []).map((m: { user_id: string }) => m.user_id);
 
+  const { count: excludedSenderCount } = await serviceSupabase
+    .from('household_members')
+    .select('user_id', { count: 'exact', head: true })
+    .eq('household_id', senderRow.household_id)
+    .eq('user_id', user.id);
+
   if (recipientUserIds.length === 0) {
     console.warn('notify-shopping no recipients in household', { userId: user.id, householdId: senderRow.household_id });
-    return json({ error: 'no_recipients', message: 'No other members in this household', sent: 0 }, 409);
+    return json({ error: 'no_recipients', message: 'No other members in this household', sent: 0, excludedSenderCount, duplicateOrInvalidTokenCount: 0 }, 409);
   }
 
   // Step 2: find the best available push token for each recipient across ALL
@@ -257,6 +263,8 @@ Deno.serve(async (req) => {
   for (const row of (tokenRows ?? []) as Array<{ user_id: string; push_token: string | null }>) {
     if (row.push_token) uniqueTokens.add(row.push_token);
   }
+  const tokenRowCount = (tokenRows ?? []).length;
+  const duplicateOrInvalidTokenCount = (recipientUserIds.length - tokenRowCount) + (tokenRowCount - uniqueTokens.size);
 
   if (uniqueTokens.size === 0) {
     console.warn('notify-shopping no recipient tokens found', {
@@ -264,7 +272,7 @@ Deno.serve(async (req) => {
       householdId: senderRow.household_id,
       recipientCount: recipientUserIds.length,
     });
-    return json({ error: 'no_recipients', message: 'No household recipients with push tokens found', sent: 0 }, 409);
+    return json({ error: 'no_recipients', message: 'No household recipients with push tokens found', sent: 0, excludedSenderCount, duplicateOrInvalidTokenCount }, 409);
   }
 
   const messages = Array.from(uniqueTokens).map((token) => ({
@@ -291,15 +299,17 @@ Deno.serve(async (req) => {
     console.log('notify-shopping expo response', {
       status: expoResponse.status,
       body: expoJson ?? expoText,
+      excludedSenderCount,
+      duplicateOrInvalidTokenCount,
     });
     if (!expoResponse.ok) {
-      return json({ error: 'expo_push_failed', message: expoText, sent: 0 }, 502);
+      return json({ error: 'expo_push_failed', message: expoText, sent: 0, excludedSenderCount, duplicateOrInvalidTokenCount }, 502);
     }
     const rejected = (expoJson?.data ?? []).filter((ticket) => ticket.status === 'error');
     if (rejected.length > 0) {
-      return json({ error: 'expo_push_rejected', message: 'Expo rejected one or more push tickets', rejected, sent: 0 }, 502);
+      return json({ error: 'expo_push_rejected', message: 'Expo rejected one or more push tickets', rejected, sent: 0, excludedSenderCount, duplicateOrInvalidTokenCount }, 502);
     }
   }
 
-  return json({ sent: messages.length });
+  return json({ sent: messages.length, excludedSenderCount, duplicateOrInvalidTokenCount });
 });

@@ -38,14 +38,23 @@ Deno.serve(async (req) => {
   const storeName = store?.name ?? 'the store';
   const actorName = record.arrived_by_name?.trim() || 'Someone';
 
+  const senderId = record.arrived_by ?? '';
+
+  const { count: excludedSenderCount } = await supabase
+    .from('household_members')
+    .select('user_id', { count: 'exact', head: true })
+    .eq('household_id', record.household_id)
+    .eq('user_id', senderId);
+
   const { data: members } = await supabase
     .from('household_members')
     .select('user_id, push_token')
     .eq('household_id', record.household_id)
-    .neq('user_id', record.arrived_by ?? '')
+    .neq('user_id', senderId)
     .not('push_token', 'is', null);
 
   if (!members || members.length === 0) {
+    console.log('notify-store-arrival no_recipients', { householdId: record.household_id, excludedSenderCount });
     return new Response('ok', { status: 200 });
   }
 
@@ -59,6 +68,7 @@ Deno.serve(async (req) => {
       .map((m: { push_token: string | null }) => m.push_token)
       .filter((token): token is string => Boolean(token)),
   );
+  const duplicateOrInvalidTokenCount = members.length - uniqueTokens.size;
 
   const messages = Array.from(uniqueTokens).map((token) => ({
     to: token,
@@ -82,6 +92,13 @@ Deno.serve(async (req) => {
       body: JSON.stringify(messages),
     });
   }
+
+  console.log('notify-store-arrival sent', {
+    householdId: record.household_id,
+    sent: messages.length,
+    excludedSenderCount,
+    duplicateOrInvalidTokenCount,
+  });
 
   return new Response('ok', { status: 200 });
 });
