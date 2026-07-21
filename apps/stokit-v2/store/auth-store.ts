@@ -261,6 +261,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   signOut: async () => {
     set({ loading: true, authError: null });
     _explicitSignOut = true;
+    const signingOutUserId = get().user?.id;
     set({ session: null, user: null, guestMode: false });
     // Clear all local user data so the next account that signs in on this
     // device starts with a clean slate — no cross-account data leakage.
@@ -268,6 +269,20 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       useDurableStore.getState().resetLocalOnly(),
       useHouseholdStore.getState().clearLocal(),
       useSessionStore.getState().clearSession(),
+      // Best-effort: drop this device's push token from the signed-out
+      // user's rows so a later account on this same device never has to
+      // race a stale token still pointing at the previous user. Must run
+      // before auth.signOut() below revokes the session RLS needs to allow
+      // this write. Not fatal if it fails (offline, etc.) — the ownership
+      // trigger (household_members_push_token_single_owner) still reassigns
+      // the token safely the next time any user registers it.
+      signingOutUserId
+        ? supabase
+            .from('household_members')
+            .update({ push_token: null })
+            .eq('user_id', signingOutUserId)
+            .then(() => {}, () => {})
+        : Promise.resolve(),
     ]);
     stopSyncEngine();
     // Delete our backup so the user is truly signed out on next cold start.
