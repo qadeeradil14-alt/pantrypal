@@ -139,8 +139,6 @@
         "expo-channel-name": "production"
       }
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    }
+    "runtimeVersion": "stokit-v2-1.0.0"
   }
 }
