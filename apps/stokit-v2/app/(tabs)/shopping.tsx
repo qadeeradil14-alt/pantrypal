@@ -643,6 +643,15 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
   const items = useDurableStore((s) => s.items);
   const isSharedHousehold = members.length > 1;
 
+  // Quantity stepper must never stay expanded across a navigation away from
+  // (or back to) this screen — reset on both focus and blur/unmount.
+  useFocusEffect(
+    useCallback(() => {
+      setQuantityStepperId(null);
+      return () => setQuantityStepperId(null);
+    }, [])
+  );
+
   useEffect(() => {
     const entryIds = new Set(session.entries.map((entry) => entry.itemId));
     const removedItemIds = new Set(session.removedItemIds);
@@ -735,7 +744,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
         </View>
       </View>
 
-      {entries.length > 0 ? <Card style={styles.shoppingListCard}>
+      {entries.length > 0 ? <Pressable onPress={() => setQuantityStepperId(null)}><Card style={styles.shoppingListCard}>
         {entries.map((e, idx) => (
           <View key={e.itemId}>
                 {idx > 0 && <View style={styles.rowDivider} />}
@@ -754,6 +763,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                 <Pressable
                   style={({ pressed }) => [styles.pickRow, e.picked && styles.pickRowDone, e.outOfStock && { opacity: 0.5 }, pressed && { opacity: 0.72 }]}
                   onPress={() => {
+                    if (quantityStepperId) setQuantityStepperId(null);
                     if (e.outOfStock) return;
                     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     // No LayoutAnimation here: on Fabric it can tick over a
@@ -847,8 +857,8 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                 </Swipeable>
           </View>
         ))}
-      </Card> : null}
-      
+      </Card></Pressable> : null}
+
       {entries.length === 0 && (
          <Card style={styles.activeEmptyCard}>
             <View style={styles.activeEmptyIcon}>

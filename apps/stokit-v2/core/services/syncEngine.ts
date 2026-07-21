@@ -306,10 +306,21 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
     // missing — this recovers items added on another device whose snapshot lost
     // the wall-clock timestamp race (clock skew). Our own updatedAt is preserved
     // so folding does not itself churn the watermark.
-    if (!isSelfEcho(remoteUpdatedAt) && (Array.isArray(remote.items) || Array.isArray(remote.deletedItems))) {
+    // Also fold the active session through the same gated, per-entry merge used
+    // on the apply path (gateRemoteActiveSession/mergeShoppingEntries) — without
+    // this, a stale watermark permanently skips reconciling the active trip even
+    // though the item fold above already recovers regular pantry edits. Guarded
+    // by hasActiveSession so an old snapshot that pre-dates this field can never
+    // be mistaken for "no session" and clear an in-progress local trip.
+    if (!isSelfEcho(remoteUpdatedAt) && (Array.isArray(remote.items) || Array.isArray(remote.deletedItems) || hasActiveSession)) {
       store.getState().applyRemotePatch({
         items: remote.items,
         deletedItems: remote.deletedItems,
+        ...(hasActiveSession ? {
+          activeSession: remote.activeSession
+            ? reconcileShoppingSession(remote.activeSession, remote.items)
+            : null,
+        } : {}),
         updatedAt: store.getState().updatedAt,
       });
     }
@@ -344,12 +355,14 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
   const stillFreshInstallHydration = isFreshInstallState(current) && hasSharedSnapshotContent(remote);
   if (!forceServerHydration && !stillFreshInstallHydration && !shouldApplyRemoteSnapshot(remoteUpdatedAt, current.updatedAt)) {
     if (__DEV__) console.log(`[Shopping Sync] active_session_reconcile_skipped reason=${remoteSkipReason(remoteUpdatedAt, store.getState().updatedAt)} version/updatedAt=${remoteUpdatedAt} phase=post_sign`);
-    // Non-destructive item/tombstone fold even when the whole-snapshot watermark
-    // rejects — same rationale as the pre-sign skip above.
-    if (!isSelfEcho(remoteUpdatedAt) && (Array.isArray(reconciledRemote.items) || Array.isArray(reconciledRemote.deletedItems))) {
+    // Non-destructive item/tombstone/active-session fold even when the
+    // whole-snapshot watermark rejects — same rationale as the pre-sign skip
+    // above.
+    if (!isSelfEcho(remoteUpdatedAt) && (Array.isArray(reconciledRemote.items) || Array.isArray(reconciledRemote.deletedItems) || hasActiveSession)) {
       store.getState().applyRemotePatch({
         items: reconciledRemote.items,
         deletedItems: reconciledRemote.deletedItems,
+        ...(hasActiveSession ? { activeSession: reconciledRemote.activeSession } : {}),
         updatedAt: store.getState().updatedAt,
       });
     }
