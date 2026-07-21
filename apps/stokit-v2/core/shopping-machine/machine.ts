@@ -133,7 +133,9 @@ export function entriesForStore(
   session: ShoppingSession,
   storeId: string,
 ): ShoppingEntry[] {
-  return session.entries.filter((e) => e.storeId === storeId);
+  return session.entries
+    .filter((e) => e.storeId === storeId)
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export function currentStoreId(session: ShoppingSession): string | null {

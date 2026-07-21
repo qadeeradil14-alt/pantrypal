@@ -75,12 +75,16 @@ export default function PantryScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const storeById = (id: string | null) => id ? stores.find((store) => store.id === id) : undefined;
   const listItems = useMemo(
-    () => items.filter((item) => item.status === 'low' || item.status === 'expiring'),
+    () => items
+      .filter((item) => item.status === 'low' || item.status === 'expiring')
+      .sort((a, b) => a.name.localeCompare(b.name)),
     [items],
   );
 
   const atHomeItems = useMemo(
-    () => items.filter((item) => item.status === 'stocked'),
+    () => items
+      .filter((item) => item.status === 'stocked')
+      .sort((a, b) => a.name.localeCompare(b.name)),
     [items],
   );
 

@@ -162,6 +162,7 @@ export default function ShoppingScreen() {
       list.push({ itemId: it.id, name: it.name, quantity: it.quantity, unit: it.unit, storeId: it.storeId!, picked: false });
       byStore.set(it.storeId!, list);
     }
+    byStore.forEach((list) => list.sort((a, b) => a.name.localeCompare(b.name)));
     return byStore;
   }, [items]);
 
