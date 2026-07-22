@@ -902,7 +902,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
             }}>
               {notifyState === 'sending'   ? 'Notifying family…'
              : notifyState === 'sent'      ? 'Family notified'
-             : notifyState === 'no_tokens' ? 'Notifications off — check partner settings'
+             : notifyState === 'no_tokens' ? 'Notifications off — members must sign in first'
              : notifyState === 'error'     ? "Couldn't notify family. Try again."
              :                               'Notify family'}
             </Text>
