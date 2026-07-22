@@ -19,7 +19,10 @@ import {
 } from '../core/shopping-machine';
 import { useDurableStore } from './durable-store';
 import type { SharedShoppingSession, ShoppingEntry } from '../types';
-import { remoteShoppingSessionAction } from '../core/services/shoppingSessionSyncPolicy';
+import {
+  isCompletedShoppingSession,
+  remoteShoppingSessionAction,
+} from '../core/services/shoppingSessionSyncPolicy';
 import { mergeShoppingEntries } from '../core/services/shoppingEntrySync';
 
 const SESSION_KEY = 'stokit:v2:active-session';
@@ -63,7 +66,18 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         const saved = JSON.parse(raw) as ShoppingSession;
         // Only restore active sessions — never restore trip_summary (it was committed)
         if (saved.status !== 'idle' && saved.status !== 'trip_summary') {
-          const durableSession = useDurableStore.getState().activeSession;
+          const durable = useDurableStore.getState();
+          const durableSession = isCompletedShoppingSession(durable.activeSession, durable.trips)
+            ? null
+            : durable.activeSession;
+          if (durable.activeSession && !durableSession) {
+            durable.setActiveSession(null, 'REJECT_COMPLETED_SESSION');
+          }
+          if (isCompletedShoppingSession(saved, durable.trips)) {
+            await AsyncStorage.removeItem(SESSION_KEY);
+            set({ session: durableSession ? durableSession as ShoppingSession : initialSession, hydrated: true });
+            return;
+          }
           // Same ongoing trip on both sides (identical startedAt) — merge
           // per-entry instead of blindly trusting this device's own possibly
           // stale AsyncStorage copy, so quantities/picks changed on another
@@ -117,8 +131,13 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
   applyRemoteSession: (remoteSession) => {
     const previous = get().session;
+    const durable = useDurableStore.getState();
 
-    if (!remoteSession || remoteShoppingSessionAction(remoteSession) === 'clear') {
+    if (
+      !remoteSession ||
+      remoteShoppingSessionAction(remoteSession) === 'clear' ||
+      isCompletedShoppingSession(remoteSession, durable.trips)
+    ) {
       set({ session: initialSession });
       AsyncStorage.removeItem(SESSION_KEY).catch(() => {});
       return;

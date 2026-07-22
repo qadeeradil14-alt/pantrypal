@@ -107,7 +107,7 @@ test('remote active session is reconciled into local shopping session', () => {
   const sessionPath = path.join(__dirname, '../store/session-store.ts');
   const durableSrc = fs.readFileSync(durablePath, 'utf-8');
   const sessionSrc = fs.readFileSync(sessionPath, 'utf-8');
-  assert.ok(durableSrc.includes('applyRemoteSession(remoteSession)'), 'remote snapshot must update session store');
+  assert.ok(durableSrc.includes('applyRemoteSession(gatedActiveSession ?? null)'), 'only the gated remote snapshot may update session store');
   assert.ok(sessionSrc.includes('applyRemoteSession'), 'session store must expose remote reconciliation');
   assert.ok(sessionSrc.includes('AsyncStorage.removeItem(SESSION_KEY)'), 'remote trip end must clear persisted active session');
   assert.ok(sessionSrc.includes('mergeShoppingEntries(previous.entries, remoteSession.entries, removedItemIds)'), 'concurrent same-trip sessions must reconcile via entry merge, not blind overwrite');
@@ -140,6 +140,14 @@ test('stale AsyncStorage cannot override newer remote active session', () => {
   const sessionSrc = fs.readFileSync(sessionPath, 'utf-8');
   assert.ok(sessionSrc.includes('durableSession && (durableSession.startedAt ?? 0) > (saved.startedAt ?? 0)'), 'hydrate must prefer newer remote activeSession over stale storage');
   assert.ok(sessionSrc.includes('active_session_storage_rehydrate_ignored reason=remote_newer'), 'ignored stale storage must be logged');
+});
+
+test('session hydration waits for durable completed-trip history', () => {
+  const layoutPath = path.join(__dirname, '../app/_layout.tsx');
+  const layoutSrc = fs.readFileSync(layoutPath, 'utf-8');
+  assert.ok(layoutSrc.includes('await hydrateDurable();'), 'durable trip history must hydrate first');
+  assert.ok(layoutSrc.includes('await hydrateSession();'), 'session hydration must run after durable state');
+  assert.ok(layoutSrc.includes('hydratedSession'), 'navigation must wait for session validation');
 });
 
 test('missed realtime event is corrected by foreground snapshot pull', () => {

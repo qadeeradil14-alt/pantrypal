@@ -1,4 +1,5 @@
-type RemoteShoppingSession = { status: string } | null;
+type RemoteShoppingSession = { status: string; tripId?: string | null } | null;
+type CompletedTrip = { id: string };
 
 export function remoteShoppingSessionAction(
   remoteSession: RemoteShoppingSession,
@@ -6,4 +7,11 @@ export function remoteShoppingSessionAction(
   return !remoteSession || remoteSession.status === 'idle' || remoteSession.status === 'trip_summary'
     ? 'clear'
     : 'apply';
+}
+
+export function isCompletedShoppingSession(
+  session: RemoteShoppingSession,
+  completedTrips: CompletedTrip[],
+): boolean {
+  return Boolean(session?.tripId && completedTrips.some((trip) => trip.id === session.tripId));
 }

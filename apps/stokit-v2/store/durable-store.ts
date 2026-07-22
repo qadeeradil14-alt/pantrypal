@@ -22,8 +22,15 @@ import type {
   Trip,
   Unit,
 } from '../types';
-import { shoppingEntryEventForItem, mergeShoppingEntries } from '../core/services/shoppingEntrySync';
-import { remoteShoppingSessionAction } from '../core/services/shoppingSessionSyncPolicy';
+import {
+  shoppingEntryEventForItem,
+  mergeShoppingEntries,
+  reconcileShoppingSession,
+} from '../core/services/shoppingEntrySync';
+import {
+  isCompletedShoppingSession,
+  remoteShoppingSessionAction,
+} from '../core/services/shoppingSessionSyncPolicy';
 import { hasValidStoreCoordinates } from '../core/services/storeCoordinates';
 export type { StorageLocation as StorageLocationImport };
 import { uid, now } from '../core/services/id';
@@ -122,31 +129,39 @@ interface DurableStore extends DurableState {
 function gateRemoteActiveSession(
   previous: SharedShoppingSession | null,
   remoteSession: SharedShoppingSession | null,
+  completedTrips: Trip[],
+  mergedItems: PantryItem[],
 ): SharedShoppingSession | null {
-  if (!remoteSession || remoteShoppingSessionAction(remoteSession) === 'clear') {
+  if (
+    !remoteSession ||
+    remoteShoppingSessionAction(remoteSession) === 'clear' ||
+    isCompletedShoppingSession(remoteSession, completedTrips)
+  ) {
     return null;
   }
 
+  const reconciledRemote = reconcileShoppingSession(remoteSession, mergedItems);
+
   if (
     previous?.status === 'shopping_store' &&
-    remoteSession.status === 'shopping_store' &&
-    previous.tripId === remoteSession.tripId
+    reconciledRemote.status === 'shopping_store' &&
+    previous.tripId === reconciledRemote.tripId
   ) {
     const removedItemIds = Array.from(
-      new Set([...(previous.removedItemIds ?? []), ...(remoteSession.removedItemIds ?? [])]),
+      new Set([...(previous.removedItemIds ?? []), ...(reconciledRemote.removedItemIds ?? [])]),
     );
-    return {
+    return reconcileShoppingSession({
       ...previous,
       storeQueue: [
         ...previous.storeQueue,
-        ...remoteSession.storeQueue.filter((storeId) => !previous.storeQueue.includes(storeId)),
+        ...reconciledRemote.storeQueue.filter((storeId) => !previous.storeQueue.includes(storeId)),
       ],
-      entries: mergeShoppingEntries(previous.entries, remoteSession.entries, removedItemIds),
+      entries: mergeShoppingEntries(previous.entries, reconciledRemote.entries, removedItemIds),
       removedItemIds,
-    };
+    }, mergedItems);
   }
 
-  return remoteSession;
+  return reconciledRemote;
 }
 
 function snapshot(s: DurableState): DurableState {
@@ -535,9 +550,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     },
 
     applyRemotePatch: (patch) => {
-      const gatedActiveSession = 'activeSession' in patch
-        ? gateRemoteActiveSession(get().activeSession ?? null, patch.activeSession ?? null)
-        : undefined;
+      let gatedActiveSession: SharedShoppingSession | null | undefined;
       set((s) => {
         // Union delete tombstones first, then merge items per-item (union by id,
         // last-writer-wins by updatedAt, honoring tombstones) so an item added
@@ -547,6 +560,17 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         const mergedItems = patch.items
           ? consolidatePantryItems(mergePantryItems(s.items, patch.items, mergedTombstones))
           : s.items;
+        const completedTrips = Array.isArray(patch.trips)
+          ? [...s.trips, ...patch.trips]
+          : s.trips;
+        gatedActiveSession = 'activeSession' in patch
+          ? gateRemoteActiveSession(
+              s.activeSession ?? null,
+              patch.activeSession ?? null,
+              completedTrips,
+              mergedItems,
+            )
+          : undefined;
         return {
           ...s,
           ...patch,
@@ -565,9 +589,8 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         };
       });
       if ('activeSession' in patch) {
-        const remoteSession = patch.activeSession ?? null;
         void import('./session-store').then(({ useSessionStore }) => {
-          useSessionStore.getState().applyRemoteSession(remoteSession);
+          useSessionStore.getState().applyRemoteSession(gatedActiveSession ?? null);
         });
       }
       // Save to disk (AsyncStorage) so we have it offline, but do NOT call persist()

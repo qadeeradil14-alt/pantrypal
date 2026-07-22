@@ -15,13 +15,13 @@ const src = readFileSync(join(process.cwd(), 'store/durable-store.ts'), 'utf8');
 test('durable-store imports the same session-sync policy helpers as session-store', () => {
   assert.match(
     src,
-    /import \{ shoppingEntryEventForItem, mergeShoppingEntries \} from '\.\.\/core\/services\/shoppingEntrySync'/,
-    'must reuse mergeShoppingEntries rather than reimplementing entry merge',
+    /reconcileShoppingSession,/,
+    'must reconcile remote sessions against merged pantry items',
   );
   assert.match(
     src,
-    /import \{ remoteShoppingSessionAction \} from '\.\.\/core\/services\/shoppingSessionSyncPolicy'/,
-    'must reuse the shared clear/apply policy',
+    /isCompletedShoppingSession,/,
+    'must reuse the completed-trip rejection policy',
   );
 });
 
@@ -33,25 +33,31 @@ test('gateRemoteActiveSession rejects malformed remote clears', () => {
   );
   assert.match(
     src,
-    /if \(!remoteSession \|\| remoteShoppingSessionAction\(remoteSession\) === 'clear'\) \{\s*\n\s*return null;\s*\n\s*\}/,
+    /remoteShoppingSessionAction\(remoteSession\) === 'clear' \|\|\s*\n\s*isCompletedShoppingSession\(remoteSession, completedTrips\)/,
     'malformed/null remote session must resolve to a clean null, never pass through unvalidated',
   );
+});
+
+test('gateRemoteActiveSession rejects completed trips and validates entries against merged pantry state', () => {
+  assert.match(src, /isCompletedShoppingSession\(remoteSession, completedTrips\)/);
+  assert.match(src, /const reconciledRemote = reconcileShoppingSession\(remoteSession, mergedItems\)/);
+  assert.match(src, /return reconcileShoppingSession\(\{/);
 });
 
 test('gateRemoteActiveSession merges same-trip shopping_store sessions instead of overwriting', () => {
   assert.match(
     src,
-    /previous\?\.status === 'shopping_store' &&\s*\n\s*remoteSession\.status === 'shopping_store' &&\s*\n\s*previous\.tripId === remoteSession\.tripId/,
+    /previous\?\.status === 'shopping_store' &&\s*\n\s*reconciledRemote\.status === 'shopping_store' &&\s*\n\s*previous\.tripId === reconciledRemote\.tripId/,
     'same-trip in-progress sessions must be merged, not replaced',
   );
   assert.match(
     src,
-    /entries: mergeShoppingEntries\(previous\.entries, remoteSession\.entries, removedItemIds\)/,
+    /entries: mergeShoppingEntries\(previous\.entries, reconciledRemote\.entries, removedItemIds\)/,
     'entries must go through the shared merge helper so removedItemIds are respected',
   );
   assert.match(
     src,
-    /storeQueue: \[\s*\n\s*\.\.\.previous\.storeQueue,\s*\n\s*\.\.\.remoteSession\.storeQueue\.filter\(\(storeId\) => !previous\.storeQueue\.includes\(storeId\)\),\s*\n\s*\],/,
+    /storeQueue: \[\s*\n\s*\.\.\.previous\.storeQueue,\s*\n\s*\.\.\.reconciledRemote\.storeQueue\.filter\(\(storeId\) => !previous\.storeQueue\.includes\(storeId\)\),\s*\n\s*\],/,
     'storeQueue must be unioned, not clobbered by the remote patch',
   );
 });
@@ -64,8 +70,8 @@ test('applyRemotePatch routes activeSession through the gate instead of writing 
   );
   assert.match(
     src,
-    /const gatedActiveSession = 'activeSession' in patch\s*\n\s*\? gateRemoteActiveSession\(get\(\)\.activeSession \?\? null, patch\.activeSession \?\? null\)\s*\n\s*: undefined;/,
-    'gated value must be computed from current state before the set() call',
+    /gatedActiveSession = 'activeSession' in patch\s*\n\s*\? gateRemoteActiveSession\(/,
+    'gated value must be computed from merged state inside set()',
   );
   assert.match(
     src,
