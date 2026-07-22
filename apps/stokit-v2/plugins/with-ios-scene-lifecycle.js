@@ -41,14 +41,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
       launchOptions: nil)
 
     if let urlContext = connectionOptions.urlContexts.first {
-      RCTLinkingManager.application(
+      _ = appDelegate?.application(
         UIApplication.shared,
         open: urlContext.url,
         options: [:])
     }
 
     if let userActivity = connectionOptions.userActivities.first {
-      RCTLinkingManager.application(
+      _ = appDelegate?.application(
         UIApplication.shared,
         continue: userActivity,
         restorationHandler: { _ in })
@@ -60,14 +60,16 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
       return
     }
 
-    RCTLinkingManager.application(
+    let appDelegate = UIApplication.shared.delegate as? AppDelegate
+    _ = appDelegate?.application(
       UIApplication.shared,
       open: url,
       options: [:])
   }
 
   func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
-    RCTLinkingManager.application(
+    let appDelegate = UIApplication.shared.delegate as? AppDelegate
+    _ = appDelegate?.application(
       UIApplication.shared,
       continue: userActivity,
       restorationHandler: { _ in })

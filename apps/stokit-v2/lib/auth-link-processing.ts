@@ -37,6 +37,13 @@ export function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback:
 export function getAuthCallbackPresentation(
   result: AuthLinkResult<unknown>,
 ): AuthCallbackPresentation {
+  if (result.status === 'ignored') {
+    return {
+      statusText: 'Email confirmation could not be completed.',
+      signInMessage: 'The confirmation link was incomplete. Open the full link from your email or request a new one.',
+    };
+  }
+
   if (result.status === 'error') {
     return {
       statusText: `Email confirmation failed. ${result.message}`,

@@ -76,10 +76,10 @@ test('times out a callback that never completes', async () => {
   });
 });
 
-test('shows a sign-in success message for callbacks without session parameters', () => {
+test('shows an error message for callbacks without session parameters', () => {
   assert.deepEqual(getAuthCallbackPresentation({ status: 'ignored' }), {
-    statusText: 'Email confirmed. Please sign in.',
-    signInMessage: 'Email confirmed. Please sign in.',
+    statusText: 'Email confirmation could not be completed.',
+    signInMessage: 'The confirmation link was incomplete. Open the full link from your email or request a new one.',
   });
 });
 
