@@ -425,11 +425,6 @@ export default function ShoppingScreen() {
 
           {unassigned.length > 0 ? (
             <Card style={styles.planStoreCard}>
-              <PlanStoreHeader
-                store={{ id: UNASSIGNED_STORE_ID, name: 'Choose store', logoEmoji: '🛒', logoColor: colors.primary, createdAt: 0, updatedAt: 0 }}
-                count={unassigned.length}
-                styles={styles}
-              />
               <View>
                 <Pressable
                   onPress={() => setBulkAssignStorePicker(true)}
