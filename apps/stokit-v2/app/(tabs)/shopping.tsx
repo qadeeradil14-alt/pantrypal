@@ -91,14 +91,10 @@ export default function ShoppingScreen() {
   const router     = useRouter();
   const [reassignItem, setReassignItem] = useState<PantryItem | null>(null);
 
-  const { action, arrivalStoreId, partnerStoreId, partnerStoreName } = useLocalSearchParams<{ action?: string; arrivalStoreId?: string; partnerStoreId?: string; partnerStoreName?: string }>();
+  const { action, arrivalStoreId } = useLocalSearchParams<{ action?: string; arrivalStoreId?: string }>();
   const arrivalHandledRef = useRef(false);
-  const partnerHandledRef = useRef(false);
   const [quickScanStorePicker, setQuickScanStorePicker] = useState(false);
   const [bulkAssignStorePicker, setBulkAssignStorePicker] = useState(false);
-  const [partnerAddStoreId, setPartnerAddStoreId] = useState<string | null>(null);
-  const [partnerAddStoreName, setPartnerAddStoreName] = useState<string | null>(null);
-  const [partnerAddSheetVisible, setPartnerAddSheetVisible] = useState(false);
   // Holds the storeId we want to skip to receipt once START_TRIP settles
   const [pendingQuickScanStore, setPendingQuickScanStore] = useState<string | null>(null);
   const [showStoreChooser, setShowStoreChooser] = useState(false);
@@ -251,14 +247,6 @@ export default function ShoppingScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [arrivalStoreId, session.status]);
 
-  useEffect(() => {
-    if (!partnerStoreId || partnerHandledRef.current) return;
-    partnerHandledRef.current = true;
-    setPartnerAddStoreId(partnerStoreId);
-    setPartnerAddStoreName(typeof partnerStoreName === 'string' && partnerStoreName.length > 0 ? partnerStoreName : null);
-    router.setParams({ partnerStoreId: undefined, partnerStoreName: undefined });
-  }, [partnerStoreId, partnerStoreName, router]);
-
   // Skip the per-store "Stop completed / Head to X" screen and go directly to the
   // "Where next?" chooser. Only auto-advance when there are still pending stores
   // so the final-stop summary ("All stops completed!") still renders normally.
@@ -374,19 +362,6 @@ export default function ShoppingScreen() {
     );
   }
   const shoppableCount = totalItems + unassignedCount;
-  const partnerStore = partnerAddStoreId ? storeById(partnerAddStoreId) : undefined;
-  const partnerStoreLabel = partnerStore?.name ?? partnerAddStoreName ?? 'this store';
-  const partnerContext = partnerAddStoreId ? (
-    <Card style={styles.partnerContextCard}>
-      <StoreChip store={partnerStore} name={partnerStore?.name ?? partnerAddStoreName ?? 'Store'} size={40} />
-      <View style={{ flex: 1 }}>
-        <Text style={styles.partnerContextTitle}>Add something for {partnerStoreLabel}</Text>
-        <Text style={styles.partnerContextText}>It will go straight onto the shared shopping list.</Text>
-      </View>
-      <Button label="Add item" onPress={() => setPartnerAddSheetVisible(true)} />
-    </Card>
-  ) : null;
-
   return (
     <Screen>
       <PageTitle eyebrow="Plan your trip" title="Shopping" />
@@ -402,7 +377,6 @@ export default function ShoppingScreen() {
         </>
       ) : (
         <>
-          {partnerContext}
           <Card style={styles.summaryCard}>
             <View style={styles.summaryHeader}>
               <View>
@@ -551,16 +525,6 @@ export default function ShoppingScreen() {
         }}
         title="Shop at one store"
         subtitle={`Choose a store for ${unassigned.length} item${unassigned.length === 1 ? '' : 's'}`}
-      />
-
-      <AddItemSheet
-        visible={partnerAddSheetVisible}
-        onClose={() => setPartnerAddSheetVisible(false)}
-        defaultStatus="low"
-        defaultStoreId={partnerAddStoreId}
-        hideStorePicker={true}
-        title={`Add to ${partnerStoreLabel}`}
-        subtitle="Add items your household should pick up here."
       />
 
       {/* Tap any item row to change its store */}
@@ -2112,9 +2076,6 @@ function makeStyles(colors: AppColors) {
     priceMemoryIcon: { width: 30, height: 30, borderRadius: 15, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
     priceMemoryTitle: { fontFamily: fonts.sansSemibold, fontSize: 13, color: colors.ink },
     priceMemoryBody: { fontFamily: fonts.sans, fontSize: 12, lineHeight: 16, color: colors.muted, marginTop: 1 },
-    partnerContextCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.lg, borderColor: colors.primary + '55' },
-    partnerContextTitle: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
-    partnerContextText: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, lineHeight: 18, marginTop: 2 },
     summaryBig:   { fontFamily: fonts.monoMedium, fontSize: 27, color: colors.ink, lineHeight: 34, fontVariant: ['tabular-nums'] },
     summarySub:   { fontFamily: fonts.sansMedium, fontSize: 11, color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.6 },
     firstDestination: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.lg, padding: spacing.md, borderRadius: radii.md, backgroundColor: colors.primarySoft },

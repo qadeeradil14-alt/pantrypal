@@ -176,14 +176,12 @@ export default function RootLayout() {
           const title = response?.notification?.request?.content?.title ?? 'unknown';
           void appendNotificationLog('tapped', `title="${title}" type=${data.type ?? 'unknown'}`);
           // Geofence opens the current shopper into that store. Partner alerts
-          // open a read-only Walmart/Target/etc context so the recipient can
-          // add an item directly to that shared store list.
+          // open the normal Shopping screen without a store-specific prompt.
           if (data.type === 'store_arrival' && typeof data.storeId === 'string') {
             if (pathname !== '/(tabs)/shopping') router.push({ pathname: '/(tabs)/shopping', params: { arrivalStoreId: data.storeId } });
             else router.setParams({ arrivalStoreId: data.storeId });
-          } else if (data.type === 'partner_arrival' && typeof data.storeId === 'string') {
-            if (pathname !== '/(tabs)/shopping') router.push({ pathname: '/(tabs)/shopping', params: { partnerStoreId: data.storeId, partnerStoreName: data.storeName ?? '' } });
-            else router.setParams({ partnerStoreId: data.storeId, partnerStoreName: data.storeName ?? '' });
+          } else if (data.type === 'partner_arrival') {
+            if (pathname !== '/(tabs)/shopping') router.push('/(tabs)/shopping');
           } else if (pathname !== '/(tabs)/shopping') {
             router.push('/(tabs)/shopping');
           }
