@@ -82,6 +82,12 @@ export interface PriceEntry {
 
 export type ReceiptStatus = 'logged' | 'photo_pending' | 'skipped';
 
+export interface ReceiptLineItem {
+  name: string;
+  quantity: number;
+  price: number | null;
+}
+
 export interface Receipt {
   id: string;
   tripId: string;
@@ -90,6 +96,7 @@ export interface Receipt {
   status: ReceiptStatus;
   imageUri?: string | null;
   imagePath?: string | null;
+  items?: ReceiptLineItem[];
   createdAt: number;
 }
 

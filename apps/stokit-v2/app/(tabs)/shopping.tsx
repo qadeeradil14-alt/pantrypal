@@ -56,7 +56,7 @@ import { sendShoppingAlertOnce } from '../../core/services/shoppingAlertOnce';
 import { resetShoppingTripStartGuard, startShoppingTripOnce } from '../../core/services/shoppingTripStart';
 import { pullFromSupabase } from '../../core/services/syncEngine';
 import type { ReceiptReviewItem } from '../../core/services/shoppingUx';
-import type { PantryItem, ShoppingEntry, Store } from '../../types';
+import type { PantryItem, ReceiptLineItem, ShoppingEntry, Store } from '../../types';
 import { useTheme } from '../../hooks/useTheme';
 import { UNASSIGNED_STORE_ID, UNASSIGNED_STORE_NAME } from '../../constants/shopping';
 
@@ -1108,9 +1108,9 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
 
   const skip = () => dispatch({ type: 'SKIP_RECEIPT', now: Date.now() });
 
-  const continueAfterScan = () => {
+  const continueAfterScan = (items?: ReceiptLineItem[]) => {
     setScanResult(null);
-    dispatch(receiptContinuationEvent(parsed, imageUri, Date.now()));
+    dispatch(receiptContinuationEvent(parsed, imageUri, Date.now(), items));
   };
 
   const skipScanItems = () => continueAfterScan();
@@ -1136,7 +1136,11 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
       }
     });
     Alert.alert('Added to pantry', `${items.length} item${items.length === 1 ? '' : 's'} added.`);
-    continueAfterScan();
+    continueAfterScan(items.map((item: any) => ({
+      name: item.name,
+      quantity: typeof item.quantity === 'number' && item.quantity > 0 ? item.quantity : 1,
+      price: typeof item.price === 'number' && item.price > 0 ? item.price : null,
+    })));
   };
 
   const pickImage = async (source: 'camera' | 'library') => {
@@ -1195,8 +1199,8 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
       return;
     }
 
-    // Determine MIME type from the asset
-    const mimeType = asset.mimeType ?? (asset.uri.toLowerCase().includes('.png') ? 'image/png' : 'image/jpeg');
+    // Expo ImagePicker returns base64 as JPEG data even for Photo Library picks.
+    const mimeType = 'image/jpeg';
 
     setSaving(true);
     setScanStatus('Extracting items and prices…');

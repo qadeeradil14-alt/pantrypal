@@ -1,12 +1,21 @@
+import type { ReceiptLineItem } from '../../types';
 import type { ShoppingEvent } from '../shopping-machine';
 
 export function receiptContinuationEvent(
   amount: number,
   imageUri: string | null,
   now: number,
+  items?: ReceiptLineItem[],
 ): ShoppingEvent {
   if (amount <= 0) return { type: 'SKIP_RECEIPT', now };
-  return { type: 'SAVE_RECEIPT', amount, status: 'logged', imageUri, now };
+  return {
+    type: 'SAVE_RECEIPT',
+    amount,
+    status: 'logged',
+    imageUri,
+    ...(items?.length ? { items } : {}),
+    now,
+  };
 }
 
 export function unplannedStores<T extends { id: string }>(stores: T[], storeQueue: string[]): T[] {

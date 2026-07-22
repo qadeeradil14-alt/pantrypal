@@ -14,6 +14,22 @@ test('receipt scan continuation saves a positive total with its image', () => {
   });
 });
 
+test('receipt scan continuation persists confirmed line prices for history', () => {
+  assert.deepEqual(
+    receiptContinuationEvent(25.85, 'file://receipt.jpg', 123, [
+      { name: 'Whole Milk', quantity: 1, price: 3.49 },
+    ]),
+    {
+      type: 'SAVE_RECEIPT',
+      amount: 25.85,
+      status: 'logged',
+      imageUri: 'file://receipt.jpg',
+      items: [{ name: 'Whole Milk', quantity: 1, price: 3.49 }],
+      now: 123,
+    },
+  );
+});
+
 test('receipt scan continuation safely skips when no total was extracted', () => {
   assert.deepEqual(receiptContinuationEvent(0, 'file://receipt.jpg', 123), {
     type: 'SKIP_RECEIPT',
@@ -46,6 +62,11 @@ test('shopping UI exposes receipt review and new-store actions', () => {
   assert.match(source, /label="Skip for now"/);
   assert.match(source, /label="Add a new store"/);
   assert.match(source, /<AddStoreContent/);
+  assert.match(source, /const mimeType = 'image\/jpeg';/);
+  assert.doesNotMatch(source, /const mimeType = asset\.mimeType/);
+  const historySource = readFileSync(join(process.cwd(), 'components/receipts/TripDetailSheet.tsx'), 'utf8');
+  assert.match(historySource, /receipt\?\.items/);
+  assert.match(historySource, /savedReceiptItems\.length > 0/);
 });
 
 test('receipt review keeps the receipt action simple with the printed total', () => {

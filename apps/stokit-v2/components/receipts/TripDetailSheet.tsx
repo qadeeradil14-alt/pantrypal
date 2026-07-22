@@ -109,7 +109,14 @@ export function TripDetailSheet({
         const store = storeById(b.storeId);
         const receipt = b.receiptId ? receipts.find((r) => r.id === b.receiptId) : null;
         const canAddPhoto = !b.skipped && receipt && receipt.status === 'skipped';
-        const storeItems = itemsByStore.get(b.storeId) ?? [];
+        const savedReceiptItems = receipt?.items
+          ?.map((item, index) => ({
+            id: `${receipt.id}:${index}`,
+            itemName: item.name,
+            price: item.price ?? 0,
+          }))
+          .filter((item) => item.itemName.trim().length > 0) ?? [];
+        const storeItems = savedReceiptItems.length > 0 ? savedReceiptItems : itemsByStore.get(b.storeId) ?? [];
         const expanded = expandedStores[b.storeId] ?? false;
         const visibleItems = expanded ? storeItems : storeItems.slice(0, ITEMS_PREVIEW_LIMIT);
         const hiddenCount = storeItems.length - visibleItems.length;

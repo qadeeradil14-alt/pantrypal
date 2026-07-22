@@ -126,6 +126,20 @@ test('skipping a receipt advances exactly like saving (never blocks)', () => {
   assert.equal(s.completedTrip!.totalSpent, 20);
 });
 
+test('SAVE_RECEIPT retains confirmed scanned line prices in the durable receipt payload', () => {
+  let s = startTrip();
+  s = reduce(s, { type: 'FINISH_STORE', now: 2000 });
+  s = reduce(s, {
+    type: 'SAVE_RECEIPT',
+    amount: 25.85,
+    status: 'logged',
+    items: [{ name: 'Whole Milk', quantity: 1, price: 3.49 }],
+    now: 2100,
+  });
+
+  assert.deepEqual(s.receipts[0]?.items, [{ name: 'Whole Milk', quantity: 1, price: 3.49 }]);
+});
+
 test('receipt state is not cleared before trip summary', () => {
   let s = startTrip();
   s = reduce(s, { type: 'FINISH_STORE', now: 2000 });

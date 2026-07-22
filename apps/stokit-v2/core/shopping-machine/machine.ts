@@ -28,6 +28,7 @@
 
 import type {
   Receipt,
+  ReceiptLineItem,
   ReceiptStatus,
   ShoppingEntry,
   Trip,
@@ -86,6 +87,7 @@ export type ShoppingEvent =
       amount: number;
       status: Extract<ReceiptStatus, 'logged' | 'photo_pending'>;
       imageUri?: string | null;
+      items?: ReceiptLineItem[];
       now: number;
     }
   | { type: 'SKIP_RECEIPT'; now: number }
@@ -160,6 +162,7 @@ function makeReceipt(
   amount: number,
   status: ReceiptStatus,
   imageUri: string | null,
+  items: ReceiptLineItem[] | undefined,
   now: number,
 ): Receipt {
   return {
@@ -169,6 +172,7 @@ function makeReceipt(
     amount,
     status,
     imageUri,
+    items,
     createdAt: now,
   };
 }
@@ -337,7 +341,7 @@ export function reduce(
       const storeId = currentStoreId(session);
       if (!storeId) return session;
       const receipt = makeReceipt(
-        session, storeId, event.amount, event.status, event.imageUri ?? null, event.now,
+        session, storeId, event.amount, event.status, event.imageUri ?? null, event.items, event.now,
       );
       return afterReceipt(session, receipt);
     }
@@ -346,7 +350,7 @@ export function reduce(
       if (session.status !== 'receipt_prompt') return session;
       const storeId = currentStoreId(session);
       if (!storeId) return session;
-      const receipt = makeReceipt(session, storeId, 0, 'skipped', null, event.now);
+      const receipt = makeReceipt(session, storeId, 0, 'skipped', null, undefined, event.now);
       return afterReceipt(session, receipt);
     }
 
