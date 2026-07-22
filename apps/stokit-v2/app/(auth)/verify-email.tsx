@@ -28,6 +28,9 @@ export default function VerifyEmailScreen() {
     const result = await refreshUser();
     const refreshed = useAuthStore.getState().user;
     if (result.ok && isEmailVerified(refreshed)) {
+      setTone('success');
+      setMessage('Email confirmed! Signing you in…');
+      await new Promise((resolve) => setTimeout(resolve, 900));
       router.replace('/(tabs)');
       return;
     }

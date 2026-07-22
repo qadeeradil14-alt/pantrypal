@@ -27,6 +27,7 @@ export default function SignInScreen() {
   const [password, setPassword] = useState('');
   const successMessage = typeof params.message === 'string' ? params.message : '';
   const [error, setError] = useState('');
+  const [verifiedMessage, setVerifiedMessage] = useState('');
 
   // Verification may have completed on another device while this screen sat
   // in the background — re-check on focus so a stale cached user doesn't
@@ -51,7 +52,18 @@ export default function SignInScreen() {
     // Re-check current auth state right away — signIn() alone can carry a
     // just-stale email_confirmed_at claim if verification completed on
     // another device moments earlier.
+    const wasVerified = isEmailVerified(useAuthStore.getState().user);
     await refreshUser();
+    const nowVerified = isEmailVerified(useAuthStore.getState().user);
+    if (!wasVerified && nowVerified) {
+      // Verification just landed (confirmed on another device) — show the
+      // same green confirmation the email-link device gets, briefly, before
+      // handing off to the normal unlocked routing.
+      setVerifiedMessage('Email confirmed! Signing you in…');
+      await new Promise((resolve) => setTimeout(resolve, 900));
+      router.replace('/(tabs)');
+      return;
+    }
     // Let _layout.tsx handle the routing based on auth state change
   };
 
@@ -75,7 +87,7 @@ export default function SignInScreen() {
       <AuthHeading title="Welcome back" subtitle="Sign in to get back to your pantry." />
 
       <View style={styles.form}>
-        {successMessage ? <AuthMessage text={successMessage} tone="success" /> : null}
+        {verifiedMessage ? <AuthMessage text={verifiedMessage} tone="success" /> : successMessage ? <AuthMessage text={successMessage} tone="success" /> : null}
         <AuthMessage text={error} />
         <AuthField
           icon="mail-outline"
