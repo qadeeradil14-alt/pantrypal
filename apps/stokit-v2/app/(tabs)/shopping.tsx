@@ -894,8 +894,11 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
               }
             />
             <Text style={{
+              flexShrink: 1,
               fontFamily: fonts.sansSemibold,
-              fontSize: 14,
+              fontSize: 13,
+              lineHeight: 18,
+              textAlign: 'center',
               color: notifyState === 'sent'  ? colors.success
                    : notifyState === 'error' ? colors.danger
                    : colors.primary,

@@ -151,7 +151,12 @@ export function TripDetailSheet({
                   <Text style={styles.addPhotoText}>Add photo</Text>
                 </Pressable>
               ) : receipt?.imageUri ? (
-                <Ionicons name="image-outline" size={20} color={colors.success} />
+                <View style={styles.receiptAmount}>
+                  <Ionicons name="image-outline" size={20} color={colors.success} />
+                  <Text style={styles.storeAmount}>
+                    {b.amount > 0 ? `$${b.amount.toFixed(2)}` : '—'}
+                  </Text>
+                </View>
               ) : (
                 <Text style={styles.storeAmount}>
                   {b.amount > 0 ? `$${b.amount.toFixed(2)}` : '—'}
@@ -261,6 +266,7 @@ function makeStyles(colors: AppColors) {
     storeName: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
     storeMeta: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
     storeAmount: { fontFamily: fonts.monoMedium, fontSize: 16, color: colors.ink, fontVariant: ['tabular-nums'] },
+    receiptAmount: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
     addPhotoBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
     addPhotoText: { fontFamily: fonts.sansMedium, fontSize: 12, color: colors.primary },
     storeItemsList: {
