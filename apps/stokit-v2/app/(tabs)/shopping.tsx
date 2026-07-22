@@ -49,7 +49,7 @@ import { ROUTE_COLORS } from '../../core/services/storeBrands';
 import { classifyItem, categoryLabel } from '../../core/services/itemClassifier';
 import { cheapestRecentPrice, itemPriceHistory, lastPriceAtStore } from '../../core/services/priceHistory';
 import { normalizeItemName } from '../../core/services/pantryItems';
-import { receiptContinuationEvent, renameReviewItem, reviewReceiptItems, unplannedStores } from '../../core/services/shoppingUx';
+import { receiptContinuationEvent, receiptLineItemsFromScan, renameReviewItem, reviewReceiptItems, unplannedStores } from '../../core/services/shoppingUx';
 import { isGeofencingRunning, startGeofencing } from '../../core/services/geofencing';
 import { sendHouseholdShoppingAlert } from '../../core/services/notifications';
 import { sendShoppingAlertOnce } from '../../core/services/shoppingAlertOnce';
@@ -1108,9 +1108,13 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
 
   const skip = () => dispatch({ type: 'SKIP_RECEIPT', now: Date.now() });
 
+  const confirmedScanItems = () => receiptLineItemsFromScan(
+    reviewRows.filter((row) => row.selected).map((row) => row.item),
+  );
+
   const continueAfterScan = () => {
     setScanResult(null);
-    dispatch(receiptContinuationEvent(parsed, imageUri, Date.now()));
+    dispatch(receiptContinuationEvent(parsed, imageUri, Date.now(), confirmedScanItems()));
   };
 
   const skipScanItems = () => continueAfterScan();
@@ -1195,8 +1199,7 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
       return;
     }
 
-    // Determine MIME type from the asset
-    const mimeType = asset.mimeType ?? (asset.uri.toLowerCase().includes('.png') ? 'image/png' : 'image/jpeg');
+    const mimeType = 'image/jpeg';
 
     setSaving(true);
     setScanStatus('Extracting items and prices…');

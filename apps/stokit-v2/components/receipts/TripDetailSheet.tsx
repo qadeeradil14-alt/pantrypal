@@ -17,6 +17,7 @@ import { useTheme } from '../../hooks/useTheme';
 import { useDurableStore } from '../../store/durable-store';
 import type { Trip } from '../../types';
 import { UNASSIGNED_STORE_ID, UNASSIGNED_STORE_NAME } from '../../constants/shopping';
+import { storedReceiptItems } from '../../core/services/receiptHistory';
 
 const ITEMS_PREVIEW_LIMIT = 4;
 
@@ -109,7 +110,8 @@ export function TripDetailSheet({
         const store = storeById(b.storeId);
         const receipt = b.receiptId ? receipts.find((r) => r.id === b.receiptId) : null;
         const canAddPhoto = !b.skipped && receipt && receipt.status === 'skipped';
-        const storeItems = itemsByStore.get(b.storeId) ?? [];
+        const savedReceiptItems = storedReceiptItems(receipt);
+        const storeItems = savedReceiptItems.length > 0 ? savedReceiptItems : itemsByStore.get(b.storeId) ?? [];
         const expanded = expandedStores[b.storeId] ?? false;
         const visibleItems = expanded ? storeItems : storeItems.slice(0, ITEMS_PREVIEW_LIMIT);
         const hiddenCount = storeItems.length - visibleItems.length;

@@ -136,6 +136,19 @@ test('receipt state is not cleared before trip summary', () => {
   assert.equal(s.receipts.length, 1, 'receipt survives store advance');
 });
 
+test('SAVE_RECEIPT retains scan line prices for receipt history', () => {
+  let s = startTrip();
+  s = reduce(s, { type: 'FINISH_STORE', now: 2000 });
+  s = reduce(s, {
+    type: 'SAVE_RECEIPT',
+    amount: 7.97,
+    status: 'logged',
+    items: [{ name: 'Baby Wipes', quantity: 1, price: 7.97 }],
+    now: 2100,
+  });
+  assert.deepEqual(s.receipts[0].items, [{ name: 'Baby Wipes', quantity: 1, price: 7.97 }]);
+});
+
 test('END_TRIP returns clean session for second trip', () => {
   let s = startTrip();
   s = reduce(s, { type: 'FINISH_STORE', now: 2000 });

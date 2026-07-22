@@ -1,12 +1,38 @@
+import type { ReceiptLineItem } from '../../types';
 import type { ShoppingEvent } from '../shopping-machine';
 
 export function receiptContinuationEvent(
   amount: number,
   imageUri: string | null,
   now: number,
+  items?: ReceiptLineItem[],
 ): ShoppingEvent {
   if (amount <= 0) return { type: 'SKIP_RECEIPT', now };
-  return { type: 'SAVE_RECEIPT', amount, status: 'logged', imageUri, now };
+  return {
+    type: 'SAVE_RECEIPT',
+    amount,
+    status: 'logged',
+    imageUri,
+    ...(items?.length ? { items } : {}),
+    now,
+  };
+}
+
+export function receiptLineItemsFromScan(
+  items: Array<{ name?: unknown; quantity?: unknown; price?: unknown; unit_price?: unknown; total_price?: unknown }>,
+): ReceiptLineItem[] {
+  return items.flatMap((item) => {
+    const name = String(item.name ?? '').trim();
+    if (!name) return [];
+    const rawPrice = item.price ?? item.unit_price ?? item.total_price;
+    const price = typeof rawPrice === 'number' && Number.isFinite(rawPrice) && rawPrice > 0
+      ? rawPrice
+      : null;
+    const quantity = typeof item.quantity === 'number' && Number.isFinite(item.quantity) && item.quantity > 0
+      ? item.quantity
+      : 1;
+    return [{ name, quantity, price }];
+  });
 }
 
 export function unplannedStores<T extends { id: string }>(stores: T[], storeQueue: string[]): T[] {

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
-import { receiptContinuationEvent, renameReviewItem, reviewReceiptItems, unplannedStores } from '../core/services/shoppingUx';
+import { receiptContinuationEvent, receiptLineItemsFromScan, renameReviewItem, reviewReceiptItems, unplannedStores } from '../core/services/shoppingUx';
 
 test('receipt scan continuation saves a positive total with its image', () => {
   assert.deepEqual(receiptContinuationEvent(25.85, 'file://receipt.jpg', 123), {
@@ -17,6 +17,26 @@ test('receipt scan continuation saves a positive total with its image', () => {
 test('receipt scan continuation safely skips when no total was extracted', () => {
   assert.deepEqual(receiptContinuationEvent(0, 'file://receipt.jpg', 123), {
     type: 'SKIP_RECEIPT',
+    now: 123,
+  });
+});
+
+test('receipt scan continuation retains confirmed line items with their prices', () => {
+  const items = receiptLineItemsFromScan([
+    { name: '  Whole Milk ', quantity: 2, price: 3.49 },
+    { name: 'Bread', total_price: 2.69 },
+    { name: ' ', price: 9.99 },
+  ]);
+  assert.deepEqual(items, [
+    { name: 'Whole Milk', quantity: 2, price: 3.49 },
+    { name: 'Bread', quantity: 1, price: 2.69 },
+  ]);
+  assert.deepEqual(receiptContinuationEvent(9.67, 'file://receipt.jpg', 123, items), {
+    type: 'SAVE_RECEIPT',
+    amount: 9.67,
+    status: 'logged',
+    imageUri: 'file://receipt.jpg',
+    items,
     now: 123,
   });
 });
