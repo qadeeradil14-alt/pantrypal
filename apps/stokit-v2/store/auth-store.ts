@@ -9,7 +9,7 @@ import { useHouseholdStore } from './household-store';
 import { useSessionStore } from './session-store';
 import { stopSyncEngine } from '../core/services/syncEngine';
 import { clearReceiptImages } from '../core/services/receiptImages';
-import { isExistingAccountSignUpResponse } from '../core/services/authResponses';
+import { isExistingAccountSignUpResponse, isAccountDeletedError } from '../core/services/authResponses';
 
 type AuthResult =
   | { ok: true; next?: 'VERIFY_EMAIL' | 'SIGN_IN' }
@@ -84,6 +84,7 @@ interface AuthStore {
   verifyResetCode: (email: string, token: string, newPassword: string) => Promise<AuthResult>;
   resendVerificationEmail: (email: string) => Promise<AuthResult>;
   refreshUser: () => Promise<AuthResult>;
+  handleRemoteAccountDeletion: () => Promise<void>;
   clearConfirmationSession: () => Promise<void>;
   signOut: () => Promise<AuthResult>;
   deleteAccount: () => Promise<DeleteAccountResult>;
@@ -237,6 +238,13 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     set({ loading: true, authError: null });
     const { data, error } = await supabase.auth.getUser();
     if (error) {
+      if (isAccountDeletedError(error)) {
+        // The account was deleted from another device — GoTrue's /user
+        // lookup already reflects this even though our access token hasn't
+        // expired yet. Force the same local cleanup deleteAccount() does.
+        await get().handleRemoteAccountDeletion();
+        return { ok: false, message: 'This account was deleted on another device.' };
+      }
       const message = friendlyAuthError(error);
       set({ loading: false, authError: message });
       return { ok: false, message };
@@ -248,6 +256,28 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       loading: false,
     });
     return { ok: true };
+  },
+
+  handleRemoteAccountDeletion: async () => {
+    if (!get().user) return; // already signed out locally
+    _explicitSignOut = true;
+    await Promise.all([
+      useDurableStore.getState().resetLocalOnly(),
+      useHouseholdStore.getState().clearLocal(),
+      useSessionStore.getState().clearSession(),
+      clearReceiptImages().catch(() => {}),
+    ]);
+    stopSyncEngine();
+    AsyncStorage.removeItem(SESSION_BACKUP_KEY).catch(() => {});
+    AsyncStorage.removeItem('stokit:v2:guestMode').catch(() => {});
+    await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+    set({
+      session: null,
+      user: null,
+      loading: false,
+      guestMode: false,
+      authError: 'This account was deleted on another device.',
+    });
   },
 
   clearConfirmationSession: async () => {

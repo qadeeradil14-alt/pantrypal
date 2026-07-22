@@ -410,6 +410,16 @@ export async function startSyncEngine(): Promise<void> {
       },
       (payload) => {
         if (__DEV__) console.log(`[Shopping Sync] realtime_snapshot_event event=${payload.eventType} householdId=${id}`);
+        if (payload.eventType === 'DELETE') {
+          // The snapshot row disappearing usually means the owning account
+          // was deleted on another device (ON DELETE CASCADE from
+          // auth.users) — confirm via a live auth check instead of silently
+          // re-syncing (which would otherwise just re-push local state back
+          // up). Dynamic import avoids a store/store circular dependency.
+          void import('../../store/auth-store').then(({ useAuthStore }) => {
+            void useAuthStore.getState().refreshUser();
+          });
+        }
         realtimePullScheduler.schedule();
       },
     )

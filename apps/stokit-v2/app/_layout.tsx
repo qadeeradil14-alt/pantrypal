@@ -235,10 +235,14 @@ export default function RootLayout() {
     const sub = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
         void (async () => {
-          // Re-check verification status first — if the user confirmed their
-          // email on another device while this app was backgrounded, the
-          // cached `user` here still shows unconfirmed until refreshed.
-          if (!verified) await useAuthStore.getState().refreshUser();
+          // Re-check auth state first — if the user confirmed their email on
+          // another device while this app was backgrounded, the cached
+          // `user` here still shows unconfirmed until refreshed. Also always
+          // (not just when unverified) catches an account deleted on another
+          // device: refreshUser() force-signs-out locally when it detects
+          // that, so nothing below should run against a stale/gone account.
+          await useAuthStore.getState().refreshUser();
+          if (!useAuthStore.getState().user) return;
           await useHouseholdStore.getState().refresh();
           await pullFromSupabase();
           await registerPushToken(user.id);
@@ -246,7 +250,7 @@ export default function RootLayout() {
       }
     });
     return () => sub.remove();
-  }, [user, verified]);
+  }, [user]);
 
 
   useEffect(() => {
