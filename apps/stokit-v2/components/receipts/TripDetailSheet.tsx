@@ -228,7 +228,7 @@ function Stat({ value, label }: { value: string | number; label: string }) {
 function makeStyles(colors: AppColors) {
   return StyleSheet.create({
     totalBox: { alignItems: 'center', paddingBottom: spacing.lg },
-    totalValue: { fontFamily: fonts.mono, fontSize: 48, color: colors.primary, fontVariant: ['tabular-nums'] },
+    totalValue: { fontFamily: fonts.monoMedium, fontSize: 44, lineHeight: 56, minHeight: 56, color: colors.primary, fontVariant: ['tabular-nums'] },
     totalLabel: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.muted, marginTop: 2 },
     statRow: {
       flexDirection: 'row',

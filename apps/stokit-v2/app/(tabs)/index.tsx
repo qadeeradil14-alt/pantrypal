@@ -10,7 +10,7 @@ import {
   LayoutAnimation,
 } from 'react-native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -46,6 +46,7 @@ function getGreeting(): string {
 
 export default function PantryScreen() {
   const router = useRouter();
+  const { revealPantry } = useLocalSearchParams<{ revealPantry?: string }>();
   const { colors } = useTheme();
   const items = useDurableStore((state) => state.items);
   const stores = useDurableStore((state) => state.stores);
@@ -68,6 +69,16 @@ export default function PantryScreen() {
   const searchInputRef = useRef<TextInput>(null);
   const scrollRef = useRef<ScrollView>(null);
   const dashboardSectionY = useRef(0);
+
+  useEffect(() => {
+    if (revealPantry !== '1') return;
+    setShowMore(true);
+    setShowAtHome(true);
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ y: dashboardSectionY.current, animated: true });
+    });
+    router.setParams({ revealPantry: undefined });
+  }, [revealPantry, router]);
 
   const myName = members.find((m) => m.isMe)?.displayName ?? '';
   const firstName = (myName === 'Me' || myName === '') ? '' : myName.split(' ')[0];

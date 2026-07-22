@@ -981,6 +981,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
 
 function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubProps) {
   const { isDark } = useTheme();
+  const router = useRouter();
   const storeId   = currentStoreId(session)!;
   const store     = storeById(storeId);
   const [amount, setAmount] = useState('');
@@ -1101,8 +1102,18 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
         });
       }
     });
-    Alert.alert('Added to pantry', `${items.length} item${items.length === 1 ? '' : 's'} added.`);
     continueAfterScan();
+    Alert.alert(
+      'Added to pantry',
+      `${items.length} item${items.length === 1 ? '' : 's'} added and ready at home.`,
+      [
+        { text: 'Continue', style: 'cancel' },
+        {
+          text: 'View pantry',
+          onPress: () => router.push({ pathname: '/', params: { revealPantry: '1' } }),
+        },
+      ],
+    );
   };
 
   const pickImage = async (source: 'camera' | 'library') => {
@@ -1386,9 +1397,7 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
                 <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: dotColor }} />
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Pressable onPress={() => beginEditScanItem(i)} hitSlop={6} style={{ flexShrink: 1 }}>
-                      <Text style={{ fontFamily: fonts.sans, fontSize: 15, color: colors.ink }} numberOfLines={1}>{item.name}</Text>
-                    </Pressable>
+                    <Text style={{ flexShrink: 1, fontFamily: fonts.sans, fontSize: 15, color: colors.ink }} numberOfLines={1}>{item.name}</Text>
                     {row.needsReview && <Pill label="Unclear" tone="low" style={{ marginLeft: spacing.sm }} />}
                   </View>
                   {!compact && (
@@ -1397,6 +1406,15 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
                     </Text>
                   )}
                 </View>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Edit ${item.name}`}
+                  onPress={() => beginEditScanItem(i)}
+                  hitSlop={8}
+                  style={{ padding: 4 }}
+                >
+                  <Ionicons name="pencil-outline" size={17} color={colors.muted} />
+                </Pressable>
                 {item.price ? (
                   <Text style={{ fontFamily: fonts.mono, fontSize: 13, color: colors.muted }}>${item.price.toFixed(2)}</Text>
                 ) : null}

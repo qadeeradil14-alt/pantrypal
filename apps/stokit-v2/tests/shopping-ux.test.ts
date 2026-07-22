@@ -76,6 +76,32 @@ test('receipt review keeps the receipt action simple with the printed total', ()
   assert.doesNotMatch(source, /subtotal`/);
 });
 
+test('receipt review custom rows select with one row tap and use a separate edit control', () => {
+  const source = readFileSync(join(process.cwd(), 'app/(tabs)/shopping.tsx'), 'utf8');
+  assert.doesNotMatch(
+    source,
+    /<Pressable onPress=\{\(\) => beginEditScanItem\(i\)\} hitSlop=\{6\} style=\{\{ flexShrink: 1 \}\}>/,
+  );
+  assert.match(source, /accessibilityLabel=\{`Edit \$\{item\.name\}`\}/);
+});
+
+test('receipt import offers a direct path to the expanded pantry', () => {
+  const shoppingSource = readFileSync(join(process.cwd(), 'app/(tabs)/shopping.tsx'), 'utf8');
+  const pantrySource = readFileSync(join(process.cwd(), 'app/(tabs)/index.tsx'), 'utf8');
+  assert.match(shoppingSource, /text: 'View pantry'/);
+  assert.match(shoppingSource, /revealPantry: '1'/);
+  assert.match(pantrySource, /revealPantry/);
+  assert.match(pantrySource, /setShowMore\(true\)/);
+  assert.match(pantrySource, /setShowAtHome\(true\)/);
+});
+
+test('trip receipt total reserves a visible line for the amount', () => {
+  const source = readFileSync(join(process.cwd(), 'components/receipts/TripDetailSheet.tsx'), 'utf8');
+  assert.match(source, /totalValue: \{[^}]*fontFamily: fonts\.monoMedium/);
+  assert.match(source, /totalValue: \{[^}]*lineHeight: 56/);
+  assert.match(source, /totalValue: \{[^}]*minHeight: 56/);
+});
+
 test('post-add flow uses StorePickerSheet, not IndividualAssignSheet', () => {
   const indexSource = readFileSync(join(process.cwd(), 'app/(tabs)/index.tsx'), 'utf8');
   assert.doesNotMatch(indexSource, /IndividualAssignSheet/);
