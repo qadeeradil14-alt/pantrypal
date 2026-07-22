@@ -81,7 +81,10 @@ export function AddItemSheet({
     if (!visible) return;
     setIsCommitting(false);
     committingRef.current = false;
-  }, [visible]);
+    setBulkStoreId(defaultStoreId);
+  }, [defaultStoreId, visible]);
+
+  const activeStoreId = hideStorePicker ? defaultStoreId : bulkStoreId;
 
   const commitItems = (chosen: SelectedItem[]) => {
     if (!chosen.length || committingRef.current) return;
@@ -92,7 +95,7 @@ export function AddItemSheet({
       const existing = quickAdd
         ? items.find((item) => item.name.trim().toLowerCase() === catalog.name.trim().toLowerCase())
         : undefined;
-      const effectiveStoreId = storeId ?? bulkStoreId;
+      const effectiveStoreId = hideStorePicker ? defaultStoreId : storeId ?? bulkStoreId;
       const item = existing
         ? {
             ...existing,
@@ -148,7 +151,7 @@ export function AddItemSheet({
           quantity: 1,
           unit: catalogItem.defaultUnit ?? 'unit',
           status: defaultStatus,
-          storeId: bulkStoreId,
+          storeId: activeStoreId,
         },
       };
     });
@@ -185,7 +188,7 @@ export function AddItemSheet({
       quantity: draftQuantity,
       unit: custom.defaultUnit,
       status: defaultStatus,
-      storeId: bulkStoreId,
+      storeId: activeStoreId,
     }]);
   };
 
@@ -204,11 +207,11 @@ export function AddItemSheet({
       quantity: draftQuantity,
       unit: custom.defaultUnit,
       status: defaultStatus,
-      storeId: bulkStoreId,
+      storeId: activeStoreId,
     }]);
   };
 
-  const bulkStoreName = bulkStoreId ? stores.find((s) => s.id === bulkStoreId)?.name : null;
+  const bulkStoreName = activeStoreId ? stores.find((s) => s.id === activeStoreId)?.name : null;
   const itemWord = selectedItems.length === 1 ? 'item' : 'items';
   const submitLabel = selectedItems.length === 0
     ? bulkStoreName
