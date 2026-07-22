@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { fonts, spacing, type AppColors } from '../../theme';
 import { useTheme } from '../../hooks/useTheme';
-import { useAuthStore } from '../../store/auth-store';
+import { isEmailVerified, useAuthStore } from '../../store/auth-store';
 import {
   AuthScreen,
   BrandHeader,
@@ -20,12 +20,23 @@ export default function SignInScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ message?: string }>();
   const signIn = useAuthStore((s) => s.signIn);
+  const refreshUser = useAuthStore((s) => s.refreshUser);
   const resetPassword = useAuthStore((s) => s.resetPassword);
   const loading = useAuthStore((s) => s.loading);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const successMessage = typeof params.message === 'string' ? params.message : '';
   const [error, setError] = useState('');
+
+  // Verification may have completed on another device while this screen sat
+  // in the background — re-check on focus so a stale cached user doesn't
+  // wrongly block sign-in.
+  useFocusEffect(
+    useCallback(() => {
+      const user = useAuthStore.getState().user;
+      if (user && !isEmailVerified(user)) void refreshUser();
+    }, [refreshUser]),
+  );
 
   const submit = async () => {
     if (!email.trim() || !password) {
@@ -37,6 +48,10 @@ export default function SignInScreen() {
       setError(result.message);
       return;
     }
+    // Re-check current auth state right away — signIn() alone can carry a
+    // just-stale email_confirmed_at claim if verification completed on
+    // another device moments earlier.
+    await refreshUser();
     // Let _layout.tsx handle the routing based on auth state change
   };
 

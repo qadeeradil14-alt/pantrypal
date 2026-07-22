@@ -235,6 +235,10 @@ export default function RootLayout() {
     const sub = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
         void (async () => {
+          // Re-check verification status first — if the user confirmed their
+          // email on another device while this app was backgrounded, the
+          // cached `user` here still shows unconfirmed until refreshed.
+          if (!verified) await useAuthStore.getState().refreshUser();
           await useHouseholdStore.getState().refresh();
           await pullFromSupabase();
           await registerPushToken(user.id);
@@ -242,7 +246,7 @@ export default function RootLayout() {
       }
     });
     return () => sub.remove();
-  }, [user]);
+  }, [user, verified]);
 
 
   useEffect(() => {
