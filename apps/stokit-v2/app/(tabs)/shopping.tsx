@@ -981,7 +981,6 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
 
 function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubProps) {
   const { isDark } = useTheme();
-  const router = useRouter();
   const storeId   = currentStoreId(session)!;
   const store     = storeById(storeId);
   const [amount, setAmount] = useState('');
@@ -1103,17 +1102,6 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
       }
     });
     continueAfterScan();
-    Alert.alert(
-      'Added to pantry',
-      `${items.length} item${items.length === 1 ? '' : 's'} added and ready at home.`,
-      [
-        { text: 'Continue', style: 'cancel' },
-        {
-          text: 'View pantry',
-          onPress: () => router.push({ pathname: '/', params: { revealPantry: '1' } }),
-        },
-      ],
-    );
   };
 
   const pickImage = async (source: 'camera' | 'library') => {

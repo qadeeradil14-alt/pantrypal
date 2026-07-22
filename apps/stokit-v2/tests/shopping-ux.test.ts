@@ -85,14 +85,13 @@ test('receipt review custom rows select with one row tap and use a separate edit
   assert.match(source, /accessibilityLabel=\{`Edit \$\{item\.name\}`\}/);
 });
 
-test('receipt import offers a direct path to the expanded pantry', () => {
+test('receipt import silently stocks selected items without interrupting the trip', () => {
   const shoppingSource = readFileSync(join(process.cwd(), 'app/(tabs)/shopping.tsx'), 'utf8');
   const pantrySource = readFileSync(join(process.cwd(), 'app/(tabs)/index.tsx'), 'utf8');
-  assert.match(shoppingSource, /text: 'View pantry'/);
-  assert.match(shoppingSource, /revealPantry: '1'/);
-  assert.match(pantrySource, /revealPantry/);
-  assert.match(pantrySource, /setShowMore\(true\)/);
-  assert.match(pantrySource, /setShowAtHome\(true\)/);
+  assert.match(shoppingSource, /status: 'stocked'/);
+  assert.doesNotMatch(shoppingSource, /Added to pantry/);
+  assert.doesNotMatch(shoppingSource, /View pantry/);
+  assert.doesNotMatch(pantrySource, /revealPantry/);
 });
 
 test('trip receipt total reserves a visible line for the amount', () => {
