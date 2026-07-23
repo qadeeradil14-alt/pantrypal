@@ -26,7 +26,7 @@ import { shoppingEntryEventForItem, mergeShoppingEntries } from '../core/service
 import { remoteShoppingSessionAction } from '../core/services/shoppingSessionSyncPolicy';
 import { hasValidStoreCoordinates } from '../core/services/storeCoordinates';
 export type { StorageLocation as StorageLocationImport };
-import { uid, now } from '../core/services/id';
+import { uid, now, nextTimestamp } from '../core/services/id';
 import {
   defaultPrefs,
   emptyDurableState,
@@ -255,7 +255,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
           storageLocation: input.storageLocation ?? existing.storageLocation,
           storeId: input.storeId ?? existing.storeId,
           expiryDate: input.expiryDate ?? existing.expiryDate,
-          updatedAt: now(),
+          updatedAt: nextTimestamp(existing.updatedAt),
         };
         set((s) => ({
           items: consolidatePantryItems(s.items.map((item) => item.id === existing.id ? updated : item)),
@@ -298,7 +298,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     updateItem: (id, patch) => {
       set((s) => ({
         items: s.items.map((it) =>
-          it.id === id ? { ...it, ...patch, updatedAt: now() } : it
+          it.id === id ? { ...it, ...patch, updatedAt: nextTimestamp(it.updatedAt) } : it
         ),
       }));
       persist();
@@ -312,7 +312,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       const item = get().items.find((it) => it.id === id);
       set((s) => ({
         items: s.items.map((it) =>
-          it.id === id ? { ...it, status, updatedAt: now() } : it
+          it.id === id ? { ...it, status, updatedAt: nextTimestamp(it.updatedAt) } : it
         ),
       }));
       if (item && status === 'low' && item.status !== 'low') {
@@ -331,7 +331,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       set((s) => ({
         items: s.items.map((item) =>
           entryIds.has(item.id)
-            ? { ...item, status: 'stocked', storeId: null, updatedAt: now() }
+            ? { ...item, status: 'stocked', storeId: null, updatedAt: nextTimestamp(item.updatedAt) }
             : item
         ),
       }));
@@ -345,7 +345,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       set((s) => ({
         items: s.items.map((item) =>
           idSet.has(item.id)
-            ? { ...item, storeId, updatedAt: now() }
+            ? { ...item, storeId, updatedAt: nextTimestamp(item.updatedAt) }
             : item
         ),
       }));
@@ -360,7 +360,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       set((s) => ({
         items: s.items.map((item) =>
           item.status === 'low' || item.status === 'expiring'
-            ? { ...item, status: 'stocked', storeId: null, updatedAt: now() }
+            ? { ...item, status: 'stocked', storeId: null, updatedAt: nextTimestamp(item.updatedAt) }
             : item
         ),
       }));
@@ -430,7 +430,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         stores: s.stores.filter((st) => st.id !== id),
         // Unassign items pointing at the removed store; never delete the items.
         items: s.items.map((it) =>
-          it.storeId === id ? { ...it, storeId: null, updatedAt: now() } : it
+          it.storeId === id ? { ...it, storeId: null, updatedAt: nextTimestamp(it.updatedAt) } : it
         ),
       }));
       persist();

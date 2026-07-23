@@ -35,6 +35,7 @@ import type {
   TripPurchasedItem,
   TripStoreBreakdown,
 } from '../../types';
+import { nextTimestamp } from '../services/id';
 
 export type SessionStatus =
   | 'idle'
@@ -281,7 +282,7 @@ export function reduce(
         // Stamp the tap time so a newer check/uncheck wins across devices
         // (last-tap-wins). Only when a timestamp is supplied — legacy/timeless
         // callers keep the historical shape and the merge's sticky-OR fallback.
-        return { ...e, picked, ...(event.now !== undefined ? { pickedAt: event.now } : {}) };
+        return { ...e, picked, ...(event.now !== undefined ? { pickedAt: nextTimestamp(e.pickedAt, event.now) } : {}) };
       });
       return { ...session, entries };
     }
@@ -461,7 +462,10 @@ export function reduce(
               ...e,
               outOfStock: !e.outOfStock,
               picked: false,
-              ...(event.now !== undefined ? { outOfStockAt: event.now, pickedAt: event.now } : {}),
+              ...(event.now !== undefined ? {
+                outOfStockAt: nextTimestamp(e.outOfStockAt, event.now),
+                pickedAt: nextTimestamp(e.pickedAt, event.now),
+              } : {}),
             }
           : e,
       );
