@@ -79,8 +79,8 @@ export const initialSession: ShoppingSession = {
 
 export type ShoppingEvent =
   | { type: 'START_TRIP'; entries: ShoppingEntry[]; now: number }
-  | { type: 'TOGGLE_PICK'; itemId: string }
-  | { type: 'SET_PICK'; itemId: string; picked: boolean }
+  | { type: 'TOGGLE_PICK'; itemId: string; now?: number }
+  | { type: 'SET_PICK'; itemId: string; picked: boolean; now?: number }
   | { type: 'FINISH_STORE'; now: number }
   | {
       type: 'SAVE_RECEIPT';
@@ -109,7 +109,7 @@ export type ShoppingEvent =
   /** Removes an entry added by mistake mid-trip (e.g. accidental item). */
   | { type: 'REMOVE_ENTRY'; itemId: string }
   | { type: 'RESUME_TRIP' }
-  | { type: 'MARK_OUT_OF_STOCK'; itemId: string }
+  | { type: 'MARK_OUT_OF_STOCK'; itemId: string; now?: number }
   | { type: 'UNSKIP_STORE'; storeId: string }
   | { type: 'UPDATE_QUANTITY'; itemId: string; quantity: number };
 
@@ -278,7 +278,10 @@ export function reduce(
       const entries = session.entries.map((e) => {
         if (e.itemId !== event.itemId) return e;
         const picked = event.type === 'SET_PICK' ? event.picked : !e.picked;
-        return { ...e, picked };
+        // Stamp the tap time so a newer check/uncheck wins across devices
+        // (last-tap-wins). Only when a timestamp is supplied — legacy/timeless
+        // callers keep the historical shape and the merge's sticky-OR fallback.
+        return { ...e, picked, ...(event.now !== undefined ? { pickedAt: event.now } : {}) };
       });
       return { ...session, entries };
     }
@@ -308,7 +311,15 @@ export function reduce(
       if (metadataMatches && removedItemIds === session.removedItemIds) return session;
       const entries = session.entries.map((e, i) =>
         i === existingIdx
-          ? { ...event.entry, picked: existing.picked, outOfStock: existing.outOfStock }
+          // Keep the local completion state AND its last-tap timestamps — an
+          // item-metadata re-sync must never drop the pick/out-of-stock history.
+          ? {
+              ...event.entry,
+              picked: existing.picked,
+              outOfStock: existing.outOfStock,
+              ...(existing.pickedAt !== undefined ? { pickedAt: existing.pickedAt } : {}),
+              ...(existing.outOfStockAt !== undefined ? { outOfStockAt: existing.outOfStockAt } : {}),
+            }
           : e,
       );
       return {
@@ -444,7 +455,14 @@ export function reduce(
       if (session.status !== 'shopping_store') return session;
       const entries = session.entries.map((e) =>
         e.itemId === event.itemId
-          ? { ...e, outOfStock: !e.outOfStock, picked: false }
+          // Marking out-of-stock also clears `picked`, so stamp both flags for
+          // last-tap-wins. Timestamps only when supplied (see TOGGLE_PICK note).
+          ? {
+              ...e,
+              outOfStock: !e.outOfStock,
+              picked: false,
+              ...(event.now !== undefined ? { outOfStockAt: event.now, pickedAt: event.now } : {}),
+            }
           : e,
       );
       return { ...session, entries };

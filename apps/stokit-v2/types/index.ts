@@ -67,8 +67,13 @@ export interface ShoppingEntry {
   unit: Unit;
   storeId: string;
   picked: boolean;
+  /** Wall-clock ms of the last `picked` change. Enables last-tap-wins merge across
+   *  devices. Absent on legacy snapshots — the merge falls back to sticky-OR then. */
+  pickedAt?: number;
   /** User confirmed store didn't have this item. Counts neither as bought nor remaining. */
   outOfStock?: boolean;
+  /** Wall-clock ms of the last `outOfStock` change. Same last-tap-wins role as pickedAt. */
+  outOfStockAt?: number;
 }
 
 export interface PriceEntry {

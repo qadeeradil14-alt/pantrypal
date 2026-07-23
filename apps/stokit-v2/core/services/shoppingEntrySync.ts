@@ -5,6 +5,30 @@ function isShoppingItem(item: PantryItem): boolean {
   return (item.status === 'low' || item.status === 'expiring') && Boolean(item.storeId);
 }
 
+/**
+ * Resolve one completion flag (picked / outOfStock) across two devices by
+ * last-tap-wins: the side whose change is more recent wins. A defined timestamp
+ * always beats a missing one; equal timestamps fall back to OR so the outcome is
+ * independent of argument order (both devices converge). When NEITHER side has a
+ * timestamp — legacy snapshots from before this field existed — it degrades to
+ * the historical sticky-OR merge, preserving backward compatibility.
+ */
+function resolveTimedFlag(
+  aValue: boolean,
+  aAt: number | undefined,
+  bValue: boolean,
+  bAt: number | undefined,
+): { value: boolean; at: number | undefined } {
+  if (aAt === undefined && bAt === undefined) {
+    return { value: aValue || bValue, at: undefined };
+  }
+  const a = aAt ?? -Infinity;
+  const b = bAt ?? -Infinity;
+  if (a > b) return { value: aValue, at: aAt };
+  if (b > a) return { value: bValue, at: bAt };
+  return { value: aValue || bValue, at: aAt ?? bAt };
+}
+
 export function mergeShoppingEntries(
   localEntries: ShoppingEntry[],
   remoteEntries: ShoppingEntry[],
@@ -14,17 +38,25 @@ export function mergeShoppingEntries(
   for (const entry of localEntries) byId.set(entry.itemId, entry);
   for (const entry of remoteEntries) {
     const existing = byId.get(entry.itemId);
-    byId.set(
-      entry.itemId,
-      existing
-        ? {
-            ...existing,
-            ...entry,
-            picked: existing.picked || entry.picked,
-            outOfStock: Boolean(existing.outOfStock || entry.outOfStock),
-          }
-        : entry,
+    if (!existing) {
+      byId.set(entry.itemId, entry);
+      continue;
+    }
+    const picked = resolveTimedFlag(existing.picked, existing.pickedAt, entry.picked, entry.pickedAt);
+    const outOfStock = resolveTimedFlag(
+      Boolean(existing.outOfStock), existing.outOfStockAt,
+      Boolean(entry.outOfStock), entry.outOfStockAt,
     );
+    byId.set(entry.itemId, {
+      ...existing,
+      ...entry,
+      picked: picked.value,
+      outOfStock: outOfStock.value,
+      // Only attach a timestamp when one exists, so legacy entries keep their
+      // exact (timeless) shape.
+      ...(picked.at !== undefined ? { pickedAt: picked.at } : {}),
+      ...(outOfStock.at !== undefined ? { outOfStockAt: outOfStock.at } : {}),
+    });
   }
   return Array.from(byId.values()).filter((entry) => !removedItemIds.includes(entry.itemId));
 }

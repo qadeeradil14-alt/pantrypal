@@ -728,7 +728,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                     // No LayoutAnimation here: on Fabric it can tick over a
                     // freed Modal shadow node during the receipt flow and crash
                     // (see ActiveTripShell note).
-                    dispatch({ type: 'TOGGLE_PICK', itemId: e.itemId });
+                    dispatch({ type: 'TOGGLE_PICK', itemId: e.itemId, now: Date.now() });
                   }}
                   onLongPress={() => {
                     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -739,7 +739,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                         { text: 'Cancel', style: 'cancel' },
                         {
                           text: e.outOfStock ? 'Available' : 'Out of stock',
-                          onPress: () => dispatch({ type: 'MARK_OUT_OF_STOCK', itemId: e.itemId }),
+                          onPress: () => dispatch({ type: 'MARK_OUT_OF_STOCK', itemId: e.itemId, now: Date.now() }),
                         },
                       ],
                     );
