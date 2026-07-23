@@ -174,7 +174,15 @@ export const useDurableStore = create<DurableStore>((set, get) => {
   let persistEpoch = 0;
   let lastSnapshotAt = 0;
   const persist = () => {
-    const updatedAt = Math.max(now(), lastSnapshotAt + 1);
+    // Monotonic snapshot version. It must never regress below the version this
+    // device last published OR last applied from a peer — both of which live in
+    // get().updatedAt (applyRemotePatch sets it to the applied remote version).
+    // Without the get().updatedAt + 1 term, a local edit made right after
+    // applying a peer's snapshot stamps a SMALLER updatedAt than the peer
+    // already holds; the peer's shouldApplyRemoteSnapshot gate (which requires
+    // a strictly-greater version) then rejects it, so the edit stops
+    // propagating on the fast path and sync silently degrades.
+    const updatedAt = Math.max(now(), lastSnapshotAt + 1, get().updatedAt + 1);
     lastSnapshotAt = updatedAt;
     const epoch = persistEpoch;
     set({ updatedAt });

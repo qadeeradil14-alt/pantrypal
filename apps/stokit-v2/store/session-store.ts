@@ -200,6 +200,23 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
     set({ session: next });
     persistSession(next);
+
+    // A mid-trip quantity change lives on the session entry, but the pantry item
+    // is the synced source of truth: durableSnapshot reconciles every entry's
+    // quantity back to item.quantity on both push and apply. Without writing the
+    // item, the new quantity is stripped from every outbound snapshot (the peer
+    // never sees it) and is even reverted locally on the next reconcile.
+    // Propagate it to the item so it syncs via the per-item merge and survives
+    // reconciliation. The re-entrant ADD_ENTRY that updateItem triggers is a
+    // no-op here — next already carries this quantity, so the reducer returns
+    // the same session and dispatch bails on its next === prev guard.
+    if (event.type === 'UPDATE_QUANTITY') {
+      const entry = next.entries.find((e) => e.itemId === event.itemId);
+      if (entry && entry.itemId !== '__quick_scan__') {
+        durable.updateItem(entry.itemId, { quantity: entry.quantity });
+      }
+    }
+
     durable.setActiveSession(next.status === 'idle' || next.status === 'trip_summary' ? null : next, event.type);
   },
 }));

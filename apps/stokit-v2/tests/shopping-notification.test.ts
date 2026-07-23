@@ -120,7 +120,7 @@ test('local active session mutations publish full fresh snapshots', () => {
   const durableSrc = fs.readFileSync(durablePath, 'utf-8');
   const sessionSrc = fs.readFileSync(sessionPath, 'utf-8');
   const syncSrc = fs.readFileSync(syncPath, 'utf-8');
-  assert.ok(durableSrc.includes('Math.max(now(), lastSnapshotAt + 1)'), 'snapshot updatedAt must be monotonic for rapid activeSession writes');
+  assert.ok(durableSrc.includes('Math.max(now(), lastSnapshotAt + 1, get().updatedAt + 1)'), 'snapshot updatedAt must be monotonic for rapid activeSession writes AND never regress below the last applied peer version');
   assert.ok(sessionSrc.includes('durable.setActiveSession'), 'every session reducer mutation must request activeSession sync');
   assert.ok(durableSrc.includes('active_session_snapshot_write_requested'), 'local activeSession write requests must be logged');
   assert.ok(syncSrc.includes('active_session_snapshot_written'), 'successful household snapshot writes must be logged');
