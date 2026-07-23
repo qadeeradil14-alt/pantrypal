@@ -40,6 +40,7 @@ import {
   refreshGeofencedStoreData,
   startSyncEngine,
 } from '../core/services/syncEngine';
+import { syncDiag } from '../core/services/syncDiag'; // DIAG: temporary — remove after OTA 389 investigation
 import { consolidatePantryItems, normalizeItemName } from '../core/services/pantryItems';
 import { mergePantryItems, mergeTombstones } from '../core/services/mergePantryState';
 import { isDuplicatePriceEntry, isValidPrice } from '../core/services/priceHistory';
@@ -296,11 +297,20 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     },
 
     updateItem: (id, patch) => {
+      const diagBefore = 'quantity' in patch ? get().items.find((it) => it.id === id) : undefined; // DIAG
       set((s) => ({
         items: s.items.map((it) =>
           it.id === id ? { ...it, ...patch, updatedAt: nextTimestamp(it.updatedAt) } : it
         ),
       }));
+      if ('quantity' in patch) { // DIAG: temporary — remove after OTA 389 investigation
+        const after = get().items.find((it) => it.id === id);
+        syncDiag('local_item_edit', {
+          itemId: id, field: 'quantity',
+          before: diagBefore?.quantity, after: after?.quantity,
+          prevUpdatedAt: diagBefore?.updatedAt, newUpdatedAt: after?.updatedAt,
+        });
+      }
       persist();
       syncShoppingItem(get().items.find((item) => item.id === id) ?? null, id);
       // patch may change storeId and/or status — both affect geofence

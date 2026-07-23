@@ -20,6 +20,7 @@ import {
 import { useDurableStore } from './durable-store';
 import type { SharedShoppingSession, ShoppingEntry } from '../types';
 import { remoteShoppingSessionAction } from '../core/services/shoppingSessionSyncPolicy';
+import { syncDiag } from '../core/services/syncDiag'; // DIAG: temporary — remove after OTA 389 investigation
 import { mergeShoppingEntries } from '../core/services/shoppingEntrySync';
 
 const SESSION_KEY = 'stokit:v2:active-session';
@@ -157,6 +158,17 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     const prev = get().session;
     const next = reduce(prev, event);
     if (next === prev) return; // pure no-op
+
+    if (event.type === 'TOGGLE_PICK' || event.type === 'SET_PICK' || event.type === 'MARK_OUT_OF_STOCK') {
+      // DIAG: temporary — remove after OTA 389 investigation
+      const b = prev.entries.find((e) => e.itemId === event.itemId);
+      const a = next.entries.find((e) => e.itemId === event.itemId);
+      syncDiag('local_completion_edit', {
+        itemId: event.itemId, ev: event.type,
+        beforePicked: b?.picked, afterPicked: a?.picked, pickedAt: a?.pickedAt,
+        beforeOOS: Boolean(b?.outOfStock), afterOOS: Boolean(a?.outOfStock), outOfStockAt: a?.outOfStockAt,
+      });
+    }
 
     const durable = useDurableStore.getState();
 

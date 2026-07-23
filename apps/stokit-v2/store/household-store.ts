@@ -11,6 +11,7 @@ import {
 } from '../core/services/household';
 import type { HouseholdIdentity, HouseholdMember } from '../types';
 import { createAvatarSignedUrl } from '../core/services/profileAvatar';
+import { setSyncDiagIdentity } from '../core/services/syncDiag'; // DIAG: temporary — remove after OTA 389/390 investigation
 
 const STORAGE_KEY = 'stokit:v2:household';
 let householdChannel: ReturnType<typeof supabase.channel> | null = null;
@@ -89,6 +90,12 @@ async function applyPayload(payload: HouseholdPayload | null, set: (state: Parti
   }
 
   set({ household, members, partnerHasToken, syncStatus: 'synced' });
+  // DIAG: temporary — remove after OTA 389/390 investigation. Feeds household id
+  // + this device's role to the sync diagnostics for attribution/gating only.
+  setSyncDiagIdentity({
+    householdId: household.id,
+    role: members.find((m) => m.isMe)?.role ?? household.role ?? null,
+  });
   persist({ household, members: members.map((member) => ({ ...member, avatarUrl: null })) });
   if (subscribedHouseholdId !== household.id) {
     if (householdChannel) void supabase.removeChannel(householdChannel);

@@ -5,6 +5,7 @@ import type { DurableState, Receipt } from '../../types';
 import { shouldApplyRemoteSnapshot, remoteSkipReason, markRemoteApplied, markPushed, isSelfEcho, resetSyncWatermark } from './syncWatermark';
 import { reconcileShoppingSession } from './shoppingEntrySync';
 import { createDebouncedPullScheduler } from './realtimePullScheduler';
+import { syncDiag } from './syncDiag'; // DIAG: temporary — remove after OTA 389 investigation
 
 const CLOUD_TABLE = 'household_snapshots';
 const RECEIPT_BUCKET = 'receipts';
@@ -172,6 +173,7 @@ export async function pushLocalState(state: DurableState, options?: { isDeferred
         : receipt,
     );
     const snapshot = { ...consistentState, receipts: cloudReceipts };
+    syncDiag('push_attempt', { snapshotUpdatedAt: snapshot.updatedAt, itemCount: snapshot.items.length }); // DIAG
 
     let error: { message: string } | null = null;
     for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
@@ -187,10 +189,12 @@ export async function pushLocalState(state: DurableState, options?: { isDeferred
     }
 
     if (error) {
+      syncDiag('push_err', { snapshotUpdatedAt: snapshot.updatedAt, error: error.message }); // DIAG
       // Keep retrying on backoff until connectivity returns — do not give up.
       scheduleOfflineFlush();
       return;
     }
+    syncDiag('push_ok', { snapshotUpdatedAt: snapshot.updatedAt }); // DIAG
 
     clearOfflineFlush();
     markPushed(snapshot.updatedAt);
@@ -298,6 +302,7 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
   const freshInstallHydration = isFreshInstallState(local) && hasSharedSnapshotContent(remote);
   if (!forceServerHydration && !freshInstallHydration && !shouldApplyRemoteSnapshot(remoteUpdatedAt, localUpdatedAt)) {
     const reason = remoteSkipReason(remoteUpdatedAt, localUpdatedAt);
+    syncDiag('pull_path', { path: 'fold_presign', remoteUpdatedAt, localUpdatedAt, reason }); // DIAG
     if (__DEV__) console.log(`[Shopping Sync] active_session_reconcile_skipped reason=${reason} version/updatedAt=${remoteUpdatedAt} localUpdatedAt=${localUpdatedAt}`);
     initialHouseholdSyncComplete.add(id);
     // The whole-snapshot watermark rejects this remote (its top-level updatedAt
@@ -354,6 +359,7 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
   const current = store.getState();
   const stillFreshInstallHydration = isFreshInstallState(current) && hasSharedSnapshotContent(remote);
   if (!forceServerHydration && !stillFreshInstallHydration && !shouldApplyRemoteSnapshot(remoteUpdatedAt, current.updatedAt)) {
+    syncDiag('pull_path', { path: 'fold_postsign', remoteUpdatedAt, localUpdatedAt: current.updatedAt }); // DIAG
     if (__DEV__) console.log(`[Shopping Sync] active_session_reconcile_skipped reason=${remoteSkipReason(remoteUpdatedAt, store.getState().updatedAt)} version/updatedAt=${remoteUpdatedAt} phase=post_sign`);
     // Non-destructive item/tombstone/active-session fold even when the
     // whole-snapshot watermark rejects — same rationale as the pre-sign skip
@@ -368,6 +374,7 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
     }
     return;
   }
+  syncDiag('pull_path', { path: 'full_apply', remoteUpdatedAt, localUpdatedAt: current.updatedAt }); // DIAG
   store.getState().applyRemotePatch(reconciledRemote);
   initialHouseholdSyncComplete.add(id);
   if (hasActiveSession && __DEV__) console.log('[Shopping Sync] local_state_reconciled');
@@ -409,6 +416,7 @@ export async function startSyncEngine(): Promise<void> {
         filter: `household_id=eq.${id}`,
       },
       (payload) => {
+        syncDiag('realtime_recv', { eventType: payload.eventType }); // DIAG
         if (__DEV__) console.log(`[Shopping Sync] realtime_snapshot_event event=${payload.eventType} householdId=${id}`);
         if (payload.eventType === 'DELETE') {
           // The snapshot row disappearing usually means the owning account

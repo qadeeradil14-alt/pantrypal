@@ -1,5 +1,6 @@
 import type { ShoppingEvent } from '../shopping-machine';
 import type { PantryItem, SharedShoppingSession, ShoppingEntry } from '../../types';
+import { syncDiag } from './syncDiag'; // DIAG: temporary — remove after OTA 389 investigation
 
 function isShoppingItem(item: PantryItem): boolean {
   return (item.status === 'low' || item.status === 'expiring') && Boolean(item.storeId);
@@ -47,6 +48,24 @@ export function mergeShoppingEntries(
       Boolean(existing.outOfStock), existing.outOfStockAt,
       Boolean(entry.outOfStock), entry.outOfStockAt,
     );
+    // DIAG: temporary — remove after OTA 389 investigation. Logs only; the
+    // resolved values above/below are unchanged.
+    if (existing.picked !== entry.picked) {
+      syncDiag('flag_merge', {
+        itemId: entry.itemId, flag: 'picked',
+        localValue: existing.picked, localAt: existing.pickedAt,
+        incomingValue: entry.picked, incomingAt: entry.pickedAt,
+        winner: picked.value,
+      });
+    }
+    if (Boolean(existing.outOfStock) !== Boolean(entry.outOfStock)) {
+      syncDiag('flag_merge', {
+        itemId: entry.itemId, flag: 'outOfStock',
+        localValue: Boolean(existing.outOfStock), localAt: existing.outOfStockAt,
+        incomingValue: Boolean(entry.outOfStock), incomingAt: entry.outOfStockAt,
+        winner: outOfStock.value,
+      });
+    }
     byId.set(entry.itemId, {
       ...existing,
       ...entry,

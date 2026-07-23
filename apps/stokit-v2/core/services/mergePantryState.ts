@@ -1,4 +1,5 @@
 import type { ItemTombstone, PantryItem } from '../../types';
+import { syncDiag } from './syncDiag'; // DIAG: temporary — remove after OTA 389 investigation
 
 // Deleted-item tombstones are retained for this long so a device that has been
 // offline past this window can still learn about the deletion. After that they
@@ -61,8 +62,19 @@ export function mergePantryItems(
     if (!existing) {
       byId.set(item.id, item);
       order.push(item.id);
-    } else if ((item.updatedAt ?? 0) > (existing.updatedAt ?? 0)) {
-      byId.set(item.id, item);
+    } else {
+      // `existing` is the local copy (spread first), `item` is the incoming
+      // remote copy (spread second). Behavior below is unchanged.
+      const accepted = (item.updatedAt ?? 0) > (existing.updatedAt ?? 0);
+      if ((item.updatedAt ?? 0) !== (existing.updatedAt ?? 0)) {
+        syncDiag('item_merge', { // DIAG: temporary — remove after OTA 389 investigation
+          itemId: item.id,
+          incomingUpdatedAt: item.updatedAt,
+          localUpdatedAt: existing.updatedAt,
+          decision: accepted ? 'accepted' : 'rejected',
+        });
+      }
+      if (accepted) byId.set(item.id, item);
     }
   }
 

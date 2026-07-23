@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../../components/shared/Screen';
@@ -9,6 +9,7 @@ import { fonts, spacing, type AppColors } from '../../theme';
 import { useTheme } from '../../hooks/useTheme';
 import { OTA_SEQ } from '../../constants/version';
 import { isExpoGo } from '../../core/services/geofencing';
+import { syncDiagEnabled, dumpSyncDiag } from '../../core/services/syncDiag'; // DIAG: temporary — remove after OTA 389/390 investigation
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const DEV_MODE_KEY = 'stokit:v2:developer_mode';
@@ -23,6 +24,17 @@ export default function AboutScreen() {
 
   useEffect(() => {
     void AsyncStorage.getItem(DEV_MODE_KEY).then((v) => setDevMode(v === 'true'));
+  }, []);
+
+  // DIAG: temporary — remove after OTA 389/390 investigation. Hidden export of
+  // the sync diagnostic buffer via the OS share sheet; only wired when enabled.
+  const handleExportDiag = useCallback(async () => {
+    if (!syncDiagEnabled()) return;
+    try {
+      await Share.share({ message: dumpSyncDiag(OTA_SEQ) });
+    } catch {
+      /* user dismissed the share sheet — non-fatal */
+    }
   }, []);
 
   const handleDevTap = useCallback(() => {
@@ -55,7 +67,14 @@ export default function AboutScreen() {
           </View>
           <Text style={styles.statValue}>Stokit</Text>
         </View>
-        <Pressable style={styles.statRow} onPress={handleDevTap} accessibilityRole="button" accessibilityLabel="Version info">
+        <Pressable
+          style={styles.statRow}
+          onPress={handleDevTap}
+          onLongPress={syncDiagEnabled() ? handleExportDiag : undefined}
+          delayLongPress={800}
+          accessibilityRole="button"
+          accessibilityLabel="Version info"
+        >
           <View style={styles.aboutLabel}>
             <Ionicons name="git-branch-outline" size={16} color={colors.muted} />
             <Text style={styles.statLabel}>Version</Text>
