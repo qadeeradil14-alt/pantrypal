@@ -796,7 +796,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                         <Pressable
                           hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
                           style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
-                          onPress={(ev) => { ev.stopPropagation(); void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); dispatch({ type: 'UPDATE_QUANTITY', itemId: e.itemId, quantity: e.quantity - 1 }); if (e.quantity <= 1) setQuantityStepperId(null); }}
+                          onPress={(ev) => { ev.stopPropagation(); void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); dispatch({ type: 'UPDATE_QUANTITY', itemId: e.itemId, quantity: e.quantity - 1 }); if (e.quantity - 1 <= 1) setQuantityStepperId(null); }}
                         >
                           <Text style={{ fontSize: 16, color: colors.ink, lineHeight: 20 }}>−</Text>
                         </Pressable>
