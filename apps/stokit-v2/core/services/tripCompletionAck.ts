@@ -11,13 +11,23 @@ import type { Trip } from '../../types';
 
 const ACK_KEY = 'stokit:v2:trip-completion-ack';
 
-export async function getLastAcknowledgedTripCompletedAt(): Promise<number> {
+/**
+ * Returns null when this device has never established an acknowledgment
+ * floor (the AsyncStorage key is missing) — distinct from a real floor of 0.
+ * Callers must treat null as "first run: establish a baseline silently",
+ * never as "acknowledged nothing, so all history is unseen" — otherwise a
+ * device with pre-existing trip history would surface its newest historical
+ * trip as a fresh peer-completion notice the first time this feature runs.
+ */
+export async function getLastAcknowledgedTripCompletedAt(): Promise<number | null> {
   try {
     const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
     const raw = await AsyncStorage.getItem(ACK_KEY);
-    return raw ? Number(raw) || 0 : 0;
+    return raw === null ? null : Number(raw) || 0;
   } catch {
-    return 0;
+    // Treat a read failure the same as "never initialized" — fail toward no
+    // notice, not toward surfacing all of history.
+    return null;
   }
 }
 

@@ -74,3 +74,35 @@ test('the notice and the idle planner are mutually exclusive — never both rend
 test('the "Reset shopping list" link is also suppressed while the notice is visible', () => {
   assert.match(shopping, /\{!unseenTrip && shoppableCount > 0 && \(\s*\n\s*<Pressable onPress=\{handleResetShopping\}/);
 });
+
+// ── First-run initialization (OTA 399 first-run historical-trip bug) ───────
+//
+// getLastAcknowledgedTripCompletedAt distinguishes "never initialized" (null)
+// from "acknowledged through 0" so first run can establish a silent baseline
+// instead of surfacing pre-existing trip history as a fresh notice.
+
+test('a never-initialized device establishes a silent baseline instead of surfacing old history', () => {
+  assert.match(hook, /if \(stored === null\) \{/,
+    'the hook must distinguish "never initialized" from a real acknowledged floor of 0');
+  assert.match(hook, /const baseline = tripsRef\.current\.reduce\(\(max, t\) => Math\.max\(max, t\.completedAt\), 0\);/,
+    'the baseline must be the newest trip already in history at first-run time');
+  assert.match(hook, /setAck\(\(prev\) => Math\.max\(prev, baseline\)\)/);
+  assert.match(hook, /setLastAcknowledgedTripCompletedAt\(baseline\)/,
+    'the established baseline must be persisted so it survives restart, not just held in memory');
+});
+
+test('the baseline uses a live ref, not a stale mount-time snapshot of trips', () => {
+  assert.match(hook, /const tripsRef = useRef\(trips\);/);
+  assert.match(hook, /tripsRef\.current = trips;/);
+});
+
+test('a device with no trip history at all establishes a baseline of 0 (no trips means nothing to hide or show)', () => {
+  // Proven by composition: an empty trips array reduces to 0 (Number.prototype
+  // reduce with initial value 0), and newestUnseenTrip([], 0) is already
+  // proven to return null in trip-completion-ack.test.ts.
+  assert.match(hook, /\.reduce\(\(max, t\) => Math\.max\(max, t\.completedAt\), 0\)/);
+});
+
+test('a real stored floor (not null) still merges via the pre-existing Math.max path, unaffected by the baseline branch', () => {
+  assert.match(hook, /\} else \{\s*\n\s*setAck\(\(prev\) => Math\.max\(prev, stored\)\);\s*\n\s*\}/);
+});

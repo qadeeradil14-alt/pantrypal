@@ -559,18 +559,35 @@ export default function ShoppingScreen() {
 //   2. The notice and the idle planner are wired as one mutually-exclusive
 //      ternary in the same change that introduces the notice (see the
 //      ShoppingScreen render above) — never two siblings that can both show.
+//   3. First-run initialization — a device that has never acknowledged
+//      anything establishes its baseline at the newest trip already in
+//      history, silently, instead of treating all pre-existing history as a
+//      brand-new completion (see the `stored === null` branch below).
 function useUnseenCompletedTrip(
   trips: Trip[],
   localCompletedTrip: Trip | null,
 ): { trip: Trip | null; dismiss: () => void } {
   const [ack, setAck] = useState(0);
   const [loaded, setLoaded] = useState(false);
+  // Always the latest `trips` value, so the async first-run baseline below
+  // uses fresh data even if it resolves a render or two after mount.
+  const tripsRef = useRef(trips);
+  tripsRef.current = trips;
 
   useEffect(() => {
     let cancelled = false;
     void getLastAcknowledgedTripCompletedAt().then((stored) => {
       if (cancelled) return;
-      setAck((prev) => Math.max(prev, stored));
+      if (stored === null) {
+        // First run on this device: silently establish a baseline at the
+        // newest trip already in history instead of surfacing pre-existing
+        // trip history as a fresh "peer just finished" notice.
+        const baseline = tripsRef.current.reduce((max, t) => Math.max(max, t.completedAt), 0);
+        setAck((prev) => Math.max(prev, baseline));
+        void setLastAcknowledgedTripCompletedAt(baseline);
+      } else {
+        setAck((prev) => Math.max(prev, stored));
+      }
       setLoaded(true);
     });
     return () => { cancelled = true; };
