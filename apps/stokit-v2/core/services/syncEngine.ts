@@ -6,6 +6,7 @@ import { shouldApplyRemoteSnapshot, remoteSkipReason, markRemoteApplied, markPus
 import { reconcileShoppingSession } from './shoppingEntrySync';
 import { createDebouncedPullScheduler } from './realtimePullScheduler';
 import { syncDiag } from './syncDiag'; // DIAG: temporary — remove after OTA 389 investigation
+import { withTimeout } from './withTimeout';
 
 const CLOUD_TABLE = 'household_snapshots';
 const RECEIPT_BUCKET = 'receipts';
@@ -13,6 +14,16 @@ const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24 * 7;
 
 const RETRY_ATTEMPTS = 3;
 const RETRY_BASE_DELAY_MS = 500;
+
+// pullFromSupabase's network calls (the snapshot select, and each receipt's
+// signed-URL fetch) had no timeout. A single stalled request left them
+// pending forever, and since createDebouncedPullScheduler only invokes the
+// next pull after the current one settles, that one hang silently blocked
+// EVERY subsequent realtime-triggered pull — sync would work, then stop
+// entirely on one device while the other kept converging normally. Bounding
+// every pull-path network call guarantees pullFromSupabase always settles,
+// so the scheduler can never get stuck.
+const PULL_TIMEOUT_MS = 10_000;
 
 function isEmptySharedSnapshot(state: DurableState): boolean {
   return state.items.length === 0
@@ -120,10 +131,17 @@ async function householdId(): Promise<string | null> {
 async function withSignedReceiptUrls(state: DurableState): Promise<DurableState> {
   const receipts = await Promise.all(state.receipts.map(async (receipt) => {
     if (!receipt.imagePath) return receipt;
-    const { data, error } = await supabase.storage
-      .from(RECEIPT_BUCKET)
-      .createSignedUrl(receipt.imagePath, SIGNED_URL_TTL_SECONDS);
-    return error ? receipt : { ...receipt, imageUri: data.signedUrl };
+    try {
+      const { data, error } = await withTimeout(
+        supabase.storage.from(RECEIPT_BUCKET).createSignedUrl(receipt.imagePath, SIGNED_URL_TTL_SECONDS),
+        PULL_TIMEOUT_MS,
+      );
+      return error ? receipt : { ...receipt, imageUri: data.signedUrl };
+    } catch {
+      // Timed out — keep the receipt as-is rather than blocking the whole
+      // pull (and every pull after it) on one stalled signed-URL request.
+      return receipt;
+    }
   }));
   return { ...state, receipts };
 }
@@ -222,12 +240,22 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
   if (!id) return;
   const store = await durableStore();
 
-  const { data, error } = await supabase
-    .from(CLOUD_TABLE)
-    .select('state, updated_at')
-    .eq('household_id', id)
-    .maybeSingle();
-  if (error) return;
+  let data: { state: unknown; updated_at: number } | null;
+  try {
+    const result = await withTimeout(
+      supabase.from(CLOUD_TABLE).select('state, updated_at').eq('household_id', id).maybeSingle(),
+      PULL_TIMEOUT_MS,
+    );
+    if (result.error) return;
+    data = result.data;
+  } catch (err) {
+    // Stalled request — bail out so the debounced pull scheduler releases
+    // and retries on the next realtime event, instead of hanging forever and
+    // silently starving every pull after it.
+    syncDiag('pull_timeout', { phase: 'select', message: err instanceof Error ? err.message : String(err) }); // DIAG: temporary — remove after OTA 389/390/391 investigation
+    if (__DEV__) console.warn('[Sync Engine] pull select timed out or failed.', err);
+    return;
+  }
 
   if (!data?.state) {
     initialHouseholdSyncComplete.add(id);
