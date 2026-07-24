@@ -405,6 +405,58 @@ function entriesForStoreCount(s: ShoppingSession, storeId: string): number {
   return s.entries.filter((e) => e.storeId === storeId).length;
 }
 
+// ── ADD_ENTRY (Home-tab passive assignment — item keeps its own storeId,
+// no re-homing to the current store; contrast with the "+ Add more" tests
+// above, which explicitly re-home) ─────────────────────────────────────────
+
+test('item assigned to a brand-new store joins the same trip, appended to the end of storeQueue', () => {
+  let s = startTrip(); // storeQueue = ['aldi', 'target'], currently shopping 'aldi'
+  const tripIdBefore = s.tripId;
+
+  s = reduce(s, { type: 'ADD_ENTRY', entry: entry('bread', 'costco') });
+
+  assert.equal(s.tripId, tripIdBefore, 'same trip, no new session created');
+  assert.equal(s.status, 'shopping_store');
+  assert.equal(s.entries.some((e) => e.itemId === 'bread' && e.storeId === 'costco'), true, 'entry added with its own store');
+  assert.deepEqual(s.storeQueue, ['aldi', 'target', 'costco'], 'new store appended to the end');
+  assert.equal(currentStoreId(s), 'aldi', 'current store unchanged');
+  assert.equal(currentStoreEntries(s).some((e) => e.itemId === 'bread'), false, 'not shown at the current store');
+});
+
+test('item assigned to an already-queued future store keeps that store, no duplicate queue entry', () => {
+  let s = startTrip(); // 'target' already queued as stop 2
+  s = reduce(s, { type: 'ADD_ENTRY', entry: entry('pasta', 'target') });
+
+  assert.deepEqual(s.storeQueue, ['aldi', 'target'], 'no duplicate — target was already queued');
+  assert.equal(s.entries.some((e) => e.itemId === 'pasta' && e.storeId === 'target'), true, 'item keeps its own future-store assignment');
+  assert.equal(currentStoreId(s), 'aldi', 'current store unchanged');
+  assert.equal(currentStoreEntries(s).some((e) => e.itemId === 'pasta'), false, 'not pulled into the current store early');
+});
+
+test('item assigned to the current store still appends there directly', () => {
+  let s = startTrip();
+  s = reduce(s, { type: 'ADD_ENTRY', entry: entry('bagels', currentStoreId(s)!) });
+
+  assert.equal(currentStoreEntries(s).some((e) => e.itemId === 'bagels'), true);
+  assert.deepEqual(s.storeQueue, ['aldi', 'target'], 'storeQueue unchanged — already current');
+});
+
+test('finishing early with a store added mid-trip preserves existing skipped-store accounting', () => {
+  let s = startTrip(); // aldi (current), target (queued)
+  s = reduce(s, { type: 'ADD_ENTRY', entry: entry('bread', 'costco') }); // new store, never visited
+  s = reduce(s, { type: 'SET_PICK', itemId: 'milk', picked: true });
+  s = reduce(s, { type: 'FINISH_STORE', now: 2000 });
+  s = reduce(s, { type: 'SKIP_RECEIPT', now: 2100 });
+  s = reduce(s, { type: 'FINISH_TRIP', now: 2200 }); // target + costco never visited
+
+  assert.equal(s.status, 'trip_summary');
+  assert.equal(s.skippedStoreIds.includes('target'), true);
+  assert.equal(s.skippedStoreIds.includes('costco'), true, 'the mid-trip-added store is skipped like any other unvisited stop');
+  const trip = s.completedTrip!;
+  assert.equal(trip.breakdown.find((b) => b.storeId === 'costco')?.itemsBought, 0);
+  assert.equal(trip.breakdown.find((b) => b.storeId === 'costco')?.skipped, true);
+});
+
 // ── REMOVE_ENTRY (delete an item added by mistake mid-trip) ────────────────────
 
 test('REMOVE_ENTRY removes the item and tombstones its id', () => {

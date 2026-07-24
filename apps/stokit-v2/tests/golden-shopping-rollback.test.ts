@@ -8,7 +8,7 @@ test('removed shopping entries are not resurrected by pantry-item auto-add recon
 
   assert.match(source, /const removedItemIds = new Set\(session\.removedItemIds\)/);
   assert.match(source, /!entryIds\.has\(item\.id\) &&\s*\n\s*!removedItemIds\.has\(item\.id\)/);
-  assert.match(source, /\[items, storeId, session\.entries, session\.removedItemIds, dispatch\]/);
+  assert.match(source, /\[items, session\.entries, session\.removedItemIds, dispatch\]/);
 });
 
 test('active shopping list swipe-to-delete dispatches REMOVE_ENTRY like Pantry swipe pattern', () => {

@@ -611,12 +611,19 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
     }, [])
   );
 
+  // Sync newly store-assigned pantry items into the active trip. Scoped to
+  // the item's OWN storeId (not the current store) so items assigned to any
+  // store — current, an already-queued future stop, or a brand-new one —
+  // join this same trip instead of getting stranded until it ends (OTA 145
+  // established "don't strand" for the explicit add-sheet; this extends the
+  // same rule to the passive Home-tab assignment path). ADD_ENTRY itself
+  // already appends an unrecognized storeId to the end of storeQueue.
   useEffect(() => {
     const entryIds = new Set(session.entries.map((entry) => entry.itemId));
     const removedItemIds = new Set(session.removedItemIds);
     items
       .filter((item) =>
-        item.storeId === storeId &&
+        item.storeId &&
         (item.status === 'low' || item.status === 'expiring') &&
         !entryIds.has(item.id) &&
         !removedItemIds.has(item.id)
@@ -624,10 +631,10 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
       .forEach((item) => {
         dispatch({
           type: 'ADD_ENTRY',
-          entry: { itemId: item.id, name: item.name, quantity: item.quantity, unit: item.unit, storeId, picked: false },
+          entry: { itemId: item.id, name: item.name, quantity: item.quantity, unit: item.unit, storeId: item.storeId!, picked: false },
         });
       });
-  }, [items, storeId, session.entries, session.removedItemIds, dispatch]);
+  }, [items, session.entries, session.removedItemIds, dispatch]);
 
   const handleNotifyHousehold = async () => {
     const store = storeById(storeId);
