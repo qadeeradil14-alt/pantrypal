@@ -56,9 +56,10 @@ import { sendShoppingAlertOnce } from '../../core/services/shoppingAlertOnce';
 import { resetShoppingTripStartGuard, startShoppingTripOnce } from '../../core/services/shoppingTripStart';
 import { pullFromSupabase } from '../../core/services/syncEngine';
 import type { ReceiptReviewItem } from '../../core/services/shoppingUx';
-import type { PantryItem, ShoppingEntry, Store } from '../../types';
+import type { PantryItem, ShoppingEntry, Store, Trip } from '../../types';
 import { useTheme } from '../../hooks/useTheme';
 import { UNASSIGNED_STORE_ID, UNASSIGNED_STORE_NAME } from '../../constants/shopping';
+import { getLastAcknowledgedTripCompletedAt, newestUnseenTrip, setLastAcknowledgedTripCompletedAt } from '../../core/services/tripCompletionAck';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -88,6 +89,10 @@ export default function ShoppingScreen() {
   const assignItemsToStore = useDurableStore((s) => s.assignItemsToStore);
   const session    = useSessionStore((s) => s.session);
   const dispatch   = useSessionStore((s) => s.dispatch);
+  const trips      = useDurableStore((s) => s.trips);
+  // Called unconditionally, before any early return below, so React's rules
+  // of hooks hold across every session status this screen renders.
+  const { trip: unseenTrip, dismiss: dismissUnseenTrip } = useUnseenCompletedTrip(trips, session.completedTrip);
   const router     = useRouter();
   const [reassignItem, setReassignItem] = useState<PantryItem | null>(null);
 
@@ -365,7 +370,9 @@ export default function ShoppingScreen() {
   return (
     <Screen>
       <PageTitle eyebrow="Plan your trip" title="Shopping" />
-      {shoppableCount === 0 ? (
+      {unseenTrip ? (
+        <PeerTripCompletedNotice trip={unseenTrip} colors={colors} storeById={storeById} onDismiss={dismissUnseenTrip} />
+      ) : shoppableCount === 0 ? (
         <>
           <EmptyState
             icon="cart-outline"
@@ -500,7 +507,7 @@ export default function ShoppingScreen() {
         </>
       )}
 
-      {shoppableCount > 0 && (
+      {!unseenTrip && shoppableCount > 0 && (
         <Pressable onPress={handleResetShopping} style={{ alignItems: 'center', paddingVertical: spacing.lg }}>
           <Text style={{ fontFamily: fonts.sans, fontSize: 13, color: colors.muted }}>Reset shopping list</Text>
         </Pressable>
@@ -531,6 +538,82 @@ export default function ShoppingScreen() {
 
 
     </Screen>
+  );
+}
+
+// ── Peer trip-completion notice ─────────────────────────────────────────────
+//
+// activeSession collapses to null the instant a trip reaches trip_summary, so
+// a peer device has no other signal that a trip just finished — it only ever
+// sees "no active session", indistinguishable from "nothing happened". This
+// re-derives that signal from the trips array, which DOES sync reliably, and
+// is fully reactive: no polling, re-evaluated on every render from `trips` +
+// a locally persisted acknowledgment marker.
+//
+// Two things this intentionally gets right from the start (learned from the
+// prior overlapping-banner regression):
+//   1. Self-acknowledgment — the device that completes a trip locally marks
+//      it seen immediately (see the localCompletedTrip effect below), so it
+//      never sees its own trip mirrored back as a "peer" notice once it
+//      returns to idle.
+//   2. The notice and the idle planner are wired as one mutually-exclusive
+//      ternary in the same change that introduces the notice (see the
+//      ShoppingScreen render above) — never two siblings that can both show.
+function useUnseenCompletedTrip(
+  trips: Trip[],
+  localCompletedTrip: Trip | null,
+): { trip: Trip | null; dismiss: () => void } {
+  const [ack, setAck] = useState(0);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getLastAcknowledgedTripCompletedAt().then((stored) => {
+      if (cancelled) return;
+      setAck((prev) => Math.max(prev, stored));
+      setLoaded(true);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!localCompletedTrip) return;
+    setAck((prev) => Math.max(prev, localCompletedTrip.completedAt));
+    void setLastAcknowledgedTripCompletedAt(localCompletedTrip.completedAt);
+  }, [localCompletedTrip]);
+
+  const trip = loaded ? newestUnseenTrip(trips, ack) : null;
+
+  const dismiss = () => {
+    if (!trip) return;
+    setAck((prev) => Math.max(prev, trip.completedAt));
+    void setLastAcknowledgedTripCompletedAt(trip.completedAt);
+  };
+
+  return { trip, dismiss };
+}
+
+function PeerTripCompletedNotice({
+  trip, colors, storeById, onDismiss,
+}: { trip: Trip; colors: AppColors; storeById: (id: string) => Store | undefined; onDismiss: () => void }) {
+  const storeNames = trip.storeIdsVisited
+    .map((id) => storeById(id)?.name)
+    .filter((name): name is string => Boolean(name));
+  const storesLabel = storeNames.length > 0
+    ? storeNames.join(', ')
+    : `${trip.storeIdsVisited.length} store${trip.storeIdsVisited.length === 1 ? '' : 's'}`;
+
+  return (
+    <View style={{ marginBottom: spacing.lg, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.success, backgroundColor: colors.successSoft, padding: spacing.lg }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.xs }}>
+        <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+        <Text style={{ fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink }}>Shopping trip completed</Text>
+      </View>
+      <Text style={{ fontFamily: fonts.sans, fontSize: 13, color: colors.inkSoft, marginBottom: spacing.md }}>
+        {storesLabel} · {trip.itemsBought} item{trip.itemsBought === 1 ? '' : 's'}{trip.totalSpent > 0 ? ` · $${trip.totalSpent.toFixed(2)}` : ''}
+      </Text>
+      <Button label="Got it" onPress={onDismiss} />
+    </View>
   );
 }
 
