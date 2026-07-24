@@ -674,6 +674,10 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
 
   return (
     <Screen>
+      {/* Tapping anywhere outside the open quantity stepper's own controls
+          closes it — mirrors the existing per-row close below, just scoped
+          to the whole screen instead of only the list card. */}
+      <Pressable onPress={() => setQuantityStepperId(null)}>
       <PageTitle eyebrow={total > 1 ? `Stop ${stepNo} of ${total}` : (storeById(storeId)?.name ? `At ${storeById(storeId)!.name}` : undefined)} title="Shopping" />
       <Card style={styles.activeTripCard}>
         <StoreHeader store={storeById(storeId)} eyebrow="Now shopping" styles={styles} />
@@ -980,6 +984,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
           setPriceEntry(null);
         }}
       />
+      </Pressable>
     </Screen>
   );
 }

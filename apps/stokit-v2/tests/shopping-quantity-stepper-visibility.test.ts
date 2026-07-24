@@ -25,3 +25,20 @@ test('the "-" button closes the stepper based on the post-decrement quantity, no
     'the stale pre-decrement check must not be reintroduced',
   );
 });
+
+// Separately, the stepper also only closed on a tap inside the list card or
+// on the row itself — any tap elsewhere on the same screen (Finish store,
+// Add another item, Notify family, blank space) left it open indefinitely.
+
+const shoppingActive = shopping.slice(
+  shopping.indexOf('function ShoppingActive('),
+  shopping.indexOf('function ReceiptPrompt('),
+);
+
+test('tapping anywhere on the active-trip screen closes an open quantity stepper', () => {
+  assert.match(
+    shoppingActive,
+    /<Pressable onPress=\{\(\) => setQuantityStepperId\(null\)\}>\s*\n\s*<PageTitle/,
+    'the whole screen must be wrapped in a dismiss-on-tap Pressable, not just the list card, so taps on Finish store / Add another item / Notify family / blank space also close the stepper',
+  );
+});
