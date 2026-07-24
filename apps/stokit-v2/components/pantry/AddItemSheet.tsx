@@ -96,12 +96,17 @@ export function AddItemSheet({
       const item = existing
         ? {
             ...existing,
+            // A fresh add always starts a new shopping request at the chosen
+            // quantity (default 1) — never silently reuse whatever quantity
+            // this item last held (e.g. a prior trip's stepper adjustment,
+            // or its "how many I have at home" stocked count).
+            quantity,
             status,
             storeId: effectiveStoreId ?? existing.storeId,
             updatedAt: Date.now(),
           }
         : addItem({ name: catalog.name, quantity, unit, status, storeId: effectiveStoreId });
-      if (existing) updateItem(existing.id, { status: item.status, storeId: item.storeId });
+      if (existing) updateItem(existing.id, { quantity: item.quantity, status: item.status, storeId: item.storeId });
       addedItems.push(item);
     });
     reset();
