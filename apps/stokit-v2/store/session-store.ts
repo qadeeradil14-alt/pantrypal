@@ -198,6 +198,13 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       durable.clearShoppingEntries(
         next.entries.filter((e) => e.storeId === completedStoreId && e.picked),
       );
+      // Out-of-stock was a definitive decision for this store visit — unlike a
+      // plain unpicked item, it's resolved. Leaving storeId assigned keeps this
+      // store showing as active on the Shopping tab forever, even though the
+      // trip for it is done (item still needs buying, just not here).
+      next.entries
+        .filter((e) => e.storeId === completedStoreId && e.outOfStock)
+        .forEach((e) => durable.updateItem(e.itemId, { storeId: null }));
     }
 
     // Commit to durable state exactly once when trip_summary is reached.
