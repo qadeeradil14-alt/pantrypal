@@ -21,6 +21,10 @@ import {
   hasExactCatalogMatch,
   searchPantryCatalog,
 } from '../../constants/catalogSearch';
+import { DiagnosticsPanel } from '../diagnostics/DiagnosticsPanel';
+import { collectAddItemSheet } from '../../core/services/diagnostics/collect';
+import { useDiagnosticsAuthorization } from '../../core/services/diagnostics/useDiagnosticsAuthorization';
+import { shouldRenderInlineDiagnostics } from '../../core/services/diagnostics/visibility';
 
 interface SelectedItem {
   catalog: PantryCatalogItem;
@@ -75,6 +79,7 @@ export function AddItemSheet({
     setBulkStoreId(defaultStoreId);
     setDraftQuantity(1);
     setShowCatalog(false);
+    setDiagnosticsOpen(false);
   };
 
   useEffect(() => {
@@ -123,8 +128,30 @@ export function AddItemSheet({
     onClose();
   };
 
+  // Same full authorization decision as the main Developer Console — not a
+  // standalone build-time check. Authorization alone still isn't enough to
+  // render anything: `diagnosticsOpen` below requires a deliberate gesture
+  // on top of it, so an authorized user sees no panel until they ask for one.
+  const diagnosticsAuthorized = useDiagnosticsAuthorization();
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const diagnosticsRenderable = shouldRenderInlineDiagnostics(diagnosticsAuthorized, diagnosticsOpen);
   const storeOptions = stores.map((s) => ({ value: s.id, label: s.name }));
   const selectedItems = Object.values(selected);
+  // Depends on `selected` (the stable state object) and not on `selectedItems`
+  // (a fresh array every render), so this does not rebuild on every keystroke
+  // in the search field — only when the selection or store list actually change.
+  const diagnosticsSection = useMemo(
+    () => collectAddItemSheet(
+      bulkStoreId,
+      Object.values(selected).map(({ catalog, storeId }) => ({
+        key: catalog.id,
+        name: catalog.name,
+        storeId,
+      })),
+      stores,
+    ),
+    [bulkStoreId, selected, stores],
+  );
   const deferredQuery = useDeferredValue(query);
   const normalizedQuery = deferredQuery.trim().toLowerCase();
   const filteredCatalog = useMemo(
@@ -229,7 +256,19 @@ export function AddItemSheet({
 
   return (
     <Sheet visible={visible} title={title} onClose={close} minHeight="78%">
-      <Pressable style={styles.formGroup} onPress={() => itemInputRef.current?.focus()}>
+      {/*
+        Deliberate-open gesture for the diagnostics snapshot below. Attached
+        only when the viewer is already authorized — for anyone else this
+        prop is `undefined` and long-pressing here does nothing, same as
+        today. Authorization alone (diagnosticsAuthorized) never renders the
+        panel by itself; this toggle is the second, required condition.
+      */}
+      <Pressable
+        style={styles.formGroup}
+        onPress={() => itemInputRef.current?.focus()}
+        onLongPress={diagnosticsAuthorized ? () => setDiagnosticsOpen((open) => !open) : undefined}
+        delayLongPress={800}
+      >
         <Text style={styles.fieldLabel}>Item</Text>
         <TextInput
           ref={itemInputRef}
@@ -332,6 +371,20 @@ export function AddItemSheet({
           <Text style={styles.fieldLabel}>Store</Text>
           <Text style={styles.storeSummaryText}>{bulkStoreName}</Text>
         </View>
+      ) : null}
+
+      {/*
+        Read-only diagnostic snapshot. `selected` and `bulkStoreId` stay
+        component-local by design; this observes them via the shared
+        diagnostics collector instead of moving them into a store. Rendered
+        only when BOTH conditions hold: the viewer is authorized (same
+        decision as the main Developer Console) AND has deliberately opened
+        it via the long-press above this session — authorization alone must
+        never make this appear unprompted. Fully unmounts when either
+        condition goes false (closing the sheet resets diagnosticsOpen).
+      */}
+      {diagnosticsRenderable ? (
+        <DiagnosticsPanel compact sections={[diagnosticsSection]} />
       ) : null}
 
       {selectedItems.length ? (

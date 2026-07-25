@@ -11,6 +11,15 @@ import { OTA_SEQ } from '../../constants/version';
 import { isExpoGo } from '../../core/services/geofencing';
 import { syncDiagEnabled, dumpSyncDiag } from '../../core/services/syncDiag'; // DIAG: temporary — remove after OTA 389/390 investigation
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { DeveloperConsole } from '../../components/diagnostics/DeveloperConsole';
+import {
+  canAccessDiagnostics,
+  initialUnlockTapState,
+  parseAllowlist,
+  registerUnlockTap,
+} from '../../core/services/diagnostics/access';
+import { config, hasDiagnosticsFlag } from '../../lib/config';
+import { useAuthStore } from '../../store/auth-store';
 
 const DEV_MODE_KEY = 'stokit:v2:developer_mode';
 const DEV_MODE_TAP_TARGET = 7;
@@ -54,6 +63,31 @@ export default function AboutScreen() {
     });
   }, []);
 
+  // ── Developer Diagnostics (read-only observer) ─────────────────────────────
+  // Authorization is the existing developer flag AND an explicit config flag
+  // (optionally narrowed to an allowlist). The tap gesture only reveals an
+  // already-authorized console — it is obscurity, never the access control.
+  const authUser = useAuthStore((s) => s.user);
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const diagnosticsTapsRef = React.useRef(initialUnlockTapState);
+
+  const diagnosticsAuthorized = canAccessDiagnostics({
+    isDevBundle: __DEV__,
+    flagEnabled: hasDiagnosticsFlag(),
+    allowlist: parseAllowlist(config.diagnosticsAllowlist),
+    signedInUserId: authUser?.id ?? null,
+    signedInEmail: authUser?.email ?? null,
+    developerModeEnabled: devMode,
+  });
+
+  const handleDiagnosticsTap = useCallback(() => {
+    // Unauthorized taps are inert: no counting, no feedback, nothing to probe.
+    if (!diagnosticsAuthorized) return;
+    const next = registerUnlockTap(diagnosticsTapsRef.current, Date.now());
+    diagnosticsTapsRef.current = { count: next.count, lastTapAt: next.lastTapAt };
+    if (next.unlocked) setDiagnosticsOpen(true);
+  }, [diagnosticsAuthorized]);
+
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   return (
@@ -88,7 +122,19 @@ export default function AboutScreen() {
             )}
           </View>
         </Pressable>
-        <View style={styles.statRow}>
+        {/*
+          Diagnostics unlock lives on Build, not Version: the Version row
+          already owns the 7-tap developer-mode gesture, and a 5-tap unlock
+          there would fire first and make that existing toggle unreachable.
+          Pressable adds no visual or behavioural change for normal users —
+          taps are inert unless diagnostics are authorized.
+        */}
+        <Pressable
+          style={styles.statRow}
+          onPress={handleDiagnosticsTap}
+          accessibilityRole="button"
+          accessibilityLabel="Build info"
+        >
           <View style={styles.aboutLabel}>
             <Ionicons name="cube-outline" size={16} color={colors.muted} />
             <Text style={styles.statLabel}>Build</Text>
@@ -96,7 +142,7 @@ export default function AboutScreen() {
           <Text style={styles.statValue}>
             {inExpoGo ? 'Expo Go' : 'Standalone'}
           </Text>
-        </View>
+        </Pressable>
         <Pressable
           style={[styles.statRow, { borderBottomWidth: 0 }]}
           onPress={() => Linking.openURL('https://support-site-xi.vercel.app/privacy')}
@@ -110,6 +156,11 @@ export default function AboutScreen() {
           <Ionicons name="open-outline" size={16} color={colors.muted} />
         </Pressable>
       </Card>
+
+      {/* Mounted only after a successful unlock; closing unmounts it entirely. */}
+      {diagnosticsOpen ? (
+        <DeveloperConsole visible onClose={() => setDiagnosticsOpen(false)} />
+      ) : null}
     </Screen>
   );
 }

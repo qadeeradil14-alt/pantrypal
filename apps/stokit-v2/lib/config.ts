@@ -19,6 +19,10 @@ export const config = {
   geoapifyApiKey: process.env.EXPO_PUBLIC_GEOAPIFY_API_KEY ?? '',
   ocrSpaceKey:    process.env.EXPO_PUBLIC_OCR_SPACE_KEY    ?? '',
   receiptScanUrl: process.env.EXPO_PUBLIC_RECEIPT_SCAN_URL ?? '',
+  /** Developer Diagnostics console — '1' to authorize. Off by default. */
+  devDiagnostics: process.env.EXPO_PUBLIC_DEV_DIAGNOSTICS ?? '',
+  /** Optional comma-separated user ids/emails allowed to open the console. */
+  diagnosticsAllowlist: process.env.EXPO_PUBLIC_DIAGNOSTICS_ALLOWLIST ?? '',
 } as const;
 
 /** True if the Google premium upgrade is configured. */
@@ -35,3 +39,6 @@ export const hasOpenAiKey = () => Boolean(config.receiptScanUrl);
 
 /** True if any OCR provider is available. */
 export const hasOcr = () => hasGoogleKey() || hasOcrSpaceKey();
+
+/** True only when the Developer Diagnostics console is explicitly authorized. */
+export const hasDiagnosticsFlag = () => config.devDiagnostics === '1';
