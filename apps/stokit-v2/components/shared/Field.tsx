@@ -1,4 +1,4 @@
-import React, { useMemo, forwardRef } from 'react';
+import React, { useMemo, useEffect, useRef, forwardRef } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -14,6 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { fonts, radii, spacing, type AppColors } from '../../theme';
 import { useTheme } from '../../hooks/useTheme';
+import { chipScrollOffset } from '../../core/services/chipScroll';
 
 export function FieldLabel({ children }: { children: string }) {
   const { colors } = useTheme();
@@ -83,10 +84,31 @@ export function ChipSelect<T extends string>({
 }) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const scrollRef = useRef<ScrollView>(null);
+  const chipLayouts = useRef<Record<string, { x: number; width: number }>>({});
+  const viewportWidth = useRef(0);
+  const scrollX = useRef(0);
+
+  useEffect(() => {
+    if (value == null) return;
+    const chip = chipLayouts.current[value];
+    if (!chip) return;
+    const offset = chipScrollOffset(chip, viewportWidth.current, scrollX.current);
+    if (offset == null) return;
+    scrollRef.current?.scrollTo({ x: offset, animated: true });
+  }, [value]);
+
   return (
     <View style={styles.field}>
       <FieldLabel>{label}</FieldLabel>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        onLayout={(e) => { viewportWidth.current = e.nativeEvent.layout.width; }}
+        onScroll={(e) => { scrollX.current = e.nativeEvent.contentOffset.x; }}
+        scrollEventThrottle={16}
+      >
         <View style={styles.chipRow}>
           {options.map((opt) => {
             const active = opt.value === value;
@@ -94,6 +116,10 @@ export function ChipSelect<T extends string>({
               <Pressable
                 key={opt.value}
                 onPress={() => onChange(opt.value)}
+                onLayout={(e) => {
+                  const { x, width } = e.nativeEvent.layout;
+                  chipLayouts.current[opt.value] = { x, width };
+                }}
                 style={[styles.chip, active && styles.chipActive]}
               >
                 <Text style={[styles.chipText, active && styles.chipTextActive]}>
