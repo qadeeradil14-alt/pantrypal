@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useRef, forwardRef } from 'react';
+import React, { useMemo, useEffect, useRef, useState, forwardRef } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -88,6 +88,7 @@ export function ChipSelect<T extends string>({
   const chipLayouts = useRef<Record<string, { x: number; width: number }>>({});
   const viewportWidth = useRef(0);
   const scrollX = useRef(0);
+  const [layoutRevision, setLayoutRevision] = useState(0);
 
   useEffect(() => {
     if (value == null) return;
@@ -96,7 +97,7 @@ export function ChipSelect<T extends string>({
     const offset = chipScrollOffset(chip, viewportWidth.current, scrollX.current);
     if (offset == null) return;
     scrollRef.current?.scrollTo({ x: offset, animated: true });
-  }, [value]);
+  }, [value, layoutRevision]);
 
   return (
     <View style={styles.field}>
@@ -118,7 +119,10 @@ export function ChipSelect<T extends string>({
                 onPress={() => onChange(opt.value)}
                 onLayout={(e) => {
                   const { x, width } = e.nativeEvent.layout;
+                  const previous = chipLayouts.current[opt.value];
+                  if (previous?.x === x && previous.width === width) return;
                   chipLayouts.current[opt.value] = { x, width };
+                  setLayoutRevision((revision) => revision + 1);
                 }}
                 style={[styles.chip, active && styles.chipActive]}
               >

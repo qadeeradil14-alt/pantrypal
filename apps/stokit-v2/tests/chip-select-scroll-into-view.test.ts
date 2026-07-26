@@ -87,5 +87,7 @@ test('ChipSelect wires the selected chip into view on value change', () => {
     /scrollRef\.current\?\.scrollTo\(\{ x: offset, animated: true \}\);/,
     'the selected chip must actually be scrolled into view',
   );
-  assert.match(src, /\}, \[value\]\);/, 'the scroll must run when the selected value changes');
+  assert.match(src, /const \[layoutRevision, setLayoutRevision\] = useState\(0\);/, 'the effect must retry once native chip layout is available');
+  assert.match(src, /setLayoutRevision\(\(revision\) => revision \+ 1\);/, 'a newly measured chip must trigger the retry');
+  assert.match(src, /\}, \[value, layoutRevision\]\);/, 'the scroll must retry when the initial selected chip has just been measured');
 });
