@@ -55,6 +55,27 @@ test('completed Fair Price receipt cannot be overwritten by a stale device and r
   ]);
 });
 
+test('an explicit local reopen supersedes the completed remote trip and stays active', () => {
+  const remoteCompleted = state(
+    ['banana', 'cod', 'salmon'].map((id) => item(id, 'stocked', null, 20)),
+    null,
+    [completedTrip],
+    200,
+  );
+  const locallyReopened = state(
+    ['banana', 'cod', 'salmon'].map((id) => item(id, 'stocked', null, 20)),
+    session(),
+    [],
+    201,
+  );
+
+  const merged = mergeDurableSnapshotForPush(remoteCompleted, locallyReopened);
+
+  assert.equal(merged.activeSession?.status, 'shopping_store');
+  assert.equal(merged.activeSession?.tripId, completedTrip.id);
+  assert.deepEqual(merged.trips, []);
+});
+
 test('snapshot writes use compare-and-set instead of unconditional upsert', () => {
   const source = readFileSync(join(process.cwd(), 'core/services/syncEngine.ts'), 'utf8');
   const push = source.slice(source.indexOf('export async function pushLocalState'), source.indexOf('export async function pullFromSupabase'));

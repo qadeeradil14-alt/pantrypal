@@ -9,8 +9,16 @@ function mergeActiveSession(
   mergedItems: DurableState['items'],
   knownTrips: Trip[],
   preferLocal: boolean,
+  remoteTrips: Trip[],
+  localTrips: Trip[],
 ): SharedShoppingSession | null {
-  if (isCompletedShoppingSession(remote, knownTrips) || isCompletedShoppingSession(local, knownTrips)) return null;
+  const localExplicitlyResumed = Boolean(
+    preferLocal &&
+    local?.tripId &&
+    remoteTrips.some((trip) => trip.id === local.tripId) &&
+    !localTrips.some((trip) => trip.id === local.tripId),
+  );
+  if (!localExplicitlyResumed && (isCompletedShoppingSession(remote, knownTrips) || isCompletedShoppingSession(local, knownTrips))) return null;
 
   const preferred = preferLocal ? local : remote;
   const other = preferLocal ? remote : local;
@@ -46,7 +54,7 @@ export function mergeDurableSnapshotForPush(remote: DurableState, local: Durable
   return {
     ...preferred,
     items: mergedItems,
-    activeSession: mergeActiveSession(remote.activeSession, local.activeSession, mergedItems, knownTrips, preferLocal),
+    activeSession: mergeActiveSession(remote.activeSession, local.activeSession, mergedItems, knownTrips, preferLocal, remote.trips, local.trips),
     updatedAt: Math.max(remote.updatedAt, local.updatedAt),
     deletedItems: mergedTombstones,
   };
