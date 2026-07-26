@@ -294,6 +294,17 @@ test('store summary directly supports continue and finish decisions', () => {
   assert.equal(finished.status, 'trip_summary');
 });
 
+test('END_TRIP dismisses a completed summary once', () => {
+  let s = startTrip();
+  s = reduce(s, { type: 'FINISH_STORE', now: 2 });
+  s = reduce(s, { type: 'SKIP_RECEIPT', now: 3 });
+  s = reduce(s, { type: 'FINISH_TRIP', now: 4 });
+  const dismissed = reduce(s, { type: 'END_TRIP' });
+
+  assert.equal(dismissed.status, 'idle');
+  assert.equal(reduce(dismissed, { type: 'END_TRIP' }), dismissed);
+});
+
 test('START_MANUAL_STORE continues the same trip with an unplanned empty store visit', () => {
   const oneStoreEntries = [entry('milk', 'aldi')];
   let s = reduce(initialSession, { type: 'START_TRIP', entries: oneStoreEntries, now: 1 });

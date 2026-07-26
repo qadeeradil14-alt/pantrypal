@@ -9,6 +9,12 @@ export function remoteShoppingSessionAction(
     : 'apply';
 }
 
+export function shouldPreserveCompletedTripSummary(
+  localSession: RemoteShoppingSession,
+): boolean {
+  return localSession?.status === 'trip_summary';
+}
+
 export function isCompletedShoppingSession(
   session: RemoteShoppingSession,
   completedTrips: CompletedTrip[],

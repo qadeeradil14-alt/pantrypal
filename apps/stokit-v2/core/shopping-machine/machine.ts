@@ -444,6 +444,7 @@ export function reduce(
     }
 
     case 'END_TRIP': {
+      if (session.status === 'idle') return session;
       return { ...initialSession };
     }
 

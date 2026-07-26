@@ -19,7 +19,7 @@ import {
 } from '../core/shopping-machine';
 import { useDurableStore } from './durable-store';
 import type { SharedShoppingSession, ShoppingEntry } from '../types';
-import { remoteShoppingSessionAction } from '../core/services/shoppingSessionSyncPolicy';
+import { remoteShoppingSessionAction, shouldPreserveCompletedTripSummary } from '../core/services/shoppingSessionSyncPolicy';
 import { syncDiag } from '../core/services/syncDiag'; // DIAG: temporary — remove after OTA 389 investigation
 import { mergeShoppingEntries } from '../core/services/shoppingEntrySync';
 
@@ -118,6 +118,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
   applyRemoteSession: (remoteSession) => {
     const previous = get().session;
+
+    if (shouldPreserveCompletedTripSummary(previous)) return;
 
     if (!remoteSession || remoteShoppingSessionAction(remoteSession) === 'clear') {
       set({ session: initialSession });
