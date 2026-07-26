@@ -1,0 +1,65 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import test from 'node:test';
+
+import { mergeDurableSnapshotForPush } from '../core/services/mergeDurableSnapshot';
+import type { DurableState, PantryItem, SharedShoppingSession, Trip } from '../types';
+
+const item = (id: string, status: PantryItem['status'], storeId: string | null, updatedAt: number): PantryItem => ({
+  id, name: id, quantity: 1, unit: 'unit', status, storeId, storageLocation: 'pantry', expiryDate: null,
+  createdAt: 1, updatedAt,
+});
+
+const session = (): SharedShoppingSession => ({
+  status: 'shopping_store', tripId: 'fair-price-trip', startedAt: 1, storeQueue: ['fair-price'],
+  currentIndex: 0, skippedStoreIds: [], removedItemIds: [], receipts: [], completedTrip: null,
+  entries: ['banana', 'cod', 'salmon'].map((itemId) => ({
+    itemId, name: itemId, quantity: 1, unit: 'unit', storeId: 'fair-price', picked: false,
+  })),
+});
+
+const completedTrip: Trip = {
+  id: 'fair-price-trip', storeIdsVisited: ['fair-price'], skippedStoreIds: [], itemsBought: 2,
+  itemsRemaining: 1, itemsOutOfStock: 0, receiptIds: ['receipt'], totalSpent: 2,
+  breakdown: [], purchasedItems: [], startedAt: 1, completedAt: 2, duration: 1,
+};
+
+const state = (items: PantryItem[], activeSession: SharedShoppingSession | null, trips: Trip[], updatedAt: number): DurableState => ({
+  items, stores: [], priceHistory: [], receipts: [], trips, activity: [],
+  prefs: { householdName: 'Home', defaultUnit: 'unit', expiringWindowDays: 3, weeklyBudget: 0 },
+  activeSession, updatedAt, deletedItems: [],
+});
+
+test('completed Fair Price receipt cannot be overwritten by a stale device and rebuild the queue', () => {
+  const completed = state(
+    ['banana', 'cod', 'salmon'].map((id) => item(id, 'stocked', null, 20)),
+    null,
+    [completedTrip],
+    200,
+  );
+  const stale = state(
+    ['banana', 'cod', 'salmon'].map((id) => item(id, 'low', 'fair-price', 10)),
+    session(),
+    [],
+    100,
+  );
+
+  const merged = mergeDurableSnapshotForPush(completed, stale);
+
+  assert.equal(merged.activeSession, null);
+  assert.deepEqual(merged.items.map(({ status, storeId }) => ({ status, storeId })), [
+    { status: 'stocked', storeId: null },
+    { status: 'stocked', storeId: null },
+    { status: 'stocked', storeId: null },
+  ]);
+});
+
+test('snapshot writes use compare-and-set instead of unconditional upsert', () => {
+  const source = readFileSync(join(process.cwd(), 'core/services/syncEngine.ts'), 'utf8');
+  const push = source.slice(source.indexOf('export async function pushLocalState'), source.indexOf('export async function pullFromSupabase'));
+
+  assert.match(push, /mergeDurableSnapshotForPush\(remote, localSnapshot\)/);
+  assert.match(push, /\.eq\('updated_at', remoteUpdatedAt\)/);
+  assert.doesNotMatch(push, /\.upsert\(/);
+});

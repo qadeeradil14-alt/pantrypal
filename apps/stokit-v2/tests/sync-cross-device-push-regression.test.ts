@@ -39,7 +39,7 @@ test('[P0] pushLocalState has no dead-code return after the initial-sync gate', 
   );
 });
 
-test('[P0] the initial-sync gate falls through to the Supabase upsert once a household has synced', () => {
+test('[P0] the initial-sync gate falls through to the guarded snapshot write once a household has synced', () => {
   assert.match(
     pushSrc,
     /if \(!initialHouseholdSyncComplete\.has\(id\)\) \{\s*await pullFromSupabase\(\{ forceServerHydration: true \}\);\s*if \(!initialHouseholdSyncComplete\.has\(id\)\) return;\s*\}/,
@@ -47,10 +47,10 @@ test('[P0] the initial-sync gate falls through to the Supabase upsert once a hou
   );
 
   const gateMatch = pushSrc.match(/if \(!initialHouseholdSyncComplete\.has\(id\)\) \{[\s\S]*?\n  \}/);
-  const upsertIndex = pushSrc.indexOf('supabase.from(CLOUD_TABLE).upsert(');
+  const writeIndex = pushSrc.indexOf(".update({ state: snapshot, updated_at: writeAt })");
   assert.ok(gateMatch, 'expected to locate the initial-sync gate block');
   assert.ok(
-    upsertIndex > (gateMatch!.index! + gateMatch![0].length),
-    'the Supabase upsert must be reachable code after the initial-sync gate, not dead code a synced device can never execute',
+    writeIndex > (gateMatch!.index! + gateMatch![0].length),
+    'the guarded snapshot write must be reachable after the initial-sync gate',
   );
 });

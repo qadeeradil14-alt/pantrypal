@@ -70,9 +70,11 @@ test('[Issue 3 → reconnect flush] a failed push keeps retrying on capped backo
     'a successful push must stop the retry loop');
 });
 
-test('[Issue 3] retried upsert and upload remain idempotent (no duplicate-record risk from retries)', () => {
-  assert.ok(syncSrc.includes("{ onConflict: 'household_id' }"),
-    'snapshot upsert must stay keyed on household_id so retries overwrite, never duplicate');
+test('[Issue 3] retried snapshot and upload writes remain idempotent', () => {
+  assert.ok(syncSrc.includes(".eq('household_id', id)"),
+    'snapshot updates must stay keyed on household_id');
+  assert.ok(syncSrc.includes(".eq('updated_at', remoteUpdatedAt)"),
+    'snapshot retries must use compare-and-set so stale writes cannot overwrite newer state');
   assert.ok(syncSrc.includes('upsert: true'),
     'storage upload must stay upsert:true so retries overwrite, never duplicate');
 });

@@ -7,6 +7,7 @@ import { reconcileShoppingSession } from './shoppingEntrySync';
 import { createDebouncedPullScheduler } from './realtimePullScheduler';
 import { syncDiag } from './syncDiag'; // DIAG: temporary — remove after OTA 389 investigation
 import { withTimeout } from './withTimeout';
+import { hasLocalSyncContribution, mergeDurableSnapshotForPush } from './mergeDurableSnapshot';
 
 const CLOUD_TABLE = 'household_snapshots';
 const RECEIPT_BUCKET = 'receipts';
@@ -178,7 +179,11 @@ export async function pushLocalState(state: DurableState, options?: { isDeferred
   }
 
   try {
-    const consistentState = durableSnapshot(state);
+    const store = await durableStore();
+    const currentLocal = durableSnapshot(store.getState());
+    const consistentState = currentLocal.updatedAt > state.updatedAt
+      ? currentLocal
+      : durableSnapshot(state);
     if (isEmptySharedSnapshot(consistentState)) {
       if (__DEV__) console.warn('[Sync Engine] empty_snapshot_push_blocked');
       clearOfflineFlush();
@@ -190,18 +195,36 @@ export async function pushLocalState(state: DurableState, options?: { isDeferred
         ? { ...receipt, imageUri: null }
         : receipt,
     );
-    const snapshot = { ...consistentState, receipts: cloudReceipts };
-    syncDiag('push_attempt', { snapshotUpdatedAt: snapshot.updatedAt, itemCount: snapshot.items.length }); // DIAG
+    const localSnapshot = { ...consistentState, receipts: cloudReceipts };
 
     let error: { message: string } | null = null;
+    let snapshot = localSnapshot;
     for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
-      const result = await supabase.from(CLOUD_TABLE).upsert({
-        household_id: id,
-        state: snapshot,
-        updated_at: snapshot.updatedAt,
-      }, { onConflict: 'household_id' });
-      error = result.error;
-      if (!error) break;
+      const currentResult = await supabase.from(CLOUD_TABLE).select('state, updated_at').eq('household_id', id).maybeSingle();
+      if (currentResult.error) {
+        error = currentResult.error;
+      } else if (!currentResult.data?.state) {
+        const writeAt = Math.max(Date.now(), localSnapshot.updatedAt + 1);
+        snapshot = { ...localSnapshot, updatedAt: writeAt };
+        const insertResult = await supabase.from(CLOUD_TABLE).insert({ household_id: id, state: snapshot, updated_at: writeAt });
+        error = insertResult.error;
+        if (!error) break;
+      } else {
+        const remote = currentResult.data.state as DurableState;
+        const remoteUpdatedAt = Number(currentResult.data.updated_at ?? remote.updatedAt ?? 0);
+        const merged = mergeDurableSnapshotForPush(remote, localSnapshot);
+        const writeAt = Math.max(Date.now(), remoteUpdatedAt + 1, merged.updatedAt + 1);
+        snapshot = { ...merged, updatedAt: writeAt };
+        const updateResult = await supabase.from(CLOUD_TABLE)
+          .update({ state: snapshot, updated_at: writeAt })
+          .eq('household_id', id)
+          .eq('updated_at', remoteUpdatedAt)
+          .select('updated_at')
+          .maybeSingle();
+        error = updateResult.error;
+        if (!error && updateResult.data) break;
+        if (!error) error = { message: 'snapshot changed during merge' };
+      }
       if (__DEV__) console.warn(`[Sync Engine] Snapshot push attempt ${attempt} failed:`, error.message);
       if (attempt < RETRY_ATTEMPTS) await retryDelay(attempt);
     }
@@ -212,13 +235,21 @@ export async function pushLocalState(state: DurableState, options?: { isDeferred
       scheduleOfflineFlush();
       return;
     }
-    syncDiag('push_ok', { snapshotUpdatedAt: snapshot.updatedAt }); // DIAG
-
     clearOfflineFlush();
     markPushed(snapshot.updatedAt);
     const { itemCount, pickedCount, sessionId } = activeSessionStats(snapshot);
     if (__DEV__) console.log(`[Shopping Sync] active_session_snapshot_written version/updatedAt=${snapshot.updatedAt} itemCount=${itemCount} pickedCount=${pickedCount} sessionId=${sessionId}`);
-    const store = await durableStore();
+    const latestLocal = durableSnapshot(store.getState());
+    const postPushLocal = latestLocal.updatedAt > consistentState.updatedAt
+      ? { ...latestLocal, updatedAt: snapshot.updatedAt + 1 }
+      : latestLocal;
+    const reconciledSnapshot = mergeDurableSnapshotForPush(snapshot, postPushLocal);
+    store.getState().applyRemotePatch({
+      items: reconciledSnapshot.items,
+      activeSession: reconciledSnapshot.activeSession,
+      updatedAt: Math.max(store.getState().updatedAt, reconciledSnapshot.updatedAt),
+      deletedItems: reconciledSnapshot.deletedItems,
+    });
     const uploadedById = new Map(receipts.map((receipt) => [receipt.id, receipt]));
     const currentReceipts = store.getState().receipts.map((receipt) => {
       const uploaded = uploadedById.get(receipt.id);
@@ -362,9 +393,10 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
     // pushing the (now item-merged) local state up so other members converge on
     // it, instead of leaving the stale blob in the cloud. Equal timestamps mean
     // already-in-sync — no push, or realtime would fan out on every launch.
-    if (localUpdatedAt > remoteUpdatedAt && !isSelfEcho(remoteUpdatedAt)) {
+    const mergedLocal = durableSnapshot(store.getState());
+    if (!isSelfEcho(remoteUpdatedAt) && (localUpdatedAt > remoteUpdatedAt || hasLocalSyncContribution(remote, mergedLocal))) {
       if (__DEV__) console.log(`[Shopping Sync] stale_remote_reconcile_push localUpdatedAt=${localUpdatedAt} remoteUpdatedAt=${remoteUpdatedAt}`);
-      await pushLocalState(durableSnapshot(store.getState()));
+      await pushLocalState(mergedLocal);
     }
     return;
   }
@@ -399,6 +431,10 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
         ...(hasActiveSession ? { activeSession: reconciledRemote.activeSession } : {}),
         updatedAt: store.getState().updatedAt,
       });
+    }
+    const mergedLocal = durableSnapshot(store.getState());
+    if (!isSelfEcho(remoteUpdatedAt) && (mergedLocal.updatedAt > remoteUpdatedAt || hasLocalSyncContribution(reconciledRemote, mergedLocal))) {
+      await pushLocalState(mergedLocal);
     }
     return;
   }
