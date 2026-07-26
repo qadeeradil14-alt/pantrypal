@@ -77,9 +77,8 @@ test('trip start never auto-notifies the household; notifying is an explicit but
   // No trip-start path may pass notifyHousehold=true — that pinged family
   // prematurely. Notifying is done via the explicit in-trip button.
   assert.doesNotMatch(source, /startTripAt\([^)]*,\s*true\)/);
-  assert.match(source, /startTripAt\(entries\[0\]\[0\], false\)/);
-  assert.match(source, /startTripAt\(storeId, false\)/);
-  assert.match(source, /startTripAt\(arrivalStoreId\);/);
+  assert.match(source, /startTripAt\(storeId, false, shopperId\)/);
+  assert.match(source, /startTripAt\(arrivalStoreId, false, localMember\?\.id \?\? null\)/);
   // The sole notify trigger is the explicit household button handler.
   assert.match(source, /handleNotifyHousehold/);
 });

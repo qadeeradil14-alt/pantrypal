@@ -142,6 +142,8 @@ export interface Trip {
 }
 
 export interface SharedShoppingSession {
+  /** Household member operating this trip. Absent on sessions from older clients. */
+  shopperId?: string | null;
   status:
     | 'idle'
     | 'shopping_store'

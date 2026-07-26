@@ -824,7 +824,7 @@ test('tap handler deep-links store_arrival to Shopping with arrivalStoreId', () 
 test('Shopping auto-starts at the matched store via the existing startTripAt engine, guarded', () => {
   const screen = readFileSync(new URL('../app/(tabs)/shopping.tsx', import.meta.url), 'utf8');
   assert.match(screen, /arrivalStoreId/, 'Shopping must read the arrivalStoreId param');
-  assert.match(screen, /startTripAt\(arrivalStoreId\)/, 'must reuse startTripAt — no duplicate trip engine');
+  assert.match(screen, /startTripAt\(arrivalStoreId, false, localMember\?\.id \?\? null\)/, 'must reuse startTripAt — no duplicate trip engine');
   assert.match(screen, /session\.status !== 'idle'/, 'must not hijack an in-progress trip');
   assert.match(screen, /plan\.has\(arrivalStoreId\)/, 'must not start an empty trip when the store has no shoppable items');
   assert.match(screen, /arrivalHandledRef/, 'auto-start must be one-shot');
