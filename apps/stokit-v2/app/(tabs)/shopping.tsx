@@ -13,6 +13,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   Image,
   KeyboardAvoidingView,
   Linking,
@@ -28,7 +29,6 @@ import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Animated } from 'react-native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { Screen } from '../../components/shared/Screen';
 import { Button, Card, PageTitle, Pill, StoreChip } from '../../components/shared/ui';
@@ -37,6 +37,7 @@ import { StorePickerSheet } from '../../components/pantry/StorePickerSheet';
 import { AddItemSheet } from '../../components/pantry/AddItemSheet';
 import { Sheet } from '../../components/shared/Sheet';
 import { ItemAvatar } from '../../components/shared/ItemAvatar';
+import { Avatar } from '../../components/shared/Avatar';
 import { PricePromptSheet } from '../../components/shopping/PricePromptSheet';
 import { AddStoreContent } from '../../components/stores/AddStoreSheet';
 import { fonts, radii, shadow, spacing, type AppColors } from '../../theme';
@@ -60,6 +61,7 @@ import type { PantryItem, ShoppingEntry, Store, Trip } from '../../types';
 import { useTheme } from '../../hooks/useTheme';
 import { UNASSIGNED_STORE_ID, UNASSIGNED_STORE_NAME } from '../../constants/shopping';
 import { getLastAcknowledgedTripCompletedAt, newestUnseenTrip, setLastAcknowledgedTripCompletedAt } from '../../core/services/tripCompletionAck';
+import { canOperateShoppingSession } from '../../core/services/shoppingAccess';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -74,6 +76,37 @@ type SubProps = {
   nsStyles?: any;
   tsStyles?: any;
 };
+
+function EntryChoiceCard({
+  selected,
+  onPress,
+  style,
+  children,
+}: {
+  selected: boolean;
+  onPress: () => void;
+  style: any;
+  children: React.ReactNode;
+}) {
+  const scale = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.spring(scale, {
+      toValue: selected ? 1.015 : 1,
+      friction: 7,
+      tension: 90,
+      useNativeDriver: true,
+    }).start();
+  }, [scale, selected]);
+
+  return (
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <Card onPress={onPress} style={style}>
+        {children}
+      </Card>
+    </Animated.View>
+  );
+}
 
 // ── Root screen ───────────────────────────────────────────────────────────────
 
@@ -90,6 +123,8 @@ export default function ShoppingScreen() {
   const session    = useSessionStore((s) => s.session);
   const dispatch   = useSessionStore((s) => s.dispatch);
   const trips      = useDurableStore((s) => s.trips);
+  const members    = useHouseholdStore((s) => s.members);
+  const localMember = members.find((member) => member.isMe);
   // Called unconditionally, before any early return below, so React's rules
   // of hooks hold across every session status this screen renders.
   const { trip: unseenTrip, dismiss: dismissUnseenTrip } = useUnseenCompletedTrip(trips, session.completedTrip);
@@ -102,7 +137,16 @@ export default function ShoppingScreen() {
   const [bulkAssignStorePicker, setBulkAssignStorePicker] = useState(false);
   // Holds the storeId we want to skip to receipt once START_TRIP settles
   const [pendingQuickScanStore, setPendingQuickScanStore] = useState<string | null>(null);
-  const [showStoreChooser, setShowStoreChooser] = useState(false);
+  const [entryStep, setEntryStep] = useState<'shopper' | 'store' | 'preparing' | null>(null);
+  const [selectedShopperId, setSelectedShopperId] = useState<string | null>(null);
+  const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
+  const [preparingDetails, setPreparingDetails] = useState<{
+    shopperName: string;
+    storeName: string;
+  } | null>(null);
+  const preparingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const preparingOpacity = useRef(new Animated.Value(0)).current;
+  const preparingScale = useRef(new Animated.Value(0.92)).current;
   const tripStartIdRef = useRef<string | null>(null);
   const previousSessionStatusRef = useRef(session.status);
 
@@ -119,6 +163,29 @@ export default function ShoppingScreen() {
     }
     previousSessionStatusRef.current = session.status;
   }, [session.status]);
+
+  useEffect(() => () => {
+    if (preparingTimerRef.current) clearTimeout(preparingTimerRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (entryStep !== 'preparing') return;
+    preparingOpacity.setValue(0);
+    preparingScale.setValue(0.92);
+    Animated.parallel([
+      Animated.timing(preparingOpacity, {
+        toValue: 1,
+        duration: 220,
+        useNativeDriver: true,
+      }),
+      Animated.spring(preparingScale, {
+        toValue: 1,
+        friction: 7,
+        tension: 80,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [entryStep, preparingOpacity, preparingScale]);
 
   useEffect(() => {
     if (action === 'scan' && session.status === 'idle') {
@@ -145,7 +212,12 @@ export default function ShoppingScreen() {
       storeId: storeId,
       picked: false,
     };
-    dispatch({ type: 'START_TRIP', entries: [dummyEntry], now: Date.now() });
+    dispatch({
+      type: 'START_TRIP',
+      entries: [dummyEntry],
+      now: Date.now(),
+      shopperId: localMember?.id ?? null,
+    });
     setPendingQuickScanStore(storeId);
   };
 
@@ -177,7 +249,11 @@ export default function ShoppingScreen() {
     [items],
   );
 
-  const startTripAt = async (firstStoreId: string, notifyHousehold = false) => {
+  const startTripAt = async (
+    firstStoreId: string,
+    notifyHousehold = false,
+    shopperId: string | null = null,
+  ) => {
     if (tripStartIdRef.current) return;
     const shoppable = items.filter((i) => i.status === 'low' || i.status === 'expiring');
     shoppable
@@ -206,7 +282,7 @@ export default function ShoppingScreen() {
     const store = storeById(firstStoreId);
     startShoppingTripOnce({
       tripId,
-      startTrip: () => dispatch({ type: 'START_TRIP', entries, now }),
+      startTrip: () => dispatch({ type: 'START_TRIP', entries, now, shopperId }),
       notifyHousehold: notifyHousehold && store
         ? () => sendShoppingAlertOnce(
             tripId,
@@ -248,7 +324,7 @@ export default function ShoppingScreen() {
     }
     if (session.status !== 'idle') return;            // don't hijack an in-progress trip
     if (!plan.has(arrivalStoreId)) return;            // no low/expiring items there → land on idle
-    void startTripAt(arrivalStoreId);
+    void startTripAt(arrivalStoreId, false, localMember?.id ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [arrivalStoreId, session.status]);
 
@@ -283,20 +359,81 @@ export default function ShoppingScreen() {
   const handleStartShopping = () => {
     const entries = Array.from(plan.entries());
     if (entries.length === 0) return;
-    if (entries.length === 1) {
-      // Do NOT auto-notify the household on trip start. Notifying is an explicit
-      // choice via the in-trip "Notify household" button (handleNotifyHousehold),
-      // per the Notify Family screen. Auto-firing here pinged family prematurely.
-      void startTripAt(entries[0][0], false);
-      return;
-    }
-    setShowStoreChooser(true);
+    setSelectedShopperId(localMember?.id ?? null);
+    setSelectedStoreId(null);
+    setEntryStep('shopper');
   };
+
+  if (entryStep === 'preparing' && preparingDetails) {
+    return (
+      <Screen scroll={false} contentStyle={nsStyles.preparingScreen}>
+        <Animated.View
+          style={[
+            nsStyles.preparingContent,
+            {
+              opacity: preparingOpacity,
+              transform: [{ scale: preparingScale }],
+            },
+          ]}
+        >
+          <View style={nsStyles.preparingIcon}>
+            <Ionicons name="checkmark" size={34} color="#FFFFFF" />
+          </View>
+          <Text style={nsStyles.preparingTitle}>{preparingDetails.shopperName} is shopping</Text>
+          <Text style={nsStyles.preparingStore}>{preparingDetails.storeName}</Text>
+          <Text style={nsStyles.preparingBody}>Preparing your shopping trip...</Text>
+        </Animated.View>
+      </Screen>
+    );
+  }
 
   // ── Active states ──────────────────────────────────────────────────────────
   // shopping_store → receipt_prompt → store_summary/continue_prompt → next_store_ready
   // all render through one persistent shell so mid-trip transitions animate in
   // place instead of hard-swapping unrelated screens.
+  const activeShopper = session.shopperId
+    ? members.find((member) => member.id === session.shopperId)
+    : undefined;
+  if (
+    session.status !== 'idle' &&
+    !canOperateShoppingSession(session.shopperId, localMember?.id)
+  ) {
+    const activeStore = storeById(currentStoreId(session) ?? '');
+    const picked = session.entries.filter((entry) => entry.picked).length;
+    return (
+      <Screen>
+        <PageTitle eyebrow="Shopping in progress" title={`${activeShopper?.displayName ?? 'A household member'} is shopping`} />
+        <Card style={nsStyles.readOnlyCard}>
+          <View style={nsStyles.readOnlyHeader}>
+            <Avatar
+              photoUrl={activeShopper?.avatarUrl}
+              displayName={activeShopper?.displayName}
+              color={activeShopper?.avatarColor ?? colors.primary}
+              size={52}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={nsStyles.readOnlyLabel}>READ-ONLY</Text>
+              <Text style={nsStyles.readOnlyTitle}>
+                {activeShopper?.displayName ?? 'Your household shopper'} has this trip
+              </Text>
+            </View>
+          </View>
+          <Text style={nsStyles.readOnlyBody}>
+            You can follow along while they pick items, finish stores, and complete the trip.
+          </Text>
+          {activeStore ? (
+            <View style={nsStyles.readOnlyStore}>
+              <StoreChip store={activeStore} size={40} />
+              <View style={{ flex: 1 }}>
+                <Text style={nsStyles.storeName}>{activeStore.name}</Text>
+                <Text style={nsStyles.storeItems}>{picked} of {session.entries.length} items picked</Text>
+              </View>
+            </View>
+          ) : null}
+        </Card>
+      </Screen>
+    );
+  }
   if (
     session.status === 'shopping_store' ||
     session.status === 'receipt_prompt' ||
@@ -332,36 +469,128 @@ export default function ShoppingScreen() {
   const totalItems  = planEntries.reduce((n, [, list]) => n + list.length, 0);
   const singleStore = planEntries.length === 1 ? storeById(planEntries[0][0]) : undefined;
 
-  // ── First-store chooser (shown when ≥2 stores have items) ──────────────────
-  if (showStoreChooser && planEntries.length > 1) {
+  if (entryStep === 'shopper') {
     return (
-      <Screen>
-        <PageTitle eyebrow="Starting your trip" title="Where are you shopping first?" />
-        <Text style={nsStyles.chooserIntro}>Pick your first stop. The rest of your route stays ready.</Text>
-        {planEntries.map(([storeId, list], idx) => {
-          const store    = storeById(storeId);
-          const barColor = ROUTE_COLORS[idx % ROUTE_COLORS.length];
-          return (
-            <Card key={storeId} style={[nsStyles.storeCard, idx === 0 && nsStyles.recommendedStoreCard]}>
-              <View style={nsStyles.storeRow}>
-                <StoreChip store={store} name={store?.name ?? '?'} size={48} />
+      <Screen contentStyle={nsStyles.entryScreen}>
+        <View style={nsStyles.entryHeader}>
+          <Text style={nsStyles.entryEyebrow}>STARTING YOUR TRIP</Text>
+          <Text style={nsStyles.entryTitle}>Who’s shopping today?</Text>
+          <Text style={nsStyles.chooserIntro}>Select who will lead this shopping trip.</Text>
+        </View>
+        <View style={nsStyles.entryCards}>
+          {members.map((member) => {
+            const selected = member.id === selectedShopperId;
+            return (
+              <EntryChoiceCard
+                key={member.id}
+                selected={selected}
+                onPress={() => setSelectedShopperId(member.id)}
+                style={[nsStyles.memberCard, selected && nsStyles.memberCardSelected]}
+              >
+                <Avatar
+                  photoUrl={member.avatarUrl}
+                  displayName={member.displayName}
+                  color={member.avatarColor}
+                  size={54}
+                  borderColor={`${member.avatarColor}55`}
+                />
                 <View style={{ flex: 1 }}>
-                  {idx === 0 ? <Text style={nsStyles.recommendedLabel}>Suggested first</Text> : null}
-                  <Text style={nsStyles.storeName}>{store?.name ?? 'Unknown Store'}</Text>
-                  <Text style={nsStyles.storeItems}>{list.length} item{list.length !== 1 ? 's' : ''}</Text>
+                  <View style={nsStyles.memberNameRow}>
+                    <Text style={nsStyles.memberName}>{member.displayName}</Text>
+                    {member.isMe ? <Text style={nsStyles.youBadge}>You</Text> : null}
+                  </View>
+                  <Text style={nsStyles.memberMeta}>
+                    {member.role === 'owner' ? 'Owner' : 'Member'}
+                  </Text>
                 </View>
-                <Pressable
-                  onPress={() => { setShowStoreChooser(false); void startTripAt(storeId, false); }}
-                  style={({ pressed }) => [nsStyles.startBtn, { borderColor: barColor }, pressed && { opacity: 0.8 }]}
-                >
-                  <Text style={[nsStyles.startBtnText, { color: barColor }]}>Start</Text>
-                </Pressable>
-              </View>
-            </Card>
-          );
-        })}
-        <Pressable onPress={() => setShowStoreChooser(false)} style={{ alignItems: 'center', paddingVertical: spacing.lg }}>
-          <Text style={{ fontFamily: fonts.sans, fontSize: 13, color: colors.muted }}>← Back to plan</Text>
+                <View style={[nsStyles.selectionIndicator, selected && nsStyles.selectionIndicatorSelected]}>
+                  {selected ? <Ionicons name="checkmark" size={16} color="#FFFFFF" /> : null}
+                </View>
+              </EntryChoiceCard>
+            );
+          })}
+        </View>
+        <Button
+          label="Continue"
+          disabled={!selectedShopperId}
+          onPress={() => {
+            setSelectedStoreId(planEntries[0]?.[0] ?? null);
+            setEntryStep('store');
+          }}
+          style={nsStyles.entryCta}
+        />
+        <Pressable onPress={() => setEntryStep(null)} style={nsStyles.entryBack}>
+          <Text style={nsStyles.entryBackText}>← Back to plan</Text>
+        </Pressable>
+      </Screen>
+    );
+  }
+
+  // ── First-store chooser ───────────────────────────────────────────────────
+  if (entryStep === 'store' && selectedShopperId) {
+    return (
+      <Screen contentStyle={nsStyles.entryScreen}>
+        <View style={nsStyles.entryHeader}>
+          <Text style={nsStyles.entryEyebrow}>CHOOSE YOUR FIRST STOP</Text>
+          <Text style={nsStyles.entryTitle}>Where are you shopping first?</Text>
+          <Text style={nsStyles.chooserIntro}>Pick your first stop. The rest of your route stays ready.</Text>
+        </View>
+        <View style={nsStyles.entryCards}>
+          {planEntries.map(([storeId, list], idx) => {
+            const store = storeById(storeId);
+            const selected = storeId === selectedStoreId;
+            return (
+              <EntryChoiceCard
+                key={storeId}
+                selected={selected}
+                onPress={() => setSelectedStoreId(storeId)}
+                style={[
+                  nsStyles.storeChoiceCard,
+                  idx === 0 && nsStyles.recommendedStoreCard,
+                  selected && nsStyles.storeChoiceCardSelected,
+                ]}
+              >
+                <View style={nsStyles.storeRow}>
+                  <StoreChip store={store} name={store?.name ?? '?'} size={56} />
+                  <View style={{ flex: 1 }}>
+                    {idx === 0 ? <Text style={nsStyles.recommendedLabel}>Suggested first</Text> : null}
+                    <Text style={nsStyles.storeName}>{store?.name ?? 'Unknown Store'}</Text>
+                    <Text style={nsStyles.storeItems}>{list.length} item{list.length !== 1 ? 's' : ''}</Text>
+                  </View>
+                  <View style={[nsStyles.selectionIndicator, selected && nsStyles.selectionIndicatorSelected]}>
+                    {selected ? <Ionicons name="checkmark" size={16} color="#FFFFFF" /> : null}
+                  </View>
+                </View>
+              </EntryChoiceCard>
+            );
+          })}
+        </View>
+        <Button
+          label="Start Shopping"
+          disabled={!selectedStoreId}
+          onPress={() => {
+            if (!selectedStoreId) return;
+            const storeId = selectedStoreId;
+            const shopperId = selectedShopperId;
+            const shopper = members.find((member) => member.id === shopperId);
+            const store = storeById(storeId);
+            setPreparingDetails({
+              shopperName: shopper?.displayName ?? 'Your shopper',
+              storeName: store?.name ?? 'Your first store',
+            });
+            setEntryStep('preparing');
+            void startTripAt(storeId, false, shopperId);
+            preparingTimerRef.current = setTimeout(() => {
+              setEntryStep(null);
+              setSelectedShopperId(null);
+              setSelectedStoreId(null);
+              setPreparingDetails(null);
+            }, 400);
+          }}
+          style={nsStyles.entryCta}
+        />
+        <Pressable onPress={() => setEntryStep('shopper')} style={nsStyles.entryBack}>
+          <Text style={nsStyles.entryBackText}>← Change shopper</Text>
         </Pressable>
       </Screen>
     );
@@ -423,7 +652,7 @@ export default function ShoppingScreen() {
               </View>
             ) : null}
             {unassignedCount === 0
-              ? <Button label={planEntries.length > 1 ? 'Choose first store' : 'Start shopping'} onPress={handleStartShopping} style={styles.primaryCta} />
+              ? <Button label="Start shopping" onPress={handleStartShopping} style={styles.primaryCta} />
               : <Text style={styles.assignStoreHint}>Choose where to buy each item, then start shopping.</Text>
             }
           </Card>
@@ -2380,12 +2609,42 @@ function makeStyles(colors: AppColors) {
   });
 
   const nsStyles = StyleSheet.create({
-    chooserIntro: { fontFamily: fonts.sans, fontSize: 14, lineHeight: 20, color: colors.muted, marginBottom: spacing.lg },
+    entryScreen: { paddingHorizontal: spacing.xs },
+    entryHeader: { marginBottom: spacing.xxl },
+    entryEyebrow: { fontFamily: fonts.monoMedium, fontSize: 10, letterSpacing: 1.3, color: colors.primary, marginBottom: spacing.sm },
+    entryTitle: { fontFamily: fonts.serifItalic, fontSize: 34, lineHeight: 40, color: colors.ink, maxWidth: 340 },
+    chooserIntro: { fontFamily: fonts.sans, fontSize: 15, lineHeight: 22, color: colors.muted, marginTop: spacing.sm },
+    entryCards: { gap: spacing.md },
+    memberCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 88, padding: spacing.lg, borderRadius: radii.xl, borderWidth: 1.5, borderColor: colors.borderSoft, backgroundColor: colors.surface },
+    memberCardSelected: { borderColor: colors.success, backgroundColor: colors.successSoft },
+    memberNameRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm },
+    memberName: { fontFamily: fonts.sansSemibold, fontSize: 17, color: colors.ink },
+    memberMeta: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 3 },
+    youBadge: { fontFamily: fonts.sansSemibold, fontSize: 10, color: colors.success, backgroundColor: colors.backgroundElevated, borderRadius: radii.pill, paddingHorizontal: spacing.sm, paddingVertical: 3, overflow: 'hidden' },
+    selectionIndicator: { width: 28, height: 28, borderRadius: 14, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.backgroundElevated, alignItems: 'center', justifyContent: 'center' },
+    selectionIndicatorSelected: { borderColor: colors.success, backgroundColor: colors.success },
+    entryCta: { minHeight: 56, marginTop: spacing.xxl, borderRadius: radii.auth, ...shadow.card },
+    entryBack: { alignItems: 'center', paddingVertical: spacing.lg },
+    entryBackText: { fontFamily: fonts.sans, fontSize: 13, color: colors.muted },
+    preparingScreen: { alignItems: 'center', justifyContent: 'center' },
+    preparingContent: { alignItems: 'center', paddingBottom: spacing.huge },
+    preparingIcon: { width: 68, height: 68, borderRadius: 34, backgroundColor: colors.success, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.xl, ...shadow.card },
+    preparingTitle: { fontFamily: fonts.serifItalic, fontSize: 28, lineHeight: 35, color: colors.ink, textAlign: 'center' },
+    preparingStore: { fontFamily: fonts.sansSemibold, fontSize: 17, color: colors.primary, marginTop: spacing.sm },
+    preparingBody: { fontFamily: fonts.sans, fontSize: 14, color: colors.muted, marginTop: spacing.lg },
+    readOnlyCard: { padding: spacing.xl, borderColor: colors.primary + '35' },
+    readOnlyHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+    readOnlyLabel: { fontFamily: fonts.monoMedium, fontSize: 9, letterSpacing: 1, color: colors.primary },
+    readOnlyTitle: { fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink, marginTop: 2 },
+    readOnlyBody: { fontFamily: fonts.sans, fontSize: 14, lineHeight: 20, color: colors.muted, marginTop: spacing.lg },
+    readOnlyStore: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.xl, paddingTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.borderSoft },
     subtitle:    { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.muted, marginBottom: spacing.md, marginTop: spacing.sm },
     routeSummary: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.lg, marginBottom: spacing.md, backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.borderSoft },
     routeSummaryIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
     routeSummaryTitle: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
     routeSummaryText: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 2 },
+    storeChoiceCard: { minHeight: 92, paddingVertical: spacing.lg, borderRadius: radii.xl, borderWidth: 1.5, borderColor: colors.borderSoft, backgroundColor: colors.surface },
+    storeChoiceCardSelected: { borderColor: colors.success, backgroundColor: colors.successSoft },
     storeCard:   { paddingVertical: spacing.lg, marginBottom: spacing.md },
     recommendedStoreCard: { borderColor: colors.primary + '55', backgroundColor: colors.backgroundElevated },
     recommendedLabel: { fontFamily: fonts.monoMedium, fontSize: 9, color: colors.primary, letterSpacing: 0.9, marginBottom: 2 },

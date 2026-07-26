@@ -47,6 +47,8 @@ export type SessionStatus =
   | 'trip_summary';
 
 export interface ShoppingSession {
+  /** Household member operating this trip. Null preserves legacy sessions. */
+  shopperId: string | null;
   status: SessionStatus;
   tripId: string | null;
   startedAt: number | null;
@@ -66,6 +68,7 @@ export interface ShoppingSession {
 }
 
 export const initialSession: ShoppingSession = {
+  shopperId: null,
   status: 'idle',
   tripId: null,
   startedAt: null,
@@ -79,7 +82,7 @@ export const initialSession: ShoppingSession = {
 };
 
 export type ShoppingEvent =
-  | { type: 'START_TRIP'; entries: ShoppingEntry[]; now: number }
+  | { type: 'START_TRIP'; entries: ShoppingEntry[]; now: number; shopperId?: string | null }
   | { type: 'TOGGLE_PICK'; itemId: string; now?: number }
   | { type: 'SET_PICK'; itemId: string; picked: boolean; now?: number }
   | { type: 'FINISH_STORE'; now: number }
@@ -260,6 +263,7 @@ export function reduce(
       const { queue, entries } = buildQueue(event.entries);
       if (queue.length === 0) return session;
       return {
+        shopperId: event.shopperId ?? null,
         status: 'shopping_store',
         tripId: `t_${event.now}`,
         startedAt: event.now,
