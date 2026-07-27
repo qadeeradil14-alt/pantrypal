@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
   Keyboard,
   Pressable,
   ScrollView,
@@ -19,6 +20,7 @@ import { Logo } from '../../components/shared/Logo';
 import { EmptyState } from '../../components/shared/EmptyState';
 import { MemberAvatars } from '../../components/shared/MemberAvatars';
 import { SummaryCard } from '../../components/shared/SummaryCard';
+import { StoreChip } from '../../components/shared/ui';
 import { AddItemSheet } from '../../components/pantry/AddItemSheet';
 import { ItemActionSheet } from '../../components/pantry/ItemActionSheet';
 import { StorePickerSheet } from '../../components/pantry/StorePickerSheet';
@@ -26,6 +28,8 @@ import { JoinHouseholdSheet } from '../../components/household/JoinHouseholdShee
 import { fonts, radii, shadow, spacing, type AppColors } from '../../theme';
 import { useDurableStore } from '../../store/durable-store';
 import { useHouseholdStore } from '../../store/household-store';
+import { useSessionStore } from '../../store/session-store';
+import { currentStoreId, currentStoreEntries } from '../../core/shopping-machine';
 import { useTheme } from '../../hooks/useTheme';
 import { classifyItem } from '../../core/services/itemClassifier';
 import { searchPantryCatalog } from '../../constants/catalogSearch';
@@ -54,6 +58,7 @@ export default function PantryScreen() {
   const addItem = useDurableStore((state) => state.addItem);
   const household = useHouseholdStore((s) => s.household);
   const members = useHouseholdStore((s) => s.members);
+  const session = useSessionStore((s) => s.session);
   const [addVisible, setAddVisible] = useState(false);
   const [joinVisible, setJoinVisible] = useState(false);
   const [showMore, setShowMore] = useState(false);
@@ -72,8 +77,27 @@ export default function PantryScreen() {
   const myName = members.find((m) => m.isMe)?.displayName ?? '';
   const firstName = (myName === 'Me' || myName === '') ? '' : myName.split(' ')[0];
   const greeting = `${getGreeting()}${firstName ? `, ${firstName}` : ''} 👋`;
+  const todayLabel = useMemo(
+    () => new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }),
+    [],
+  );
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const storeById = (id: string | null) => id ? stores.find((store) => store.id === id) : undefined;
+
+  // Active Shopping card — purely a read of the existing shopping session;
+  // no session/state-machine logic changes.
+  const activeStoreId = currentStoreId(session);
+  const activeStore = storeById(activeStoreId);
+  const activeEntries = useMemo(() => currentStoreEntries(session), [session]);
+  const activePickedCount = useMemo(() => activeEntries.filter((e) => e.picked).length, [activeEntries]);
+  const isShoppingActive = session.status !== 'idle' && session.status !== 'trip_summary' && !!activeStoreId;
+
+  // Small, one-time entrance animation for the header/hero — mount-only,
+  // no effect on data flow or any existing timing.
+  const heroAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(heroAnim, { toValue: 1, duration: 420, useNativeDriver: true }).start();
+  }, [heroAnim]);
   const listItems = useMemo(
     () => items
       .filter((item) => item.status === 'low' || item.status === 'expiring')
@@ -190,32 +214,55 @@ export default function PantryScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView ref={scrollRef} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        <View style={styles.header}>
-          {/* Top row: logo + sync pill + settings */}
-          <View style={styles.topRow}>
-            <View style={styles.wordmark}>
-              <Logo size={28} color={colors.ink} />
-              <Text style={styles.wordmarkText}>Stokit</Text>
+        <Animated.View
+          style={{
+            opacity: heroAnim,
+            transform: [{ translateY: heroAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }],
+          }}
+        >
+          <View style={styles.header}>
+            {/* Top row: logo + member avatars + settings */}
+            <View style={styles.topRow}>
+              <View style={styles.wordmark}>
+                <Logo size={28} color={colors.ink} />
+                <Text style={styles.wordmarkText}>Stokit</Text>
+              </View>
+              <View style={styles.topRowRight}>
+                <MemberAvatars members={members} onPress={() => router.push('/household')} />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Settings"
+                  onPress={() => router.push('/settings')}
+                  style={styles.settings}
+                  hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
+                >
+                  <Ionicons name="settings-outline" size={20} color={colors.inkSoft} />
+                </Pressable>
+              </View>
             </View>
-            <View style={styles.topRowRight}>
-              <MemberAvatars members={members} onPress={() => router.push('/household')} />
-              <Pressable onPress={() => router.push('/settings')} style={styles.settings} hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}>
-                <Ionicons name="settings-outline" size={24} color={colors.primary} />
-              </Pressable>
-            </View>
+            {/* Greeting — 20px below the logo row */}
+            <Text style={styles.eyebrow}>{todayLabel}</Text>
+            <Text style={styles.title}>{greeting}</Text>
+            <Text style={styles.tagline}>
+              {items.length === 0 ? 'Add your first item to get started' : "Here's your household at a glance"}
+            </Text>
           </View>
-          {/* Greeting — 20px below the logo row */}
-          <Text style={styles.title}>{greeting}</Text>
-          <Text style={styles.tagline}>
-            {items.length === 0 ? 'Add your first item to get started' : "Here's your household at a glance"}
-          </Text>
-        </View>
+
+          {isShoppingActive ? (
+            <ActiveShoppingCard
+              store={activeStore}
+              pickedCount={activePickedCount}
+              totalCount={activeEntries.length}
+              onPress={() => router.push('/shopping')}
+            />
+          ) : null}
+        </Animated.View>
 
         <View style={styles.summaryRow}>
           <SummaryCard
             icon="cart"
             tone="surface"
-            label="Shopping list"
+            label="Items to Buy"
             value={shoppingCount}
             sublabel={storeCount > 0 ? `${storeCount} store${storeCount === 1 ? '' : 's'} assigned` : 'No stores assigned'}
             badge={expiringCount > 0 ? { label: `${expiringCount} expiring`, tone: 'danger' } : undefined}
@@ -224,7 +271,7 @@ export default function PantryScreen() {
           <SummaryCard
             icon="home"
             tone="surface"
-            label="At home"
+            label="Pantry Items"
             value={pantryCount}
             sublabel={pantryCount === 1 ? '1 item stocked' : `${pantryCount} items stocked`}
             onPress={() => {
@@ -236,6 +283,13 @@ export default function PantryScreen() {
             }}
           />
         </View>
+
+        <QuickActions
+          onAddItem={() => setAddVisible(true)}
+          onShopping={() => router.push('/shopping')}
+          onStores={() => router.push('/stores')}
+          onReceipts={() => router.push('/receipts')}
+        />
 
         <View style={styles.searchBar}>
           <Ionicons name="search" size={16} color={query ? colors.primary : colors.muted} style={{ marginRight: 8 }} />
@@ -361,7 +415,9 @@ export default function PantryScreen() {
           <EmptyState
             icon={query ? 'search-outline' : 'cart-outline'}
             title={query ? 'No results' : 'Your list is empty'}
-            body={query ? `No items match "${searchQuery}"` : 'Use the search bar above to add your first item.'}
+            body={query ? `No items match "${searchQuery}"` : 'Add your first item to get started.'}
+            ctaLabel={query ? undefined : 'Add an item'}
+            onCta={query ? undefined : () => setAddVisible(true)}
           />
         )}
 
@@ -455,6 +511,90 @@ export default function PantryScreen() {
         }}
       />
     </SafeAreaView>
+  );
+}
+
+/**
+ * "Continue shopping" hero — shown only while a shopping trip is in progress
+ * (existing session-store state; this component only reads it). Tapping
+ * navigates to the existing /shopping route, same as the Shopping list
+ * summary card.
+ */
+function ActiveShoppingCard({
+  store,
+  pickedCount,
+  totalCount,
+  onPress,
+}: {
+  store?: { name: string; logoColor?: string; logoEmoji?: string; logoUrl?: string };
+  pickedCount: number;
+  totalCount: number;
+  onPress: () => void;
+}) {
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
+  const remaining = Math.max(totalCount - pickedCount, 0);
+
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Continue shopping${store ? ` at ${store.name}` : ''}, ${remaining} item${remaining === 1 ? '' : 's'} left`}
+      style={({ pressed }) => [s.activeShopCard, pressed && { opacity: 0.92 }]}
+    >
+      <StoreChip store={store} name={store?.name ?? 'Shopping'} size={48} />
+      <View style={s.activeShopCopy}>
+        <Text style={s.activeShopEyebrow}>Shopping in progress</Text>
+        <Text style={s.activeShopTitle} numberOfLines={1}>{store?.name ?? 'Current trip'}</Text>
+        <Text style={s.activeShopMeta}>
+          {remaining === 0 ? 'All items picked' : `${remaining} of ${totalCount} left`}
+        </Text>
+      </View>
+      <View style={s.activeShopChevron}>
+        <Ionicons name="chevron-forward" size={20} color={colors.onPrimary} />
+      </View>
+    </Pressable>
+  );
+}
+
+/** Quick actions — every action here reuses an existing handler/route. */
+function QuickActions({
+  onAddItem,
+  onShopping,
+  onStores,
+  onReceipts,
+}: {
+  onAddItem: () => void;
+  onShopping: () => void;
+  onStores: () => void;
+  onReceipts: () => void;
+}) {
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
+  const actions: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void; primary?: boolean }[] = [
+    { icon: 'add-circle', label: 'Add item', onPress: onAddItem, primary: true },
+    { icon: 'cart-outline', label: 'Shopping', onPress: onShopping },
+    { icon: 'storefront-outline', label: 'Stores', onPress: onStores },
+    { icon: 'receipt-outline', label: 'Receipts', onPress: onReceipts },
+  ];
+
+  return (
+    <View style={s.quickActionsRow}>
+      {actions.map((a) => (
+        <Pressable
+          key={a.label}
+          onPress={a.onPress}
+          accessibilityRole="button"
+          accessibilityLabel={a.label}
+          style={({ pressed }) => [s.quickAction, a.primary && s.quickActionPrimary, pressed && { opacity: 0.75 }]}
+        >
+          <View style={[s.quickActionIcon, a.primary && s.quickActionIconPrimary]}>
+            <Ionicons name={a.icon} size={20} color={a.primary ? colors.onPrimary : colors.primary} />
+          </View>
+          <Text style={[s.quickActionLabel, a.primary && s.quickActionLabelPrimary]}>{a.label}</Text>
+        </Pressable>
+      ))}
+    </View>
   );
 }
 
@@ -637,16 +777,20 @@ function SimpleItemRow({
 function makeStyles(c: AppColors) {
   return StyleSheet.create({
     safe:             { flex: 1, backgroundColor: c.background },
-    scroll:           { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
-    header:           { flexDirection: 'column', paddingBottom: spacing.xxl },
-    topRow:           { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
+    scroll:           { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xxl },
+    header:           { flexDirection: 'column', paddingBottom: spacing.lg },
+    topRow:           { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
     topRowRight:      { flexDirection: 'row', alignItems: 'center', gap: 8 },
     wordmark:         { flexDirection: 'row', alignItems: 'center', gap: 7 },
     wordmarkText:     { fontFamily: fonts.sansSemibold, fontSize: 18, color: c.ink, letterSpacing: -0.3 },
     greeting:         { fontFamily: fonts.sans, fontSize: 14, color: c.muted, marginBottom: 2 },
-    title:            { fontFamily: fonts.serifItalic, fontSize: 28, lineHeight: 34, color: c.ink, marginBottom: spacing.xs },
+    eyebrow:          { fontFamily: fonts.sansSemibold, fontSize: 12, color: c.primary, letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 4 },
+    title:            { fontFamily: fonts.serifItalic, fontSize: 26, lineHeight: 32, color: c.ink, marginBottom: 4, letterSpacing: -0.2 },
     tagline:          { fontFamily: fonts.sans, fontSize: 15, color: c.muted, fontVariant: ['tabular-nums'] },
-    settings:         { width: 44, height: 44, borderRadius: 22, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, alignItems: 'center', justifyContent: 'center', ...shadow.card },
+    // Softest treatment in the header: a hairline border on a plain surface,
+    // same family as the quick-action tiles, no shadow — a secondary/utility
+    // action that recedes next to Add item and the summary cards.
+    settings:         { width: 40, height: 40, borderRadius: 20, backgroundColor: c.surface, borderWidth: 1, borderColor: c.borderSoft, alignItems: 'center', justifyContent: 'center' },
     pressed:          { opacity: 0.76 },
     atHomeHeader:      { marginBottom: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.sm, borderBottomWidth: 1, borderBottomColor: c.borderSoft, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     atHomeTitle:       { fontFamily: fonts.serifItalic, fontSize: 20, lineHeight: 26, color: c.ink },
@@ -655,7 +799,24 @@ function makeStyles(c: AppColors) {
     moreTitle:         { fontFamily: fonts.serifItalic, fontSize: 20, lineHeight: 26, color: c.ink },
     moreSubtitle:      { fontFamily: fonts.sans, fontSize: 13, color: c.muted, marginTop: 2 },
     dashboardSection:  { backgroundColor: c.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: c.borderSoft, padding: spacing.lg, ...shadow.card },
+    activeShopCard:   { flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: c.primary, borderRadius: radii.lg, padding: spacing.md, marginBottom: spacing.lg, ...shadow.card },
+    activeShopCopy:   { flex: 1 },
+    activeShopEyebrow:{ fontFamily: fonts.sansSemibold, fontSize: 11, color: c.onPrimary, opacity: 0.8, textTransform: 'uppercase', letterSpacing: 0.4 },
+    activeShopTitle:  { fontFamily: fonts.sansSemibold, fontSize: 17, color: c.onPrimary, marginTop: 2 },
+    activeShopMeta:   { fontFamily: fonts.sans, fontSize: 13, color: c.onPrimary, opacity: 0.85, marginTop: 2, fontVariant: ['tabular-nums'] },
+    activeShopChevron:{ width: 32, height: 32, borderRadius: 16, backgroundColor: c.onPrimary + '26', alignItems: 'center', justifyContent: 'center' },
     summaryRow:       { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.lg },
+    quickActionsRow:  { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg },
+    quickAction:      { flex: 1, alignItems: 'center', backgroundColor: c.surface, borderRadius: radii.md, borderWidth: 1, borderColor: c.borderSoft, paddingVertical: spacing.sm, gap: 5 },
+    quickActionIcon:  { width: 32, height: 32, borderRadius: 16, backgroundColor: c.primarySoft, alignItems: 'center', justifyContent: 'center' },
+    quickActionLabel: { fontFamily: fonts.sansMedium, fontSize: 11, color: c.inkSoft },
+    // "Add item" is the recommended first action — a light red-tinted tile
+    // (same tint used for icon chips elsewhere) with a solid red icon and
+    // red label text marks it as the one to reach for, without the full
+    // solid-red fill competing with the Active Shopping card.
+    quickActionPrimary:      { backgroundColor: c.primarySoft, borderColor: c.primarySoft },
+    quickActionIconPrimary:  { backgroundColor: c.primary },
+    quickActionLabelPrimary: { color: c.primary, fontFamily: fonts.sansSemibold },
     searchBar:        { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: radii.md, borderWidth: 1, borderColor: c.border, paddingLeft: spacing.md, paddingRight: 6, paddingVertical: 6, marginTop: spacing.sm, marginBottom: spacing.xs, minHeight: 52 },
     searchInput:      { flex: 1, minHeight: 40, fontFamily: fonts.sans, fontSize: 15, color: c.ink, padding: 0 },
     searchAddButton:  { width: 40, height: 40, borderRadius: 20, backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center', marginLeft: spacing.sm },
