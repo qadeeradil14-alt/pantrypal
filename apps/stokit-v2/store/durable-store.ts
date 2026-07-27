@@ -239,6 +239,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       const { getStorageLocation } = require('../core/services/itemClassifier');
       const existing = get().items.find((item) => normalizeItemName(item.name) === normalizeItemName(input.name));
       if (existing) {
+        const touchesStatus = input.status !== undefined || input.storeId !== undefined;
         const updated: PantryItem = {
           ...existing,
           name: input.name.trim(),
@@ -249,6 +250,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
           storeId: input.storeId ?? existing.storeId,
           expiryDate: input.expiryDate ?? existing.expiryDate,
           updatedAt: nextTimestamp(existing.updatedAt),
+          ...(touchesStatus ? { statusUpdatedAt: nextTimestamp(existing.statusUpdatedAt) } : {}),
         };
         set((s) => ({
           items: consolidatePantryItems(s.items.map((item) => item.id === existing.id ? updated : item)),
@@ -263,6 +265,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         void refreshGeofencedStoreData();
         return updated;
       }
+      const createdAt = now();
       const item: PantryItem = {
         id: uid('item'),
         name: input.name.trim(),
@@ -272,8 +275,9 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         storageLocation: input.storageLocation ?? getStorageLocation(input.name),
         storeId: input.storeId,
         expiryDate: input.expiryDate ?? null,
-        createdAt: now(),
-        updatedAt: now(),
+        createdAt,
+        updatedAt: createdAt,
+        statusUpdatedAt: createdAt,
       };
       set((s) => ({ items: [item, ...s.items] }));
       pushActivity('item_added', `Added ${item.name}`, { itemId: item.id });
@@ -290,9 +294,17 @@ export const useDurableStore = create<DurableStore>((set, get) => {
 
     updateItem: (id, patch) => {
       const diagBefore = 'quantity' in patch ? get().items.find((it) => it.id === id) : undefined; // DIAG
+      const touchesStatus = 'status' in patch || 'storeId' in patch;
       set((s) => ({
         items: s.items.map((it) =>
-          it.id === id ? { ...it, ...patch, updatedAt: nextTimestamp(it.updatedAt) } : it
+          it.id === id
+            ? {
+                ...it,
+                ...patch,
+                updatedAt: nextTimestamp(it.updatedAt),
+                ...(touchesStatus ? { statusUpdatedAt: nextTimestamp(it.statusUpdatedAt) } : {}),
+              }
+            : it
         ),
       }));
       if ('quantity' in patch) { // DIAG: temporary — remove after OTA 389 investigation
@@ -314,7 +326,9 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       const item = get().items.find((it) => it.id === id);
       set((s) => ({
         items: s.items.map((it) =>
-          it.id === id ? { ...it, status, updatedAt: nextTimestamp(it.updatedAt) } : it
+          it.id === id
+            ? { ...it, status, updatedAt: nextTimestamp(it.updatedAt), statusUpdatedAt: nextTimestamp(it.statusUpdatedAt) }
+            : it
         ),
       }));
       if (item && status === 'low' && item.status !== 'low') {
@@ -333,7 +347,13 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       set((s) => ({
         items: s.items.map((item) =>
           entryIds.has(item.id)
-            ? { ...item, status: 'stocked', storeId: null, updatedAt: nextTimestamp(item.updatedAt) }
+            ? {
+                ...item,
+                status: 'stocked',
+                storeId: null,
+                updatedAt: nextTimestamp(item.updatedAt),
+                statusUpdatedAt: nextTimestamp(item.statusUpdatedAt),
+              }
             : item
         ),
       }));
@@ -347,7 +367,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       set((s) => ({
         items: s.items.map((item) =>
           idSet.has(item.id)
-            ? { ...item, storeId, updatedAt: nextTimestamp(item.updatedAt) }
+            ? { ...item, storeId, updatedAt: nextTimestamp(item.updatedAt), statusUpdatedAt: nextTimestamp(item.statusUpdatedAt) }
             : item
         ),
       }));
@@ -363,7 +383,13 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       set((s) => ({
         items: s.items.map((item) =>
           item.status === 'low' || item.status === 'expiring'
-            ? { ...item, status: 'stocked', storeId: null, updatedAt: nextTimestamp(item.updatedAt) }
+            ? {
+                ...item,
+                status: 'stocked',
+                storeId: null,
+                updatedAt: nextTimestamp(item.updatedAt),
+                statusUpdatedAt: nextTimestamp(item.statusUpdatedAt),
+              }
             : item
         ),
       }));
@@ -435,7 +461,9 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         stores: s.stores.filter((st) => st.id !== id),
         // Unassign items pointing at the removed store; never delete the items.
         items: s.items.map((it) =>
-          it.storeId === id ? { ...it, storeId: null, updatedAt: nextTimestamp(it.updatedAt) } : it
+          it.storeId === id
+            ? { ...it, storeId: null, updatedAt: nextTimestamp(it.updatedAt), statusUpdatedAt: nextTimestamp(it.statusUpdatedAt) }
+            : it
         ),
       }));
       persist();

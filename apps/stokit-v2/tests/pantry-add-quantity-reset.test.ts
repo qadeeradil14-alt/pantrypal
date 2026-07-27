@@ -97,9 +97,20 @@ test('the fix does not touch trip/receipt commit logic or pantry stocked-item re
   assert.doesNotMatch(source, /commitTrip|removeTrip|receipts\.push|Receipt\b/, 'AddItemSheet must not touch trip/receipt commit logic');
 
   const durable = readFileSync(join(process.cwd(), 'store/durable-store.ts'), 'utf8');
+  const resetShoppingListStart = durable.indexOf('resetShoppingList: () => {');
+  const resetShoppingList = durable.slice(
+    resetShoppingListStart,
+    durable.indexOf('deleteItem: (id) =>', resetShoppingListStart),
+  );
   assert.match(
-    durable,
-    /resetShoppingList: \(\) => \{\s*\n\s*if \(!currentShoppingAccess\(\)\.canStartTrip\) return;\s*\n\s*set\(\(s\) => \(\{\s*\n\s*items: s\.items\.map\(\(item\) =>\s*\n\s*item\.status === 'low' \|\| item\.status === 'expiring'\s*\n\s*\? \{ \.\.\.item, status: 'stocked', storeId: null, updatedAt: nextTimestamp\(item\.updatedAt\) \}/,
+    resetShoppingList,
+    /item\.status === 'low' \|\| item\.status === 'expiring'/,
+    'resetShoppingList must only touch items currently on the shopping list',
+  );
+  assert.match(
+    resetShoppingList,
+    /status: 'stocked',\s*\n\s*storeId: null,/,
     'resetShoppingList must still preserve quantity — only status/storeId reset, matching "preserve pantry quantity"',
   );
+  assert.doesNotMatch(resetShoppingList, /quantity:/, 'resetShoppingList must never touch quantity');
 });

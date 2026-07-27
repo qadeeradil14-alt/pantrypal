@@ -31,12 +31,63 @@ export function mergeTombstones(
 }
 
 /**
+ * Resolve `status`/`storeId` across two copies of the same item independently
+ * of every other field, using a dedicated `statusUpdatedAt` timestamp instead
+ * of the item's whole-object `updatedAt`.
+ *
+ * Root cause this fixes: `updatedAt` is bumped by ANY field edit (quantity,
+ * name, unit, ...). Whole-object last-write-wins meant an unrelated edit on a
+ * stale copy (still showing `status: 'low'`) could out-race — and silently
+ * overwrite — a newer, more important `status: 'stocked'` transition made on
+ * another device, resurrecting a just-purchased item back onto the shopping
+ * list. Comparing `statusUpdatedAt` instead means only an intentional
+ * status/store transition (see durable-store.ts's addItem/updateItem/
+ * setItemStatus/clearShoppingEntries/assignItemsToStore/resetShoppingList/
+ * deleteStore, all of which stamp it) can move these two fields.
+ *
+ * Legacy compatibility: items written before this field existed have
+ * `statusUpdatedAt === undefined` on both sides — in that case this falls
+ * back to the original whole-object `updatedAt` comparison, so old data
+ * merges exactly as it always did. If only one side has a stamp, that side
+ * wins — an explicit, tracked transition is more trustworthy than an
+ * untracked legacy status that could be arbitrarily old.
+ */
+function resolveStatusFields(
+  existing: PantryItem,
+  incoming: PantryItem,
+): Pick<PantryItem, 'status' | 'storeId' | 'statusUpdatedAt'> {
+  const existingAt = existing.statusUpdatedAt;
+  const incomingAt = incoming.statusUpdatedAt;
+
+  if (existingAt === undefined && incomingAt === undefined) {
+    const incomingWins = (incoming.updatedAt ?? 0) > (existing.updatedAt ?? 0);
+    const winner = incomingWins ? incoming : existing;
+    return { status: winner.status, storeId: winner.storeId, statusUpdatedAt: undefined };
+  }
+
+  const a = existingAt ?? -Infinity;
+  const b = incomingAt ?? -Infinity;
+  if (a === b) {
+    // Tie (including the case both are defined and equal) — fall back to the
+    // regular updatedAt comparison, same tie-break as the rest of the item.
+    const incomingWins = (incoming.updatedAt ?? 0) > (existing.updatedAt ?? 0);
+    const winner = incomingWins ? incoming : existing;
+    return { status: winner.status, storeId: winner.storeId, statusUpdatedAt: winner.statusUpdatedAt };
+  }
+  const winner = b > a ? incoming : existing;
+  return { status: winner.status, storeId: winner.storeId, statusUpdatedAt: winner.statusUpdatedAt };
+}
+
+/**
  * Merge pantry items from two independently-edited devices without losing data:
  *
  *  - Union by id (an item present on only one side is kept).
  *  - For an id on both sides, keep the version with the higher updatedAt
  *    (per-item last-writer-wins — robust to which device's whole-snapshot
- *    happens to have the higher top-level timestamp).
+ *    happens to have the higher top-level timestamp) for most fields —
+ *    except `status`/`storeId`, which are resolved independently via
+ *    `statusUpdatedAt` (see resolveStatusFields) so an unrelated field edit
+ *    can never clobber a newer purchase/stock transition.
  *  - Honor deletion tombstones: an item stays deleted unless it was updated
  *    strictly after the deletion (a re-add wins over an older delete).
  *
@@ -74,7 +125,8 @@ export function mergePantryItems(
           decision: accepted ? 'accepted' : 'rejected',
         });
       }
-      if (accepted) byId.set(item.id, item);
+      const base = accepted ? item : existing;
+      byId.set(item.id, { ...base, ...resolveStatusFields(existing, item) });
     }
   }
 

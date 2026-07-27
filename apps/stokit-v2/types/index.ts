@@ -38,6 +38,15 @@ export interface PantryItem {
   expiryDate: string | null;
   createdAt: number;
   updatedAt: number;
+  /**
+   * Timestamp of the last intentional `status`/`storeId` transition (marking
+   * low, stocking, purchasing, reassigning a store). Merged independently of
+   * `updatedAt` so an unrelated field edit (e.g. quantity) on a stale copy can
+   * never overwrite a newer purchase/stock transition. Optional/absent on
+   * items from before this field existed — see mergePantryItems for the
+   * legacy fallback.
+   */
+  statusUpdatedAt?: number;
 }
 
 export interface Store {
