@@ -379,7 +379,9 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     },
 
     deleteItem: (id) => {
-      const at = now();
+      const itemUpdatedAt = get().items.find((item) => item.id === id)?.updatedAt ?? 0;
+      const previousDeletedAt = get().deletedItems?.find((tombstone) => tombstone.id === id)?.deletedAt ?? 0;
+      const at = nextTimestamp(Math.max(itemUpdatedAt, previousDeletedAt));
       set((s) => ({
         items: s.items.filter((it) => it.id !== id),
         // Record a tombstone so the deletion syncs across devices instead of the

@@ -18,7 +18,10 @@ test('applyRemotePatch merges items per-item instead of overwriting with the rem
 });
 
 test('deleteItem records a tombstone so deletions sync instead of resurrecting', () => {
-  assert.match(durable, /deletedItems: \[\.\.\.\(s\.deletedItems \?\? \[\]\)\.filter\(\(t\) => t\.id !== id\), \{ id, deletedAt: at \}\]/);
+  const deleteItem = durable.slice(durable.indexOf('deleteItem: (id) => {'), durable.indexOf('addStore: (input) => {'));
+  assert.match(deleteItem, /nextTimestamp\(/,
+    'a behind-clock device must stamp deletion after the newest item/tombstone version it has observed');
+  assert.match(deleteItem, /deletedItems: \[\.\.\.\(s\.deletedItems \?\? \[\]\)\.filter\(\(t\) => t\.id !== id\), \{ id, deletedAt: at \}\]/);
 });
 
 test('both snapshot functions include deletedItems so tombstones are persisted and pushed', () => {

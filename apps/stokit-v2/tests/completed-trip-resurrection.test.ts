@@ -76,6 +76,26 @@ test('an explicit local reopen supersedes the completed remote trip and stays ac
   assert.deepEqual(merged.trips, []);
 });
 
+test('a newer unrelated item snapshot cannot suppress a valid active trip', () => {
+  const activeTrip = state(
+    ['banana'].map((id) => item(id, 'low', 'fair-price', 20)),
+    session(),
+    [],
+    100,
+  );
+  const newerWithoutSession = state(
+    ['banana', 'mango'].map((id) => item(id, 'low', 'fair-price', 30)),
+    null,
+    [],
+    200,
+  );
+
+  const merged = mergeDurableSnapshotForPush(activeTrip, newerWithoutSession);
+
+  assert.equal(merged.activeSession?.tripId, 'fair-price-trip');
+  assert.deepEqual(merged.items.map((value) => value.id).sort(), ['banana', 'mango']);
+});
+
 test('snapshot writes use compare-and-set instead of unconditional upsert', () => {
   const source = readFileSync(join(process.cwd(), 'core/services/syncEngine.ts'), 'utf8');
   const push = source.slice(source.indexOf('export async function pushLocalState'), source.indexOf('export async function pullFromSupabase'));

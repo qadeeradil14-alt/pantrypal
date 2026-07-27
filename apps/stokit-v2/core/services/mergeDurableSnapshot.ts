@@ -22,7 +22,7 @@ function mergeActiveSession(
 
   const preferred = preferLocal ? local : remote;
   const other = preferLocal ? remote : local;
-  if (!preferred || !other) return preferred;
+  if (!preferred || !other) return preferred ?? other;
   if (
     preferred.status !== 'shopping_store' ||
     other.status !== 'shopping_store' ||

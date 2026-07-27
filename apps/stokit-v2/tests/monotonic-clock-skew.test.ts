@@ -47,6 +47,15 @@ test('behind-clock device quantity edit still wins the merge against a faster-cl
   assert.equal(merged[0].quantity, 4, 'the behind-clock edit must win the merge on the peer (the reported bug)');
 });
 
+test('behind-clock deletion still beats the newest item version and prevents resurrection', () => {
+  const peerItem = item({ updatedAt: 5000 });
+  const deletedAt = nextTimestamp(peerItem.updatedAt, 1000);
+
+  const merged = mergePantryItems([], [peerItem], [{ id: peerItem.id, deletedAt }]);
+
+  assert.deepEqual(merged, []);
+});
+
 // ── 2. Reverse-direction quantity edit ───────────────────────────────────────
 
 test('reverse direction: fast-clock device quantity edit still propagates normally', () => {
