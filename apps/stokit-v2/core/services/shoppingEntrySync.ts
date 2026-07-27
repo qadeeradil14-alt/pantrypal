@@ -80,6 +80,56 @@ export function mergeShoppingEntries(
   return Array.from(byId.values()).filter((entry) => !removedItemIds.includes(entry.itemId));
 }
 
+/**
+ * Fold an incoming remote session into the local one when applying a pull or
+ * realtime patch — used identically by session-store.ts's applyRemoteSession
+ * and durable-store.ts's gateRemoteActiveSession so the two can't diverge.
+ *
+ * Previously this only merged entries when BOTH sides reported the exact same
+ * `status` (e.g. both 'shopping_store'); any other pairing fell through to a
+ * blind replace with the remote session. But the active shopper's device
+ * legitimately advances through receipt_prompt / store_summary /
+ * next_store_ready / shopping_store (next store) while a stay-home
+ * collaborator's device is still sitting on 'shopping_store' for the very
+ * same trip — a same-trip status mismatch that is completely normal, not a
+ * sign the local session is stale. The blind replace in that case discarded
+ * any entry the collaborator had just added locally before it round-tripped
+ * through Supabase (root cause of items a collaborator adds mid-trip
+ * disappearing on their own device and never reaching the shopper).
+ *
+ * Fix: any same-trip pair where neither side has already reached a terminal
+ * state (idle/trip_summary) now folds instead of replaces. Remote's
+ * status/currentIndex/storeQueue ordering remain authoritative for trip
+ * progression (unchanged from today) — only entries and storeQueue contents
+ * get a non-destructive union, so a not-yet-synced local entry always
+ * survives regardless of which sub-status either side is currently in.
+ */
+export function foldRemoteActiveSession<T extends SharedShoppingSession>(
+  previous: T | null,
+  remoteSession: T,
+): T {
+  if (
+    !previous ||
+    previous.status === 'idle' ||
+    previous.status === 'trip_summary' ||
+    previous.tripId !== remoteSession.tripId
+  ) {
+    return remoteSession;
+  }
+  const removedItemIds = Array.from(
+    new Set([...(previous.removedItemIds ?? []), ...(remoteSession.removedItemIds ?? [])]),
+  );
+  return {
+    ...remoteSession,
+    storeQueue: [
+      ...remoteSession.storeQueue,
+      ...previous.storeQueue.filter((storeId) => !remoteSession.storeQueue.includes(storeId)),
+    ],
+    entries: mergeShoppingEntries(previous.entries, remoteSession.entries, removedItemIds),
+    removedItemIds,
+  };
+}
+
 export function reconcileShoppingSession<T extends SharedShoppingSession>(
   session: T,
   items: PantryItem[],

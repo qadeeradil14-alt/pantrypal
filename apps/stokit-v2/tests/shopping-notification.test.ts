@@ -112,7 +112,7 @@ test('remote active session is reconciled into local shopping session', () => {
   assert.ok(durableSrc.includes('applyRemoteSession(remoteSession)'), 'remote snapshot must update session store');
   assert.ok(sessionSrc.includes('applyRemoteSession'), 'session store must expose remote reconciliation');
   assert.ok(sessionSrc.includes('AsyncStorage.removeItem(SESSION_KEY)'), 'remote trip end must clear persisted active session');
-  assert.ok(sessionSrc.includes('mergeShoppingEntries(previous.entries, remoteSession.entries, removedItemIds)'), 'concurrent same-trip sessions must reconcile via entry merge, not blind overwrite');
+  assert.ok(sessionSrc.includes('foldRemoteActiveSession(previous, remoteSession as ShoppingSession)'), 'concurrent same-trip sessions must reconcile via the shared entry-merge fold, not blind overwrite');
 });
 
 test('local active session mutations publish full fresh snapshots', () => {
@@ -128,10 +128,14 @@ test('local active session mutations publish full fresh snapshots', () => {
   assert.ok(syncSrc.includes('active_session_snapshot_written'), 'successful household snapshot writes must be logged');
 });
 
-test('remote active session fully replaces local partial session and null clears storage', () => {
+test('remote active session folds through the shared helper, and null clears storage', () => {
   const sessionPath = path.join(__dirname, '../store/session-store.ts');
   const sessionSrc = fs.readFileSync(sessionPath, 'utf-8');
-  assert.ok(sessionSrc.includes('set({ session: remoteSession as ShoppingSession })'), 'remote activeSession must replace local session for non-active/non-merged cases');
+  // A different-trip or terminal-local remote session is handled by
+  // foldRemoteActiveSession falling through to `return remoteSession` itself
+  // (see core/services/shoppingEntrySync.ts) — session-store.ts always routes
+  // through it rather than special-casing "replace" inline.
+  assert.ok(sessionSrc.includes('foldRemoteActiveSession(previous, remoteSession as ShoppingSession)'), 'remote activeSession must be folded, not written back raw, for non-clear cases');
   assert.ok(!sessionSrc.includes('ACTIVE_STATUSES.has(previous.status)'), 'remote end must clear an actively-shopping local session');
   assert.ok(sessionSrc.includes("AsyncStorage.removeItem(SESSION_KEY)"), 'remote null/end must clear persisted local active session');
   assert.ok(sessionSrc.includes('remoteShoppingSessionAction(remoteSession)'), 'remote end/null policy must gate the storage-clear and replace paths');

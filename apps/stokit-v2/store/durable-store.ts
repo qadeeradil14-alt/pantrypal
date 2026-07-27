@@ -22,7 +22,7 @@ import type {
   Trip,
   Unit,
 } from '../types';
-import { shoppingEntryEventForItem, mergeShoppingEntries } from '../core/services/shoppingEntrySync';
+import { shoppingEntryEventForItem, foldRemoteActiveSession } from '../core/services/shoppingEntrySync';
 import { remoteShoppingSessionAction } from '../core/services/shoppingSessionSyncPolicy';
 import { hasValidStoreCoordinates } from '../core/services/storeCoordinates';
 export type { StorageLocation as StorageLocationImport };
@@ -129,27 +129,7 @@ function gateRemoteActiveSession(
   if (!remoteSession || remoteShoppingSessionAction(remoteSession) === 'clear') {
     return null;
   }
-
-  if (
-    previous?.status === 'shopping_store' &&
-    remoteSession.status === 'shopping_store' &&
-    previous.tripId === remoteSession.tripId
-  ) {
-    const removedItemIds = Array.from(
-      new Set([...(previous.removedItemIds ?? []), ...(remoteSession.removedItemIds ?? [])]),
-    );
-    return {
-      ...previous,
-      storeQueue: [
-        ...previous.storeQueue,
-        ...remoteSession.storeQueue.filter((storeId) => !previous.storeQueue.includes(storeId)),
-      ],
-      entries: mergeShoppingEntries(previous.entries, remoteSession.entries, removedItemIds),
-      removedItemIds,
-    };
-  }
-
-  return remoteSession;
+  return foldRemoteActiveSession(previous, remoteSession);
 }
 
 function snapshot(s: DurableState): DurableState {

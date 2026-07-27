@@ -21,7 +21,7 @@ import { useDurableStore } from './durable-store';
 import type { SharedShoppingSession, ShoppingEntry } from '../types';
 import { remoteShoppingSessionAction, shouldPreserveCompletedTripSummary } from '../core/services/shoppingSessionSyncPolicy';
 import { syncDiag } from '../core/services/syncDiag'; // DIAG: temporary — remove after OTA 389 investigation
-import { mergeShoppingEntries } from '../core/services/shoppingEntrySync';
+import { foldRemoteActiveSession } from '../core/services/shoppingEntrySync';
 import { canDispatchShoppingEvent, shoppingCapabilities } from '../core/services/shoppingAccess';
 import { useHouseholdStore } from './household-store';
 
@@ -67,31 +67,17 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         // Only restore active sessions — never restore trip_summary (it was committed)
         if (saved.status !== 'idle' && saved.status !== 'trip_summary') {
           const durableSession = useDurableStore.getState().activeSession;
-          // Same ongoing trip on both sides (identical startedAt) — merge
-          // per-entry instead of blindly trusting this device's own possibly
-          // stale AsyncStorage copy, so quantities/picks changed on another
+          // Same ongoing trip on both sides — fold per-entry instead of
+          // blindly trusting this device's own possibly stale AsyncStorage
+          // copy, so quantities/picks/newly-added items changed on another
           // device while this device was closed are not silently dropped as
           // soon as hydration restores the old blob. The later network pull
           // reconciles further once it lands, but the very first paint should
-          // already reflect the best locally-available data.
-          if (
-            durableSession &&
-            durableSession.status === 'shopping_store' &&
-            saved.status === 'shopping_store' &&
-            durableSession.tripId === saved.tripId
-          ) {
-            const removedItemIds = Array.from(
-              new Set([...(saved.removedItemIds ?? []), ...(durableSession.removedItemIds ?? [])]),
-            );
-            const merged: ShoppingSession = {
-              ...saved,
-              storeQueue: [
-                ...saved.storeQueue,
-                ...durableSession.storeQueue.filter((storeId) => !saved.storeQueue.includes(storeId)),
-              ],
-              entries: mergeShoppingEntries(saved.entries, durableSession.entries, removedItemIds),
-              removedItemIds,
-            };
+          // already reflect the best locally-available data. Any same-trip
+          // pairing folds now, not only an exact status match — see
+          // foldRemoteActiveSession for why.
+          if (durableSession && durableSession.tripId === saved.tripId) {
+            const merged = foldRemoteActiveSession(saved, durableSession as ShoppingSession);
             console.log('[Shopping Sync] active_session_storage_rehydrate_merged reason=same_trip');
             set({ session: merged, hydrated: true });
             return;
@@ -129,33 +115,13 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       return;
     }
 
-    // Guard 2: both devices are actively shopping the same trip — merge
-    // per-entry instead of blind whole-object replacement, so a check
-    // registered on either device sticks and neither side's progress is lost.
-    if (
-      previous.status === 'shopping_store' &&
-      remoteSession.status === 'shopping_store' &&
-      previous.tripId === remoteSession.tripId
-    ) {
-      const removedItemIds = Array.from(
-        new Set([...(previous.removedItemIds ?? []), ...(remoteSession.removedItemIds ?? [])]),
-      );
-      const merged: ShoppingSession = {
-        ...previous,
-        storeQueue: [
-          ...previous.storeQueue,
-          ...remoteSession.storeQueue.filter((storeId) => !previous.storeQueue.includes(storeId)),
-        ],
-        entries: mergeShoppingEntries(previous.entries, remoteSession.entries, removedItemIds),
-        removedItemIds,
-      };
-      set({ session: merged });
-      persistSession(merged);
-      return;
-    }
-
-    set({ session: remoteSession as ShoppingSession });
-    persistSession(remoteSession as ShoppingSession);
+    // Guard 2: same trip, neither side terminal — fold instead of blind
+    // whole-object replacement, so a not-yet-synced local entry (e.g. an item
+    // a stay-home collaborator just added) is never lost just because the
+    // shopper's device has moved to a different sub-status for this trip.
+    const merged = foldRemoteActiveSession(previous, remoteSession as ShoppingSession);
+    set({ session: merged });
+    persistSession(merged);
   },
 
   dispatch: (event) => {

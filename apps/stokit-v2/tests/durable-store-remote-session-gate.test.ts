@@ -9,14 +9,21 @@ import test from 'node:test';
 // shopping session — same class of bug already fixed in session-store.ts's
 // applyRemoteSession. This ports the same gating policy into durable-store.ts
 // so the two stores can't diverge.
+//
+// Both stores now delegate the actual merge-or-replace decision to a single
+// shared helper, foldRemoteActiveSession (core/services/shoppingEntrySync.ts),
+// so they can never diverge. See
+// tests/shopping-collaborator-add-during-store-transition.test.ts for the
+// full behavioral regression coverage of that helper — this file only checks
+// that durable-store.ts still routes through it.
 
 const src = readFileSync(join(process.cwd(), 'store/durable-store.ts'), 'utf8');
 
-test('durable-store imports the same session-sync policy helpers as session-store', () => {
+test('durable-store imports the shared session-fold helper from shoppingEntrySync', () => {
   assert.match(
     src,
-    /import \{ shoppingEntryEventForItem, mergeShoppingEntries \} from '\.\.\/core\/services\/shoppingEntrySync'/,
-    'must reuse mergeShoppingEntries rather than reimplementing entry merge',
+    /import \{ shoppingEntryEventForItem, foldRemoteActiveSession \} from '\.\.\/core\/services\/shoppingEntrySync'/,
+    'must reuse foldRemoteActiveSession rather than reimplementing entry merge',
   );
   assert.match(
     src,
@@ -38,21 +45,11 @@ test('gateRemoteActiveSession rejects malformed remote clears', () => {
   );
 });
 
-test('gateRemoteActiveSession merges same-trip shopping_store sessions instead of overwriting', () => {
+test('gateRemoteActiveSession delegates the merge-or-replace decision to the shared fold helper', () => {
   assert.match(
     src,
-    /previous\?\.status === 'shopping_store' &&\s*\n\s*remoteSession\.status === 'shopping_store' &&\s*\n\s*previous\.tripId === remoteSession\.tripId/,
-    'same-trip in-progress sessions must be merged, not replaced',
-  );
-  assert.match(
-    src,
-    /entries: mergeShoppingEntries\(previous\.entries, remoteSession\.entries, removedItemIds\)/,
-    'entries must go through the shared merge helper so removedItemIds are respected',
-  );
-  assert.match(
-    src,
-    /storeQueue: \[\s*\n\s*\.\.\.previous\.storeQueue,\s*\n\s*\.\.\.remoteSession\.storeQueue\.filter\(\(storeId\) => !previous\.storeQueue\.includes\(storeId\)\),\s*\n\s*\],/,
-    'storeQueue must be unioned, not clobbered by the remote patch',
+    /return foldRemoteActiveSession\(previous, remoteSession\);/,
+    'must not reimplement the status/tripId gate inline — delegate to the shared, tested helper',
   );
 });
 
