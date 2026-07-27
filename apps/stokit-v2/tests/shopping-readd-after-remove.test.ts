@@ -1,27 +1,25 @@
 /**
- * P0 regression: re-adding an item to an active trip silently failed — the
- * item appeared locally, then vanished on the next sync, on BOTH devices.
+ * Re-adding a previously-removed item to an active trip does NOT currently
+ * stick across devices. This file documents that known gap and locks in the
+ * behavior that must not regress around it.
  *
- * Root cause: `removedItemIds` is a plain string[] tombstone with no
- * timestamp. Once an id landed there on ANY device, every merge
- * (foldRemoteActiveSession, mergeActiveSession, hydrate) re-unioned it and
- * mergeShoppingEntries filtered that item straight back out. The local
- * reducer un-tombstones on ADD_ENTRY, but the peer still carried the old
- * tombstone, so the very next sync re-deleted the re-added item — forever,
- * since the union kept resurrecting the tombstone.
+ * The gap: `removedItemIds` is a plain string[] tombstone with no timestamp.
+ * Once an id lands there on any device, every merge re-unions it and
+ * mergeShoppingEntries filters that item back out. The local reducer
+ * un-tombstones on ADD_ENTRY, but the peer still carries the tombstone, so
+ * the next sync re-deletes the re-added item. Items are auto-tombstoned when
+ * they become `stocked` (shoppingEntryEventForItem emits REMOVE_ENTRY), so
+ * anything purchased earlier in a trip is affected.
  *
- * This bit "selective" items specifically because an id only lands in
- * removedItemIds if it was removed at some point — either swiped away
- * mid-trip, or (much more commonly) auto-removed when it became `stocked`:
- * shoppingEntryEventForItem emits REMOVE_ENTRY for any item that stops being
- * a shopping item. So every item purchased earlier in a trip became
- * permanently un-re-addable for the rest of that trip.
+ * OTA 416 attempted a fix via ShoppingEntry.addedAt + ShoppingSession.removedAt
+ * stamps. That had to be reverted in OTA 417: the Supabase members RLS policy
+ * (can_update_household_snapshot_as_member) only permits `entries`,
+ * `removedItemIds` and `storeQueue` to change on the session, so the two new
+ * fields caused EVERY member/collaborator push to be rejected server-side —
+ * a far worse P0 (no adds or deletes synced from the member device at all).
  *
- * Fix: ShoppingEntry.addedAt + ShoppingSession.removedAt stamps, resolved by
- * resolveRemovedItemIds — a tombstone only survives if no side holds a live
- * entry re-added strictly after the newest removal. Legacy data (no stamps
- * on either side) keeps the original tombstone-wins behavior so genuine
- * deletions still propagate.
+ * Re-landing the fix requires first widening that RLS allowlist, then
+ * restoring the stamps. Until then the tests below pin current behavior.
  */
 
 import assert from 'node:assert/strict';
@@ -43,103 +41,65 @@ function activeTrip(): ShoppingSession {
   });
 }
 
-test('[repro] a re-added item is dropped when the peer still holds the old tombstone (pre-fix behavior)', () => {
-  // Reproduce the old union-only rule inline to prove what used to happen.
+test('[guard] the session must never carry fields the members RLS policy forbids', () => {
+  // Only entries / removedItemIds / storeQueue may change on the session for a
+  // non-shopper member. Anything else makes every member push fail (OTA 416).
   const base = activeTrip();
-  const readded = reduce(
-    reduce(base, { type: 'REMOVE_ENTRY', itemId: 'eggs', now: T + 100 }),
-    { type: 'ADD_ENTRY', entry: entry('eggs'), now: T + 200 },
-  );
-  const peer = reduce(base, { type: 'REMOVE_ENTRY', itemId: 'eggs', now: T + 100 });
+  const removed = reduce(base, { type: 'REMOVE_ENTRY', itemId: 'eggs', now: T + 100 });
+  const readded = reduce(removed, { type: 'ADD_ENTRY', entry: entry('eggs'), now: T + 200 });
 
-  const oldUnion = Array.from(new Set([...(readded.removedItemIds ?? []), ...(peer.removedItemIds ?? [])]));
-  assert.ok(oldUnion.includes('eggs'), 'the naive union re-introduces the tombstone that deleted the re-add');
-});
-
-test('[fixed] a re-added item survives the merge, in both directions', () => {
-  const base = activeTrip();
-  const readded = reduce(
-    reduce(base, { type: 'REMOVE_ENTRY', itemId: 'eggs', now: T + 100 }),
-    { type: 'ADD_ENTRY', entry: entry('eggs'), now: T + 200 },
-  );
-  const peer = reduce(base, { type: 'REMOVE_ENTRY', itemId: 'eggs', now: T + 100 });
-
-  const forward = foldRemoteActiveSession(readded, peer);
-  const reverse = foldRemoteActiveSession(peer, readded);
-
-  assert.ok(forward.entries.some((e) => e.itemId === 'eggs'), 're-add survives on the re-adding device');
-  assert.ok(reverse.entries.some((e) => e.itemId === 'eggs'), 're-add reaches the peer');
-});
-
-test('[fixed] a genuine deletion still propagates when there is no re-add', () => {
-  const base = activeTrip();
-  const deleter = reduce(base, { type: 'REMOVE_ENTRY', itemId: 'eggs', now: T + 100 });
-  const unaware = base; // peer never saw the delete
-
-  assert.ok(!foldRemoteActiveSession(deleter, unaware).entries.some((e) => e.itemId === 'eggs'));
-  assert.ok(!foldRemoteActiveSession(unaware, deleter).entries.some((e) => e.itemId === 'eggs'));
-});
-
-test('[fixed] repeated syncs never re-drop the re-added item', () => {
-  const base = activeTrip();
-  const readded = reduce(
-    reduce(base, { type: 'REMOVE_ENTRY', itemId: 'eggs', now: T + 100 }),
-    { type: 'ADD_ENTRY', entry: entry('eggs'), now: T + 200 },
-  );
-  const peer = reduce(base, { type: 'REMOVE_ENTRY', itemId: 'eggs', now: T + 100 });
-
-  let session = readded;
-  for (let i = 0; i < 4; i++) {
-    session = foldRemoteActiveSession(session, peer);
-    assert.ok(session.entries.some((e) => e.itemId === 'eggs'), `sync round ${i + 1} must keep the item`);
+  for (const session of [base, removed, readded]) {
+    assert.equal((session as unknown as Record<string, unknown>).removedAt, undefined,
+      'removedAt must not be written — the members RLS policy rejects unknown session fields');
+    for (const e of session.entries) {
+      assert.equal((e as unknown as Record<string, unknown>).addedAt, undefined,
+        'addedAt must not be written — it trips the members RLS entry-diff check');
+    }
   }
 });
 
-test('[legacy] sessions with no addedAt/removedAt on either side keep tombstone-wins', () => {
+test('[known gap] a re-added item is still dropped when a peer holds the tombstone', () => {
   const base = activeTrip();
-  const legacyReadded = reduce(
-    reduce(base, { type: 'REMOVE_ENTRY', itemId: 'eggs' }),   // no `now`
-    { type: 'ADD_ENTRY', entry: entry('eggs') },              // no `now`
-  );
-  const legacyPeer = reduce(base, { type: 'REMOVE_ENTRY', itemId: 'eggs' });
-
-  const merged = foldRemoteActiveSession(legacyReadded, legacyPeer);
-  assert.ok(!merged.entries.some((e) => e.itemId === 'eggs'), 'legacy data must behave exactly as before this fix');
-});
-
-test('[fixed] a removal that is NEWER than the re-add still wins (last write wins, not add-always-wins)', () => {
-  const base = activeTrip();
-  const readdedEarly = reduce(
+  const readded = reduce(
     reduce(base, { type: 'REMOVE_ENTRY', itemId: 'eggs', now: T + 100 }),
     { type: 'ADD_ENTRY', entry: entry('eggs'), now: T + 200 },
   );
-  // Peer removed it again, later than the re-add.
-  const peerRemovedLater = reduce(base, { type: 'REMOVE_ENTRY', itemId: 'eggs', now: T + 300 });
+  const peerWithTombstone = reduce(base, { type: 'REMOVE_ENTRY', itemId: 'eggs', now: T + 100 });
 
-  const merged = foldRemoteActiveSession(readdedEarly, peerRemovedLater);
-  assert.ok(!merged.entries.some((e) => e.itemId === 'eggs'), 'the newer removal must win over the older re-add');
+  const merged = foldRemoteActiveSession(readded, peerWithTombstone);
+  assert.ok(!merged.entries.some((e) => e.itemId === 'eggs'),
+    'documents the open gap — fixing it requires the RLS allowlist change first');
 });
 
-test('resolveRemovedItemIds keeps unrelated tombstones untouched', () => {
-  const a = {
-    entries: [{ ...entry('eggs'), addedAt: T + 200 }],
-    removedItemIds: ['eggs', 'milk'],
-    removedAt: { eggs: T + 100, milk: T + 100 },
-  };
-  const b = { entries: [], removedItemIds: ['eggs', 'milk'], removedAt: { eggs: T + 100, milk: T + 100 } };
+test('a genuine deletion propagates to a peer that has not seen it', () => {
+  const base = activeTrip();
+  const deleter = reduce(base, { type: 'REMOVE_ENTRY', itemId: 'eggs', now: T + 100 });
+
+  assert.ok(!foldRemoteActiveSession(deleter, base).entries.some((e) => e.itemId === 'eggs'));
+  assert.ok(!foldRemoteActiveSession(base, deleter).entries.some((e) => e.itemId === 'eggs'));
+});
+
+test('deletion stays deleted across repeated syncs', () => {
+  const base = activeTrip();
+  const deleter = reduce(base, { type: 'REMOVE_ENTRY', itemId: 'eggs', now: T + 100 });
+
+  let session = deleter;
+  for (let i = 0; i < 4; i++) {
+    session = foldRemoteActiveSession(session, base);
+    assert.ok(!session.entries.some((e) => e.itemId === 'eggs'), `sync round ${i + 1}`);
+  }
+});
+
+test('resolveRemovedItemIds unions tombstones from both sides', () => {
+  const a = { entries: [], removedItemIds: ['eggs'] };
+  const b = { entries: [], removedItemIds: ['milk'] };
 
   const { removedItemIds } = resolveRemovedItemIds(a, b);
-  assert.deepEqual(removedItemIds, ['milk'], 'only the re-added id is cleared; other removals stand');
+  assert.deepEqual([...removedItemIds].sort(), ['eggs', 'milk']);
 });
 
-test('[fixed] an item auto-removed by becoming stocked can be re-added later in the same trip', () => {
-  // clearShoppingEntries marks bought items stocked -> shoppingEntryEventForItem
-  // emits REMOVE_ENTRY, which is how ordinary purchased items got tombstoned.
+test('items never removed are untouched by the tombstone logic', () => {
   const base = activeTrip();
-  const afterPurchase = reduce(base, { type: 'REMOVE_ENTRY', itemId: 'cheese', now: T + 100 });
-  const needMoreCheese = reduce(afterPurchase, { type: 'ADD_ENTRY', entry: entry('cheese'), now: T + 500 });
-  const peerStillTombstoned = afterPurchase;
-
-  const merged = foldRemoteActiveSession(needMoreCheese, peerStillTombstoned);
-  assert.ok(merged.entries.some((e) => e.itemId === 'cheese'), 'buying then re-adding the same item must work');
+  const merged = foldRemoteActiveSession(base, base);
+  assert.deepEqual(merged.entries.map((e) => e.itemId).sort(), ['cheese', 'eggs']);
 });
