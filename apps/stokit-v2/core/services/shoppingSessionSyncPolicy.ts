@@ -18,6 +18,11 @@ export function shouldPreserveCompletedTripSummary(
 export function isCompletedShoppingSession(
   session: RemoteShoppingSession,
   completedTrips: CompletedTrip[],
+  closedTripIds: CompletedTrip[] = [],
 ): boolean {
-  return Boolean(session?.tripId && completedTrips.some((trip) => trip.id === session.tripId));
+  return Boolean(
+    session?.tripId &&
+    (completedTrips.some((trip) => trip.id === session.tripId) ||
+      closedTripIds.some((closed) => closed.id === session.tripId)),
+  );
 }

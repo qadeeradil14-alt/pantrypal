@@ -46,6 +46,10 @@ function persistSession(session: ShoppingSession): void {
   }
 }
 
+function isClosedTripId(tripId: string): boolean {
+  return (useDurableStore.getState().closedTripIds ?? []).some((t) => t.id === tripId);
+}
+
 function sessionStats(session: ShoppingSession | SharedShoppingSession | null): { itemCount: number; pickedCount: number; sessionId: string } {
   const entries = session?.entries ?? [];
   return {
@@ -76,8 +80,15 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
           // already reflect the best locally-available data. Any same-trip
           // pairing folds now, not only an exact status match — see
           // foldRemoteActiveSession for why.
+          if (saved.tripId && isClosedTripId(saved.tripId)) {
+            console.log('[Shopping Sync] active_session_storage_rehydrate_ignored reason=trip_closed');
+            set({ session: initialSession });
+            AsyncStorage.removeItem(SESSION_KEY).catch(() => {});
+            set({ hydrated: true });
+            return;
+          }
           if (durableSession && durableSession.tripId === saved.tripId) {
-            const merged = foldRemoteActiveSession(saved, durableSession as ShoppingSession);
+            const merged = foldRemoteActiveSession(saved, durableSession as ShoppingSession, isClosedTripId);
             console.log('[Shopping Sync] active_session_storage_rehydrate_merged reason=same_trip');
             set({ session: merged, hydrated: true });
             return;
@@ -119,7 +130,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     // whole-object replacement, so a not-yet-synced local entry (e.g. an item
     // a stay-home collaborator just added) is never lost just because the
     // shopper's device has moved to a different sub-status for this trip.
-    const merged = foldRemoteActiveSession(previous, remoteSession as ShoppingSession);
+    // isClosedTripId additionally refuses to resurrect a trip this device
+    // already knows was explicitly canceled or finished, regardless of what
+    // stale copy some other device pushes up later.
+    const merged = foldRemoteActiveSession(previous, remoteSession as ShoppingSession, isClosedTripId);
     set({ session: merged });
     persistSession(merged);
   },
@@ -212,6 +226,19 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       if (entry && entry.itemId !== '__quick_scan__') {
         durable.updateItem(entry.itemId, { quantity: entry.quantity });
       }
+    }
+
+    // Tombstone the trip the moment it closes (canceled via END_TRIP, or
+    // finished into trip_summary) so a device that still holds a stale,
+    // not-yet-closed copy of this session in memory can never resurrect it
+    // by pushing that copy up later with a fresh timestamp. See
+    // foldRemoteActiveSession.
+    if (
+      (next.status === 'idle' || next.status === 'trip_summary') &&
+      prev.status !== 'idle' && prev.status !== 'trip_summary' &&
+      prev.tripId
+    ) {
+      durable.closeTrip(prev.tripId);
     }
 
     durable.setActiveSession(next.status === 'idle' || next.status === 'trip_summary' ? null : next, event.type);

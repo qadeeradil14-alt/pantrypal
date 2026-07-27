@@ -11,6 +11,7 @@ function mergeActiveSession(
   preferLocal: boolean,
   remoteTrips: Trip[],
   localTrips: Trip[],
+  closedTripIds: { id: string }[],
 ): SharedShoppingSession | null {
   const localExplicitlyResumed = Boolean(
     preferLocal &&
@@ -18,7 +19,11 @@ function mergeActiveSession(
     remoteTrips.some((trip) => trip.id === local.tripId) &&
     !localTrips.some((trip) => trip.id === local.tripId),
   );
-  if (!localExplicitlyResumed && (isCompletedShoppingSession(remote, knownTrips) || isCompletedShoppingSession(local, knownTrips))) return null;
+  if (
+    !localExplicitlyResumed &&
+    (isCompletedShoppingSession(remote, knownTrips, closedTripIds) ||
+      isCompletedShoppingSession(local, knownTrips, closedTripIds))
+  ) return null;
 
   const preferred = preferLocal ? local : remote;
   const other = preferLocal ? remote : local;
@@ -50,13 +55,18 @@ export function mergeDurableSnapshotForPush(remote: DurableState, local: Durable
   const mergedTombstones = mergeTombstones(remote.deletedItems, local.deletedItems);
   const mergedItems = mergePantryItems(remote.items, local.items, mergedTombstones);
   const knownTrips = [...remote.trips, ...local.trips];
+  const mergedClosedTripIds = mergeTombstones(remote.closedTripIds, local.closedTripIds);
 
   return {
     ...preferred,
     items: mergedItems,
-    activeSession: mergeActiveSession(remote.activeSession, local.activeSession, mergedItems, knownTrips, preferLocal, remote.trips, local.trips),
+    activeSession: mergeActiveSession(
+      remote.activeSession, local.activeSession, mergedItems, knownTrips,
+      preferLocal, remote.trips, local.trips, mergedClosedTripIds,
+    ),
     updatedAt: Math.max(remote.updatedAt, local.updatedAt),
     deletedItems: mergedTombstones,
+    closedTripIds: mergedClosedTripIds,
   };
 }
 

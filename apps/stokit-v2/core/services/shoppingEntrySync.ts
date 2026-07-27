@@ -1,4 +1,4 @@
-import type { ShoppingEvent } from '../shopping-machine';
+import { initialSession, type ShoppingEvent } from '../shopping-machine';
 import type { PantryItem, SharedShoppingSession, ShoppingEntry } from '../../types';
 import { syncDiag } from './syncDiag'; // DIAG: temporary — remove after OTA 389 investigation
 
@@ -107,6 +107,7 @@ export function mergeShoppingEntries(
 export function foldRemoteActiveSession<T extends SharedShoppingSession>(
   previous: T | null,
   remoteSession: T,
+  isClosedTripId?: (tripId: string) => boolean,
 ): T {
   if (
     !previous ||
@@ -114,6 +115,13 @@ export function foldRemoteActiveSession<T extends SharedShoppingSession>(
     previous.status === 'trip_summary' ||
     previous.tripId !== remoteSession.tripId
   ) {
+    // A remote session for a tripId this device already knows is closed
+    // (canceled or finished) is a stale echo from a device that hasn't
+    // caught up yet — never let it resurrect the closed trip, regardless of
+    // what local's current status happens to be.
+    if (remoteSession.tripId && isClosedTripId?.(remoteSession.tripId)) {
+      return previous ?? (initialSession as unknown as T);
+    }
     return remoteSession;
   }
   const removedItemIds = Array.from(

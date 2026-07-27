@@ -11,6 +11,7 @@ import type {
   ActivityType,
   DurableState,
   HouseholdPrefs,
+  ItemTombstone,
   PantryItem,
   PantryStatus,
   PriceEntry,
@@ -100,6 +101,8 @@ interface DurableStore extends DurableState {
   updateReceipt: (receiptId: string, patch: Partial<Receipt>) => void;
   recordPrice: (input: Omit<PriceEntry, 'id' | 'paidAt'>) => void;
   setActiveSession: (session: SharedShoppingSession | null, eventType?: string) => void;
+  /** Tombstone a canceled trip's id so a stale device can never resurrect it. */
+  closeTrip: (tripId: string) => void;
 
   // Preferences
   updatePrefs: (patch: Partial<HouseholdPrefs>) => void;
@@ -125,11 +128,13 @@ interface DurableStore extends DurableState {
 function gateRemoteActiveSession(
   previous: SharedShoppingSession | null,
   remoteSession: SharedShoppingSession | null,
+  closedTripIds: ItemTombstone[] = [],
 ): SharedShoppingSession | null {
   if (!remoteSession || remoteShoppingSessionAction(remoteSession) === 'clear') {
     return null;
   }
-  return foldRemoteActiveSession(previous, remoteSession);
+  const closedSet = new Set(closedTripIds.map((t) => t.id));
+  return foldRemoteActiveSession(previous, remoteSession, (tripId) => closedSet.has(tripId));
 }
 
 function snapshot(s: DurableState): DurableState {
@@ -144,6 +149,7 @@ function snapshot(s: DurableState): DurableState {
     activeSession: s.activeSession ?? null,
     updatedAt: s.updatedAt,
     deletedItems: s.deletedItems ?? [],
+    closedTripIds: s.closedTripIds ?? [],
   };
 }
 
@@ -505,6 +511,14 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       persist();
     },
 
+    closeTrip: (tripId) => {
+      if (!tripId) return;
+      set((s) => ({
+        closedTripIds: mergeTombstones(s.closedTripIds, [{ id: tripId, deletedAt: now() }]),
+      }));
+      persist();
+    },
+
     updateReceipt: (receiptId, patch) => {
       set((s) => ({
         receipts: s.receipts.map((r) => r.id === receiptId ? { ...r, ...patch } : r),
@@ -577,8 +591,12 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     },
 
     applyRemotePatch: (patch) => {
+      // Union closed-trip tombstones first (same rationale as deletedItems)
+      // so the activeSession gate below always sees every trip either side
+      // has already closed, regardless of which side's push landed first.
+      const mergedClosedTripIds = mergeTombstones(get().closedTripIds, patch.closedTripIds);
       const gatedActiveSession = 'activeSession' in patch
-        ? gateRemoteActiveSession(get().activeSession ?? null, patch.activeSession ?? null)
+        ? gateRemoteActiveSession(get().activeSession ?? null, patch.activeSession ?? null, mergedClosedTripIds)
         : undefined;
       set((s) => {
         // Union delete tombstones first, then merge items per-item (union by id,
@@ -604,6 +622,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
           // session-store.ts's applyRemoteSession (clear guard + same-trip merge).
           activeSession: 'activeSession' in patch ? gatedActiveSession ?? null : s.activeSession ?? null,
           deletedItems: mergedTombstones,
+          closedTripIds: mergedClosedTripIds,
         };
       });
       if ('activeSession' in patch) {

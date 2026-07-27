@@ -260,4 +260,13 @@ export interface DurableState {
   updatedAt: number;
   /** Tombstones for deleted items (optional: absent in pre-OTA-340 snapshots). */
   deletedItems?: ItemTombstone[];
+  /**
+   * Tombstones for explicitly-closed (canceled or finished) trip ids —
+   * `id` is the tripId, `deletedAt` is when it was closed. Prevents a device
+   * that still holds a stale, not-yet-cancelled copy of the session in
+   * memory from resurrecting it by pushing with a fresh timestamp after
+   * another device has already ended that trip. Optional: absent on
+   * snapshots from before this field existed.
+   */
+  closedTripIds?: ItemTombstone[];
 }

@@ -48,7 +48,7 @@ test('gateRemoteActiveSession rejects malformed remote clears', () => {
 test('gateRemoteActiveSession delegates the merge-or-replace decision to the shared fold helper', () => {
   assert.match(
     src,
-    /return foldRemoteActiveSession\(previous, remoteSession\);/,
+    /return foldRemoteActiveSession\(previous, remoteSession, \(tripId\) => closedSet\.has\(tripId\)\);/,
     'must not reimplement the status/tripId gate inline — delegate to the shared, tested helper',
   );
 });
@@ -61,8 +61,8 @@ test('applyRemotePatch routes activeSession through the gate instead of writing 
   );
   assert.match(
     src,
-    /const gatedActiveSession = 'activeSession' in patch\s*\n\s*\? gateRemoteActiveSession\(get\(\)\.activeSession \?\? null, patch\.activeSession \?\? null\)\s*\n\s*: undefined;/,
-    'gated value must be computed from current state before the set() call',
+    /const gatedActiveSession = 'activeSession' in patch\s*\n\s*\? gateRemoteActiveSession\(get\(\)\.activeSession \?\? null, patch\.activeSession \?\? null, mergedClosedTripIds\)\s*\n\s*: undefined;/,
+    'gated value must be computed from current state before the set() call, using the merged closed-trip tombstones',
   );
   assert.match(
     src,

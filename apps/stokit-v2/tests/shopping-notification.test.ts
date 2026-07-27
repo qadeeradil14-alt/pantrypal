@@ -112,7 +112,7 @@ test('remote active session is reconciled into local shopping session', () => {
   assert.ok(durableSrc.includes('applyRemoteSession(remoteSession)'), 'remote snapshot must update session store');
   assert.ok(sessionSrc.includes('applyRemoteSession'), 'session store must expose remote reconciliation');
   assert.ok(sessionSrc.includes('AsyncStorage.removeItem(SESSION_KEY)'), 'remote trip end must clear persisted active session');
-  assert.ok(sessionSrc.includes('foldRemoteActiveSession(previous, remoteSession as ShoppingSession)'), 'concurrent same-trip sessions must reconcile via the shared entry-merge fold, not blind overwrite');
+  assert.ok(sessionSrc.includes('foldRemoteActiveSession(previous, remoteSession as ShoppingSession, isClosedTripId)'), 'concurrent same-trip sessions must reconcile via the shared entry-merge fold, not blind overwrite');
 });
 
 test('local active session mutations publish full fresh snapshots', () => {
@@ -135,7 +135,7 @@ test('remote active session folds through the shared helper, and null clears sto
   // foldRemoteActiveSession falling through to `return remoteSession` itself
   // (see core/services/shoppingEntrySync.ts) — session-store.ts always routes
   // through it rather than special-casing "replace" inline.
-  assert.ok(sessionSrc.includes('foldRemoteActiveSession(previous, remoteSession as ShoppingSession)'), 'remote activeSession must be folded, not written back raw, for non-clear cases');
+  assert.ok(sessionSrc.includes('foldRemoteActiveSession(previous, remoteSession as ShoppingSession, isClosedTripId)'), 'remote activeSession must be folded, not written back raw, for non-clear cases');
   assert.ok(!sessionSrc.includes('ACTIVE_STATUSES.has(previous.status)'), 'remote end must clear an actively-shopping local session');
   assert.ok(sessionSrc.includes("AsyncStorage.removeItem(SESSION_KEY)"), 'remote null/end must clear persisted local active session');
   assert.ok(sessionSrc.includes('remoteShoppingSessionAction(remoteSession)'), 'remote end/null policy must gate the storage-clear and replace paths');

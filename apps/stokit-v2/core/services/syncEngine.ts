@@ -122,6 +122,7 @@ function durableSnapshot(state: DurableState): DurableState {
       : null,
     updatedAt: state.updatedAt,
     deletedItems: state.deletedItems ?? [],
+    closedTripIds: state.closedTripIds ?? [],
   };
 }
 
@@ -253,6 +254,7 @@ export async function pushLocalState(state: DurableState, options?: { isDeferred
       activeSession: reconciledSnapshot.activeSession,
       updatedAt: Math.max(store.getState().updatedAt, reconciledSnapshot.updatedAt),
       deletedItems: reconciledSnapshot.deletedItems,
+      closedTripIds: reconciledSnapshot.closedTripIds,
     });
     const uploadedById = new Map(receipts.map((receipt) => [receipt.id, receipt]));
     const currentReceipts = store.getState().receipts.map((receipt) => {
@@ -384,6 +386,7 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
       store.getState().applyRemotePatch({
         items: remote.items,
         deletedItems: remote.deletedItems,
+        closedTripIds: remote.closedTripIds,
         ...(hasActiveSession ? {
           activeSession: remote.activeSession
             ? reconcileShoppingSession(remote.activeSession, remote.items)
@@ -432,6 +435,7 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
       store.getState().applyRemotePatch({
         items: reconciledRemote.items,
         deletedItems: reconciledRemote.deletedItems,
+        closedTripIds: reconciledRemote.closedTripIds,
         ...(hasActiveSession ? { activeSession: reconciledRemote.activeSession } : {}),
         updatedAt: store.getState().updatedAt,
       });
