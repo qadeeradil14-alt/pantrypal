@@ -83,6 +83,14 @@ export interface ShoppingEntry {
   outOfStock?: boolean;
   /** Wall-clock ms of the last `outOfStock` change. Same last-tap-wins role as pickedAt. */
   outOfStockAt?: number;
+  /**
+   * Wall-clock ms this entry was (re-)added to the trip. Compared against the
+   * session's `removedAt` stamp for the same itemId so a re-add beats an older
+   * removal instead of being permanently filtered out by the removedItemIds
+   * tombstone. Absent on legacy snapshots — the merge then keeps the old
+   * "tombstone always wins" behavior.
+   */
+  addedAt?: number;
 }
 
 export interface PriceEntry {
@@ -169,6 +177,12 @@ export interface SharedShoppingSession {
   entries: ShoppingEntry[];
   /** Item ids removed mid-trip. Optional: absent on payloads from pre-fix clients. */
   removedItemIds?: string[];
+  /**
+   * Wall-clock ms each removedItemIds entry was removed. Lets a later re-add
+   * (ShoppingEntry.addedAt) win over an older removal instead of the tombstone
+   * being permanently re-unioned by every merge. Absent on legacy payloads.
+   */
+  removedAt?: Record<string, number>;
   receipts: Receipt[];
   completedTrip: Trip | null;
 }

@@ -1,6 +1,6 @@
 import type { DurableState, SharedShoppingSession, Trip } from '../../types';
 import { mergePantryItems, mergeTombstones } from './mergePantryState';
-import { mergeShoppingEntries, reconcileShoppingSession } from './shoppingEntrySync';
+import { mergeShoppingEntries, reconcileShoppingSession, resolveRemovedItemIds } from './shoppingEntrySync';
 import { isCompletedShoppingSession } from './shoppingSessionSyncPolicy';
 
 function mergeActiveSession(
@@ -34,7 +34,7 @@ function mergeActiveSession(
     preferred.tripId !== other.tripId
   ) return preferred;
 
-  const removedItemIds = Array.from(new Set([...(preferred.removedItemIds ?? []), ...(other.removedItemIds ?? [])]));
+  const { removedItemIds, removedAt } = resolveRemovedItemIds(preferred, other);
   const receiptsById = new Map(other.receipts.map((receipt) => [receipt.id, receipt]));
   for (const receipt of preferred.receipts) receiptsById.set(receipt.id, receipt);
 
@@ -44,6 +44,7 @@ function mergeActiveSession(
     skippedStoreIds: Array.from(new Set([...preferred.skippedStoreIds, ...other.skippedStoreIds])),
     entries: mergeShoppingEntries(other.entries, preferred.entries, removedItemIds),
     removedItemIds,
+    ...(removedAt !== undefined ? { removedAt } : {}),
     receipts: Array.from(receiptsById.values()),
     completedTrip: preferred.completedTrip ?? other.completedTrip,
   }, mergedItems);

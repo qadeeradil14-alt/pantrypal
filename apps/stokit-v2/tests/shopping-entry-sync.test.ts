@@ -127,7 +127,11 @@ test('server reconciliation restores a missing valid item without reviving a tom
 test('local add, edit, quantity, and store moves generate one active-session upsert', () => {
   const event = shoppingEntryEventForItem(active(), item({ name: 'Green Apple', quantity: 5, storeId: 'sams' }), 'banana');
 
-  assert.deepEqual(event, {
+  // `now` is a wall-clock stamp (used to let a re-add beat an older removal
+  // tombstone), so assert its presence separately from the fixed shape.
+  const { now, ...rest } = event as { now?: number } & Record<string, unknown>;
+  assert.equal(typeof now, 'number');
+  assert.deepEqual(rest, {
     type: 'ADD_ENTRY',
     entry: {
       itemId: 'banana',
@@ -141,11 +145,14 @@ test('local add, edit, quantity, and store moves generate one active-session ups
 });
 
 test('local delete or non-shopping status removes the active entry', () => {
-  assert.deepEqual(shoppingEntryEventForItem(active(), null, 'banana'), { type: 'REMOVE_ENTRY', itemId: 'banana' });
-  assert.deepEqual(
+  for (const event of [
+    shoppingEntryEventForItem(active(), null, 'banana'),
     shoppingEntryEventForItem(active(), item({ status: 'stocked' }), 'banana'),
-    { type: 'REMOVE_ENTRY', itemId: 'banana' },
-  );
+  ]) {
+    const { now, ...rest } = event as { now?: number } & Record<string, unknown>;
+    assert.equal(typeof now, 'number', 'removals are stamped so a later re-add can win');
+    assert.deepEqual(rest, { type: 'REMOVE_ENTRY', itemId: 'banana' });
+  }
 });
 
 test('active ADD_ENTRY refreshes metadata and store without duplicating the item', () => {

@@ -955,6 +955,7 @@ function ShoppingActive({
       .forEach((item) => {
         dispatch({
           type: 'ADD_ENTRY',
+          now: Date.now(),
           entry: { itemId: item.id, name: item.name, quantity: item.quantity, unit: item.unit, storeId: item.storeId!, picked: false },
         });
       });
@@ -1070,7 +1071,7 @@ function ShoppingActive({
                     if (!canEditActiveItems) return;
                     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                     if (isCollaborator) deleteItem(e.itemId);
-                    else dispatch({ type: 'REMOVE_ENTRY', itemId: e.itemId });
+                    else dispatch({ type: 'REMOVE_ENTRY', itemId: e.itemId, now: Date.now() });
                   }}
                   containerStyle={{ overflow: 'hidden' }}
                 >
@@ -1331,6 +1332,7 @@ function ShoppingActive({
            addedItems.forEach(i => {
               dispatch({
                 type: 'ADD_ENTRY',
+                now: Date.now(),
                 entry: { itemId: i.id, name: i.name, quantity: i.quantity, unit: i.unit, storeId: storeId, picked: false }
               });
            });

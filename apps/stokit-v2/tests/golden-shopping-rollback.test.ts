@@ -15,5 +15,5 @@ test('active shopper removes a trip entry while collaborators use durable tombst
   const source = readFileSync(join(process.cwd(), 'app/(tabs)/shopping.tsx'), 'utf8');
 
   assert.match(source, /import Swipeable from 'react-native-gesture-handler\/Swipeable'/);
-  assert.match(source, /onSwipeableWillOpen=\{\(\) => \{\s*\n\s*if \(!canEditActiveItems\) return;\s*\n\s*void Haptics\.impactAsync\(Haptics\.ImpactFeedbackStyle\.Medium\);\s*\n\s*if \(isCollaborator\) deleteItem\(e\.itemId\);\s*\n\s*else dispatch\(\{ type: 'REMOVE_ENTRY', itemId: e\.itemId \}\);/);
+  assert.match(source, /onSwipeableWillOpen=\{\(\) => \{\s*\n\s*if \(!canEditActiveItems\) return;\s*\n\s*void Haptics\.impactAsync\(Haptics\.ImpactFeedbackStyle\.Medium\);\s*\n\s*if \(isCollaborator\) deleteItem\(e\.itemId\);\s*\n\s*else dispatch\(\{ type: 'REMOVE_ENTRY', itemId: e\.itemId, now: Date\.now\(\) \}\);/);
 });

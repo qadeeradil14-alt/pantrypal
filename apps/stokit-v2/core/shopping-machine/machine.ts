@@ -61,6 +61,12 @@ export interface ShoppingSession {
   entries: ShoppingEntry[];
   /** Item ids removed mid-trip. Tombstones so a deletion propagates across devices instead of being resurrected by a merge. */
   removedItemIds: string[];
+  /**
+   * Wall-clock ms each removedItemIds entry was removed. Compared against an
+   * entry's `addedAt` so re-adding a previously-removed item wins over the old
+   * tombstone. Absent on legacy sessions (merge then keeps tombstone-wins).
+   */
+  removedAt?: Record<string, number>;
   /** Receipts accumulated during this trip. Committed at trip_summary. */
   receipts: Receipt[];
   /** Populated only when status === 'trip_summary'. */
@@ -109,9 +115,9 @@ export type ShoppingEvent =
   /** Legacy — picks first pending store. Kept for test backward-compat. */
   | { type: 'ADVANCE_STORE' }
   | { type: 'END_TRIP' }
-  | { type: 'ADD_ENTRY'; entry: ShoppingEntry }
+  | { type: 'ADD_ENTRY'; entry: ShoppingEntry; now?: number }
   /** Removes an entry added by mistake mid-trip (e.g. accidental item). */
-  | { type: 'REMOVE_ENTRY'; itemId: string }
+  | { type: 'REMOVE_ENTRY'; itemId: string; now?: number }
   | { type: 'RESUME_TRIP' }
   | { type: 'MARK_OUT_OF_STOCK'; itemId: string; now?: number }
   | { type: 'UNSKIP_STORE'; storeId: string }
@@ -297,14 +303,24 @@ export function reduce(
       const removedItemIds = session.removedItemIds.includes(event.entry.itemId)
         ? session.removedItemIds.filter((id) => id !== event.entry.itemId)
         : session.removedItemIds;
+      // Stamp when this add happened so a merge can tell it is newer than an
+      // older removal tombstone still held by a peer. Only when a timestamp is
+      // supplied — legacy/timeless callers keep the historical entry shape.
+      const addedStamp = event.now !== undefined ? { addedAt: event.now } : {};
+      // Drop this id's removal stamp too — it is superseded by the re-add.
+      const nextRemovedAt = session.removedAt?.[event.entry.itemId] !== undefined
+        ? Object.fromEntries(Object.entries(session.removedAt).filter(([id]) => id !== event.entry.itemId))
+        : session.removedAt;
+      const removedAtPatch = nextRemovedAt !== session.removedAt ? { removedAt: nextRemovedAt } : {};
       if (existingIdx === -1) {
         return {
           ...session,
           storeQueue: session.storeQueue.includes(event.entry.storeId)
             ? session.storeQueue
             : [...session.storeQueue, event.entry.storeId],
-          entries: [...session.entries, { ...event.entry, picked: false }],
+          entries: [...session.entries, { ...event.entry, picked: false, ...addedStamp }],
           removedItemIds,
+          ...removedAtPatch,
         };
       }
       const existing = session.entries[existingIdx];
@@ -313,7 +329,12 @@ export function reduce(
         existing.quantity === event.entry.quantity &&
         existing.unit === event.entry.unit &&
         existing.storeId === event.entry.storeId;
-      if (metadataMatches && removedItemIds === session.removedItemIds) return session;
+      if (
+        metadataMatches &&
+        removedItemIds === session.removedItemIds &&
+        nextRemovedAt === session.removedAt &&
+        (event.now === undefined || existing.addedAt === event.now)
+      ) return session;
       const entries = session.entries.map((e, i) =>
         i === existingIdx
           // Keep the local completion state AND its last-tap timestamps — an
@@ -324,6 +345,8 @@ export function reduce(
               outOfStock: existing.outOfStock,
               ...(existing.pickedAt !== undefined ? { pickedAt: existing.pickedAt } : {}),
               ...(existing.outOfStockAt !== undefined ? { outOfStockAt: existing.outOfStockAt } : {}),
+              ...(existing.addedAt !== undefined ? { addedAt: existing.addedAt } : {}),
+              ...addedStamp,
             }
           : e,
       );
@@ -334,6 +357,7 @@ export function reduce(
           : [...session.storeQueue, event.entry.storeId],
         entries,
         removedItemIds,
+        ...removedAtPatch,
       };
     }
 
@@ -344,7 +368,12 @@ export function reduce(
       const removedItemIds = session.removedItemIds.includes(event.itemId)
         ? session.removedItemIds
         : [...session.removedItemIds, event.itemId];
-      return { ...session, entries, removedItemIds };
+      // Stamp the removal so a later re-add (ShoppingEntry.addedAt) can be
+      // recognised as newer. Only when supplied — see ADD_ENTRY's note.
+      const removedAtPatch = event.now !== undefined
+        ? { removedAt: { ...(session.removedAt ?? {}), [event.itemId]: event.now } }
+        : {};
+      return { ...session, entries, removedItemIds, ...removedAtPatch };
     }
 
     case 'FINISH_STORE': {

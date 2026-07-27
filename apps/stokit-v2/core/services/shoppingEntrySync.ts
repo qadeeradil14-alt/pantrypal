@@ -104,6 +104,63 @@ export function mergeShoppingEntries(
  * get a non-destructive union, so a not-yet-synced local entry always
  * survives regardless of which sub-status either side is currently in.
  */
+/**
+ * Union two sides' removal tombstones, but drop any id that has since been
+ * re-added on either side.
+ *
+ * Why this exists: `removedItemIds` is a plain string[] with no timestamp, so
+ * once an id landed there on ANY device, every subsequent merge re-unioned it
+ * and mergeShoppingEntries filtered that item out again — permanently. The
+ * local reducer un-tombstones on ADD_ENTRY, but the peer still carried the old
+ * tombstone, so the very next sync deleted the re-added item on both devices.
+ * This is why re-adding a previously removed (or previously purchased, since
+ * going `stocked` emits REMOVE_ENTRY) item silently failed to stick.
+ *
+ * Resolution: an id stays removed unless some side holds it as a live entry
+ * whose `addedAt` is strictly newer than the newest `removedAt` for that id.
+ * Legacy data (no addedAt / no removedAt) keeps the original tombstone-wins
+ * behavior, so genuine deletions still propagate exactly as before.
+ */
+export function resolveRemovedItemIds(
+  a: Pick<SharedShoppingSession, 'entries' | 'removedItemIds' | 'removedAt'>,
+  b: Pick<SharedShoppingSession, 'entries' | 'removedItemIds' | 'removedAt'>,
+): { removedItemIds: string[]; removedAt?: Record<string, number> } {
+  const unionIds = Array.from(new Set([...(a.removedItemIds ?? []), ...(b.removedItemIds ?? [])]));
+
+  const removedAt: Record<string, number> = {};
+  for (const side of [a, b]) {
+    for (const [id, at] of Object.entries(side.removedAt ?? {})) {
+      if (removedAt[id] === undefined || at > removedAt[id]) removedAt[id] = at;
+    }
+  }
+
+  const newestAddedAt = new Map<string, number>();
+  for (const side of [a, b]) {
+    for (const entry of side.entries ?? []) {
+      if (entry.addedAt === undefined) continue;
+      const prev = newestAddedAt.get(entry.itemId);
+      if (prev === undefined || entry.addedAt > prev) newestAddedAt.set(entry.itemId, entry.addedAt);
+    }
+  }
+
+  const stillRemoved = unionIds.filter((id) => {
+    const addedAt = newestAddedAt.get(id);
+    const removedStamp = removedAt[id];
+    // No timestamps on either side → legacy behavior: the tombstone wins.
+    if (addedAt === undefined || removedStamp === undefined) return true;
+    return addedAt <= removedStamp;
+  });
+
+  const prunedRemovedAt = Object.fromEntries(
+    Object.entries(removedAt).filter(([id]) => stillRemoved.includes(id)),
+  );
+
+  return {
+    removedItemIds: stillRemoved,
+    ...(Object.keys(prunedRemovedAt).length > 0 ? { removedAt: prunedRemovedAt } : {}),
+  };
+}
+
 export function foldRemoteActiveSession<T extends SharedShoppingSession>(
   previous: T | null,
   remoteSession: T,
@@ -124,9 +181,7 @@ export function foldRemoteActiveSession<T extends SharedShoppingSession>(
     }
     return remoteSession;
   }
-  const removedItemIds = Array.from(
-    new Set([...(previous.removedItemIds ?? []), ...(remoteSession.removedItemIds ?? [])]),
-  );
+  const { removedItemIds, removedAt } = resolveRemovedItemIds(previous, remoteSession);
   return {
     ...remoteSession,
     storeQueue: [
@@ -135,6 +190,7 @@ export function foldRemoteActiveSession<T extends SharedShoppingSession>(
     ],
     entries: mergeShoppingEntries(previous.entries, remoteSession.entries, removedItemIds),
     removedItemIds,
+    ...(removedAt !== undefined ? { removedAt } : {}),
   };
 }
 
@@ -201,6 +257,7 @@ export function shoppingEntryEventForItem(
   if (item && isShoppingItem(item)) {
     return {
       type: 'ADD_ENTRY',
+      now: Date.now(),
       entry: {
         itemId: item.id,
         name: item.name,
@@ -212,6 +269,6 @@ export function shoppingEntryEventForItem(
     };
   }
   return session.entries.some((entry) => entry.itemId === itemId)
-    ? { type: 'REMOVE_ENTRY', itemId }
+    ? { type: 'REMOVE_ENTRY', itemId, now: Date.now() }
     : null;
 }
