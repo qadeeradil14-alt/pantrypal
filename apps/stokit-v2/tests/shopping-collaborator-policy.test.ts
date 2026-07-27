@@ -9,7 +9,7 @@ test('collaborator UI reuses the active shopping list and hides lifecycle contro
   const source = readFileSync(join(appRoot, 'app/(tabs)/shopping.tsx'), 'utf8');
 
   assert.doesNotMatch(source, />READ-ONLY</i);
-  assert.match(source, /Collaborating with/);
+  assert.match(source, /Shopping with/);
   assert.match(source, /canEditItems/);
   assert.match(source, /canChangePickedState/);
   assert.match(source, /canManageTripLifecycle/);

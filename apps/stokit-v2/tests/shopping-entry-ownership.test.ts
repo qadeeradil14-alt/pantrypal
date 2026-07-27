@@ -103,7 +103,7 @@ test('Shopping entry renders member avatars, visual store cards, and collaborati
   assert.match(source, /<Avatar/);
   assert.match(source, /<StoreChip/);
   assert.match(source, /is shopping/);
-  assert.match(source, /Collaborating with/);
+  assert.match(source, /Shopping with/);
   assert.doesNotMatch(source, />READ-ONLY</i);
   assert.match(source, /shopperId/);
   assert.match(source, /canEditItems/);

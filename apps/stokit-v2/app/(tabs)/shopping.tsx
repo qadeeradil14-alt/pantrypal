@@ -1009,15 +1009,14 @@ function ShoppingActive({
             photoUrl={activeShopper?.avatarUrl}
             displayName={activeShopper?.displayName}
             color={activeShopper?.avatarColor ?? colors.primary}
-            size={44}
+            size={32}
           />
           <View style={{ flex: 1 }}>
-            <Text style={styles.collaboratorEyebrow}>HOUSEHOLD TRIP</Text>
             <Text style={styles.collaboratorTitle}>
-              Collaborating with {activeShopper?.displayName ?? 'your household shopper'}
+              Shopping with {activeShopper?.displayName ?? 'your household shopper'}
             </Text>
             <Text style={styles.collaboratorBody}>
-              Add or update items here. {activeShopper?.displayName ?? 'The shopper'} handles check-offs and trip completion.
+              You're helping from home.
             </Text>
           </View>
         </Card>
@@ -2497,29 +2496,23 @@ function makeStyles(colors: AppColors) {
     collaboratorCard: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.md,
-      marginBottom: spacing.md,
+      gap: spacing.sm,
+      marginBottom: spacing.sm,
+      paddingVertical: spacing.xs,
       borderColor: colors.primary + '35',
       backgroundColor: colors.primarySoft,
     },
-    collaboratorEyebrow: {
-      fontFamily: fonts.monoMedium,
-      fontSize: 9,
-      color: colors.primary,
-      letterSpacing: 1,
-    },
     collaboratorTitle: {
       fontFamily: fonts.sansSemibold,
-      fontSize: 15,
+      fontSize: 13,
       color: colors.ink,
-      marginTop: 2,
     },
     collaboratorBody: {
       fontFamily: fonts.sans,
-      fontSize: 12,
-      lineHeight: 17,
+      fontSize: 11,
+      lineHeight: 15,
       color: colors.muted,
-      marginTop: 3,
+      marginTop: 1,
     },
     activeHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
     activeStep:   { fontFamily: fonts.monoMedium, fontSize: 11, color: colors.muted, textTransform: 'uppercase', letterSpacing: 1 },

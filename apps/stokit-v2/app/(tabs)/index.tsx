@@ -258,6 +258,31 @@ export default function PantryScreen() {
           ) : null}
         </Animated.View>
 
+        <View style={styles.searchBar}>
+          <Ionicons name="search" size={16} color={query ? colors.primary : colors.muted} style={{ marginRight: 8 }} />
+          <TextInput
+            ref={searchInputRef}
+            style={styles.searchInput}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Search or add anything…"
+            placeholderTextColor={colors.muted}
+            returnKeyType="done"
+            clearButtonMode="while-editing"
+            onSubmitEditing={handleAddCustom}
+          />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Add item"
+            accessibilityHint="Opens the add item form"
+            hitSlop={4}
+            onPress={() => setAddVisible(true)}
+            style={styles.searchAddButton}
+          >
+            <Ionicons name="add" size={22} color={colors.onPrimary} />
+          </Pressable>
+        </View>
+
         <View style={styles.summaryRow}>
           <SummaryCard
             icon="cart"
@@ -282,38 +307,6 @@ export default function PantryScreen() {
               });
             }}
           />
-        </View>
-
-        <QuickActions
-          onAddItem={() => setAddVisible(true)}
-          onShopping={() => router.push('/shopping')}
-          onStores={() => router.push('/stores')}
-          onReceipts={() => router.push('/receipts')}
-        />
-
-        <View style={styles.searchBar}>
-          <Ionicons name="search" size={16} color={query ? colors.primary : colors.muted} style={{ marginRight: 8 }} />
-          <TextInput
-            ref={searchInputRef}
-            style={styles.searchInput}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder="Search or add anything…"
-            placeholderTextColor={colors.muted}
-            returnKeyType="done"
-            clearButtonMode="while-editing"
-            onSubmitEditing={handleAddCustom}
-          />
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Add item"
-            accessibilityHint="Opens the add item form"
-            hitSlop={4}
-            onPress={() => setAddVisible(true)}
-            style={styles.searchAddButton}
-          >
-            <Ionicons name="add" size={22} color={colors.onPrimary} />
-          </Pressable>
         </View>
 
         {query ? (
@@ -557,47 +550,6 @@ function ActiveShoppingCard({
   );
 }
 
-/** Quick actions — every action here reuses an existing handler/route. */
-function QuickActions({
-  onAddItem,
-  onShopping,
-  onStores,
-  onReceipts,
-}: {
-  onAddItem: () => void;
-  onShopping: () => void;
-  onStores: () => void;
-  onReceipts: () => void;
-}) {
-  const { colors } = useTheme();
-  const s = useMemo(() => makeStyles(colors), [colors]);
-  const actions: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void; primary?: boolean }[] = [
-    { icon: 'add-circle', label: 'Add item', onPress: onAddItem, primary: true },
-    { icon: 'cart-outline', label: 'Shopping', onPress: onShopping },
-    { icon: 'storefront-outline', label: 'Stores', onPress: onStores },
-    { icon: 'receipt-outline', label: 'Receipts', onPress: onReceipts },
-  ];
-
-  return (
-    <View style={s.quickActionsRow}>
-      {actions.map((a) => (
-        <Pressable
-          key={a.label}
-          onPress={a.onPress}
-          accessibilityRole="button"
-          accessibilityLabel={a.label}
-          style={({ pressed }) => [s.quickAction, a.primary && s.quickActionPrimary, pressed && { opacity: 0.75 }]}
-        >
-          <View style={[s.quickActionIcon, a.primary && s.quickActionIconPrimary]}>
-            <Ionicons name={a.icon} size={20} color={a.primary ? colors.onPrimary : colors.primary} />
-          </View>
-          <Text style={[s.quickActionLabel, a.primary && s.quickActionLabelPrimary]}>{a.label}</Text>
-        </Pressable>
-      ))}
-    </View>
-  );
-}
-
 function HouseholdBanner() {
   const { colors } = useTheme();
   const household = useHouseholdStore((s) => s.household);
@@ -806,18 +758,7 @@ function makeStyles(c: AppColors) {
     activeShopMeta:   { fontFamily: fonts.sans, fontSize: 13, color: c.onPrimary, opacity: 0.85, marginTop: 2, fontVariant: ['tabular-nums'] },
     activeShopChevron:{ width: 32, height: 32, borderRadius: 16, backgroundColor: c.onPrimary + '26', alignItems: 'center', justifyContent: 'center' },
     summaryRow:       { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.lg },
-    quickActionsRow:  { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg },
-    quickAction:      { flex: 1, alignItems: 'center', backgroundColor: c.surface, borderRadius: radii.md, borderWidth: 1, borderColor: c.borderSoft, paddingVertical: spacing.sm, gap: 5 },
-    quickActionIcon:  { width: 32, height: 32, borderRadius: 16, backgroundColor: c.primarySoft, alignItems: 'center', justifyContent: 'center' },
-    quickActionLabel: { fontFamily: fonts.sansMedium, fontSize: 11, color: c.inkSoft },
-    // "Add item" is the recommended first action — a light red-tinted tile
-    // (same tint used for icon chips elsewhere) with a solid red icon and
-    // red label text marks it as the one to reach for, without the full
-    // solid-red fill competing with the Active Shopping card.
-    quickActionPrimary:      { backgroundColor: c.primarySoft, borderColor: c.primarySoft },
-    quickActionIconPrimary:  { backgroundColor: c.primary },
-    quickActionLabelPrimary: { color: c.primary, fontFamily: fonts.sansSemibold },
-    searchBar:        { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: radii.md, borderWidth: 1, borderColor: c.border, paddingLeft: spacing.md, paddingRight: 6, paddingVertical: 6, marginTop: spacing.sm, marginBottom: spacing.xs, minHeight: 52 },
+    searchBar:        { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: radii.md, borderWidth: 1, borderColor: c.border, paddingLeft: spacing.md, paddingRight: 6, paddingVertical: 6, marginTop: spacing.sm, marginBottom: spacing.lg, minHeight: 52 },
     searchInput:      { flex: 1, minHeight: 40, fontFamily: fonts.sans, fontSize: 15, color: c.ink, padding: 0 },
     searchAddButton:  { width: 40, height: 40, borderRadius: 20, backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center', marginLeft: spacing.sm },
     catalogDropdown:  { backgroundColor: c.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.md, marginBottom: spacing.md, overflow: 'hidden', ...shadow.card },
