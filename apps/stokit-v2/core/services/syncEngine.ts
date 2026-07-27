@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase';
 import type { DurableState, Receipt } from '../../types';
 import { shouldApplyRemoteSnapshot, remoteSkipReason, markRemoteApplied, markPushed, isSelfEcho, resetSyncWatermark } from './syncWatermark';
 import { reconcileShoppingSession } from './shoppingEntrySync';
-import { createDebouncedPullScheduler } from './realtimePullScheduler';
+import { createDebouncedPullScheduler, createRealtimeCatchupScheduler } from './realtimePullScheduler';
 import { syncDiag } from './syncDiag'; // DIAG: temporary — remove after OTA 389 investigation
 import { withTimeout } from './withTimeout';
 import { hasLocalSyncContribution, mergeDurableSnapshotForPush } from './mergeDurableSnapshot';
@@ -52,6 +52,10 @@ let syncChannel: ReturnType<typeof supabase.channel> | null = null;
 let activeHouseholdId: string | null = null;
 const initialHouseholdSyncComplete = new Set<string>();
 const realtimePullScheduler = createDebouncedPullScheduler(() => pullFromSupabase(), 150);
+const realtimeCatchupScheduler = createRealtimeCatchupScheduler(
+  () => realtimePullScheduler.schedule(),
+  2_000,
+);
 
 // Persistent offline flush. When a push fails (typically no connectivity) the
 // engine keeps retrying on a capped exponential backoff instead of giving up
@@ -497,11 +501,20 @@ export async function startSyncEngine(): Promise<void> {
       },
     )
     .subscribe((status, error) => {
+      if (activeHouseholdId !== id) return;
+      if (status === 'SUBSCRIBED') {
+        realtimeCatchupScheduler.stop();
+        realtimePullScheduler.schedule();
+      } else {
+        realtimeCatchupScheduler.start();
+      }
       if (__DEV__) console.log(`[Shopping Sync] realtime_subscription_status status=${status} householdId=${id}${error ? ` error=${error.message}` : ''}`);
     });
+  realtimeCatchupScheduler.start();
 }
 
 export function stopSyncEngine(): void {
+  realtimeCatchupScheduler.stop();
   realtimePullScheduler.cancel();
   if (syncChannel) void supabase.removeChannel(syncChannel);
   syncChannel = null;

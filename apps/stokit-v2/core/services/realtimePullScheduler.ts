@@ -73,3 +73,28 @@ export function createDebouncedPullScheduler(
 
   return { schedule, cancel, whenIdle };
 }
+
+export function createRealtimeCatchupScheduler(schedulePull: () => void, intervalMs: number) {
+  let active = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  const tick = () => {
+    if (!active) return;
+    schedulePull();
+    timer = setTimeout(tick, intervalMs);
+  };
+
+  const start = () => {
+    if (active) return;
+    active = true;
+    timer = setTimeout(tick, intervalMs);
+  };
+
+  const stop = () => {
+    active = false;
+    if (timer) clearTimeout(timer);
+    timer = null;
+  };
+
+  return { start, stop };
+}
