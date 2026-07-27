@@ -47,6 +47,8 @@ import { isDuplicatePriceEntry, isValidPrice } from '../core/services/priceHisto
 import { refreshWidgets } from '../core/services/widgets';
 import { findDuplicateStore } from '../core/services/storeDuplicates';
 import { createLatestSnapshotQueue } from '../core/services/latestSnapshotQueue';
+import { shoppingCapabilities } from '../core/services/shoppingAccess';
+import { useHouseholdStore } from './household-store';
 
 let persistedDurableState = false;
 
@@ -209,6 +211,16 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     });
   };
 
+  const currentShoppingAccess = () => {
+    const household = useHouseholdStore.getState();
+    const localMember = household.members.find((member) => member.isMe);
+    return shoppingCapabilities(
+      get().activeSession?.shopperId,
+      localMember?.id,
+      localMember?.role ?? household.household?.role,
+    );
+  };
+
   const pushActivity = (
     type: ActivityType,
     message: string,
@@ -367,6 +379,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     },
 
     resetShoppingList: () => {
+      if (!currentShoppingAccess().canStartTrip) return;
       set((s) => ({
         items: s.items.map((item) =>
           item.status === 'low' || item.status === 'expiring'
@@ -492,6 +505,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     },
 
     recordPrice: (input) => {
+      if (!get().activeSession || !currentShoppingAccess().canLogPrices) return;
       if (!isValidPrice(input.price)) return;
       const rounded = Math.round(input.price * 100) / 100;
       // Skip if an identical entry was recorded in the last 30 s (receipt re-scan guard).

@@ -72,7 +72,7 @@ test('the notice and the idle planner are mutually exclusive — never both rend
 });
 
 test('the "Reset shopping list" link is also suppressed while the notice is visible', () => {
-  assert.match(shopping, /\{!unseenTrip && shoppableCount > 0 && \(\s*\n\s*<Pressable onPress=\{handleResetShopping\}/);
+  assert.match(shopping, /\{!unseenTrip && shoppableCount > 0 && access\.canStartTrip && \(\s*\n\s*<Pressable onPress=\{handleResetShopping\}/);
 });
 
 // ── First-run initialization (OTA 399 first-run historical-trip bug) ───────

@@ -5,7 +5,8 @@ import test from 'node:test';
 import { initialSession, reduce } from '../core/shopping-machine';
 import {
   canOperateShoppingSession,
-  isOperationalShoppingEvent,
+  canDispatchShoppingEvent,
+  shoppingCapabilities,
 } from '../core/services/shoppingAccess';
 import type { ShoppingEntry } from '../types';
 
@@ -38,12 +39,19 @@ test('legacy sessions without an owner remain operable', () => {
 
   assert.equal(session.shopperId, null);
   assert.equal(canOperateShoppingSession(session.shopperId, 'member-peer'), true);
+  assert.equal(
+    shoppingCapabilities(session.shopperId, 'member-peer', 'member').canManageTripLifecycle,
+    true,
+  );
 });
 
-test('only the selected shopper can perform shopping operations', () => {
+test('only the selected shopper can perform picked-state and lifecycle operations', () => {
   assert.equal(canOperateShoppingSession('member-shopper', 'member-shopper'), true);
   assert.equal(canOperateShoppingSession('member-shopper', 'member-peer'), false);
   assert.equal(canOperateShoppingSession('member-shopper', null), false);
+
+  const shopper = shoppingCapabilities('member-shopper', 'member-shopper', 'member');
+  const collaborator = shoppingCapabilities('member-shopper', 'member-peer', 'member');
 
   for (const type of [
     'TOGGLE_PICK',
@@ -55,14 +63,36 @@ test('only the selected shopper can perform shopping operations', () => {
     'FINISH_TRIP_EARLY',
     'END_TRIP',
   ] as const) {
-    assert.equal(isOperationalShoppingEvent(type), true, `${type} must be owner-only`);
+    assert.equal(canDispatchShoppingEvent(type, shopper), true, `${type} must remain available to the selected shopper`);
+    assert.equal(canDispatchShoppingEvent(type, collaborator), false, `${type} must remain blocked for collaborators`);
   }
-
-  assert.equal(isOperationalShoppingEvent('START_TRIP'), false);
-  assert.equal(isOperationalShoppingEvent('ADD_ENTRY'), false);
 });
 
-test('Shopping entry renders member avatars, visual store cards, and peer read-only state', () => {
+test('household collaborators can edit items without receiving trip controls', () => {
+  const collaborator = shoppingCapabilities('owner-shopper', 'member-peer', 'member');
+
+  assert.equal(collaborator.canEditItems, true);
+  assert.equal(collaborator.canChangePickedState, false);
+  assert.equal(collaborator.canManageTripLifecycle, false);
+  assert.equal(collaborator.canLogPrices, false);
+  assert.equal(collaborator.canStartTrip, false);
+
+  for (const type of ['ADD_ENTRY', 'REMOVE_ENTRY', 'UPDATE_QUANTITY'] as const) {
+    assert.equal(canDispatchShoppingEvent(type, collaborator), true, `${type} must be a permitted item mutation`);
+  }
+});
+
+test('only an owner can start a trip and choose the active shopper', () => {
+  const owner = shoppingCapabilities(null, 'owner-user', 'owner');
+  const member = shoppingCapabilities(null, 'member-user', 'member');
+
+  assert.equal(canDispatchShoppingEvent('START_TRIP', owner), true);
+  assert.equal(canDispatchShoppingEvent('START_TRIP', member), false);
+  assert.equal(owner.canManageHousehold, true);
+  assert.equal(member.canManageHousehold, false);
+});
+
+test('Shopping entry renders member avatars, visual store cards, and collaborative peer state', () => {
   const source = readFileSync(
     join(process.cwd(), 'app/(tabs)/shopping.tsx'),
     'utf8',
@@ -73,8 +103,11 @@ test('Shopping entry renders member avatars, visual store cards, and peer read-o
   assert.match(source, /<Avatar/);
   assert.match(source, /<StoreChip/);
   assert.match(source, /is shopping/);
-  assert.match(source, /read-only/i);
+  assert.match(source, /Collaborating with/);
+  assert.doesNotMatch(source, />READ-ONLY</i);
   assert.match(source, /shopperId/);
+  assert.match(source, /canEditItems/);
+  assert.match(source, /canManageTripLifecycle/);
 });
 
 test('Shopping entry keeps selection separate from navigation and shows a preparing transition', () => {
@@ -117,13 +150,13 @@ test('Shopping entry preserves Screen safe-area top padding on both chooser scre
   assert.doesNotMatch(entryScreenStyle, /paddingTop/);
 });
 
-test('session store rejects owner-only events from another household member', () => {
+test('session store separates item mutations from picked-state and lifecycle permissions', () => {
   const source = readFileSync(
     join(process.cwd(), 'store/session-store.ts'),
     'utf8',
   );
 
-  assert.match(source, /isOperationalShoppingEvent/);
-  assert.match(source, /canOperateShoppingSession/);
+  assert.match(source, /canDispatchShoppingEvent/);
+  assert.match(source, /shoppingCapabilities/);
   assert.match(source, /members\.find\(\(member\) => member\.isMe\)/);
 });

@@ -99,7 +99,7 @@ test('the fix does not touch trip/receipt commit logic or pantry stocked-item re
   const durable = readFileSync(join(process.cwd(), 'store/durable-store.ts'), 'utf8');
   assert.match(
     durable,
-    /resetShoppingList: \(\) => \{\s*\n\s*set\(\(s\) => \(\{\s*\n\s*items: s\.items\.map\(\(item\) =>\s*\n\s*item\.status === 'low' \|\| item\.status === 'expiring'\s*\n\s*\? \{ \.\.\.item, status: 'stocked', storeId: null, updatedAt: nextTimestamp\(item\.updatedAt\) \}/,
+    /resetShoppingList: \(\) => \{\s*\n\s*if \(!currentShoppingAccess\(\)\.canStartTrip\) return;\s*\n\s*set\(\(s\) => \(\{\s*\n\s*items: s\.items\.map\(\(item\) =>\s*\n\s*item\.status === 'low' \|\| item\.status === 'expiring'\s*\n\s*\? \{ \.\.\.item, status: 'stocked', storeId: null, updatedAt: nextTimestamp\(item\.updatedAt\) \}/,
     'resetShoppingList must still preserve quantity — only status/storeId reset, matching "preserve pantry quantity"',
   );
 });

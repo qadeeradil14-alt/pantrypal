@@ -22,7 +22,7 @@ import type { SharedShoppingSession, ShoppingEntry } from '../types';
 import { remoteShoppingSessionAction, shouldPreserveCompletedTripSummary } from '../core/services/shoppingSessionSyncPolicy';
 import { syncDiag } from '../core/services/syncDiag'; // DIAG: temporary — remove after OTA 389 investigation
 import { mergeShoppingEntries } from '../core/services/shoppingEntrySync';
-import { canOperateShoppingSession, isOperationalShoppingEvent } from '../core/services/shoppingAccess';
+import { canDispatchShoppingEvent, shoppingCapabilities } from '../core/services/shoppingAccess';
 import { useHouseholdStore } from './household-store';
 
 const SESSION_KEY = 'stokit:v2:active-session';
@@ -160,11 +160,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
   dispatch: (event) => {
     const prev = get().session;
-    const localMemberId = useHouseholdStore.getState().members.find((member) => member.isMe)?.id ?? null;
-    if (
-      isOperationalShoppingEvent(event.type) &&
-      !canOperateShoppingSession(prev.shopperId, localMemberId)
-    ) return;
+    const household = useHouseholdStore.getState();
+    const localMember = household.members.find((member) => member.isMe);
+    const capabilities = shoppingCapabilities(
+      prev.shopperId,
+      localMember?.id,
+      localMember?.role ?? household.household?.role,
+    );
+    if (!canDispatchShoppingEvent(event.type, capabilities)) return;
     const next = reduce(prev, event);
     if (next === prev) return; // pure no-op
 

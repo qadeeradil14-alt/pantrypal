@@ -1,8 +1,19 @@
 import type { ShoppingEvent } from '../shopping-machine';
+import type { HouseholdIdentity } from '../../types';
 
-const OPERATIONAL_EVENTS = new Set<ShoppingEvent['type']>([
+const ITEM_MUTATION_EVENTS = new Set<ShoppingEvent['type']>([
+  'ADD_ENTRY',
+  'REMOVE_ENTRY',
+  'UPDATE_QUANTITY',
+]);
+
+const PICKED_STATE_EVENTS = new Set<ShoppingEvent['type']>([
   'TOGGLE_PICK',
   'SET_PICK',
+  'MARK_OUT_OF_STOCK',
+]);
+
+const TRIP_LIFECYCLE_EVENTS = new Set<ShoppingEvent['type']>([
   'FINISH_STORE',
   'SAVE_RECEIPT',
   'SKIP_RECEIPT',
@@ -15,12 +26,18 @@ const OPERATIONAL_EVENTS = new Set<ShoppingEvent['type']>([
   'FINISH_TRIP_EARLY',
   'ADVANCE_STORE',
   'END_TRIP',
-  'REMOVE_ENTRY',
   'RESUME_TRIP',
-  'MARK_OUT_OF_STOCK',
   'UNSKIP_STORE',
-  'UPDATE_QUANTITY',
 ]);
+
+export type ShoppingCapabilities = {
+  canStartTrip: boolean;
+  canEditItems: boolean;
+  canChangePickedState: boolean;
+  canManageTripLifecycle: boolean;
+  canLogPrices: boolean;
+  canManageHousehold: boolean;
+};
 
 export function canOperateShoppingSession(
   shopperId: string | null | undefined,
@@ -29,6 +46,32 @@ export function canOperateShoppingSession(
   return !shopperId || shopperId === localMemberId;
 }
 
-export function isOperationalShoppingEvent(type: ShoppingEvent['type']): boolean {
-  return OPERATIONAL_EVENTS.has(type);
+export function shoppingCapabilities(
+  shopperId: string | null | undefined,
+  localMemberId: string | null | undefined,
+  role: HouseholdIdentity['role'] | null | undefined,
+): ShoppingCapabilities {
+  const isOwner = role === 'owner';
+  const isSelectedShopper = Boolean(localMemberId) && (
+    shopperId ? shopperId === localMemberId : true
+  );
+  return {
+    canStartTrip: isOwner,
+    canEditItems: Boolean(localMemberId),
+    canChangePickedState: isSelectedShopper,
+    canManageTripLifecycle: isSelectedShopper,
+    canLogPrices: isSelectedShopper,
+    canManageHousehold: isOwner,
+  };
+}
+
+export function canDispatchShoppingEvent(
+  type: ShoppingEvent['type'],
+  capabilities: ShoppingCapabilities,
+): boolean {
+  if (type === 'START_TRIP') return capabilities.canStartTrip;
+  if (ITEM_MUTATION_EVENTS.has(type)) return capabilities.canEditItems;
+  if (PICKED_STATE_EVENTS.has(type)) return capabilities.canChangePickedState;
+  if (TRIP_LIFECYCLE_EVENTS.has(type)) return capabilities.canManageTripLifecycle;
+  return false;
 }

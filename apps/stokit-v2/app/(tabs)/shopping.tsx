@@ -39,6 +39,7 @@ import { Sheet } from '../../components/shared/Sheet';
 import { ItemAvatar } from '../../components/shared/ItemAvatar';
 import { Avatar } from '../../components/shared/Avatar';
 import { PricePromptSheet } from '../../components/shopping/PricePromptSheet';
+import { ShoppingItemEditSheet } from '../../components/shopping/ShoppingItemEditSheet';
 import { AddStoreContent } from '../../components/stores/AddStoreSheet';
 import { fonts, radii, shadow, spacing, type AppColors } from '../../theme';
 import { getCategoryColors } from '../../theme/categoryPalette';
@@ -57,11 +58,11 @@ import { sendShoppingAlertOnce } from '../../core/services/shoppingAlertOnce';
 import { resetShoppingTripStartGuard, startShoppingTripOnce } from '../../core/services/shoppingTripStart';
 import { pullFromSupabase } from '../../core/services/syncEngine';
 import type { ReceiptReviewItem } from '../../core/services/shoppingUx';
-import type { PantryItem, ShoppingEntry, Store, Trip } from '../../types';
+import type { HouseholdMember, PantryItem, ShoppingEntry, Store, Trip } from '../../types';
 import { useTheme } from '../../hooks/useTheme';
 import { UNASSIGNED_STORE_ID, UNASSIGNED_STORE_NAME } from '../../constants/shopping';
 import { getLastAcknowledgedTripCompletedAt, newestUnseenTrip, setLastAcknowledgedTripCompletedAt } from '../../core/services/tripCompletionAck';
-import { canOperateShoppingSession } from '../../core/services/shoppingAccess';
+import { shoppingCapabilities, type ShoppingCapabilities } from '../../core/services/shoppingAccess';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -70,6 +71,8 @@ type SubProps = {
   dispatch: ReturnType<typeof useSessionStore.getState>['dispatch'];
   storeById: (id: string) => Store | undefined;
   colors: AppColors;
+  access: ShoppingCapabilities;
+  activeShopper?: HouseholdMember;
   styles?: any;
   rStyles?: any;
   ssStyles?: any;
@@ -124,7 +127,13 @@ export default function ShoppingScreen() {
   const dispatch   = useSessionStore((s) => s.dispatch);
   const trips      = useDurableStore((s) => s.trips);
   const members    = useHouseholdStore((s) => s.members);
+  const household  = useHouseholdStore((s) => s.household);
   const localMember = members.find((member) => member.isMe);
+  const access = shoppingCapabilities(
+    session.shopperId,
+    localMember?.id,
+    localMember?.role ?? household?.role,
+  );
   // Called unconditionally, before any early return below, so React's rules
   // of hooks hold across every session status this screen renders.
   const { trip: unseenTrip, dismiss: dismissUnseenTrip } = useUnseenCompletedTrip(trips, session.completedTrip);
@@ -203,6 +212,7 @@ export default function ShoppingScreen() {
   }, [session.status, pendingQuickScanStore]);
 
   const handleQuickScanStoreSelect = (storeId: string) => {
+    if (!access.canStartTrip) return;
     setQuickScanStorePicker(false);
     const dummyEntry: ShoppingEntry = {
       itemId: '__quick_scan__',
@@ -254,6 +264,7 @@ export default function ShoppingScreen() {
     notifyHousehold = false,
     shopperId: string | null = null,
   ) => {
+    if (!access.canStartTrip) return;
     if (tripStartIdRef.current) return;
     const shoppable = items.filter((i) => i.status === 'low' || i.status === 'expiring');
     shoppable
@@ -323,6 +334,7 @@ export default function ShoppingScreen() {
       return;
     }
     if (session.status !== 'idle') return;            // don't hijack an in-progress trip
+    if (!access.canStartTrip) return;
     if (!plan.has(arrivalStoreId)) return;            // no low/expiring items there → land on idle
     void startTripAt(arrivalStoreId, false, localMember?.id ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -341,6 +353,7 @@ export default function ShoppingScreen() {
   }, [session.status, dispatch]);
 
   const handleResetShopping = () => {
+    if (!access.canStartTrip) return;
     const shoppingItems = items.filter((i) => i.status === 'low' || i.status === 'expiring');
     Alert.alert(
       'Reset shopping list?',
@@ -357,6 +370,7 @@ export default function ShoppingScreen() {
   };
 
   const handleStartShopping = () => {
+    if (!access.canStartTrip) return;
     const entries = Array.from(plan.entries());
     if (entries.length === 0) return;
     setSelectedShopperId(localMember?.id ?? null);
@@ -395,46 +409,6 @@ export default function ShoppingScreen() {
     ? members.find((member) => member.id === session.shopperId)
     : undefined;
   if (
-    session.status !== 'idle' &&
-    !canOperateShoppingSession(session.shopperId, localMember?.id)
-  ) {
-    const activeStore = storeById(currentStoreId(session) ?? '');
-    const picked = session.entries.filter((entry) => entry.picked).length;
-    return (
-      <Screen>
-        <PageTitle eyebrow="Shopping in progress" title={`${activeShopper?.displayName ?? 'A household member'} is shopping`} />
-        <Card style={nsStyles.readOnlyCard}>
-          <View style={nsStyles.readOnlyHeader}>
-            <Avatar
-              photoUrl={activeShopper?.avatarUrl}
-              displayName={activeShopper?.displayName}
-              color={activeShopper?.avatarColor ?? colors.primary}
-              size={52}
-            />
-            <View style={{ flex: 1 }}>
-              <Text style={nsStyles.readOnlyLabel}>READ-ONLY</Text>
-              <Text style={nsStyles.readOnlyTitle}>
-                {activeShopper?.displayName ?? 'Your household shopper'} has this trip
-              </Text>
-            </View>
-          </View>
-          <Text style={nsStyles.readOnlyBody}>
-            You can follow along while they pick items, finish stores, and complete the trip.
-          </Text>
-          {activeStore ? (
-            <View style={nsStyles.readOnlyStore}>
-              <StoreChip store={activeStore} size={40} />
-              <View style={{ flex: 1 }}>
-                <Text style={nsStyles.storeName}>{activeStore.name}</Text>
-                <Text style={nsStyles.storeItems}>{picked} of {session.entries.length} items picked</Text>
-              </View>
-            </View>
-          ) : null}
-        </Card>
-      </Screen>
-    );
-  }
-  if (
     session.status === 'shopping_store' ||
     session.status === 'receipt_prompt' ||
     session.status === 'store_summary' ||
@@ -451,10 +425,14 @@ export default function ShoppingScreen() {
         ssStyles={ssStyles}
         nsStyles={nsStyles}
         colors={colors}
+        access={access}
+        activeShopper={activeShopper}
       />
     );
   }
-  if (session.status === 'trip_summary')    return <TripSummary     session={session} dispatch={dispatch} storeById={storeById} tsStyles={tsStyles} colors={colors} />;
+  if (session.status === 'trip_summary' && access.canManageTripLifecycle) {
+    return <TripSummary session={session} dispatch={dispatch} storeById={storeById} tsStyles={tsStyles} colors={colors} access={access} activeShopper={activeShopper} />;
+  }
 
   // Geofence arrival deep-link: arrivalStoreId is present and the store has items
   // → the useEffect is about to call startTripAt. Show a blank screen instead of
@@ -651,8 +629,10 @@ export default function ShoppingScreen() {
                 <Ionicons name="arrow-forward" size={18} color={colors.primary} />
               </View>
             ) : null}
-            {unassignedCount === 0
+            {unassignedCount === 0 && access.canStartTrip
               ? <Button label="Start shopping" onPress={handleStartShopping} style={styles.primaryCta} />
+              : unassignedCount === 0
+              ? <Text style={styles.assignStoreHint}>The household owner will choose who starts this trip.</Text>
               : <Text style={styles.assignStoreHint}>Choose where to buy each item, then start shopping.</Text>
             }
           </Card>
@@ -736,7 +716,7 @@ export default function ShoppingScreen() {
         </>
       )}
 
-      {!unseenTrip && shoppableCount > 0 && (
+      {!unseenTrip && shoppableCount > 0 && access.canStartTrip && (
         <Pressable onPress={handleResetShopping} style={{ alignItems: 'center', paddingVertical: spacing.lg }}>
           <Text style={{ fontFamily: fonts.sans, fontSize: 13, color: colors.muted }}>Reset shopping list</Text>
         </Pressable>
@@ -915,7 +895,15 @@ function PlanStoreHeader({ store, count, styles }: { store?: Store; count: numbe
 
 type NotifyState = 'idle' | 'sending' | 'sent' | 'no_tokens' | 'error';
 
-function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubProps) {
+function ShoppingActive({
+  session,
+  dispatch,
+  storeById,
+  styles,
+  colors,
+  access,
+  activeShopper,
+}: SubProps) {
   const storeId = currentStoreId(session)!;
   const entries = currentStoreEntries(session);
   const picked  = entries.filter((e) => e.picked).length;
@@ -923,13 +911,20 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
   const total   = session.storeQueue.length;
   const [addSheetVisible, setAddSheetVisible] = useState(false);
   const [priceEntry, setPriceEntry] = useState<ShoppingEntry | null>(null);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [quantityStepperId, setQuantityStepperId] = useState<string | null>(null);
   const [notifyState, setNotifyState] = useState<NotifyState>('idle');
   const priceHistory = useDurableStore((s) => s.priceHistory);
   const recordPrice = useDurableStore((s) => s.recordPrice);
   const members = useHouseholdStore((s) => s.members);
   const items = useDurableStore((s) => s.items);
+  const deleteItem = useDurableStore((s) => s.deleteItem);
   const isSharedHousehold = members.length > 1;
+  const editingItem = editingItemId
+    ? items.find((item) => item.id === editingItemId) ?? null
+    : null;
+  const isCollaborator = !access.canChangePickedState;
+  const canEditActiveItems = access.canEditItems && session.status === 'shopping_store';
 
   // Quantity stepper must never stay expanded across a navigation away from
   // (or back to) this screen — reset on both focus and blur/unmount.
@@ -1008,6 +1003,25 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
           to the whole screen instead of only the list card. */}
       <Pressable onPress={() => setQuantityStepperId(null)}>
       <PageTitle eyebrow={total > 1 ? `Stop ${stepNo} of ${total}` : (storeById(storeId)?.name ? `At ${storeById(storeId)!.name}` : undefined)} title="Shopping" />
+      {isCollaborator ? (
+        <Card style={styles.collaboratorCard}>
+          <Avatar
+            photoUrl={activeShopper?.avatarUrl}
+            displayName={activeShopper?.displayName}
+            color={activeShopper?.avatarColor ?? colors.primary}
+            size={44}
+          />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.collaboratorEyebrow}>HOUSEHOLD TRIP</Text>
+            <Text style={styles.collaboratorTitle}>
+              Collaborating with {activeShopper?.displayName ?? 'your household shopper'}
+            </Text>
+            <Text style={styles.collaboratorBody}>
+              Add or update items here. {activeShopper?.displayName ?? 'The shopper'} handles check-offs and trip completion.
+            </Text>
+          </View>
+        </Card>
+      ) : null}
       <Card style={styles.activeTripCard}>
         <StoreHeader store={storeById(storeId)} eyebrow="Now shopping" styles={styles} />
         <View style={styles.progressWrap}>
@@ -1054,8 +1068,10 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                     </View>
                   )}
                   onSwipeableWillOpen={() => {
+                    if (!canEditActiveItems) return;
                     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    dispatch({ type: 'REMOVE_ENTRY', itemId: e.itemId });
+                    if (isCollaborator) deleteItem(e.itemId);
+                    else dispatch({ type: 'REMOVE_ENTRY', itemId: e.itemId });
                   }}
                   containerStyle={{ overflow: 'hidden' }}
                 >
@@ -1063,6 +1079,10 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                   style={({ pressed }) => [styles.pickRow, e.picked && styles.pickRowDone, e.outOfStock && { opacity: 0.5 }, pressed && { opacity: 0.72 }]}
                   onPress={() => {
                     if (quantityStepperId) setQuantityStepperId(null);
+                    if (!access.canChangePickedState) {
+                      if (canEditActiveItems && e.itemId !== '__quick_scan__') setEditingItemId(e.itemId);
+                      return;
+                    }
                     if (e.outOfStock) return;
                     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     // No LayoutAnimation here: on Fabric it can tick over a
@@ -1071,6 +1091,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                     dispatch({ type: 'TOGGLE_PICK', itemId: e.itemId, now: Date.now() });
                   }}
                   onLongPress={() => {
+                    if (!access.canChangePickedState) return;
                     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                     Alert.alert(
                       e.name,
@@ -1107,7 +1128,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                       return (
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
                           {priceText ? <Text style={styles.priceHint}>{priceText}</Text> : null}
-                          {e.itemId !== '__quick_scan__' && (
+                          {access.canLogPrices && e.itemId !== '__quick_scan__' && (
                             <Pressable
                               onPress={(ev) => { ev.stopPropagation(); setPriceEntry(e); }}
                               style={styles.addPriceButton}
@@ -1123,7 +1144,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                     })()}
                   </View>
                   {/* Qty badge → stepper on right, never overlaps pricetag */}
-                  {e.itemId !== '__quick_scan__' ? (
+                  {canEditActiveItems && e.itemId !== '__quick_scan__' ? (
                     quantityStepperId === e.itemId ? (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
                         <Pressable
@@ -1145,9 +1166,23 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
                         </Pressable>
                       </View>
                     ) : (
-                      <Pressable onPress={(ev) => { ev.stopPropagation(); setQuantityStepperId(e.itemId); }} hitSlop={10}>
-                        <Text style={styles.planMeta}>×{e.quantity}</Text>
-                      </Pressable>
+                      <View style={styles.itemActions}>
+                        <Pressable onPress={(ev) => { ev.stopPropagation(); setQuantityStepperId(e.itemId); }} hitSlop={10}>
+                          <Text style={styles.planMeta}>×{e.quantity}</Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={(ev) => {
+                            ev.stopPropagation();
+                            setEditingItemId(e.itemId);
+                          }}
+                          hitSlop={10}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Edit ${e.name}`}
+                          style={styles.editItemButton}
+                        >
+                          <Ionicons name="ellipsis-horizontal" size={17} color={colors.muted} />
+                        </Pressable>
+                      </View>
                     )
                   ) : (
                     <Text style={styles.planMeta}>×{e.quantity}</Text>
@@ -1165,11 +1200,13 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
             </View>
             <Text style={styles.activeEmptyTitle}>This stop is clear</Text>
             <Text style={styles.activeEmptyText}>No items are planned for this store yet.</Text>
-            <Button label="Add an item" onPress={() => setAddSheetVisible(true)} style={{ alignSelf: 'stretch', marginTop: spacing.lg }} />
+            {canEditActiveItems ? (
+              <Button label="Add an item" onPress={() => setAddSheetVisible(true)} style={{ alignSelf: 'stretch', marginTop: spacing.lg }} />
+            ) : null}
          </Card>
       )}
 
-      {entries.length > 0 && (
+      {entries.length > 0 && canEditActiveItems && (
           <Pressable onPress={() => setAddSheetVisible(true)} style={({ pressed }) => [styles.addMoreRow, pressed && { opacity: 0.7 }]}>
             <View style={styles.addMoreIcon}>
               <Ionicons name="add" size={20} color={colors.primary} />
@@ -1179,7 +1216,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
           </Pressable>
       )}
 
-      {isSharedHousehold && (
+      {isSharedHousehold && access.canManageTripLifecycle && (
         <Card style={{ marginTop: spacing.xl }}>
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, marginBottom: spacing.md }}>
             <View style={{
@@ -1253,9 +1290,11 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
         </Card>
       )}
 
-      <Button
-        label="Finish store"
-        onPress={() => {
+      {access.canManageTripLifecycle ? (
+        <>
+        <Button
+          label="Finish store"
+          onPress={() => {
           if (picked === 0 && entries.length > 0) {
             Alert.alert(
               'Nothing checked off',
@@ -1276,11 +1315,13 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
           void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           dispatch({ type: 'FINISH_STORE', now: Date.now() });
         }}
-        style={styles.finishStoreCta}
-      />
-      <CancelTripLink dispatch={dispatch} colors={colors} />
+          style={styles.finishStoreCta}
+        />
+        <CancelTripLink dispatch={dispatch} colors={colors} />
+        </>
+      ) : null}
       <AddItemSheet
-        visible={addSheetVisible}
+        visible={addSheetVisible && canEditActiveItems}
         onClose={() => setAddSheetVisible(false)}
         defaultStatus="low"
         defaultStoreId={storeId}
@@ -1297,7 +1338,7 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
         }}
       />
       <PricePromptSheet
-        entry={priceEntry}
+        entry={access.canLogPrices ? priceEntry : null}
         store={storeById(storeId)}
         lastPrice={priceEntry ? priceIndex.get(normalizeItemName(priceEntry.name))?.lastHere?.price : undefined}
         onClose={() => setPriceEntry(null)}
@@ -1312,6 +1353,11 @@ function ShoppingActive({ session, dispatch, storeById, styles, colors }: SubPro
           }
           setPriceEntry(null);
         }}
+      />
+      <ShoppingItemEditSheet
+        item={canEditActiveItems ? editingItem : null}
+        store={editingItem?.storeId ? storeById(editingItem.storeId) : undefined}
+        onClose={() => setEditingItemId(null)}
       />
       </Pressable>
     </Screen>
@@ -2152,6 +2198,7 @@ function ActiveTripShell(props: SubProps) {
   // 0x18) in RCTMountingManager. Confirmed via device crash log. Status changes
   // now transition without the ease animation, which is the safe trade.
 
+  if (!props.access.canManageTripLifecycle) return <ShoppingActive {...props} />;
   if (session.status === 'receipt_prompt') return <ReceiptPrompt {...props} />;
   if (session.status === 'store_summary' || session.status === 'continue_prompt') return <StoreSummary {...props} />;
   if (session.status === 'next_store_ready') return <NextStoreSelector {...props} />;
@@ -2447,6 +2494,33 @@ function makeStyles(colors: AppColors) {
     routeNotReadyHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     routeNotReadyTitle: { fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink },
     activeTripCard: { padding: spacing.xl, borderColor: colors.primary + '24' },
+    collaboratorCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      marginBottom: spacing.md,
+      borderColor: colors.primary + '35',
+      backgroundColor: colors.primarySoft,
+    },
+    collaboratorEyebrow: {
+      fontFamily: fonts.monoMedium,
+      fontSize: 9,
+      color: colors.primary,
+      letterSpacing: 1,
+    },
+    collaboratorTitle: {
+      fontFamily: fonts.sansSemibold,
+      fontSize: 15,
+      color: colors.ink,
+      marginTop: 2,
+    },
+    collaboratorBody: {
+      fontFamily: fonts.sans,
+      fontSize: 12,
+      lineHeight: 17,
+      color: colors.muted,
+      marginTop: 3,
+    },
     activeHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
     activeStep:   { fontFamily: fonts.monoMedium, fontSize: 11, color: colors.muted, textTransform: 'uppercase', letterSpacing: 1 },
     activeStore:  { fontFamily: fonts.serifItalic, fontSize: 25, color: colors.ink, marginTop: 2 },
@@ -2472,6 +2546,15 @@ function makeStyles(colors: AppColors) {
     priceHint:    { fontFamily: fonts.sans, fontSize: 11, color: colors.primary, marginTop: 3, fontVariant: ['tabular-nums'] },
     addPriceButton: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 8 },
     addPriceText: { fontFamily: fonts.sansSemibold, fontSize: 11, color: colors.primary },
+    itemActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    editItemButton: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.surfaceRaised,
+    },
     addMoreRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.sm, padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, backgroundColor: colors.surface },
     addMoreIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
     addMoreText: { flex: 1, fontFamily: fonts.sansSemibold, fontSize: 14, color: colors.ink },
