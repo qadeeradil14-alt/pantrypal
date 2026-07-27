@@ -76,6 +76,38 @@ test('bursty realtime events cause one debounced pull and one follow-up only whe
   assert.equal(pulls, 2, 'an event during a pull must schedule exactly one follow-up');
 });
 
+test('a failed realtime pull retries without requiring another event or tab refocus', async () => {
+  let pulls = 0;
+  const scheduler = createDebouncedPullScheduler(async () => {
+    pulls += 1;
+    return pulls > 1;
+  }, 1, 1);
+
+  scheduler.schedule();
+  await scheduler.whenIdle();
+
+  assert.equal(pulls, 2, 'the dropped snapshot must be fetched again after a transient pull failure');
+});
+
+test('cancelling sync while a failed pull is in flight does not retry the old household', async () => {
+  let pulls = 0;
+  let releasePull: (() => void) | undefined;
+  const firstPull = new Promise<void>((resolve) => { releasePull = resolve; });
+  const scheduler = createDebouncedPullScheduler(async () => {
+    pulls += 1;
+    await firstPull;
+    return false;
+  }, 1, 1);
+
+  scheduler.schedule();
+  await wait(5);
+  scheduler.cancel();
+  releasePull?.();
+  await wait(5);
+
+  assert.equal(pulls, 1, 'stopSyncEngine must cancel retries belonging to the previous household');
+});
+
 test('Shopping tab focus pulls after a missed realtime event', () => {
   const shopping = readFileSync(join(process.cwd(), 'app/(tabs)/shopping.tsx'), 'utf8');
   assert.match(shopping, /useFocusEffect\(/, 'Shopping must react when the tab receives focus');

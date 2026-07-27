@@ -1,8 +1,13 @@
-export function createDebouncedPullScheduler(pull: () => Promise<void>, delayMs: number) {
+export function createDebouncedPullScheduler(
+  pull: () => Promise<boolean | void>,
+  delayMs: number,
+  retryDelayMs = 2_000,
+) {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let pulling = false;
   let followUpRequested = false;
   let idleWaiters: Array<() => void> = [];
+  let generation = 0;
 
   const resolveIdle = () => {
     if (timer || pulling || followUpRequested) return;
@@ -17,28 +22,44 @@ export function createDebouncedPullScheduler(pull: () => Promise<void>, delayMs:
       return;
     }
     pulling = true;
+    const runGeneration = generation;
+    let retryRequested = false;
     try {
-      await pull();
+      retryRequested = (await pull()) === false;
+    } catch {
+      retryRequested = true;
     } finally {
       pulling = false;
+      if (runGeneration !== generation) {
+        if (followUpRequested) {
+          followUpRequested = false;
+          schedule();
+        } else {
+          resolveIdle();
+        }
+        return;
+      }
       if (followUpRequested) {
         followUpRequested = false;
         schedule();
+      } else if (retryRequested) {
+        schedule(retryDelayMs);
       } else {
         resolveIdle();
       }
     }
   };
 
-  const schedule = () => {
+  const schedule = (waitMs = delayMs) => {
     if (timer) return;
     timer = setTimeout(() => {
       timer = null;
       void run();
-    }, delayMs);
+    }, waitMs);
   };
 
   const cancel = () => {
+    generation += 1;
     if (timer) clearTimeout(timer);
     timer = null;
     followUpRequested = false;

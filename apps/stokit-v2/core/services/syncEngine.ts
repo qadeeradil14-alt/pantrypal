@@ -266,9 +266,9 @@ export async function pushLocalState(state: DurableState, options?: { isDeferred
   }
 }
 
-export async function pullFromSupabase(options?: { forceServerHydration?: boolean }): Promise<void> {
+export async function pullFromSupabase(options?: { forceServerHydration?: boolean }): Promise<boolean> {
   const id = await householdId();
-  if (!id) return;
+  if (!id) return true;
   const store = await durableStore();
 
   let data: { state: unknown; updated_at: number } | null;
@@ -277,7 +277,7 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
       supabase.from(CLOUD_TABLE).select('state, updated_at').eq('household_id', id).maybeSingle(),
       PULL_TIMEOUT_MS,
     );
-    if (result.error) return;
+    if (result.error) return false;
     data = result.data;
   } catch (err) {
     // Stalled request — bail out so the debounced pull scheduler releases
@@ -285,7 +285,7 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
     // silently starving every pull after it.
     syncDiag('pull_timeout', { phase: 'select', message: err instanceof Error ? err.message : String(err) }); // DIAG: temporary — remove after OTA 389/390/391 investigation
     if (__DEV__) console.warn('[Sync Engine] pull select timed out or failed.', err);
-    return;
+    return false;
   }
 
   if (!data?.state) {
@@ -293,7 +293,7 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
     const local = store.getState();
     if (local.items.length || local.stores.length || local.receipts.length || local.trips.length) {
       await pushLocalState({ ...durableSnapshot(local), updatedAt: Date.now() });
-      return;
+      return true;
     }
 
     const [{ data: items }, { data: stores }, { data: receipts }] = await Promise.all([
@@ -301,7 +301,7 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
       supabase.from('pantry_stores').select('*').eq('household_id', id),
       supabase.from('pantry_receipts').select('*').eq('household_id', id),
     ]);
-    if (!items?.length && !stores?.length && !receipts?.length) return;
+    if (!items?.length && !stores?.length && !receipts?.length) return true;
 
     const migrated: DurableState = {
       ...local,
@@ -346,7 +346,7 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
     };
     store.getState().applyRemotePatch(migrated);
     await pushLocalState(migrated);
-    return;
+    return true;
   }
 
   const remote = data.state as DurableState;
@@ -398,7 +398,7 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
       if (__DEV__) console.log(`[Shopping Sync] stale_remote_reconcile_push localUpdatedAt=${localUpdatedAt} remoteUpdatedAt=${remoteUpdatedAt}`);
       await pushLocalState(mergedLocal);
     }
-    return;
+    return true;
   }
 
   if (hasActiveSession) {
@@ -436,7 +436,7 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
     if (!isSelfEcho(remoteUpdatedAt) && (mergedLocal.updatedAt > remoteUpdatedAt || hasLocalSyncContribution(reconciledRemote, mergedLocal))) {
       await pushLocalState(mergedLocal);
     }
-    return;
+    return true;
   }
   syncDiag('pull_path', { path: 'full_apply', remoteUpdatedAt, localUpdatedAt: current.updatedAt }); // DIAG
   store.getState().applyRemotePatch(reconciledRemote);
@@ -445,6 +445,7 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
   if (!isSelfEcho(remoteUpdatedAt)) {
     markRemoteApplied(remoteUpdatedAt);
   }
+  return true;
 }
 
 export async function clearCloudState(): Promise<void> {
