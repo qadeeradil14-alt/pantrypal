@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { createLatestSnapshotQueue } from '../core/services/latestSnapshotQueue';
 import {
   createDebouncedPullScheduler,
-  createRealtimeCatchupScheduler,
+  createRealtimeFallbackScheduler,
 } from '../core/services/realtimePullScheduler';
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -111,21 +111,31 @@ test('cancelling sync while a failed pull is in flight does not retry the old ho
   assert.equal(pulls, 1, 'stopSyncEngine must cancel retries belonging to the previous household');
 });
 
-test('an unsubscribed realtime channel keeps polling until subscription succeeds', async (t) => {
+test('the realtime fallback keeps polling until the sync engine stops', async (t) => {
   let pulls = 0;
-  const catchup = createRealtimeCatchupScheduler(() => {
+  const fallback = createRealtimeFallbackScheduler(() => {
     pulls += 1;
   }, 1);
-  t.after(() => catchup.stop());
+  t.after(() => fallback.stop());
 
-  catchup.start();
+  fallback.start();
   await wait(25);
-  assert.ok(pulls >= 2, 'a member device with no websocket subscription must keep catching up');
+  assert.ok(pulls >= 2, 'a member device with no database subscription must keep catching up');
 
-  catchup.stop();
+  fallback.stop();
   const stoppedAt = pulls;
   await wait(10);
-  assert.equal(pulls, stoppedAt, 'SUBSCRIBED or stopSyncEngine must stop fallback polling');
+  assert.equal(pulls, stoppedAt, 'stopSyncEngine must stop fallback polling');
+});
+
+test('a channel status alone cannot stop fallback polling', () => {
+  const source = readFileSync(join(process.cwd(), 'core/services/syncEngine.ts'), 'utf8');
+  const subscription = source.slice(source.indexOf('.subscribe((status, error)'), source.indexOf('export function stopSyncEngine'));
+  assert.doesNotMatch(
+    subscription,
+    /status === 'SUBSCRIBED'[\s\S]*?realtimeFallbackScheduler\.stop\(\)/,
+    'the iPad can report SUBSCRIBED without a registered postgres_changes subscription',
+  );
 });
 
 test('Shopping tab focus pulls after a missed realtime event', () => {
