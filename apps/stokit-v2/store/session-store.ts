@@ -164,6 +164,19 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
     const durable = useDurableStore.getState();
 
+    if (event.type === 'REMOVE_ENTRY') {
+      const removedEntry = prev.entries.find((entry) => entry.itemId === event.itemId);
+      const durableItem = durable.items.find((item) => item.id === event.itemId);
+      if (
+        removedEntry &&
+        durableItem &&
+        (durableItem.status === 'low' || durableItem.status === 'expiring') &&
+        durableItem.storeId === removedEntry.storeId
+      ) {
+        durable.updateItem(event.itemId, { storeId: null });
+      }
+    }
+
     // Log "picked up" when an item flips to picked.
     if (event.type === 'SET_PICK' || event.type === 'TOGGLE_PICK') {
       const before = prev.entries.find((e) => e.itemId === event.itemId);
@@ -203,11 +216,20 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     // Commit to durable state exactly once when trip_summary is reached.
     if (next.status === 'trip_summary' && prev.status !== 'trip_summary' && next.completedTrip) {
       durable.commitTrip(next.completedTrip, next.receipts);
-      durable.clearShoppingEntries(next.entries.filter((e) => e.picked));
-      const skippedSet = new Set(next.skippedStoreIds);
-      next.entries
-        .filter((e) => !e.picked && skippedSet.has(e.storeId))
-        .forEach((e) => durable.updateItem(e.itemId, { storeId: null }));
+      const pickedEntries = next.entries.filter((entry) => entry.picked);
+      durable.clearShoppingEntries(pickedEntries);
+
+      const pickedItemIds = new Set(pickedEntries.map((entry) => entry.itemId));
+      const resolvedStoreIds = new Set(next.storeQueue);
+      durable.items
+        .filter(
+          (item) =>
+            !pickedItemIds.has(item.id) &&
+            (item.status === 'low' || item.status === 'expiring') &&
+            Boolean(item.storeId) &&
+            resolvedStoreIds.has(item.storeId!),
+        )
+        .forEach((item) => durable.updateItem(item.id, { storeId: null }));
     }
 
     set({ session: next });
