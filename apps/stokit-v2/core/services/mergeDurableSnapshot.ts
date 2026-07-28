@@ -1,6 +1,6 @@
 import type { DurableState, SharedShoppingSession, Trip } from '../../types';
 import { mergePantryItems, mergeTombstones } from './mergePantryState';
-import { mergeShoppingEntries, reconcileShoppingSession, resolveRemovedItemIds } from './shoppingEntrySync';
+import { canFoldActiveSessions, foldRemoteActiveSession, reconcileShoppingSession } from './shoppingEntrySync';
 import { isCompletedShoppingSession } from './shoppingSessionSyncPolicy';
 
 function mergeActiveSession(
@@ -28,23 +28,25 @@ function mergeActiveSession(
   const preferred = preferLocal ? local : remote;
   const other = preferLocal ? remote : local;
   if (!preferred || !other) return preferred ?? other;
-  if (
-    preferred.status !== 'shopping_store' ||
-    other.status !== 'shopping_store' ||
-    preferred.tripId !== other.tripId
-  ) return preferred;
+  // Same policy as the pull path — see canFoldActiveSessions. Notably this does
+  // NOT require both sides to be `shopping_store`: the shopper walks through
+  // receipt_prompt / store_summary / next_store_ready while moving from one
+  // store to the next, and requiring status equality here made the push discard
+  // everything a collaborator had added to the upcoming store during that
+  // window.
+  if (!canFoldActiveSessions(other, preferred)) return preferred;
 
-  const { removedItemIds, removedAt } = resolveRemovedItemIds(preferred, other);
+  // foldRemoteActiveSession produces the entry / storeQueue / removedItemIds
+  // union with `preferred` as the authoritative base (it keeps the second
+  // argument's scalars). Receipts, skipped stores and completedTrip are the
+  // push-path-only extras layered on top.
+  const folded = foldRemoteActiveSession(other, preferred);
   const receiptsById = new Map(other.receipts.map((receipt) => [receipt.id, receipt]));
   for (const receipt of preferred.receipts) receiptsById.set(receipt.id, receipt);
 
   return reconcileShoppingSession({
-    ...preferred,
-    storeQueue: [...preferred.storeQueue, ...other.storeQueue.filter((storeId) => !preferred.storeQueue.includes(storeId))],
+    ...folded,
     skippedStoreIds: Array.from(new Set([...preferred.skippedStoreIds, ...other.skippedStoreIds])),
-    entries: mergeShoppingEntries(other.entries, preferred.entries, removedItemIds),
-    removedItemIds,
-    ...(removedAt !== undefined ? { removedAt } : {}),
     receipts: Array.from(receiptsById.values()),
     completedTrip: preferred.completedTrip ?? other.completedTrip,
   }, mergedItems);

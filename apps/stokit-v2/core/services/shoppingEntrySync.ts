@@ -79,31 +79,6 @@ export function mergeShoppingEntries(
   }
   return Array.from(byId.values()).filter((entry) => !removedItemIds.includes(entry.itemId));
 }
-
-/**
- * Fold an incoming remote session into the local one when applying a pull or
- * realtime patch — used identically by session-store.ts's applyRemoteSession
- * and durable-store.ts's gateRemoteActiveSession so the two can't diverge.
- *
- * Previously this only merged entries when BOTH sides reported the exact same
- * `status` (e.g. both 'shopping_store'); any other pairing fell through to a
- * blind replace with the remote session. But the active shopper's device
- * legitimately advances through receipt_prompt / store_summary /
- * next_store_ready / shopping_store (next store) while a stay-home
- * collaborator's device is still sitting on 'shopping_store' for the very
- * same trip — a same-trip status mismatch that is completely normal, not a
- * sign the local session is stale. The blind replace in that case discarded
- * any entry the collaborator had just added locally before it round-tripped
- * through Supabase (root cause of items a collaborator adds mid-trip
- * disappearing on their own device and never reaching the shopper).
- *
- * Fix: any same-trip pair where neither side has already reached a terminal
- * state (idle/trip_summary) now folds instead of replaces. Remote's
- * status/currentIndex/storeQueue ordering remain authoritative for trip
- * progression (unchanged from today) — only entries and storeQueue contents
- * get a non-destructive union, so a not-yet-synced local entry always
- * survives regardless of which sub-status either side is currently in.
- */
 /**
  * Union two sides' removal tombstones, but drop any id that has since been
  * re-added on either side.
@@ -161,17 +136,40 @@ export function resolveRemovedItemIds(
   };
 }
 
+/**
+ * THE single merge policy shared by the pull path (foldRemoteActiveSession,
+ * used by session-store/durable-store) and the push path (mergeActiveSession
+ * in mergeDurableSnapshot.ts).
+ *
+ * Two sessions may be folded together when they describe the same trip and the
+ * side being folded *into* is not already terminal. Deliberately does NOT
+ * require both sides to report the same `status`: the active shopper's device
+ * legitimately walks shopping_store → receipt_prompt → store_summary →
+ * next_store_ready while a collaborator's device is still `shopping_store` for
+ * the same trip. Requiring status equality made the push path silently discard
+ * everything the collaborator added during that window (Store B entries), which
+ * the pull path then restored locally — producing permanent divergence and
+ * ping-pong sync between the two devices.
+ *
+ * Both call sites MUST go through this predicate so the two paths can never
+ * drift apart again.
+ */
+export function canFoldActiveSessions(
+  previous: SharedShoppingSession | null | undefined,
+  incoming: SharedShoppingSession | null | undefined,
+): boolean {
+  if (!previous || !incoming) return false;
+  if (previous.status === 'idle' || previous.status === 'trip_summary') return false;
+  return previous.tripId === incoming.tripId;
+}
+
 export function foldRemoteActiveSession<T extends SharedShoppingSession>(
   previous: T | null,
   remoteSession: T,
   isClosedTripId?: (tripId: string) => boolean,
 ): T {
-  if (
-    !previous ||
-    previous.status === 'idle' ||
-    previous.status === 'trip_summary' ||
-    previous.tripId !== remoteSession.tripId
-  ) {
+  // `!previous` is redundant with canFoldActiveSessions but narrows the type.
+  if (!previous || !canFoldActiveSessions(previous, remoteSession)) {
     // A remote session for a tripId this device already knows is closed
     // (canceled or finished) is a stale echo from a device that hasn't
     // caught up yet — never let it resurrect the closed trip, regardless of
