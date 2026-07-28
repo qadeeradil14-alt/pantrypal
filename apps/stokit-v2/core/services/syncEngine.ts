@@ -1,11 +1,11 @@
 import { File } from 'expo-file-system';
 import { decode } from 'base64-arraybuffer';
 import { supabase } from '../../lib/supabase';
-import type { DurableState, Receipt } from '../../types';
+import type { DurableState, Receipt, ShoppingEntry } from '../../types';
 import { shouldApplyRemoteSnapshot, remoteSkipReason, markRemoteApplied, markPushed, isSelfEcho, resetSyncWatermark } from './syncWatermark';
 import { reconcileShoppingSession } from './shoppingEntrySync';
 import { createDebouncedPullScheduler, createRealtimeFallbackScheduler } from './realtimePullScheduler';
-import { syncDiag } from './syncDiag'; // DIAG: temporary — remove after OTA 389 investigation
+import { syncDiag, syncDiagEnabled } from './syncDiag'; // DIAG: temporary — remove after OTA 389 investigation
 import { withTimeout } from './withTimeout';
 import { hasLocalSyncContribution, mergeDurableSnapshotForPush } from './mergeDurableSnapshot';
 
@@ -126,6 +126,34 @@ function durableSnapshot(state: DurableState): DurableState {
   };
 }
 
+/**
+ * DIAG(RLS): TEMPORARY — collaborator-write investigation (OTA 419).
+ * Summarises each entry's id/name and its exact JSON key set, so a capture can
+ * show whether the outgoing payload differs from the server copy only by an
+ * added `outOfStock` key (the suspected members-RLS rejection cause).
+ * Remove together with the rls_* syncDiag call sites.
+ */
+function diagEntryShapes(entries: ShoppingEntry[] | undefined): Record<string, unknown> {
+  const list = entries ?? [];
+  return {
+    count: list.length,
+    ids: list.map((e) => e.itemId),
+    names: list.map((e) => e.name),
+    keySets: list.map((e) => `${e.itemId}:{${Object.keys(e).sort().join(',')}}`),
+    withOutOfStockKey: list.filter((e) => 'outOfStock' in e).map((e) => e.itemId),
+  };
+}
+
+/** DIAG(RLS): TEMPORARY — see diagEntryShapes. */
+async function localMemberIdForDiag(): Promise<string | null> {
+  try {
+    const householdStore = (await import('../../store/household-store')).useHouseholdStore;
+    return householdStore.getState().members.find((member) => member.isMe)?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 async function householdId(): Promise<string | null> {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.user?.id) return null;
@@ -202,6 +230,10 @@ export async function pushLocalState(state: DurableState, options?: { isDeferred
     );
     const localSnapshot = { ...consistentState, receipts: cloudReceipts };
 
+    // DIAG(RLS): TEMPORARY — resolved once, outside the retry loop, so the
+    // push path's timing is unchanged. Remove with the rls_* call sites.
+    const diagLocalMemberId = syncDiagEnabled() ? await localMemberIdForDiag() : null;
+
     let error: { message: string } | null = null;
     let snapshot = localSnapshot;
     for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
@@ -220,12 +252,48 @@ export async function pushLocalState(state: DurableState, options?: { isDeferred
         const merged = mergeDurableSnapshotForPush(remote, localSnapshot);
         const writeAt = Math.max(Date.now(), remoteUpdatedAt + 1, merged.updatedAt + 1);
         snapshot = { ...merged, updatedAt: writeAt };
+        // DIAG(RLS): TEMPORARY — collaborator-write investigation (OTA 419).
+        // Logging only; no control flow below is altered. Delete this whole
+        // block, the two syncDiag calls after the update, the rls_remote_verify
+        // block, and diagEntryShapes/localMemberIdForDiag when done.
+        syncDiag('rls_push_attempt', {
+          householdId: id,
+          localMemberId: diagLocalMemberId,
+          tripId: snapshot.activeSession?.tripId ?? null,
+          sessionStatus: snapshot.activeSession?.status ?? null,
+          shopperId: snapshot.activeSession?.shopperId ?? null,
+          isLocalTheShopper: diagLocalMemberId != null
+            && snapshot.activeSession?.shopperId === diagLocalMemberId,
+          casExpectedUpdatedAt: remoteUpdatedAt,
+          writeAt,
+          outgoing: diagEntryShapes(snapshot.activeSession?.entries),
+          remote: diagEntryShapes(remote.activeSession?.entries),
+          remoteSessionStatus: remote.activeSession?.status ?? null,
+        });
         const updateResult = await supabase.from(CLOUD_TABLE)
           .update({ state: snapshot, updated_at: writeAt })
           .eq('household_id', id)
           .eq('updated_at', remoteUpdatedAt)
           .select('updated_at')
           .maybeSingle();
+        // DIAG(RLS): TEMPORARY — see note above.
+        const diagCode = updateResult.error?.code ?? null;
+        syncDiag('rls_push_result', {
+          attempt,
+          httpStatus: (updateResult as { status?: number }).status ?? null,
+          rowsReturned: updateResult.data ? 1 : 0,
+          errorCode: diagCode,
+          errorMessage: updateResult.error?.message ?? null,
+          errorDetails: updateResult.error?.details ?? null,
+          errorHint: updateResult.error?.hint ?? null,
+          classification: diagCode === '42501'
+            ? 'RLS_REJECTED'
+            : updateResult.error
+              ? 'OTHER_ERROR'
+              : updateResult.data
+                ? 'SUCCESS'
+                : 'CAS_CONFLICT',
+        });
         error = updateResult.error;
         if (!error && updateResult.data) break;
         if (!error) error = { message: 'snapshot changed during merge' };
@@ -242,6 +310,29 @@ export async function pushLocalState(state: DurableState, options?: { isDeferred
     }
     clearOfflineFlush();
     markPushed(snapshot.updatedAt);
+    // DIAG(RLS): TEMPORARY — re-read the row we just wrote so a capture can
+    // distinguish "write accepted and persisted" from "write accepted but the
+    // item is later removed/ignored". Gated on syncDiagEnabled() so devices
+    // without the diag flag issue no extra request at all.
+    if (syncDiagEnabled()) {
+      try {
+        const verify = await supabase.from(CLOUD_TABLE)
+          .select('state, updated_at').eq('household_id', id).maybeSingle();
+        const verifyState = verify.data?.state as DurableState | undefined;
+        syncDiag('rls_remote_verify', {
+          householdId: id,
+          fetchError: verify.error?.message ?? null,
+          remoteUpdatedAt: verify.data?.updated_at ?? null,
+          matchesWhatWeWrote: Number(verify.data?.updated_at ?? -1) === snapshot.updatedAt,
+          remoteSessionStatus: verifyState?.activeSession?.status ?? null,
+          remoteTripId: verifyState?.activeSession?.tripId ?? null,
+          remote: diagEntryShapes(verifyState?.activeSession?.entries),
+          remoteItemIds: (verifyState?.items ?? []).map((pantryItem) => pantryItem.id),
+        });
+      } catch {
+        // Diagnostics must never affect the push outcome.
+      }
+    }
     const { itemCount, pickedCount, sessionId } = activeSessionStats(snapshot);
     if (__DEV__) console.log(`[Shopping Sync] active_session_snapshot_written version/updatedAt=${snapshot.updatedAt} itemCount=${itemCount} pickedCount=${pickedCount} sessionId=${sessionId}`);
     const latestLocal = durableSnapshot(store.getState());
