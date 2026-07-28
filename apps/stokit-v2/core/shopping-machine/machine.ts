@@ -58,6 +58,8 @@ export interface ShoppingSession {
   currentIndex: number;
   /** Store IDs the user explicitly skipped without shopping. */
   skippedStoreIds: string[];
+  skippedAt?: Record<string, number>;
+  unskippedAt?: Record<string, number>;
   entries: ShoppingEntry[];
   /** Item ids removed mid-trip. Tombstones so a deletion propagates across devices instead of being resurrected by a merge. */
   removedItemIds: string[];
@@ -120,12 +122,12 @@ export type ShoppingEvent =
   | { type: 'REMOVE_ENTRY'; itemId: string; now?: number }
   | { type: 'RESUME_TRIP' }
   | { type: 'MARK_OUT_OF_STOCK'; itemId: string; now?: number }
-  | { type: 'UNSKIP_STORE'; storeId: string }
+  | { type: 'UNSKIP_STORE'; storeId: string; now?: number }
   | { type: 'UPDATE_QUANTITY'; itemId: string; quantity: number };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function buildQueue(raw: ShoppingEntry[]): {
+function buildQueue(raw: ShoppingEntry[], addedAt?: number): {
   queue: string[];
   entries: ShoppingEntry[];
 } {
@@ -141,7 +143,7 @@ function buildQueue(raw: ShoppingEntry[]): {
       outOfStockAt: _outOfStockAt,
       ...freshEntry
     } = e;
-    entries.push({ ...freshEntry, picked: false });
+    entries.push({ ...freshEntry, picked: false, ...(addedAt !== undefined ? { addedAt } : {}) });
     if (!queue.includes(e.storeId)) queue.push(e.storeId);
   }
   return { queue, entries };
@@ -190,6 +192,7 @@ function makeReceipt(
     imageUri,
     ...(items?.length ? { items } : {}),
     createdAt: now,
+    updatedAt: now,
   };
 }
 
@@ -272,7 +275,7 @@ export function reduce(
   switch (event.type) {
     case 'START_TRIP': {
       if (session.status !== 'idle') return session;
-      const { queue, entries } = buildQueue(event.entries);
+      const { queue, entries } = buildQueue(event.entries, event.now);
       if (queue.length === 0) return session;
       return {
         shopperId: event.shopperId ?? null,
@@ -282,6 +285,8 @@ export function reduce(
         storeQueue: queue,
         currentIndex: 0,
         skippedStoreIds: [],
+        skippedAt: {},
+        unskippedAt: {},
         entries,
         removedItemIds: [],
         receipts: [],
@@ -309,12 +314,17 @@ export function reduce(
       const removedItemIds = session.removedItemIds.includes(event.entry.itemId)
         ? session.removedItemIds.filter((id) => id !== event.entry.itemId)
         : session.removedItemIds;
-      // Stamp when this add happened so a merge can tell it is newer than an
-      // older removal tombstone still held by a peer. Only when a timestamp is
-      // supplied — legacy/timeless callers keep the historical entry shape.
-      // NOTE: no addedAt/removedAt stamps are written into the session — the
-      // members RLS policy only permits entries/removedItemIds/storeQueue to
-      // change, so any extra session field makes every member push fail.
+      const existing = existingIdx >= 0 ? session.entries[existingIdx] : undefined;
+      const priorActionAt = Math.max(
+        existing?.addedAt ?? 0,
+        session.removedAt?.[event.entry.itemId] ?? 0,
+      );
+      const addedAt = event.now !== undefined
+        ? nextTimestamp(priorActionAt, event.now)
+        : event.entry.addedAt;
+      const removedAt = { ...(session.removedAt ?? {}) };
+      delete removedAt[event.entry.itemId];
+      const removedAtPatch = Object.keys(removedAt).length > 0 ? removedAt : undefined;
       if (existingIdx === -1) {
         const {
           pickedAt: _pickedAt,
@@ -327,19 +337,24 @@ export function reduce(
           storeQueue: session.storeQueue.includes(event.entry.storeId)
             ? session.storeQueue
             : [...session.storeQueue, event.entry.storeId],
-          entries: [...session.entries, { ...freshEntry, picked: false }],
+          entries: [...session.entries, {
+            ...freshEntry,
+            picked: false,
+            ...(addedAt !== undefined ? { addedAt } : {}),
+          }],
           removedItemIds,
+          removedAt: removedAtPatch,
         };
       }
-      const existing = session.entries[existingIdx];
+      const existingEntry = session.entries[existingIdx];
       const metadataMatches =
-        existing.name === event.entry.name &&
-        existing.quantity === event.entry.quantity &&
-        existing.unit === event.entry.unit &&
-        existing.storeId === event.entry.storeId;
-      const existingStoreIndex = session.storeQueue.indexOf(existing.storeId);
+        existingEntry.name === event.entry.name &&
+        existingEntry.quantity === event.entry.quantity &&
+        existingEntry.unit === event.entry.unit &&
+        existingEntry.storeId === event.entry.storeId;
+      const existingStoreIndex = session.storeQueue.indexOf(existingEntry.storeId);
       const completionIsFromFinishedAssignment =
-        existing.storeId !== event.entry.storeId ||
+        existingEntry.storeId !== event.entry.storeId ||
         (existingStoreIndex >= 0 && existingStoreIndex < session.currentIndex);
       if (
         metadataMatches &&
@@ -358,14 +373,16 @@ export function reduce(
             ? { ...freshEntry, picked: false }
             : {
               ...freshEntry,
-              picked: existing.picked,
-              ...(existing.outOfStock || existing.outOfStockAt !== undefined
-                ? { outOfStock: Boolean(existing.outOfStock) }
+              picked: existingEntry.picked,
+              ...(existingEntry.outOfStock || existingEntry.outOfStockAt !== undefined
+                ? { outOfStock: Boolean(existingEntry.outOfStock) }
                 : {}),
-              ...(existing.pickedAt !== undefined ? { pickedAt: existing.pickedAt } : {}),
-              ...(existing.outOfStockAt !== undefined ? { outOfStockAt: existing.outOfStockAt } : {}),
+              ...(existingEntry.pickedAt !== undefined ? { pickedAt: existingEntry.pickedAt } : {}),
+              ...(existingEntry.outOfStockAt !== undefined ? { outOfStockAt: existingEntry.outOfStockAt } : {}),
             }
           : e,
+      ).map((e, i) =>
+        i === existingIdx && addedAt !== undefined ? { ...e, addedAt } : e
       );
       return {
         ...session,
@@ -374,6 +391,7 @@ export function reduce(
           : [...session.storeQueue, event.entry.storeId],
         entries,
         removedItemIds,
+        removedAt: removedAtPatch,
       };
     }
 
@@ -384,7 +402,18 @@ export function reduce(
       const removedItemIds = session.removedItemIds.includes(event.itemId)
         ? session.removedItemIds
         : [...session.removedItemIds, event.itemId];
-      return { ...session, entries, removedItemIds };
+      const previousRemovedAt = session.removedAt?.[event.itemId];
+      const entryAddedAt = session.entries.find((entry) => entry.itemId === event.itemId)?.addedAt;
+      const removedAt = event.now === undefined
+        ? session.removedAt
+        : {
+            ...(session.removedAt ?? {}),
+            [event.itemId]: nextTimestamp(
+              Math.max(previousRemovedAt ?? 0, entryAddedAt ?? 0),
+              event.now,
+            ),
+          };
+      return { ...session, entries, removedItemIds, ...(removedAt ? { removedAt } : {}) };
     }
 
     case 'FINISH_STORE': {
@@ -467,14 +496,21 @@ export function reduce(
     case 'SKIP_STORE': {
       if (session.status !== 'next_store_ready') return session;
       const skippedStoreIds = [...session.skippedStoreIds, event.storeId];
+      const skippedAt = {
+        ...(session.skippedAt ?? {}),
+        [event.storeId]: nextTimestamp(
+          Math.max(session.skippedAt?.[event.storeId] ?? 0, session.unskippedAt?.[event.storeId] ?? 0),
+          event.now,
+        ),
+      };
       const remaining = session.storeQueue
         .slice(session.currentIndex + 1)
         .filter((id) => !skippedStoreIds.includes(id));
       if (remaining.length === 0) {
         const completedTrip = buildTrip({ ...session, skippedStoreIds }, event.now);
-        return { ...session, skippedStoreIds, status: 'trip_summary', completedTrip };
+        return { ...session, skippedStoreIds, skippedAt, status: 'trip_summary', completedTrip };
       }
-      return { ...session, skippedStoreIds };
+      return { ...session, skippedStoreIds, skippedAt };
     }
 
     case 'FINISH_TRIP_EARLY': {
@@ -528,7 +564,16 @@ export function reduce(
     case 'UNSKIP_STORE': {
       if (session.status !== 'next_store_ready') return session;
       const skippedStoreIds = session.skippedStoreIds.filter((id) => id !== event.storeId);
-      return { ...session, skippedStoreIds };
+      const unskippedAt = event.now === undefined
+        ? session.unskippedAt
+        : {
+            ...(session.unskippedAt ?? {}),
+            [event.storeId]: nextTimestamp(
+              Math.max(session.skippedAt?.[event.storeId] ?? 0, session.unskippedAt?.[event.storeId] ?? 0),
+              event.now,
+            ),
+          };
+      return { ...session, skippedStoreIds, ...(unskippedAt ? { unskippedAt } : {}) };
     }
 
     default:

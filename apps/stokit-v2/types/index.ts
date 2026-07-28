@@ -120,6 +120,8 @@ export interface Receipt {
   imagePath?: string | null;
   items?: ReceiptLineItem[];
   createdAt: number;
+  /** Last local edit; absent on legacy receipts, which fall back to createdAt. */
+  updatedAt?: number;
 }
 
 export interface TripStoreBreakdown {
@@ -174,6 +176,9 @@ export interface SharedShoppingSession {
   storeQueue: string[];
   currentIndex: number;
   skippedStoreIds: string[];
+  /** Last explicit skip/unskip actions, used to make unskip win over a stale peer. */
+  skippedAt?: Record<string, number>;
+  unskippedAt?: Record<string, number>;
   entries: ShoppingEntry[];
   /** Item ids removed mid-trip. Optional: absent on payloads from pre-fix clients. */
   removedItemIds?: string[];
@@ -274,6 +279,12 @@ export interface DurableState {
   updatedAt: number;
   /** Tombstones for deleted items (optional: absent in pre-OTA-340 snapshots). */
   deletedItems?: ItemTombstone[];
+  /** Entity tombstones prevent stale whole-device snapshots resurrecting deletions. */
+  deletedStores?: ItemTombstone[];
+  deletedTrips?: ItemTombstone[];
+  deletedReceipts?: ItemTombstone[];
+  /** Per-field preference versions prevent unrelated preference edits clobbering each other. */
+  prefsUpdatedAt?: Partial<Record<keyof HouseholdPrefs, number>>;
   /**
    * Tombstones for explicitly-closed (canceled or finished) trip ids —
    * `id` is the tripId, `deletedAt` is when it was closed. Prevents a device

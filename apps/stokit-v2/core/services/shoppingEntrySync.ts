@@ -144,8 +144,10 @@ export function resolveRemovedItemIds(
   const stillRemoved = unionIds.filter((id) => {
     const addedAt = newestAddedAt.get(id);
     const removedStamp = removedAt[id];
-    // No timestamps on either side → legacy behavior: the tombstone wins.
-    if (addedAt === undefined || removedStamp === undefined) return true;
+    // A stamped add is an explicit post-upgrade re-add and wins over a legacy
+    // tombstone that had no timestamp. An unstamped legacy entry stays deleted.
+    if (addedAt === undefined) return true;
+    if (removedStamp === undefined) return false;
     return addedAt <= removedStamp;
   });
 
@@ -156,6 +158,47 @@ export function resolveRemovedItemIds(
   return {
     removedItemIds: stillRemoved,
     ...(Object.keys(prunedRemovedAt).length > 0 ? { removedAt: prunedRemovedAt } : {}),
+  };
+}
+
+export function resolveSkippedStoreIds(
+  a: Pick<SharedShoppingSession, 'skippedStoreIds' | 'skippedAt' | 'unskippedAt'>,
+  b: Pick<SharedShoppingSession, 'skippedStoreIds' | 'skippedAt' | 'unskippedAt'>,
+): {
+  skippedStoreIds: string[];
+  skippedAt?: Record<string, number>;
+  unskippedAt?: Record<string, number>;
+} {
+  const ids = new Set([
+    ...(a.skippedStoreIds ?? []),
+    ...(b.skippedStoreIds ?? []),
+    ...Object.keys(a.skippedAt ?? {}),
+    ...Object.keys(b.skippedAt ?? {}),
+    ...Object.keys(a.unskippedAt ?? {}),
+    ...Object.keys(b.unskippedAt ?? {}),
+  ]);
+  const skippedAt: Record<string, number> = {};
+  const unskippedAt: Record<string, number> = {};
+  for (const id of ids) {
+    const skip = Math.max(a.skippedAt?.[id] ?? -Infinity, b.skippedAt?.[id] ?? -Infinity);
+    const unskip = Math.max(a.unskippedAt?.[id] ?? -Infinity, b.unskippedAt?.[id] ?? -Infinity);
+    if (Number.isFinite(skip)) skippedAt[id] = skip;
+    if (Number.isFinite(unskip)) unskippedAt[id] = unskip;
+  }
+  const skippedStoreIds = Array.from(ids).filter((id) => {
+    const skip = skippedAt[id];
+    const unskip = unskippedAt[id];
+    if (skip === undefined && unskip === undefined) {
+      return (a.skippedStoreIds ?? []).includes(id) || (b.skippedStoreIds ?? []).includes(id);
+    }
+    if (unskip === undefined) return true;
+    if (skip === undefined) return false;
+    return skip >= unskip;
+  });
+  return {
+    skippedStoreIds,
+    ...(Object.keys(skippedAt).length ? { skippedAt } : {}),
+    ...(Object.keys(unskippedAt).length ? { unskippedAt } : {}),
   };
 }
 
@@ -203,6 +246,7 @@ export function foldRemoteActiveSession<T extends SharedShoppingSession>(
     return remoteSession;
   }
   const { removedItemIds, removedAt } = resolveRemovedItemIds(previous, remoteSession);
+  const skipped = resolveSkippedStoreIds(previous, remoteSession);
   return {
     ...remoteSession,
     storeQueue: [
@@ -212,6 +256,7 @@ export function foldRemoteActiveSession<T extends SharedShoppingSession>(
     entries: mergeShoppingEntries(previous.entries, remoteSession.entries, removedItemIds),
     removedItemIds,
     ...(removedAt !== undefined ? { removedAt } : {}),
+    ...skipped,
   };
 }
 

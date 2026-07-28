@@ -2092,7 +2092,7 @@ function NextStoreSelector({ session, dispatch, storeById, styles, nsStyles, col
                         <Text style={nsStyles.storeItems}>{itemCount} item{itemCount !== 1 ? 's' : ''}</Text>
                       </View>
                       <Pressable
-                        onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); dispatch({ type: 'UNSKIP_STORE', storeId }); }}
+                        onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); dispatch({ type: 'UNSKIP_STORE', storeId, now: Date.now() }); }}
                         style={{ backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 }}
                       >
                         <Text style={{ fontFamily: fonts.sansMedium, fontSize: 13, color: colors.ink }}>Un-skip</Text>

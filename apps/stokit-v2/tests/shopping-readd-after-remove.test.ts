@@ -1,25 +1,6 @@
 /**
- * Re-adding a previously-removed item to an active trip does NOT currently
- * stick across devices. This file documents that known gap and locks in the
- * behavior that must not regress around it.
- *
- * The gap: `removedItemIds` is a plain string[] tombstone with no timestamp.
- * Once an id lands there on any device, every merge re-unions it and
- * mergeShoppingEntries filters that item back out. The local reducer
- * un-tombstones on ADD_ENTRY, but the peer still carries the tombstone, so
- * the next sync re-deletes the re-added item. Items are auto-tombstoned when
- * they become `stocked` (shoppingEntryEventForItem emits REMOVE_ENTRY), so
- * anything purchased earlier in a trip is affected.
- *
- * OTA 416 attempted a fix via ShoppingEntry.addedAt + ShoppingSession.removedAt
- * stamps. That had to be reverted in OTA 417: the Supabase members RLS policy
- * (can_update_household_snapshot_as_member) only permits `entries`,
- * `removedItemIds` and `storeQueue` to change on the session, so the two new
- * fields caused EVERY member/collaborator push to be rejected server-side —
- * a far worse P0 (no adds or deletes synced from the member device at all).
- *
- * Re-landing the fix requires first widening that RLS allowlist, then
- * restoring the stamps. Until then the tests below pin current behavior.
+ * Removal and re-add actions carry monotonic timestamps. A stale peer's
+ * tombstone therefore cannot delete a newer re-add.
  */
 
 import assert from 'node:assert/strict';
@@ -41,24 +22,18 @@ function activeTrip(): ShoppingSession {
   });
 }
 
-test('[guard] the session must never carry fields the members RLS policy forbids', () => {
-  // Only entries / removedItemIds / storeQueue may change on the session for a
-  // non-shopper member. Anything else makes every member push fail (OTA 416).
+test('remove and re-add carry the timestamps allowed by the member RLS policy', () => {
   const base = activeTrip();
   const removed = reduce(base, { type: 'REMOVE_ENTRY', itemId: 'eggs', now: T + 100 });
   const readded = reduce(removed, { type: 'ADD_ENTRY', entry: entry('eggs'), now: T + 200 });
 
-  for (const session of [base, removed, readded]) {
-    assert.equal((session as unknown as Record<string, unknown>).removedAt, undefined,
-      'removedAt must not be written — the members RLS policy rejects unknown session fields');
-    for (const e of session.entries) {
-      assert.equal((e as unknown as Record<string, unknown>).addedAt, undefined,
-        'addedAt must not be written — it trips the members RLS entry-diff check');
-    }
-  }
+  assert.equal(base.entries.find((e) => e.itemId === 'eggs')?.addedAt, T);
+  assert.equal(removed.removedAt?.eggs, T + 100);
+  assert.equal(readded.entries.find((e) => e.itemId === 'eggs')?.addedAt, T + 200);
+  assert.equal(readded.removedAt?.eggs, undefined);
 });
 
-test('[known gap] a re-added item is still dropped when a peer holds the tombstone', () => {
+test('a re-added item survives when a peer still holds the old tombstone', () => {
   const base = activeTrip();
   const readded = reduce(
     reduce(base, { type: 'REMOVE_ENTRY', itemId: 'eggs', now: T + 100 }),
@@ -67,8 +42,8 @@ test('[known gap] a re-added item is still dropped when a peer holds the tombsto
   const peerWithTombstone = reduce(base, { type: 'REMOVE_ENTRY', itemId: 'eggs', now: T + 100 });
 
   const merged = foldRemoteActiveSession(readded, peerWithTombstone);
-  assert.ok(!merged.entries.some((e) => e.itemId === 'eggs'),
-    'documents the open gap — fixing it requires the RLS allowlist change first');
+  assert.ok(merged.entries.some((e) => e.itemId === 'eggs'));
+  assert.ok(!merged.removedItemIds.includes('eggs'));
 });
 
 test('a genuine deletion propagates to a peer that has not seen it', () => {

@@ -29,6 +29,12 @@ export const emptyDurableState: DurableState = {
   prefs: defaultPrefs,
   activeSession: null,
   updatedAt: 0,
+  deletedItems: [],
+  deletedStores: [],
+  deletedTrips: [],
+  deletedReceipts: [],
+  closedTripIds: [],
+  prefsUpdatedAt: {},
 };
 
 /** Merge a partial/unknown parsed blob into a complete, valid DurableState. */
@@ -46,7 +52,11 @@ function normalize(parsed: unknown): DurableState {
     activeSession: p.activeSession ?? null,
     updatedAt: typeof p.updatedAt === 'number' ? p.updatedAt : 0,
     deletedItems: Array.isArray(p.deletedItems) ? p.deletedItems : [],
+    deletedStores: Array.isArray(p.deletedStores) ? p.deletedStores : [],
+    deletedTrips: Array.isArray(p.deletedTrips) ? p.deletedTrips : [],
+    deletedReceipts: Array.isArray(p.deletedReceipts) ? p.deletedReceipts : [],
     closedTripIds: Array.isArray(p.closedTripIds) ? p.closedTripIds : [],
+    prefsUpdatedAt: p.prefsUpdatedAt ?? {},
   };
 }
 

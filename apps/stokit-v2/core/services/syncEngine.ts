@@ -33,7 +33,13 @@ function isEmptySharedSnapshot(state: DurableState): boolean {
     && state.receipts.length === 0
     && state.trips.length === 0
     && state.activity.length === 0
-    && state.activeSession == null;
+    && state.activeSession == null
+    && (state.deletedItems?.length ?? 0) === 0
+    && (state.deletedStores?.length ?? 0) === 0
+    && (state.deletedTrips?.length ?? 0) === 0
+    && (state.deletedReceipts?.length ?? 0) === 0
+    && (state.closedTripIds?.length ?? 0) === 0
+    && Object.keys(state.prefsUpdatedAt ?? {}).length === 0;
 }
 
 function hasSharedSnapshotContent(state: DurableState): boolean {
@@ -122,7 +128,11 @@ function durableSnapshot(state: DurableState): DurableState {
       : null,
     updatedAt: state.updatedAt,
     deletedItems: state.deletedItems ?? [],
+    deletedStores: state.deletedStores ?? [],
+    deletedTrips: state.deletedTrips ?? [],
+    deletedReceipts: state.deletedReceipts ?? [],
     closedTripIds: state.closedTripIds ?? [],
+    prefsUpdatedAt: state.prefsUpdatedAt ?? {},
   };
 }
 
@@ -341,11 +351,8 @@ export async function pushLocalState(state: DurableState, options?: { isDeferred
       : latestLocal;
     const reconciledSnapshot = mergeDurableSnapshotForPush(snapshot, postPushLocal);
     store.getState().applyRemotePatch({
-      items: reconciledSnapshot.items,
-      activeSession: reconciledSnapshot.activeSession,
+      ...reconciledSnapshot,
       updatedAt: Math.max(store.getState().updatedAt, reconciledSnapshot.updatedAt),
-      deletedItems: reconciledSnapshot.deletedItems,
-      closedTripIds: reconciledSnapshot.closedTripIds,
     });
     const uploadedById = new Map(receipts.map((receipt) => [receipt.id, receipt]));
     const currentReceipts = store.getState().receipts.map((receipt) => {
@@ -473,16 +480,15 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
     // though the item fold above already recovers regular pantry edits. Guarded
     // by hasActiveSession so an old snapshot that pre-dates this field can never
     // be mistaken for "no session" and clear an in-progress local trip.
-    if (!isSelfEcho(remoteUpdatedAt) && (Array.isArray(remote.items) || Array.isArray(remote.deletedItems) || hasActiveSession)) {
+    if (!isSelfEcho(remoteUpdatedAt)) {
+      const folded = mergeDurableSnapshotForPush(remote, durableSnapshot(store.getState()));
       store.getState().applyRemotePatch({
-        items: remote.items,
-        deletedItems: remote.deletedItems,
-        closedTripIds: remote.closedTripIds,
+        ...folded,
         ...(hasActiveSession ? {
-          activeSession: remote.activeSession
-            ? reconcileShoppingSession(remote.activeSession, remote.items)
+          activeSession: folded.activeSession
+            ? reconcileShoppingSession(folded.activeSession, folded.items)
             : null,
-        } : {}),
+        } : { activeSession: store.getState().activeSession }),
         updatedAt: store.getState().updatedAt,
       });
     }
@@ -522,12 +528,13 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
     // Non-destructive item/tombstone/active-session fold even when the
     // whole-snapshot watermark rejects — same rationale as the pre-sign skip
     // above.
-    if (!isSelfEcho(remoteUpdatedAt) && (Array.isArray(reconciledRemote.items) || Array.isArray(reconciledRemote.deletedItems) || hasActiveSession)) {
+    if (!isSelfEcho(remoteUpdatedAt)) {
+      const folded = mergeDurableSnapshotForPush(reconciledRemote, durableSnapshot(store.getState()));
       store.getState().applyRemotePatch({
-        items: reconciledRemote.items,
-        deletedItems: reconciledRemote.deletedItems,
-        closedTripIds: reconciledRemote.closedTripIds,
-        ...(hasActiveSession ? { activeSession: reconciledRemote.activeSession } : {}),
+        ...folded,
+        ...(hasActiveSession
+          ? { activeSession: folded.activeSession }
+          : { activeSession: store.getState().activeSession }),
         updatedAt: store.getState().updatedAt,
       });
     }

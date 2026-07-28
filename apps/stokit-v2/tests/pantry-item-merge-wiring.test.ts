@@ -29,21 +29,24 @@ test('both snapshot functions include deletedItems so tombstones are persisted a
   assert.match(engine, /deletedItems: state\.deletedItems \?\? \[\]/);
 });
 
+test('a deletion-only snapshot is not mistaken for an empty destructive write', () => {
+  for (const field of ['deletedItems', 'deletedStores', 'deletedTrips', 'deletedReceipts', 'closedTripIds']) {
+    assert.match(engine, new RegExp(`state\\.${field}\\?\\.length`));
+  }
+  assert.match(engine, /Object\.keys\(state\.prefsUpdatedAt \?\? \{\}\)\.length/);
+});
+
 test('the watermark skip paths still fold in remote items non-destructively', () => {
-  // Two skip sites (pre-sign and post-sign) must both fold items/tombstones.
-  const folds = engine.match(/applyRemotePatch\(\{\s*\n\s*items: [^\n]*\n\s*deletedItems: [^\n]*\n[\s\S]*?updatedAt: store\.getState\(\)\.updatedAt,/g) ?? [];
+  const folds = engine.match(/const folded = mergeDurableSnapshotForPush\(/g) ?? [];
   assert.ok(folds.length >= 2, `expected >=2 non-destructive folds in skip paths, found ${folds.length}`);
+  assert.match(engine, /applyRemotePatch\(\{\s*\n\s*\.\.\.folded,/);
 });
 
 test('the watermark skip paths also fold in the active session, not just items', () => {
   // A stale whole-snapshot watermark must not permanently skip reconciling an
   // in-progress shopping trip — only items/tombstones were folded before,
   // which left a force-closed device's active session stuck stale forever.
-  const activeSessionFolds = (engine.match(/hasActiveSession \? \{[\s\S]*?activeSession/g) ?? []).length
-    + (engine.match(/hasActiveSession \? \{ activeSession:/g) ?? []).length;
-  assert.ok(activeSessionFolds >= 1, 'expected the skip paths to conditionally fold activeSession when present');
-  assert.match(engine, /Array\.isArray\(remote\.items\) \|\| Array\.isArray\(remote\.deletedItems\) \|\| hasActiveSession/,
-    'pre-sign skip guard must also consider activeSession presence');
-  assert.match(engine, /Array\.isArray\(reconciledRemote\.items\) \|\| Array\.isArray\(reconciledRemote\.deletedItems\) \|\| hasActiveSession/,
-    'post-sign skip guard must also consider activeSession presence');
+  assert.match(engine, /activeSession: folded\.activeSession/);
+  assert.match(engine, /activeSession: store\.getState\(\)\.activeSession/,
+    'snapshots predating activeSession must preserve the local session');
 });

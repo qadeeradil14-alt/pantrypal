@@ -44,6 +44,14 @@ import {
 import { syncDiag } from '../core/services/syncDiag'; // DIAG: temporary — remove after OTA 389 investigation
 import { consolidatePantryItems, normalizeItemName } from '../core/services/pantryItems';
 import { mergePantryItems, mergeTombstones } from '../core/services/mergePantryState';
+import {
+  mergeActivity,
+  mergePrefs,
+  mergePriceHistory,
+  mergeReceipts,
+  mergeStores,
+  mergeTrips,
+} from '../core/services/mergeDurableCollections';
 import { isDuplicatePriceEntry, isValidPrice } from '../core/services/priceHistory';
 import { refreshWidgets } from '../core/services/widgets';
 import { findDuplicateStore } from '../core/services/storeDuplicates';
@@ -149,7 +157,11 @@ function snapshot(s: DurableState): DurableState {
     activeSession: s.activeSession ?? null,
     updatedAt: s.updatedAt,
     deletedItems: s.deletedItems ?? [],
+    deletedStores: s.deletedStores ?? [],
+    deletedTrips: s.deletedTrips ?? [],
+    deletedReceipts: s.deletedReceipts ?? [],
     closedTripIds: s.closedTripIds ?? [],
+    prefsUpdatedAt: s.prefsUpdatedAt ?? {},
   };
 }
 
@@ -463,8 +475,17 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     },
 
     deleteStore: (id) => {
+      const currentStore = get().stores.find((store) => store.id === id);
+      const previousDeletedAt = get().deletedStores?.find((entry) => entry.id === id)?.deletedAt;
+      const deletedAt = nextTimestamp(
+        Math.max(currentStore?.updatedAt ?? 0, previousDeletedAt ?? 0),
+      );
       set((s) => ({
         stores: s.stores.filter((st) => st.id !== id),
+        deletedStores: [
+          ...(s.deletedStores ?? []).filter((entry) => entry.id !== id),
+          { id, deletedAt },
+        ],
         // Unassign items pointing at the removed store; never delete the items.
         items: s.items.map((it) =>
           it.storeId === id
@@ -504,9 +525,26 @@ export const useDurableStore = create<DurableStore>((set, get) => {
 
     removeTrip: (tripId, receiptIds) => {
       const receiptSet = new Set(receiptIds);
+      const trip = get().trips.find((entry) => entry.id === tripId);
+      const tripDeletedAt = nextTimestamp(Math.max(
+        trip?.completedAt ?? 0,
+        get().deletedTrips?.find((entry) => entry.id === tripId)?.deletedAt ?? 0,
+      ));
+      const receiptTombstones = receiptIds.map((receiptId) => {
+        const receipt = get().receipts.find((entry) => entry.id === receiptId);
+        return {
+          id: receiptId,
+          deletedAt: nextTimestamp(Math.max(
+            receipt?.updatedAt ?? receipt?.createdAt ?? 0,
+            get().deletedReceipts?.find((entry) => entry.id === receiptId)?.deletedAt ?? 0,
+          )),
+        };
+      });
       set((s) => ({
         trips: s.trips.filter((t) => t.id !== tripId),
         receipts: s.receipts.filter((r) => !receiptSet.has(r.id)),
+        deletedTrips: mergeTombstones(s.deletedTrips, [{ id: tripId, deletedAt: tripDeletedAt }]),
+        deletedReceipts: mergeTombstones(s.deletedReceipts, receiptTombstones),
       }));
       persist();
     },
@@ -521,7 +559,11 @@ export const useDurableStore = create<DurableStore>((set, get) => {
 
     updateReceipt: (receiptId, patch) => {
       set((s) => ({
-        receipts: s.receipts.map((r) => r.id === receiptId ? { ...r, ...patch } : r),
+        receipts: s.receipts.map((r) =>
+          r.id === receiptId
+            ? { ...r, ...patch, updatedAt: nextTimestamp(r.updatedAt ?? r.createdAt) }
+            : r
+        ),
       }));
       persist();
     },
@@ -562,7 +604,13 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     },
 
     updatePrefs: (patch) => {
-      set((s) => ({ prefs: { ...s.prefs, ...patch } }));
+      set((s) => {
+        const prefsUpdatedAt = { ...(s.prefsUpdatedAt ?? {}) };
+        for (const key of Object.keys(patch) as (keyof HouseholdPrefs)[]) {
+          prefsUpdatedAt[key] = nextTimestamp(prefsUpdatedAt[key]);
+        }
+        return { prefs: { ...s.prefs, ...patch }, prefsUpdatedAt };
+      });
       persist();
     },
 
@@ -604,24 +652,45 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         // on one device is never dropped by the other device's snapshot — while
         // deletions still propagate. Replaces the old whole-array overwrite.
         const mergedTombstones = mergeTombstones(s.deletedItems, patch.deletedItems);
+        const mergedStoreTombstones = mergeTombstones(s.deletedStores, patch.deletedStores);
+        const mergedTripTombstones = mergeTombstones(s.deletedTrips, patch.deletedTrips);
+        const mergedReceiptTombstones = mergeTombstones(s.deletedReceipts, patch.deletedReceipts);
         const mergedItems = patch.items
           ? consolidatePantryItems(mergePantryItems(s.items, patch.items, mergedTombstones))
           : s.items;
+        const incoming = { ...s, ...patch } as DurableState;
+        const mergedPrefs = patch.prefs || patch.prefsUpdatedAt
+          ? mergePrefs(s, incoming, (patch.updatedAt ?? s.updatedAt) > s.updatedAt)
+          : { prefs: s.prefs, prefsUpdatedAt: s.prefsUpdatedAt };
         return {
           ...s,
           ...patch,
           items: mergedItems,
           // Defensive: guard every array field against old cloud snapshots that
           // pre-date newly-added fields (e.g. priceHistory added in OTA 120).
-          stores:       Array.isArray(patch.stores)       ? patch.stores       : s.stores,
-          priceHistory: Array.isArray(patch.priceHistory) ? patch.priceHistory : s.priceHistory,
-          receipts:     Array.isArray(patch.receipts)     ? patch.receipts     : s.receipts,
-          trips:        Array.isArray(patch.trips)        ? patch.trips        : s.trips,
-          activity:     Array.isArray(patch.activity)     ? patch.activity     : s.activity,
+          stores:       patch.stores || patch.deletedStores
+            ? mergeStores(s.stores, patch.stores ?? [], mergedStoreTombstones)
+            : s.stores,
+          priceHistory: patch.priceHistory
+            ? mergePriceHistory(s.priceHistory, patch.priceHistory)
+            : s.priceHistory,
+          receipts:     patch.receipts || patch.deletedReceipts
+            ? mergeReceipts(s.receipts, patch.receipts ?? [], mergedReceiptTombstones)
+            : s.receipts,
+          trips:        patch.trips || patch.deletedTrips
+            ? mergeTrips(s.trips, patch.trips ?? [], mergedTripTombstones)
+            : s.trips,
+          activity:     patch.activity
+            ? mergeActivity(s.activity, patch.activity)
+            : s.activity,
+          ...mergedPrefs,
           // Gated: never write an unvalidated remote session — same policy as
           // session-store.ts's applyRemoteSession (clear guard + same-trip merge).
           activeSession: 'activeSession' in patch ? gatedActiveSession ?? null : s.activeSession ?? null,
           deletedItems: mergedTombstones,
+          deletedStores: mergedStoreTombstones,
+          deletedTrips: mergedTripTombstones,
+          deletedReceipts: mergedReceiptTombstones,
           closedTripIds: mergedClosedTripIds,
         };
       });

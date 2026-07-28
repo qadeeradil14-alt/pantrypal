@@ -55,6 +55,16 @@ test('backend policy permits member item metadata but protects trip lifecycle fi
   assert.match(privateSql, /set schema private/i);
   assert.match(privateSql, /from public, anon/i);
   assert.match(privateSql, /private\.can_update_household_snapshot_as_member/i);
+
+  const readdMigration = readdirSync(migrationsDir).find((name) =>
+    name.includes('comprehensive_snapshot_merge_rls'),
+  );
+  assert.ok(readdMigration, 'member RLS must permit timestamped remove/re-add actions');
+  const readdSql = readFileSync(join(migrationsDir, readdMigration), 'utf8');
+  assert.match(readdSql, /'removedAt'/);
+  assert.match(readdSql, /'addedAt'/);
+  assert.match(readdSql, /jsonb_typeof\(new_entry -> 'addedAt'\) = 'number'/);
+  assert.match(readdSql, /from public, anon/i);
 });
 
 test('OTA 410 sync heartbeat and CAS paths remain unchanged', () => {
