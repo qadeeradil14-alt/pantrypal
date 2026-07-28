@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+  foldRemoteActiveSession,
   mergeShoppingEntries,
   reconcileShoppingSession,
   shoppingEntryEventForItem,
@@ -131,6 +132,26 @@ test('server reconciliation restores a missing valid item without reviving a tom
 
   assert.deepEqual(reconciled.entries.map((value) => value.itemId), ['banana']);
   assert.equal(reconciled.storeQueue.includes('sams'), true);
+});
+
+test('same-trip folding preserves a collaborator reopening a finished store', () => {
+  const shopper = {
+    ...active([
+      entry({ itemId: 'eggs', storeId: 'sams', picked: true }),
+      entry({ itemId: 'milk', storeId: 'target', picked: false }),
+    ]),
+    currentIndex: 1,
+  };
+  const collaborator = reduce(shopper, {
+    type: 'ADD_ENTRY',
+    now: 10,
+    entry: entry({ itemId: 'banana', storeId: 'sams', picked: false }),
+  });
+
+  const merged = foldRemoteActiveSession(collaborator, shopper);
+
+  assert.deepEqual(merged.storeQueue, ['sams', 'target', 'sams']);
+  assert.equal(merged.entries.some((value) => value.itemId === 'banana'), true);
 });
 
 test('local add, edit, quantity, and store moves generate one active-session upsert', () => {

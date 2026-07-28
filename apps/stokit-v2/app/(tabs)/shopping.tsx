@@ -941,7 +941,7 @@ function ShoppingActive({
   // join this same trip instead of getting stranded until it ends (OTA 145
   // established "don't strand" for the explicit add-sheet; this extends the
   // same rule to the passive Home-tab assignment path). ADD_ENTRY itself
-  // already appends an unrecognized storeId to the end of storeQueue.
+  // appends a new store, or re-queues a store whose earlier stop is finished.
   useEffect(() => {
     const entryIds = new Set(session.entries.map((entry) => entry.itemId));
     const removedItemIds = new Set(session.removedItemIds);

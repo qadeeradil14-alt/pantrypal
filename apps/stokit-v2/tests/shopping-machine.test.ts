@@ -321,14 +321,18 @@ test('START_MANUAL_STORE continues the same trip with an unplanned empty store v
   assert.deepEqual(s.storeQueue, ['aldi', 'trader-joes']);
 });
 
-test('START_MANUAL_STORE cannot revisit a store already in the active trip', () => {
+test('START_MANUAL_STORE can revisit a finished store without creating another trip', () => {
   let s = startTrip();
+  const tripId = s.tripId;
   s = reduce(s, { type: 'FINISH_STORE', now: 2 });
   s = reduce(s, { type: 'SKIP_RECEIPT', now: 3 });
   s = reduce(s, { type: 'ACKNOWLEDGE_SUMMARY' });
 
-  const unchanged = reduce(s, { type: 'START_MANUAL_STORE', storeId: 'aldi' });
-  assert.equal(unchanged, s);
+  const revisited = reduce(s, { type: 'START_MANUAL_STORE', storeId: 'aldi' });
+  assert.equal(revisited.tripId, tripId);
+  assert.equal(revisited.status, 'shopping_store');
+  assert.equal(currentStoreId(revisited), 'aldi');
+  assert.deepEqual(revisited.storeQueue, ['aldi', 'aldi', 'target']);
 });
 
 test('START_MANUAL_STORE inserts mid-queue without stranding an already-planned store', () => {
@@ -442,6 +446,55 @@ test('item assigned to an already-queued future store keeps that store, no dupli
   assert.equal(s.entries.some((e) => e.itemId === 'pasta' && e.storeId === 'target'), true, 'item keeps its own future-store assignment');
   assert.equal(currentStoreId(s), 'aldi', 'current store unchanged');
   assert.equal(currentStoreEntries(s).some((e) => e.itemId === 'pasta'), false, 'not pulled into the current store early');
+});
+
+test('item assigned to a finished store reopens that store later in the same trip', () => {
+  let s = startTrip();
+  const tripId = s.tripId;
+  s = reduce(s, { type: 'FINISH_STORE', now: 2000 });
+  s = reduce(s, { type: 'SKIP_RECEIPT', now: 2100 });
+  s = reduce(s, { type: 'CONTINUE_TRIP' });
+  s = reduce(s, { type: 'ADVANCE_STORE' });
+  assert.equal(currentStoreId(s), 'target');
+
+  s = reduce(s, { type: 'ADD_ENTRY', entry: entry('bread', 'aldi'), now: 2200 });
+
+  assert.equal(s.tripId, tripId, 'the active trip remains authoritative');
+  assert.equal(currentStoreId(s), 'target', 'the shopper stays at the current store');
+  assert.deepEqual(s.storeQueue, ['aldi', 'target', 'aldi'], 'the finished store is queued as a later revisit');
+  assert.deepEqual(pendingStoreIds(s), ['aldi']);
+
+  s = reduce(s, { type: 'FINISH_STORE', now: 2300 });
+  s = reduce(s, { type: 'SKIP_RECEIPT', now: 2400 });
+  s = reduce(s, { type: 'CONTINUE_TRIP' });
+  s = reduce(s, { type: 'ADVANCE_STORE' });
+
+  assert.equal(currentStoreId(s), 'aldi');
+  assert.equal(currentStoreEntries(s).some((e) => e.itemId === 'bread'), true);
+});
+
+test('revisiting a store keeps one trip summary row and aggregates both receipts', () => {
+  let s = startTrip();
+  s = reduce(s, { type: 'FINISH_STORE', now: 2000 });
+  s = reduce(s, { type: 'SAVE_RECEIPT', amount: 10, status: 'logged', now: 2100 });
+  s = reduce(s, { type: 'CONTINUE_TRIP' });
+  s = reduce(s, { type: 'ADVANCE_STORE' });
+  s = reduce(s, { type: 'ADD_ENTRY', entry: entry('bread', 'aldi'), now: 2200 });
+  s = reduce(s, { type: 'FINISH_STORE', now: 2300 });
+  s = reduce(s, { type: 'SAVE_RECEIPT', amount: 20, status: 'logged', now: 2400 });
+  s = reduce(s, { type: 'CONTINUE_TRIP' });
+  s = reduce(s, { type: 'ADVANCE_STORE' });
+  s = reduce(s, { type: 'SET_PICK', itemId: 'bread', picked: true });
+  s = reduce(s, { type: 'FINISH_STORE', now: 2500 });
+  s = reduce(s, { type: 'SAVE_RECEIPT', amount: 5, status: 'logged', now: 2600 });
+  s = reduce(s, { type: 'FINISH_TRIP', now: 2700 });
+
+  assert.equal(s.status, 'trip_summary');
+  assert.deepEqual(s.completedTrip?.storeIdsVisited, ['aldi', 'target']);
+  assert.equal(s.completedTrip?.breakdown.length, 2);
+  assert.equal(s.completedTrip?.breakdown.find((value) => value.storeId === 'aldi')?.amount, 15);
+  assert.equal(s.completedTrip?.totalSpent, 35);
+  assert.equal(s.completedTrip?.receiptIds.length, 3);
 });
 
 test('item assigned to the current store still appends there directly', () => {

@@ -249,15 +249,30 @@ export function foldRemoteActiveSession<T extends SharedShoppingSession>(
   const skipped = resolveSkippedStoreIds(previous, remoteSession);
   return {
     ...remoteSession,
-    storeQueue: [
-      ...remoteSession.storeQueue,
-      ...previous.storeQueue.filter((storeId) => !remoteSession.storeQueue.includes(storeId)),
-    ],
+    storeQueue: mergeStoreQueues(remoteSession.storeQueue, previous.storeQueue),
     entries: mergeShoppingEntries(previous.entries, remoteSession.entries, removedItemIds),
     removedItemIds,
     ...(removedAt !== undefined ? { removedAt } : {}),
     ...skipped,
   };
+}
+
+function mergeStoreQueues(preferred: string[], other: string[]): string[] {
+  const merged = [...preferred];
+  const available = new Map<string, number>();
+  for (const storeId of preferred) {
+    available.set(storeId, (available.get(storeId) ?? 0) + 1);
+  }
+  const seen = new Map<string, number>();
+  for (const storeId of other) {
+    const occurrence = (seen.get(storeId) ?? 0) + 1;
+    seen.set(storeId, occurrence);
+    if (occurrence > (available.get(storeId) ?? 0)) {
+      merged.push(storeId);
+      available.set(storeId, occurrence);
+    }
+  }
+  return merged;
 }
 
 export function reconcileShoppingSession<T extends SharedShoppingSession>(
@@ -267,6 +282,7 @@ export function reconcileShoppingSession<T extends SharedShoppingSession>(
   if (session.status !== 'shopping_store') return session;
   const byId = new Map(items.map((item) => [item.id, item]));
   const removedItemIds = new Set(session.removedItemIds ?? []);
+  const storesToQueue = new Set<string>();
   let changed = false;
   const entries = session.entries.flatMap((entry) => {
     if (entry.itemId === '__quick_scan__') return [entry];
@@ -275,10 +291,10 @@ export function reconcileShoppingSession<T extends SharedShoppingSession>(
       changed = true;
       return [];
     }
-    const entryStoreIndex = session.storeQueue.indexOf(entry.storeId);
     const completionIsFromFinishedAssignment =
       entry.storeId !== item.storeId ||
-      (entryStoreIndex >= 0 && entryStoreIndex < session.currentIndex);
+      !session.storeQueue.slice(session.currentIndex).includes(entry.storeId);
+    if (completionIsFromFinishedAssignment) storesToQueue.add(item.storeId!);
     const next: ShoppingEntry = {
       ...(completionIsFromFinishedAssignment
         ? resetCompletionState(entry)
@@ -313,12 +329,15 @@ export function reconcileShoppingSession<T extends SharedShoppingSession>(
       picked: false,
     });
     entryIds.add(item.id);
+    if (!session.storeQueue.slice(session.currentIndex).includes(item.storeId!)) {
+      storesToQueue.add(item.storeId!);
+    }
     changed = true;
   }
   const storeQueue = [...session.storeQueue];
-  for (const entry of entries) {
-    if (!storeQueue.includes(entry.storeId)) {
-      storeQueue.push(entry.storeId);
+  for (const storeId of storesToQueue) {
+    if (!storeQueue.slice(session.currentIndex).includes(storeId)) {
+      storeQueue.push(storeId);
       changed = true;
     }
   }

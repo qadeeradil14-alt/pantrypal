@@ -197,19 +197,21 @@ function makeReceipt(
 }
 
 function buildTrip(session: ShoppingSession, now: number): Trip {
-  const breakdown: TripStoreBreakdown[] = session.storeQueue.map((storeId) => {
+  const storeIds = Array.from(new Set(session.storeQueue));
+  const breakdown: TripStoreBreakdown[] = storeIds.map((storeId) => {
     const isSkipped = session.skippedStoreIds.includes(storeId);
     const bought = isSkipped
       ? 0
       : session.entries.filter((e) => e.storeId === storeId && e.picked).length;
-    const receipt = session.receipts.find((r) => r.storeId === storeId) ?? null;
+    const receipts = session.receipts.filter((r) => r.storeId === storeId);
+    const loggedReceipts = receipts.filter((receipt) => receipt.status !== 'skipped');
+    const receipt = loggedReceipts.at(-1) ?? receipts.at(-1) ?? null;
     return {
       storeId,
       itemsBought: bought,
-      amount:
-        receipt && receipt.status !== 'skipped' && !isSkipped
-          ? receipt.amount
-          : 0,
+      amount: isSkipped
+        ? 0
+        : loggedReceipts.reduce((sum, value) => sum + value.amount, 0),
       receiptId: receipt ? receipt.id : null,
       skipped: isSkipped,
     };
@@ -232,7 +234,7 @@ function buildTrip(session: ShoppingSession, now: number): Trip {
 
   return {
     id: session.tripId ?? `t_${now}`,
-    storeIdsVisited: session.storeQueue.filter(
+    storeIdsVisited: storeIds.filter(
       (id) => !session.skippedStoreIds.includes(id),
     ),
     skippedStoreIds: [...session.skippedStoreIds],
@@ -264,6 +266,16 @@ function promoteStore(session: ShoppingSession, storeId: string): ShoppingSessio
   const nextPos = session.currentIndex + 1;
   [newQueue[nextPos], newQueue[chosenIdx]] = [newQueue[chosenIdx], newQueue[nextPos]];
   return { ...session, storeQueue: newQueue, currentIndex: nextPos, status: 'shopping_store' };
+}
+
+function hasCurrentOrPendingStore(session: ShoppingSession, storeId: string): boolean {
+  return session.storeQueue.slice(session.currentIndex).includes(storeId);
+}
+
+function queueStoreForActiveTrip(session: ShoppingSession, storeId: string): string[] {
+  return hasCurrentOrPendingStore(session, storeId)
+    ? session.storeQueue
+    : [...session.storeQueue, storeId];
 }
 
 // ── Reducer ───────────────────────────────────────────────────────────────────
@@ -334,9 +346,7 @@ export function reduce(
         } = event.entry;
         return {
           ...session,
-          storeQueue: session.storeQueue.includes(event.entry.storeId)
-            ? session.storeQueue
-            : [...session.storeQueue, event.entry.storeId],
+          storeQueue: queueStoreForActiveTrip(session, event.entry.storeId),
           entries: [...session.entries, {
             ...freshEntry,
             picked: false,
@@ -352,10 +362,9 @@ export function reduce(
         existingEntry.quantity === event.entry.quantity &&
         existingEntry.unit === event.entry.unit &&
         existingEntry.storeId === event.entry.storeId;
-      const existingStoreIndex = session.storeQueue.indexOf(existingEntry.storeId);
       const completionIsFromFinishedAssignment =
         existingEntry.storeId !== event.entry.storeId ||
-        (existingStoreIndex >= 0 && existingStoreIndex < session.currentIndex);
+        !hasCurrentOrPendingStore(session, existingEntry.storeId);
       if (
         metadataMatches &&
         removedItemIds === session.removedItemIds &&
@@ -386,9 +395,7 @@ export function reduce(
       );
       return {
         ...session,
-        storeQueue: session.storeQueue.includes(event.entry.storeId)
-          ? session.storeQueue
-          : [...session.storeQueue, event.entry.storeId],
+        storeQueue: queueStoreForActiveTrip(session, event.entry.storeId),
         entries,
         removedItemIds,
         removedAt: removedAtPatch,
@@ -452,7 +459,7 @@ export function reduce(
 
     case 'START_MANUAL_STORE': {
       if (session.status !== 'store_summary' && session.status !== 'continue_prompt' && session.status !== 'next_store_ready') return session;
-      if (session.storeQueue.includes(event.storeId)) return session;
+      if (session.storeQueue.slice(session.currentIndex + 1).includes(event.storeId)) return session;
       // Insert right after the current position (like promoteStore) so any
       // already-queued, not-yet-visited store stays ahead of currentIndex and
       // still counts as pending — instead of being stranded behind it.
