@@ -135,7 +135,13 @@ function buildQueue(raw: ShoppingEntry[]): {
   for (const e of raw) {
     if (seen.has(e.itemId)) continue;
     seen.add(e.itemId);
-    entries.push({ ...e, picked: false });
+    const {
+      pickedAt: _pickedAt,
+      outOfStock: _outOfStock,
+      outOfStockAt: _outOfStockAt,
+      ...freshEntry
+    } = e;
+    entries.push({ ...freshEntry, picked: false });
     if (!queue.includes(e.storeId)) queue.push(e.storeId);
   }
   return { queue, entries };
@@ -310,12 +316,18 @@ export function reduce(
       // members RLS policy only permits entries/removedItemIds/storeQueue to
       // change, so any extra session field makes every member push fail.
       if (existingIdx === -1) {
+        const {
+          pickedAt: _pickedAt,
+          outOfStock: _outOfStock,
+          outOfStockAt: _outOfStockAt,
+          ...freshEntry
+        } = event.entry;
         return {
           ...session,
           storeQueue: session.storeQueue.includes(event.entry.storeId)
             ? session.storeQueue
             : [...session.storeQueue, event.entry.storeId],
-          entries: [...session.entries, { ...event.entry, picked: false }],
+          entries: [...session.entries, { ...freshEntry, picked: false }],
           removedItemIds,
         };
       }
@@ -325,15 +337,31 @@ export function reduce(
         existing.quantity === event.entry.quantity &&
         existing.unit === event.entry.unit &&
         existing.storeId === event.entry.storeId;
-      if (metadataMatches && removedItemIds === session.removedItemIds) return session;
+      const existingStoreIndex = session.storeQueue.indexOf(existing.storeId);
+      const completionIsFromFinishedAssignment =
+        existing.storeId !== event.entry.storeId ||
+        (existingStoreIndex >= 0 && existingStoreIndex < session.currentIndex);
+      if (
+        metadataMatches &&
+        removedItemIds === session.removedItemIds &&
+        !completionIsFromFinishedAssignment
+      ) return session;
+      const {
+        pickedAt: _pickedAt,
+        outOfStock: _outOfStock,
+        outOfStockAt: _outOfStockAt,
+        ...freshEntry
+      } = event.entry;
       const entries = session.entries.map((e, i) =>
         i === existingIdx
-          // Keep the local completion state AND its last-tap timestamps — an
-          // item-metadata re-sync must never drop the pick/out-of-stock history.
-          ? {
-              ...event.entry,
+          ? completionIsFromFinishedAssignment
+            ? { ...freshEntry, picked: false }
+            : {
+              ...freshEntry,
               picked: existing.picked,
-              outOfStock: existing.outOfStock,
+              ...(existing.outOfStock || existing.outOfStockAt !== undefined
+                ? { outOfStock: Boolean(existing.outOfStock) }
+                : {}),
               ...(existing.pickedAt !== undefined ? { pickedAt: existing.pickedAt } : {}),
               ...(existing.outOfStockAt !== undefined ? { outOfStockAt: existing.outOfStockAt } : {}),
             }

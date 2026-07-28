@@ -50,24 +50,33 @@ function active(entries: ShoppingEntry[] = [entry()]): ShoppingSession {
   };
 }
 
-test('server pantry truth repairs a stale active-trip store without dropping progress', () => {
+test('server pantry truth resets stale completion when an item moves to another store', () => {
   const session = reconcileShoppingSession(
-    active([entry({ picked: true })]),
+    active([entry({ picked: true, pickedAt: 10, outOfStock: false })]),
     [item({ storeId: 'sams' })],
   );
 
   assert.equal(session.entries[0].storeId, 'sams');
-  assert.equal(session.entries[0].picked, true);
+  assert.equal(session.entries[0].picked, false);
+  assert.equal('pickedAt' in session.entries[0], false);
+  assert.equal('outOfStock' in session.entries[0], false);
 });
 
 test('remote entry metadata wins over stale local metadata while completion remains sticky', () => {
   const merged = mergeShoppingEntries(
-    [entry({ name: 'banana', quantity: 1, storeId: 'target', picked: true })],
+    [entry({ name: 'banana', quantity: 1, storeId: 'sams', picked: true })],
     [entry({ name: 'Banana', quantity: 4, storeId: 'sams', picked: false })],
     [],
   );
 
-  assert.deepEqual(merged[0], entry({ name: 'Banana', quantity: 4, storeId: 'sams', picked: true }));
+  assert.deepEqual(merged[0], {
+    itemId: 'banana',
+    name: 'Banana',
+    quantity: 4,
+    unit: 'unit',
+    storeId: 'sams',
+    picked: true,
+  });
 });
 
 test('valid names, capitalization, emoji metadata, and quantity survive reconciliation', () => {
@@ -155,12 +164,60 @@ test('local delete or non-shopping status removes the active entry', () => {
   }
 });
 
-test('active ADD_ENTRY refreshes metadata and store without duplicating the item', () => {
-  const next = reduce(active([entry({ picked: true })]), {
+test('active ADD_ENTRY resets stale completion when moving an item to a new store', () => {
+  const next = reduce(active([entry({ picked: true, pickedAt: 10 })]), {
     type: 'ADD_ENTRY',
     entry: entry({ name: 'BANANA', quantity: 6, storeId: 'sams' }),
   });
 
   assert.equal(next.entries.length, 1);
-  assert.deepEqual(next.entries[0], entry({ name: 'BANANA', quantity: 6, storeId: 'sams', picked: true }));
+  assert.deepEqual(next.entries[0], {
+    itemId: 'banana',
+    name: 'BANANA',
+    quantity: 6,
+    unit: 'unit',
+    storeId: 'sams',
+    picked: false,
+  });
+});
+
+test('reconciliation resets completion from a store that the trip already finished', () => {
+  const session = reconcileShoppingSession(
+    {
+      ...active([entry({ storeId: 'sams', picked: true, pickedAt: 10 })]),
+      currentIndex: 1,
+    },
+    [item({ storeId: 'sams' })],
+  );
+
+  assert.equal(session.entries[0].picked, false);
+  assert.equal('pickedAt' in session.entries[0], false);
+  assert.equal('outOfStock' in session.entries[0], false);
+});
+
+test('ADD_ENTRY resets a same-store entry after that store was already finished', () => {
+  const next = reduce(
+    {
+      ...active([entry({ storeId: 'sams', picked: true, pickedAt: 10 })]),
+      currentIndex: 1,
+    },
+    {
+      type: 'ADD_ENTRY',
+      entry: entry({ storeId: 'sams' }),
+    },
+  );
+
+  assert.equal(next.entries[0].picked, false);
+  assert.equal('pickedAt' in next.entries[0], false);
+  assert.equal('outOfStock' in next.entries[0], false);
+});
+
+test('merge removes meaningless outOfStock false keys without timestamps', () => {
+  const merged = mergeShoppingEntries(
+    [entry({ outOfStock: false })],
+    [entry({ outOfStock: false })],
+    [],
+  );
+
+  assert.equal('outOfStock' in merged[0], false);
 });

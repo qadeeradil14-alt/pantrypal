@@ -6,6 +6,24 @@ function isShoppingItem(item: PantryItem): boolean {
   return (item.status === 'low' || item.status === 'expiring') && Boolean(item.storeId);
 }
 
+function canonicalizeCompletionShape(entry: ShoppingEntry): ShoppingEntry {
+  const next = { ...entry };
+  if (!next.outOfStock && next.outOfStockAt === undefined) delete next.outOfStock;
+  if (next.pickedAt === undefined) delete next.pickedAt;
+  if (next.outOfStockAt === undefined) delete next.outOfStockAt;
+  return next;
+}
+
+function resetCompletionState(entry: ShoppingEntry): ShoppingEntry {
+  const {
+    pickedAt: _pickedAt,
+    outOfStock: _outOfStock,
+    outOfStockAt: _outOfStockAt,
+    ...rest
+  } = entry;
+  return { ...rest, picked: false };
+}
+
 /**
  * Resolve one completion flag (picked / outOfStock) across two devices by
  * last-tap-wins: the side whose change is more recent wins. A defined timestamp
@@ -36,11 +54,11 @@ export function mergeShoppingEntries(
   removedItemIds: string[],
 ): ShoppingEntry[] {
   const byId = new Map<string, ShoppingEntry>();
-  for (const entry of localEntries) byId.set(entry.itemId, entry);
+  for (const entry of localEntries) byId.set(entry.itemId, canonicalizeCompletionShape(entry));
   for (const entry of remoteEntries) {
     const existing = byId.get(entry.itemId);
     if (!existing) {
-      byId.set(entry.itemId, entry);
+      byId.set(entry.itemId, canonicalizeCompletionShape(entry));
       continue;
     }
     const picked = resolveTimedFlag(existing.picked, existing.pickedAt, entry.picked, entry.pickedAt);
@@ -68,10 +86,7 @@ export function mergeShoppingEntries(
     }
     // A false value without a timestamp was injected by the old merge and is
     // not meaningful state. Remove it so existing OTA 419 sessions self-heal.
-    const hasOutOfStock =
-      outOfStock.value ||
-      outOfStock.at !== undefined ||
-      (existing.outOfStock !== undefined && entry.outOfStock !== undefined);
+    const hasOutOfStock = outOfStock.value || outOfStock.at !== undefined;
     const mergedEntry: ShoppingEntry = {
       ...existing,
       ...entry,
@@ -215,8 +230,14 @@ export function reconcileShoppingSession<T extends SharedShoppingSession>(
       changed = true;
       return [];
     }
+    const entryStoreIndex = session.storeQueue.indexOf(entry.storeId);
+    const completionIsFromFinishedAssignment =
+      entry.storeId !== item.storeId ||
+      (entryStoreIndex >= 0 && entryStoreIndex < session.currentIndex);
     const next: ShoppingEntry = {
-      ...entry,
+      ...(completionIsFromFinishedAssignment
+        ? resetCompletionState(entry)
+        : canonicalizeCompletionShape(entry)),
       name: item.name,
       quantity: item.quantity,
       unit: item.unit,
@@ -226,7 +247,12 @@ export function reconcileShoppingSession<T extends SharedShoppingSession>(
       next.name !== entry.name ||
       next.quantity !== entry.quantity ||
       next.unit !== entry.unit ||
-      next.storeId !== entry.storeId
+      next.storeId !== entry.storeId ||
+      next.picked !== entry.picked ||
+      next.pickedAt !== entry.pickedAt ||
+      next.outOfStock !== entry.outOfStock ||
+      next.outOfStockAt !== entry.outOfStockAt ||
+      Object.keys(next).length !== Object.keys(entry).length
     ) changed = true;
     return [next];
   });
