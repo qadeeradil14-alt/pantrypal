@@ -66,16 +66,24 @@ export function mergeShoppingEntries(
         winner: outOfStock.value,
       });
     }
-    byId.set(entry.itemId, {
+    // A false value without a timestamp was injected by the old merge and is
+    // not meaningful state. Remove it so existing OTA 419 sessions self-heal.
+    const hasOutOfStock =
+      outOfStock.value ||
+      outOfStock.at !== undefined ||
+      (existing.outOfStock !== undefined && entry.outOfStock !== undefined);
+    const mergedEntry: ShoppingEntry = {
       ...existing,
       ...entry,
       picked: picked.value,
-      outOfStock: outOfStock.value,
+      ...(hasOutOfStock ? { outOfStock: outOfStock.value } : {}),
       // Only attach a timestamp when one exists, so legacy entries keep their
       // exact (timeless) shape.
       ...(picked.at !== undefined ? { pickedAt: picked.at } : {}),
       ...(outOfStock.at !== undefined ? { outOfStockAt: outOfStock.at } : {}),
-    });
+    };
+    if (!hasOutOfStock) delete mergedEntry.outOfStock;
+    byId.set(entry.itemId, mergedEntry);
   }
   return Array.from(byId.values()).filter((entry) => !removedItemIds.includes(entry.itemId));
 }
