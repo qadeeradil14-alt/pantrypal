@@ -697,9 +697,18 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     },
 
     commitTrip: (trip, receipts) => {
+      const receiptIds = new Set(receipts.map((receipt) => receipt.id));
       set((s) => ({
-        trips: [trip, ...s.trips],
-        receipts: [...receipts, ...s.receipts],
+        trips: [trip, ...s.trips.filter((candidate) => candidate.id !== trip.id)],
+        receipts: [...receipts, ...s.receipts.filter((receipt) => !receiptIds.has(receipt.id))],
+        activeSession: null,
+        closedTripIds: mergeTombstones(s.closedTripIds, [{
+          id: trip.id,
+          deletedAt: nextTimestamp(Math.max(
+            trip.completedAt,
+            s.closedTripIds?.find((entry) => entry.id === trip.id)?.deletedAt ?? 0,
+          )),
+        }]),
       }));
       // Log activity for receipts + trip.
       const stores = get().stores;

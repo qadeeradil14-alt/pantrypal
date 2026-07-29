@@ -53,7 +53,9 @@ function persistSession(session: ShoppingSession): void {
 }
 
 function isClosedTripId(tripId: string): boolean {
-  return (useDurableStore.getState().closedTripIds ?? []).some((t) => t.id === tripId);
+  const durable = useDurableStore.getState();
+  return durable.trips.some((trip) => trip.id === tripId) ||
+    (durable.closedTripIds ?? []).some((t) => t.id === tripId);
 }
 
 function sessionStats(session: ShoppingSession | SharedShoppingSession | null): { itemCount: number; pickedCount: number; sessionId: string } {

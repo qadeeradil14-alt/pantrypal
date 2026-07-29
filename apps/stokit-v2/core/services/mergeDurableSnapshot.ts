@@ -18,18 +18,9 @@ function mergeActiveSession(
   mergedItems: DurableState['items'],
   knownTrips: Trip[],
   preferLocal: boolean,
-  remoteTrips: Trip[],
-  localTrips: Trip[],
   closedTripIds: { id: string }[],
 ): SharedShoppingSession | null {
-  const localExplicitlyResumed = Boolean(
-    preferLocal &&
-    local?.tripId &&
-    remoteTrips.some((trip) => trip.id === local.tripId) &&
-    !localTrips.some((trip) => trip.id === local.tripId),
-  );
   if (
-    !localExplicitlyResumed &&
     (isCompletedShoppingSession(remote, knownTrips, closedTripIds) ||
       isCompletedShoppingSession(local, knownTrips, closedTripIds))
   ) return null;
@@ -65,16 +56,8 @@ export function mergeDurableSnapshotForPush(remote: DurableState, local: Durable
   const mergedTripTombstones = mergeTombstones(remote.deletedTrips, local.deletedTrips);
   const mergedReceiptTombstones = mergeTombstones(remote.deletedReceipts, local.deletedReceipts);
   const mergedItems = mergePantryItems(remote.items, local.items, mergedTombstones);
-  const locallyResumedTripId = preferLocal
-    && local.activeSession?.tripId
-    && remote.trips.some((trip) => trip.id === local.activeSession?.tripId)
-    && !local.trips.some((trip) => trip.id === local.activeSession?.tripId)
-      ? local.activeSession.tripId
-      : null;
-  const mergedTrips = mergeTrips(remote.trips, local.trips, mergedTripTombstones)
-    .filter((trip) => trip.id !== locallyResumedTripId);
-  const mergedReceipts = mergeReceipts(remote.receipts, local.receipts, mergedReceiptTombstones)
-    .filter((receipt) => receipt.tripId !== locallyResumedTripId);
+  const mergedTrips = mergeTrips(remote.trips, local.trips, mergedTripTombstones);
+  const mergedReceipts = mergeReceipts(remote.receipts, local.receipts, mergedReceiptTombstones);
   const knownTrips = mergedTrips;
   const mergedClosedTripIds = mergeTombstones(remote.closedTripIds, local.closedTripIds);
   const mergedPrefs = mergePrefs(remote, local, preferLocal);
@@ -90,7 +73,7 @@ export function mergeDurableSnapshotForPush(remote: DurableState, local: Durable
     ...mergedPrefs,
     activeSession: mergeActiveSession(
       remote.activeSession, local.activeSession, mergedItems, knownTrips,
-      preferLocal, remote.trips, local.trips, mergedClosedTripIds,
+      preferLocal, mergedClosedTripIds,
     ),
     shoppingStoreAssignments: mergeShoppingStoreAssignments(
       remote.shoppingStoreAssignments,

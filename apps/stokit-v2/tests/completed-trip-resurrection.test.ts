@@ -62,7 +62,7 @@ test('completed Fair Price receipt cannot be overwritten by a stale device and r
   ]);
 });
 
-test('an explicit local reopen supersedes the completed remote trip and stays active', () => {
+test('a newer stale active session cannot masquerade as a reopen after remote completion', () => {
   const remoteCompleted = state(
     ['banana', 'cod', 'salmon'].map((id) => item(id, 'stocked', null, 20)),
     null,
@@ -78,9 +78,8 @@ test('an explicit local reopen supersedes the completed remote trip and stays ac
 
   const merged = mergeDurableSnapshotForPush(remoteCompleted, locallyReopened);
 
-  assert.equal(merged.activeSession?.status, 'shopping_store');
-  assert.equal(merged.activeSession?.tripId, completedTrip.id);
-  assert.deepEqual(merged.trips, []);
+  assert.equal(merged.activeSession, null);
+  assert.deepEqual(merged.trips, [completedTrip]);
 });
 
 test('a newer unrelated item snapshot cannot suppress a valid active trip', () => {
