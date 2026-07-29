@@ -227,25 +227,22 @@ test('the grouped store view no longer maps a storeId-keyed plan', () => {
   assert.match(screen, /planGroups\.map/, 'the grouped list renders from planGroups');
 });
 
-test('arriving at an empty new stop keeps the previous stop on screen', () => {
+test('arriving at an empty new stop keeps history intact without expanding a completed stop', () => {
   const items = [mk('apple', 'Apple', 'costco'), mk('banana', 'Banana', 'costco')];
   let s = startAt(items);
   s = completeStore(s, 2000);
   s = reduce(s, { type: 'START_MANUAL_STORE', storeId: 'safeway' });
 
-  // Safeway holds no occurrences yet, but both stops remain visible.
   const groups = shoppingGroups(s, items);
   assert.deepEqual(groups.map((g) => g.storeId), ['costco', 'safeway']);
   assert.deepEqual(groups[0].items.map((i) => i.name), ['Apple', 'Banana']);
   assert.deepEqual(groups[1].items, []);
 
-  // The overview must therefore gate on stop count, not group count, or the
-  // whole section vanishes and takes Costco with it.
   assert.equal(s.storeQueue.length, 2, 'two stops exist even though one is empty');
   assert.match(
     screen,
-    /if \(session\.storeQueue\.length <= 1\) return null;/,
-    'TripStopsOverview must hide only for a genuinely single-stop trip',
+    /tripStopsOverviewGroups\(session\)\s*\.filter\(\(group\) => group\.classification === 'remaining'\)/,
+    'completed stops stay in session history but disappear from the compact upcoming itinerary',
   );
 });
 
@@ -259,10 +256,13 @@ test('the in-trip edit sheet labels the stop being shopped, not the item’s sto
     /store=\{editingItem\?\.storeId \? storeById\(editingItem\.storeId\) : undefined\}/,
     "the edit sheet must not label rows with the pantry item's own storeId",
   );
-  assert.match(
-    screen,
-    /<View key=\{occurrence\.entryId!\}>/,
-    'active overview rows must use occurrence entryId',
+  assert.doesNotMatch(
+    screen.slice(
+      screen.indexOf('function TripStopsOverview'),
+      screen.indexOf('// ── 3. Per-store summary'),
+    ),
+    /occurrence\.entryId|ItemAvatar/,
+    'the compact itinerary must not render a second occurrence checklist',
   );
   assert.match(
     editSheet,

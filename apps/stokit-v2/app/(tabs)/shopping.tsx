@@ -83,6 +83,7 @@ import {
   shoppingGroups,
   tripStopsOverviewGroups,
 } from '../../core/services/shoppingGroups';
+import { shoppingItineraryPreview } from '../../core/services/shoppingItinerary';
 import {
   activeShoppingStoreIds,
   shoppingEntryDraftsFromAssignments,
@@ -1937,53 +1938,40 @@ function TripStopsOverview({
   styles: ReturnType<typeof makeStyles>['styles'];
   colors: AppColors;
 }) {
-  const groups = tripStopsOverviewGroups(session);
-  // Gate on the number of stops, not on how many currently hold occurrences:
-  // arriving at a new stop leaves it empty for a moment, and counting groups
-  // there would hide the whole section and take the previous stop off screen
-  // with it — the exact disappearance this view exists to prevent.
-  if (session.storeQueue.length <= 1) return null;
+  const groups = tripStopsOverviewGroups(session)
+    .filter((group) => group.classification === 'remaining');
+  if (groups.length === 0) return null;
 
   return (
-    <View>
-      <Text style={[styles.summaryEyebrow, { marginTop: spacing.xl }]}>THIS TRIP</Text>
+    <View style={styles.itinerarySection}>
+      <Text style={styles.summaryEyebrow}>UP NEXT</Text>
+      <View style={styles.itineraryDivider} />
       {groups.map((group) => {
+        const preview = shoppingItineraryPreview(
+          group.items.map((occurrence) => occurrence.name),
+        );
+        const store = storeById(group.storeId);
         return (
-          <Card key={group.key} style={styles.planStoreCard}>
-            <PlanStoreHeader
-              store={storeById(group.storeId)}
-              count={group.items.length}
-              styles={styles}
-            />
-            <Text style={styles.planMeta}>
-              {group.classification === 'completed'
-                ? 'Completed stop'
-                : group.isNext
-                  ? 'Next stop'
-                  : 'Remaining stop'}
-            </Text>
-            <View>
-              {group.items.map((occurrence, idx) => (
-                <View key={occurrence.entryId!}>
-                  {idx > 0 && <View style={styles.rowDivider} />}
-                  <View style={styles.planRow}>
-                    <ItemAvatar name={occurrence.name} size={32} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.planName}>{occurrence.name}</Text>
-                      {occurrence.quantity > 1 || (occurrence.unit && occurrence.unit !== 'unit') ? (
-                        <Text style={styles.planMeta}>
-                          ×{occurrence.quantity}
-                          {occurrence.unit && occurrence.unit !== 'unit' ? ` ${occurrence.unit}` : ''}
-                        </Text>
-                      ) : null}
-                    </View>
-                    {occurrence.picked ? (
-                      <Ionicons name="checkmark-circle" size={18} color={colors.success} />
-                    ) : null}
-                  </View>
-                </View>
-              ))}
+          <Card key={group.key} style={styles.itineraryCard}>
+            <View style={styles.itineraryHeader}>
+              <StoreChip store={store} name={store?.name ?? 'Unknown Store'} size={36} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.itineraryStoreName}>
+                  {store?.name ?? 'Unknown Store'}
+                </Text>
+                <Text style={styles.itineraryItemCount}>
+                  {group.items.length} item{group.items.length === 1 ? '' : 's'}
+                </Text>
+              </View>
+              {group.isNext ? (
+                <Ionicons name="navigate-outline" size={18} color={colors.primary} />
+              ) : null}
             </View>
+            {preview.label ? (
+              <Text style={styles.itineraryPreview} numberOfLines={1}>
+                {preview.label}
+              </Text>
+            ) : null}
           </Card>
         );
       })}
@@ -2004,7 +1992,6 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
   const left    = entries.filter((e) => !e.picked).length;
   const pending = pendingStoreIds(session);
   const manualStores = stores.filter((candidate) => !session.storeQueue.includes(candidate.id));
-  const hasOptions = pending.length > 0 || manualStores.length > 0;
   const spent   = receipt && receipt.status !== 'skipped' ? receipt.amount : 0;
   const completedAt = receipt?.createdAt ?? Date.now();
   const finishTrip = () => {
@@ -2098,12 +2085,13 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
         </View>
       ) : null}
 
-      <Button
-        label={hasOptions ? 'Finish trip' : 'Done'}
-        variant={hasOptions ? 'ghost' : 'primary'}
-        onPress={finishTrip}
-        style={{ marginTop: spacing.md }}
-      />
+      {pending.length === 0 ? (
+        <Button
+          label="End trip"
+          onPress={finishTrip}
+          style={{ marginTop: spacing.md }}
+        />
+      ) : null}
       <Sheet
         visible={showAddStore}
         title="Add a new store"
@@ -2607,6 +2595,13 @@ function makeStyles(colors: AppColors) {
     planRow:      { flexDirection: 'row', alignItems: 'center', gap: spacing.md, justifyContent: 'space-between', minHeight: 58, paddingVertical: spacing.md },
     planName:     { fontFamily: fonts.sansMedium, fontSize: 16, color: colors.ink },
     planMeta:     { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, fontVariant: ['tabular-nums'] },
+    itinerarySection: { marginTop: spacing.xl },
+    itineraryDivider: { height: 1, backgroundColor: colors.borderSoft, marginTop: spacing.sm, marginBottom: spacing.xs },
+    itineraryCard: { marginTop: spacing.md, paddingVertical: spacing.md },
+    itineraryHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+    itineraryStoreName: { fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink },
+    itineraryItemCount: { fontFamily: fonts.mono, fontSize: 11, color: colors.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
+    itineraryPreview: { fontFamily: fonts.sans, fontSize: 13, lineHeight: 18, color: colors.muted, marginTop: spacing.sm },
     bulkAssignRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md },
     bulkAssignIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
     bulkAssignTitle: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
