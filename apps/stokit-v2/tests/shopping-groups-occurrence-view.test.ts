@@ -213,7 +213,7 @@ const screen = readFileSync(join(process.cwd(), 'app/(tabs)/shopping.tsx'), 'utf
 test('the in-trip stops overview is derived from shopping occurrences', () => {
   assert.match(
     screen,
-    /function TripStopsOverview[\s\S]{0,600}?shoppingGroups\(session, \[\]\)/,
+    /function TripStopsOverview[\s\S]{0,600}?tripStopsOverviewGroups\(session\)/,
     'TripStopsOverview must group session occurrences, not pantry items',
   );
 });

@@ -107,7 +107,7 @@ export type ShoppingEvent =
   | { type: 'START_TRIP'; entries: ShoppingEntryDraft[]; now: number; shopperId?: string | null }
   | { type: 'TOGGLE_PICK'; entryId: string; now?: number }
   | { type: 'SET_PICK'; entryId: string; picked: boolean; now?: number }
-  | { type: 'FINISH_STORE'; now: number }
+  | { type: 'FINISH_STORE'; now: number; stopId?: string }
   | {
       type: 'SAVE_RECEIPT';
       amount: number;
@@ -182,8 +182,14 @@ export function currentStoreId(session: ShoppingSession): string | null {
   return session.storeQueue[session.currentIndex] ?? null;
 }
 
+export function currentStopId(session: ShoppingSession): string | null {
+  return currentStoreId(session)
+    ? stopIdForQueueIndex(session, session.currentIndex)
+    : null;
+}
+
 export function currentStoreEntries(session: ShoppingSession): ShoppingEntry[] {
-  const stopId = stopIdForQueueIndex(session, session.currentIndex);
+  const stopId = currentStopId(session);
   return stopId ? session.entries.filter((entry) => entry.stopId === stopId) : [];
 }
 
@@ -512,6 +518,7 @@ export function reduce(
 
     case 'FINISH_STORE': {
       if (session.status !== 'shopping_store') return session;
+      if (event.stopId && event.stopId !== currentStopId(session)) return session;
       return { ...session, status: 'receipt_prompt' };
     }
 

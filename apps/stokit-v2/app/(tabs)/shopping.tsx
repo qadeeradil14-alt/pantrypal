@@ -47,6 +47,7 @@ import { useDurableStore } from '../../store/durable-store';
 import { useHouseholdStore } from '../../store/household-store';
 import { useSessionStore } from '../../store/session-store';
 import {
+  currentStopId,
   currentStoreEntries,
   currentStoreId,
   entryStopPlacement,
@@ -78,7 +79,10 @@ import { UNASSIGNED_STORE_ID, UNASSIGNED_STORE_NAME } from '../../constants/shop
 import { getLastAcknowledgedTripCompletedAt, newestUnseenTrip, setLastAcknowledgedTripCompletedAt } from '../../core/services/tripCompletionAck';
 import { shoppingCapabilities, type ShoppingCapabilities } from '../../core/services/shoppingAccess';
 import { occurrenceId } from '../../core/services/shoppingOccurrence';
-import { shoppingGroups } from '../../core/services/shoppingGroups';
+import {
+  shoppingGroups,
+  tripStopsOverviewGroups,
+} from '../../core/services/shoppingGroups';
 import {
   activeShoppingStoreIds,
   shoppingEntryDraftsFromAssignments,
@@ -361,15 +365,23 @@ export default function ShoppingScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [arrivalStoreId, session.status]);
 
-  // Skip the per-store "Stop completed / Head to X" screen and go directly to the
-  // "Where next?" chooser. Only auto-advance when there are still pending stores
-  // so the final-stop summary ("All stops completed!") still renders normally.
+  // Skip the per-store summary when another planned stop remains.
   useEffect(() => {
     if (
       (session.status === 'store_summary' || session.status === 'continue_prompt') &&
       pendingStoreIds(session).length > 0
     ) {
       dispatch({ type: 'CONTINUE_TRIP' });
+    }
+  }, [session.status, dispatch]);
+
+  // Continue in queue order without duplicating a separate next-stop chooser.
+  useEffect(() => {
+    if (
+      session.status === 'next_store_ready'
+      && pendingStoreIds(session).length > 0
+    ) {
+      dispatch({ type: 'ADVANCE_STORE' });
     }
   }, [session.status, dispatch]);
 
@@ -931,6 +943,8 @@ function ShoppingActive({
   activeShopper,
 }: SubProps) {
   const storeId = currentStoreId(session)!;
+  const activeStopId = currentStopId(session)!;
+  const currentStoreName = storeById(storeId)?.name ?? 'store';
   const entries = currentStoreEntries(session);
   const picked  = entries.filter((e) => e.picked).length;
   const stepNo  = session.currentIndex + 1;
@@ -1330,7 +1344,7 @@ function ShoppingActive({
       {access.canManageTripLifecycle ? (
         <>
         <Button
-          label="Finish store"
+          label={`Finish ${currentStoreName}`}
           onPress={() => {
           if (picked === 0 && entries.length > 0) {
             Alert.alert(
@@ -1342,7 +1356,7 @@ function ShoppingActive({
                   text: 'Done anyway',
                   onPress: () => {
                     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                    dispatch({ type: 'FINISH_STORE', now: Date.now() });
+                    dispatch({ type: 'FINISH_STORE', now: Date.now(), stopId: activeStopId });
                   },
                 },
               ],
@@ -1350,7 +1364,7 @@ function ShoppingActive({
             return;
           }
           void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          dispatch({ type: 'FINISH_STORE', now: Date.now() });
+          dispatch({ type: 'FINISH_STORE', now: Date.now(), stopId: activeStopId });
         }}
           style={styles.finishStoreCta}
         />
@@ -1911,7 +1925,8 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
 // ── Trip stops overview ───────────────────────────────────────────────────────
 
 /**
- * Every stop in the active trip, read from shopping occurrences.
+ * Completed and remaining stops in the active trip, read from shopping
+ * occurrences. The current stop is rendered only by ShoppingActive above.
  *
  * This is the only place the multi-stop shape is visible while shopping, and it
  * is deliberately read-only: the stop being shopped stays the single
@@ -1931,19 +1946,17 @@ function TripStopsOverview({
   styles: ReturnType<typeof makeStyles>['styles'];
   colors: AppColors;
 }) {
-  const groups = shoppingGroups(session, []);
+  const groups = tripStopsOverviewGroups(session);
   // Gate on the number of stops, not on how many currently hold occurrences:
   // arriving at a new stop leaves it empty for a moment, and counting groups
   // there would hide the whole section and take the previous stop off screen
   // with it — the exact disappearance this view exists to prevent.
   if (session.storeQueue.length <= 1) return null;
-  const activeStopId = stopIdForQueueIndex(session, session.currentIndex);
 
   return (
     <View>
       <Text style={[styles.summaryEyebrow, { marginTop: spacing.xl }]}>THIS TRIP</Text>
       {groups.map((group) => {
-        const isCurrent = group.key === activeStopId;
         return (
           <Card key={group.key} style={styles.planStoreCard}>
             <PlanStoreHeader
@@ -1951,34 +1964,35 @@ function TripStopsOverview({
               count={group.items.length}
               styles={styles}
             />
-            {isCurrent ? (
-              <View style={styles.planRow}>
-                <Text style={styles.planMeta}>Now shopping — see the list above</Text>
-              </View>
-            ) : (
-              <View>
-                {group.items.map((occurrence, idx) => (
-                  <View key={occurrence.entryId!}>
-                    {idx > 0 && <View style={styles.rowDivider} />}
-                    <View style={styles.planRow}>
-                      <ItemAvatar name={occurrence.name} size={32} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.planName}>{occurrence.name}</Text>
-                        {occurrence.quantity > 1 || (occurrence.unit && occurrence.unit !== 'unit') ? (
-                          <Text style={styles.planMeta}>
-                            ×{occurrence.quantity}
-                            {occurrence.unit && occurrence.unit !== 'unit' ? ` ${occurrence.unit}` : ''}
-                          </Text>
-                        ) : null}
-                      </View>
-                      {occurrence.picked ? (
-                        <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+            <Text style={styles.planMeta}>
+              {group.classification === 'completed'
+                ? 'Completed stop'
+                : group.isNext
+                  ? 'Next stop'
+                  : 'Remaining stop'}
+            </Text>
+            <View>
+              {group.items.map((occurrence, idx) => (
+                <View key={occurrence.entryId!}>
+                  {idx > 0 && <View style={styles.rowDivider} />}
+                  <View style={styles.planRow}>
+                    <ItemAvatar name={occurrence.name} size={32} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.planName}>{occurrence.name}</Text>
+                      {occurrence.quantity > 1 || (occurrence.unit && occurrence.unit !== 'unit') ? (
+                        <Text style={styles.planMeta}>
+                          ×{occurrence.quantity}
+                          {occurrence.unit && occurrence.unit !== 'unit' ? ` ${occurrence.unit}` : ''}
+                        </Text>
                       ) : null}
                     </View>
+                    {occurrence.picked ? (
+                      <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+                    ) : null}
                   </View>
-                ))}
-              </View>
-            )}
+                </View>
+              ))}
+            </View>
           </Card>
         );
       })}

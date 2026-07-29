@@ -45,6 +45,11 @@ export interface ShoppingGroup {
   items: ShoppingGroupItem[];
 }
 
+export interface TripStopOverviewGroup extends ShoppingGroup {
+  classification: 'completed' | 'remaining';
+  isNext: boolean;
+}
+
 function byName(a: { name: string }, b: { name: string }): number {
   return a.name.localeCompare(b.name);
 }
@@ -107,4 +112,32 @@ export function shoppingGroups(
     storeId,
     items: byStore.get(storeId)!.sort(byName),
   }));
+}
+
+export function tripStopsOverviewGroups(
+  session: ShoppingSession,
+): TripStopOverviewGroup[] {
+  const activeStopId = stopIdForQueueIndex(session, session.currentIndex);
+  const completedStopIds = new Set(session.completedStopIds ?? []);
+  let foundNext = false;
+
+  return shoppingGroups(session, [])
+    .filter((group, index) => (
+      group.key !== activeStopId
+      && (
+        completedStopIds.has(group.key)
+        || (
+          index > session.currentIndex
+          && !session.skippedStoreIds.includes(group.storeId)
+        )
+      )
+    ))
+    .map((group) => {
+      const classification = completedStopIds.has(group.key)
+        ? 'completed' as const
+        : 'remaining' as const;
+      const isNext = classification === 'remaining' && !foundNext;
+      if (isNext) foundNext = true;
+      return { ...group, classification, isNext };
+    });
 }
