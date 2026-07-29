@@ -11,7 +11,9 @@ import {
 import type { ShoppingEntry } from '../types';
 
 const entry: ShoppingEntry = {
-  itemId: 'banana',
+  entryId: 'banana',
+  pantryItemId: 'banana',
+  stopId: 'stop:trip:fair-price:1',
   name: 'Banana',
   quantity: 1,
   unit: 'unit',

@@ -69,8 +69,12 @@ export interface Store {
 
 /** A single item being shopped within an active trip. */
 export interface ShoppingEntry {
-  /** References a PantryItem.id — unique within a session (no duplicates). */
-  itemId: string;
+  /** Stable identity of this one shopping request. */
+  entryId: string;
+  /** References the canonical PantryItem.id. Multiple entries may share it. */
+  pantryItemId: string;
+  /** Stable identity of the store visit, including repeat visits to one store. */
+  stopId: string;
   name: string;
   quantity: number;
   unit: Unit;
@@ -84,15 +88,16 @@ export interface ShoppingEntry {
   /** Wall-clock ms of the last `outOfStock` change. Same last-tap-wins role as pickedAt. */
   outOfStockAt?: number;
   /**
-   * Wall-clock ms this entry was (re-)added to shopping. This is the identity
-   * of an item occurrence: a larger addedAt means a new occurrence whose store
-   * and completion state replace every older occurrence for the same itemId.
-   * pickedAt/outOfStockAt order changes only when addedAt is equal. addedAt is
-   * also compared with removedAt so a re-add beats an older tombstone. Absent
-   * on legacy snapshots, which retain the legacy merge behavior.
+   * Wall-clock version of occurrence metadata. It orders two snapshots of the
+   * same entryId; it never identifies or replaces a sibling occurrence.
    */
   addedAt?: number;
 }
+
+export type ShoppingEntryDraft = Omit<
+  ShoppingEntry,
+  'entryId' | 'stopId' | 'pickedAt' | 'outOfStock' | 'outOfStockAt' | 'addedAt'
+>;
 
 export interface PriceEntry {
   id: string;
@@ -181,10 +186,12 @@ export interface SharedShoppingSession {
   skippedAt?: Record<string, number>;
   unskippedAt?: Record<string, number>;
   entries: ShoppingEntry[];
-  /** Item ids removed mid-trip. Optional: absent on payloads from pre-fix clients. */
+  /** Legacy wire field. Decoded immediately into removedEntryIds. */
   removedItemIds?: string[];
+  /** Shopping occurrence ids removed mid-trip. */
+  removedEntryIds?: string[];
   /**
-   * Wall-clock ms each removedItemIds entry was removed. Lets a later re-add
+   * Wall-clock ms each occurrence tombstone was written. Lets a later re-add
    * (ShoppingEntry.addedAt) win over an older removal instead of the tombstone
    * being permanently re-unioned by every merge. Absent on legacy payloads.
    */

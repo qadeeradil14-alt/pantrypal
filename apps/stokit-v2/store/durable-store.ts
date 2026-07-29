@@ -87,6 +87,7 @@ interface DurableStore extends DurableState {
   assignItemsToStore: (ids: string[], storeId: string) => void;
   resetShoppingList: () => void;
   deleteItem: (id: string) => void;
+  tombstoneShoppingOccurrence: (entryId: string) => void;
 
   // Stores
   addStore: (input: {
@@ -372,18 +373,18 @@ export const useDurableStore = create<DurableStore>((set, get) => {
 
     clearShoppingEntries: (entries) => {
       if (!entries.length) return;
-      const entryIds = new Set(
+      const pantryItemIds = new Set(
         entries
-          .map((entry) => entry.itemId)
+          .map((entry) => entry.pantryItemId)
           .filter((id) => {
             const item = get().items.find((candidate) => candidate.id === id);
             return item && (item.status !== 'stocked' || item.storeId !== null);
           }),
       );
-      if (!entryIds.size) return;
+      if (!pantryItemIds.size) return;
       set((s) => ({
         items: s.items.map((item) =>
-          entryIds.has(item.id)
+          pantryItemIds.has(item.id)
             ? {
                 ...item,
                 status: 'stocked',
@@ -458,6 +459,19 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       // Deleting the last active item assigned to a store removes that
       // store's eligibility — re-register so it stops being monitored.
       void refreshGeofencedStoreData();
+    },
+
+    tombstoneShoppingOccurrence: (entryId) => {
+      const at = nextTimestamp(
+        get().deletedItems?.find((tombstone) => tombstone.id === entryId)?.deletedAt,
+      );
+      set((s) => ({
+        deletedItems: [
+          ...(s.deletedItems ?? []).filter((tombstone) => tombstone.id !== entryId),
+          { id: entryId, deletedAt: at },
+        ],
+      }));
+      persist();
     },
 
     addStore: (input) => {

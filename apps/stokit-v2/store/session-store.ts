@@ -14,6 +14,7 @@ import { create } from 'zustand';
 import {
   reduce,
   initialSession,
+  stopIdForQueueIndex,
   type ShoppingEvent,
   type ShoppingSession,
 } from '../core/shopping-machine';
@@ -21,7 +22,10 @@ import { useDurableStore } from './durable-store';
 import type { SharedShoppingSession, ShoppingEntry } from '../types';
 import { remoteShoppingSessionAction, shouldPreserveCompletedTripSummary } from '../core/services/shoppingSessionSyncPolicy';
 import { syncDiag } from '../core/services/syncDiag'; // DIAG: temporary — remove after OTA 389 investigation
-import { foldRemoteActiveSession } from '../core/services/shoppingEntrySync';
+import {
+  decodeShoppingSession,
+  foldRemoteActiveSession,
+} from '../core/services/shoppingEntrySync';
 import { canDispatchShoppingEvent, shoppingCapabilities } from '../core/services/shoppingAccess';
 import { useHouseholdStore } from './household-store';
 
@@ -67,7 +71,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     try {
       const raw = await AsyncStorage.getItem(SESSION_KEY);
       if (raw) {
-        const saved = JSON.parse(raw) as ShoppingSession;
+        const saved = decodeShoppingSession(JSON.parse(raw) as ShoppingSession);
         // Only restore active sessions — never restore trip_summary (it was committed)
         if (saved.status !== 'idle' && saved.status !== 'trip_summary') {
           const durableSession = useDurableStore.getState().activeSession;
@@ -140,6 +144,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
   dispatch: (event) => {
     const prev = get().session;
+    const durable = useDurableStore.getState();
     const household = useHouseholdStore.getState();
     const localMember = household.members.find((member) => member.isMe);
     const capabilities = shoppingCapabilities(
@@ -147,43 +152,88 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       localMember?.id,
       localMember?.role ?? household.household?.role,
     );
-    if (!canDispatchShoppingEvent(event.type, capabilities)) return;
+    if (!canDispatchShoppingEvent(event.type, capabilities)) {
+      syncDiag('shopping_occurrence_reduce', {
+        sessionId: prev.tripId,
+        operation: event.type,
+        decision: 'no_op',
+        reason: 'unauthorized',
+      });
+      return;
+    }
     const next = reduce(prev, event);
-    if (next === prev) return; // pure no-op
+    if (next === prev) {
+      syncDiag('shopping_occurrence_reduce', {
+        sessionId: prev.tripId,
+        operation: event.type,
+        decision: 'no_op',
+        reason: event.type === 'ADD_ENTRY' ? 'same_stop_occurrence_exists' : 'reducer_rejected_or_unchanged',
+        entryId: 'entryId' in event ? event.entryId : null,
+        pantryItemId: event.type === 'ADD_ENTRY' ? event.entry.pantryItemId : null,
+      });
+      return;
+    }
+    const affected = event.type === 'ADD_ENTRY'
+      ? next.entries.find(
+          (entry) =>
+            entry.pantryItemId === event.entry.pantryItemId &&
+            !prev.entries.some((previous) => previous.entryId === entry.entryId),
+        ) ?? next.entries.find((entry) => entry.pantryItemId === event.entry.pantryItemId)
+      : 'entryId' in event
+        ? next.entries.find((entry) => entry.entryId === event.entryId)
+          ?? prev.entries.find((entry) => entry.entryId === event.entryId)
+        : undefined;
+    syncDiag('shopping_occurrence_reduce', {
+      sessionId: next.tripId,
+      operation: event.type,
+      decision: 'applied',
+      reason: event.type === 'ADD_ENTRY' ? 'occurrence_created_or_updated' : 'scoped_by_entry_id',
+      entryId: affected?.entryId ?? null,
+      pantryItemId: affected?.pantryItemId ?? null,
+      stopId: affected?.stopId ?? null,
+      storeId: affected?.storeId ?? null,
+      storeName: durable.stores.find((store) => store.id === affected?.storeId)?.name ?? null,
+    });
 
     if (event.type === 'TOGGLE_PICK' || event.type === 'SET_PICK' || event.type === 'MARK_OUT_OF_STOCK') {
       // DIAG: temporary — remove after OTA 389 investigation
-      const b = prev.entries.find((e) => e.itemId === event.itemId);
-      const a = next.entries.find((e) => e.itemId === event.itemId);
+      const b = prev.entries.find((e) => e.entryId === event.entryId);
+      const a = next.entries.find((e) => e.entryId === event.entryId);
       syncDiag('local_completion_edit', {
-        itemId: event.itemId, ev: event.type,
+        entryId: event.entryId, pantryItemId: a?.pantryItemId ?? b?.pantryItemId, ev: event.type,
         beforePicked: b?.picked, afterPicked: a?.picked, pickedAt: a?.pickedAt,
         beforeOOS: Boolean(b?.outOfStock), afterOOS: Boolean(a?.outOfStock), outOfStockAt: a?.outOfStockAt,
       });
     }
 
-    const durable = useDurableStore.getState();
-
     if (event.type === 'REMOVE_ENTRY') {
-      const removedEntry = prev.entries.find((entry) => entry.itemId === event.itemId);
-      const durableItem = durable.items.find((item) => item.id === event.itemId);
+      const removedEntry = prev.entries.find((entry) => entry.entryId === event.entryId);
+      const durableItem = durable.items.find((item) => item.id === removedEntry?.pantryItemId);
+      if (removedEntry && !capabilities.canChangePickedState) {
+        if (removedEntry.entryId === removedEntry.pantryItemId) {
+          durable.deleteItem(removedEntry.pantryItemId);
+        } else {
+          durable.tombstoneShoppingOccurrence(removedEntry.entryId);
+        }
+      }
       if (
         removedEntry &&
+        capabilities.canChangePickedState &&
         durableItem &&
         (durableItem.status === 'low' || durableItem.status === 'expiring') &&
         durableItem.storeId === removedEntry.storeId
       ) {
-        durable.updateItem(event.itemId, { storeId: null });
+        durable.updateItem(removedEntry.pantryItemId, { storeId: null });
       }
     }
 
     // Log "picked up" when an item flips to picked.
     if (event.type === 'SET_PICK' || event.type === 'TOGGLE_PICK') {
-      const before = prev.entries.find((e) => e.itemId === event.itemId);
-      const after  = next.entries.find((e) => e.itemId === event.itemId);
+      const before = prev.entries.find((e) => e.entryId === event.entryId);
+      const after  = next.entries.find((e) => e.entryId === event.entryId);
       if (before && after && !before.picked && after.picked) {
         durable.logActivity('picked_up', `Picked up ${after.name}`, {
-          itemId: after.itemId,
+          itemId: after.pantryItemId,
           storeId: after.storeId,
         }, false);
       }
@@ -199,18 +249,18 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     // completes. This prevents items from lingering as "low" in the pantry
     // while the user is still in store_summary / deciding to continue.
     if (next.status === 'store_summary' && prev.status !== 'store_summary') {
-      const completedStoreId = next.storeQueue[next.currentIndex];
+      const completedStopId = stopIdForQueueIndex(next, next.currentIndex);
       durable.clearShoppingEntries(
-        next.entries.filter((e) => e.storeId === completedStoreId && e.picked),
+        next.entries.filter((e) => e.stopId === completedStopId && e.picked),
       );
       // The store visit is complete. Keep unpurchased items low, but remove this
       // store assignment so the completed store does not immediately reactivate.
       next.entries
-        .filter((e) => e.storeId === completedStoreId && e.outOfStock)
-        .forEach((e) => durable.updateItem(e.itemId, { storeId: null }));
+        .filter((e) => e.stopId === completedStopId && e.outOfStock)
+        .forEach((e) => durable.updateItem(e.pantryItemId, { storeId: null }));
       next.entries
-        .filter((e) => e.storeId === completedStoreId && !e.picked && !e.outOfStock)
-        .forEach((e) => durable.updateItem(e.itemId, { storeId: null }));
+        .filter((e) => e.stopId === completedStopId && !e.picked && !e.outOfStock)
+        .forEach((e) => durable.updateItem(e.pantryItemId, { storeId: null }));
     }
 
     // Commit to durable state exactly once when trip_summary is reached.
@@ -219,7 +269,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       const pickedEntries = next.entries.filter((entry) => entry.picked);
       durable.clearShoppingEntries(pickedEntries);
 
-      const pickedItemIds = new Set(pickedEntries.map((entry) => entry.itemId));
+      const pickedItemIds = new Set(pickedEntries.map((entry) => entry.pantryItemId));
       const resolvedStoreIds = new Set(next.storeQueue);
       durable.items
         .filter(
@@ -245,9 +295,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     // no-op here — next already carries this quantity, so the reducer returns
     // the same session and dispatch bails on its next === prev guard.
     if (event.type === 'UPDATE_QUANTITY') {
-      const entry = next.entries.find((e) => e.itemId === event.itemId);
-      if (entry && entry.itemId !== '__quick_scan__') {
-        durable.updateItem(entry.itemId, { quantity: entry.quantity });
+      const entry = next.entries.find((e) => e.entryId === event.entryId);
+      if (entry && entry.pantryItemId !== '__quick_scan__') {
+        durable.updateItem(entry.pantryItemId, { quantity: entry.quantity });
       }
     }
 

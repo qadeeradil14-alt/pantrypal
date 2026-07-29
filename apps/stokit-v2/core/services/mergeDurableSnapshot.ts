@@ -44,7 +44,7 @@ function mergeActiveSession(
   // window.
   if (!canFoldActiveSessions(other, preferred)) return preferred;
 
-  // foldRemoteActiveSession produces the entry / storeQueue / removedItemIds
+  // foldRemoteActiveSession produces the entry / storeQueue / occurrence tombstone
   // union with `preferred` as the authoritative base (it keeps the second
   // argument's scalars). Receipts, skipped stores and completedTrip are the
   // push-path-only extras layered on top.
@@ -112,8 +112,8 @@ function syncSignature(state: DurableState): string {
   const items = byId(state.items);
   const activeSession = state.activeSession ? {
     ...state.activeSession,
-    entries: [...state.activeSession.entries].sort((a, b) => a.itemId.localeCompare(b.itemId)),
-    removedItemIds: [...(state.activeSession.removedItemIds ?? [])].sort(),
+    entries: [...state.activeSession.entries].sort((a, b) => a.entryId.localeCompare(b.entryId)),
+    removedEntryIds: [...(state.activeSession.removedEntryIds ?? [])].sort(),
     skippedStoreIds: [...state.activeSession.skippedStoreIds].sort(),
     receipts: byId(state.activeSession.receipts),
   } : null;

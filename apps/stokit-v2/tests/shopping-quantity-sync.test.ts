@@ -37,9 +37,18 @@ const sessionWithEntryQuantity = (quantity: number): SharedShoppingSession => ({
   currentIndex: 0,
   skippedStoreIds: [],
   entries: [
-    { itemId: 'env', name: 'Envelopes', quantity, unit: 'unit', storeId: 'dollar-general', picked: false },
+    {
+      entryId: 'env',
+      pantryItemId: 'env',
+      stopId: 'stop:trip:dollar-general:1',
+      name: 'Envelopes',
+      quantity,
+      unit: 'unit',
+      storeId: 'dollar-general',
+      picked: false,
+    },
   ],
-  removedItemIds: [],
+  removedEntryIds: [],
   receipts: [],
   completedTrip: null,
 });
@@ -49,7 +58,7 @@ test('a session-only quantity change is stripped by reconcile (the reported bug)
   // never wrote the item).
   const reconciled = reconcileShoppingSession(sessionWithEntryQuantity(4), [item(1)]);
   assert.equal(
-    reconciled.entries.find((e) => e.itemId === 'env')?.quantity,
+    reconciled.entries.find((e) => e.pantryItemId === 'env')?.quantity,
     1,
     'entry quantity is forced back to the item quantity, so the change is lost on push/apply',
   );
@@ -58,7 +67,7 @@ test('a session-only quantity change is stripped by reconcile (the reported bug)
 test('when the quantity change is written to the item, reconcile preserves and syncs it', () => {
   const reconciled = reconcileShoppingSession(sessionWithEntryQuantity(4), [item(4)]);
   assert.equal(
-    reconciled.entries.find((e) => e.itemId === 'env')?.quantity,
+    reconciled.entries.find((e) => e.pantryItemId === 'env')?.quantity,
     4,
     'once the item carries the new quantity, reconcile keeps it — so it survives every snapshot',
   );
@@ -73,12 +82,12 @@ test('dispatch propagates a mid-trip quantity change to the durable item', () =>
   );
   assert.match(
     src,
-    /durable\.updateItem\(entry\.itemId, \{ quantity: entry\.quantity \}\)/,
+    /durable\.updateItem\(entry\.pantryItemId, \{ quantity: entry\.quantity \}\)/,
     'the new quantity must be written to the pantry item so it syncs via the per-item merge',
   );
   assert.match(
     src,
-    /entry\.itemId !== '__quick_scan__'/,
+    /entry\.pantryItemId !== '__quick_scan__'/,
     'the synthetic quick-scan entry must never be written back as a pantry item',
   );
 });

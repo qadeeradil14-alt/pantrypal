@@ -58,11 +58,19 @@ import { sendShoppingAlertOnce } from '../../core/services/shoppingAlertOnce';
 import { resetShoppingTripStartGuard, startShoppingTripOnce } from '../../core/services/shoppingTripStart';
 import { pullFromSupabase } from '../../core/services/syncEngine';
 import type { ReceiptReviewItem } from '../../core/services/shoppingUx';
-import type { HouseholdMember, PantryItem, ShoppingEntry, Store, Trip } from '../../types';
+import type {
+  HouseholdMember,
+  PantryItem,
+  ShoppingEntry,
+  ShoppingEntryDraft,
+  Store,
+  Trip,
+} from '../../types';
 import { useTheme } from '../../hooks/useTheme';
 import { UNASSIGNED_STORE_ID, UNASSIGNED_STORE_NAME } from '../../constants/shopping';
 import { getLastAcknowledgedTripCompletedAt, newestUnseenTrip, setLastAcknowledgedTripCompletedAt } from '../../core/services/tripCompletionAck';
 import { shoppingCapabilities, type ShoppingCapabilities } from '../../core/services/shoppingAccess';
+import { occurrenceId, stopIdForStoreOccurrence } from '../../core/services/shoppingOccurrence';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -214,8 +222,8 @@ export default function ShoppingScreen() {
   const handleQuickScanStoreSelect = (storeId: string) => {
     if (!access.canStartTrip) return;
     setQuickScanStorePicker(false);
-    const dummyEntry: ShoppingEntry = {
-      itemId: '__quick_scan__',
+    const dummyEntry: ShoppingEntryDraft = {
+      pantryItemId: '__quick_scan__',
       name: 'Quick Scan',
       quantity: 1,
       unit: 'unit',
@@ -239,10 +247,10 @@ export default function ShoppingScreen() {
     const eligible = items.filter(
       (i) => (i.status === 'low' || i.status === 'expiring') && i.storeId,
     );
-    const byStore = new Map<string, ShoppingEntry[]>();
+    const byStore = new Map<string, ShoppingEntryDraft[]>();
     for (const it of eligible) {
       const list = byStore.get(it.storeId!) ?? [];
-      list.push({ itemId: it.id, name: it.name, quantity: it.quantity, unit: it.unit, storeId: it.storeId!, picked: false });
+      list.push({ pantryItemId: it.id, name: it.name, quantity: it.quantity, unit: it.unit, storeId: it.storeId!, picked: false });
       byStore.set(it.storeId!, list);
     }
     byStore.forEach((list) => list.sort((a, b) => a.name.localeCompare(b.name)));
@@ -275,14 +283,14 @@ export default function ShoppingScreen() {
         ? { ...item, storeId: firstStoreId, updatedAt: Date.now() }
         : item
     );
-    const byStore = new Map<string, ShoppingEntry[]>();
+    const byStore = new Map<string, ShoppingEntryDraft[]>();
     for (const item of shoppable) {
       const sid = item.storeId ?? firstStoreId;
       const list = byStore.get(sid) ?? [];
-      list.push({ itemId: item.id, name: item.name, quantity: item.quantity, unit: item.unit, storeId: sid, picked: false });
+      list.push({ pantryItemId: item.id, name: item.name, quantity: item.quantity, unit: item.unit, storeId: sid, picked: false });
       byStore.set(sid, list);
     }
-    const entries: ShoppingEntry[] = [...(byStore.get(firstStoreId) ?? [])];
+    const entries: ShoppingEntryDraft[] = [...(byStore.get(firstStoreId) ?? [])];
     byStore.forEach((list, sid) => {
       if (sid !== firstStoreId) entries.push(...list);
     });
@@ -688,11 +696,11 @@ export default function ShoppingScreen() {
                 <PlanStoreHeader store={store} count={list.length} styles={styles} />
                 <View>
                   {list.map((e, idx) => (
-                    <View key={e.itemId}>
+                    <View key={e.pantryItemId}>
                       {idx > 0 && <View style={styles.rowDivider} />}
                       <Pressable
                         onPress={() => {
-                          const full = items.find((i) => i.id === e.itemId);
+                          const full = items.find((i) => i.id === e.pantryItemId);
                           if (full) setReassignItem(full);
                         }}
                         style={({ pressed }) => [styles.planRow, pressed && { opacity: 0.6 }]}
@@ -918,7 +926,6 @@ function ShoppingActive({
   const recordPrice = useDurableStore((s) => s.recordPrice);
   const members = useHouseholdStore((s) => s.members);
   const items = useDurableStore((s) => s.items);
-  const deleteItem = useDurableStore((s) => s.deleteItem);
   const isSharedHousehold = members.length > 1;
   const editingItem = editingItemId
     ? items.find((item) => item.id === editingItemId) ?? null
@@ -943,23 +950,32 @@ function ShoppingActive({
   // same rule to the passive Home-tab assignment path). ADD_ENTRY itself
   // appends a new store, or re-queues a store whose earlier stop is finished.
   useEffect(() => {
-    const entryIds = new Set(session.entries.map((entry) => entry.itemId));
-    const removedItemIds = new Set(session.removedItemIds);
     items
-      .filter((item) =>
-        item.storeId &&
-        (item.status === 'low' || item.status === 'expiring') &&
-        !entryIds.has(item.id) &&
-        !removedItemIds.has(item.id)
-      )
+      .filter((item) => {
+        if (!item.storeId || (item.status !== 'low' && item.status !== 'expiring')) return false;
+        const pendingIndex = session.storeQueue.findIndex(
+          (storeId, index) => index >= session.currentIndex && storeId === item.storeId,
+        );
+        const candidateQueue = pendingIndex >= 0
+          ? session.storeQueue
+          : [...session.storeQueue, item.storeId];
+        const targetIndex = pendingIndex >= 0 ? pendingIndex : candidateQueue.length - 1;
+        const stopId = stopIdForStoreOccurrence(session.tripId, candidateQueue, targetIndex);
+        const entryId = occurrenceId(session.tripId, stopId, item.id);
+        const isRemoved = session.removedEntryIds.includes(item.id)
+          || session.removedEntryIds.includes(entryId);
+        return !isRemoved && !session.entries.some(
+          (entry) => entry.pantryItemId === item.id && entry.stopId === stopId,
+        );
+      })
       .forEach((item) => {
         dispatch({
           type: 'ADD_ENTRY',
           now: Date.now(),
-          entry: { itemId: item.id, name: item.name, quantity: item.quantity, unit: item.unit, storeId: item.storeId!, picked: false },
+          entry: { pantryItemId: item.id, name: item.name, quantity: item.quantity, unit: item.unit, storeId: item.storeId!, picked: false },
         });
       });
-  }, [items, session.entries, session.removedItemIds, dispatch]);
+  }, [items, session.entries, session.removedEntryIds, session.storeQueue, session.currentIndex, session.tripId, dispatch]);
 
   const handleNotifyHousehold = async () => {
     const store = storeById(storeId);
@@ -1059,7 +1075,7 @@ function ShoppingActive({
 
       {entries.length > 0 ? <Pressable onPress={() => setQuantityStepperId(null)}><Card style={styles.shoppingListCard}>
         {entries.map((e, idx) => (
-          <View key={e.itemId}>
+          <View key={e.entryId}>
                 {idx > 0 && <View style={styles.rowDivider} />}
                 <Swipeable
                   renderRightActions={() => (
@@ -1070,8 +1086,7 @@ function ShoppingActive({
                   onSwipeableWillOpen={() => {
                     if (!canEditActiveItems) return;
                     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    if (isCollaborator) deleteItem(e.itemId);
-                    else dispatch({ type: 'REMOVE_ENTRY', itemId: e.itemId, now: Date.now() });
+                    dispatch({ type: 'REMOVE_ENTRY', entryId: e.entryId, now: Date.now() });
                   }}
                   containerStyle={{ overflow: 'hidden' }}
                 >
@@ -1080,7 +1095,7 @@ function ShoppingActive({
                   onPress={() => {
                     if (quantityStepperId) setQuantityStepperId(null);
                     if (!access.canChangePickedState) {
-                      if (canEditActiveItems && e.itemId !== '__quick_scan__') setEditingItemId(e.itemId);
+                      if (canEditActiveItems && e.pantryItemId !== '__quick_scan__') setEditingItemId(e.pantryItemId);
                       return;
                     }
                     if (e.outOfStock) return;
@@ -1088,7 +1103,7 @@ function ShoppingActive({
                     // No LayoutAnimation here: on Fabric it can tick over a
                     // freed Modal shadow node during the receipt flow and crash
                     // (see ActiveTripShell note).
-                    dispatch({ type: 'TOGGLE_PICK', itemId: e.itemId, now: Date.now() });
+                    dispatch({ type: 'TOGGLE_PICK', entryId: e.entryId, now: Date.now() });
                   }}
                   onLongPress={() => {
                     if (!access.canChangePickedState) return;
@@ -1100,7 +1115,7 @@ function ShoppingActive({
                         { text: 'Cancel', style: 'cancel' },
                         {
                           text: e.outOfStock ? 'Available' : 'Out of stock',
-                          onPress: () => dispatch({ type: 'MARK_OUT_OF_STOCK', itemId: e.itemId, now: Date.now() }),
+                          onPress: () => dispatch({ type: 'MARK_OUT_OF_STOCK', entryId: e.entryId, now: Date.now() }),
                         },
                       ],
                     );
@@ -1128,7 +1143,7 @@ function ShoppingActive({
                       return (
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
                           {priceText ? <Text style={styles.priceHint}>{priceText}</Text> : null}
-                          {access.canLogPrices && e.itemId !== '__quick_scan__' && (
+                          {access.canLogPrices && e.pantryItemId !== '__quick_scan__' && (
                             <Pressable
                               onPress={(ev) => { ev.stopPropagation(); setPriceEntry(e); }}
                               style={styles.addPriceButton}
@@ -1144,13 +1159,13 @@ function ShoppingActive({
                     })()}
                   </View>
                   {/* Qty badge → stepper on right, never overlaps pricetag */}
-                  {canEditActiveItems && e.itemId !== '__quick_scan__' ? (
-                    quantityStepperId === e.itemId ? (
+                  {canEditActiveItems && e.pantryItemId !== '__quick_scan__' ? (
+                    quantityStepperId === e.entryId ? (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
                         <Pressable
                           hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
                           style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
-                          onPress={(ev) => { ev.stopPropagation(); void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); dispatch({ type: 'UPDATE_QUANTITY', itemId: e.itemId, quantity: e.quantity - 1 }); if (e.quantity - 1 <= 1) setQuantityStepperId(null); }}
+                          onPress={(ev) => { ev.stopPropagation(); void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); dispatch({ type: 'UPDATE_QUANTITY', entryId: e.entryId, quantity: e.quantity - 1 }); if (e.quantity - 1 <= 1) setQuantityStepperId(null); }}
                         >
                           <Text style={{ fontSize: 16, color: colors.ink, lineHeight: 20 }}>−</Text>
                         </Pressable>
@@ -1159,7 +1174,7 @@ function ShoppingActive({
                         </Pressable>
                         <Pressable
                           hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
-                          onPress={(ev) => { ev.stopPropagation(); void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); dispatch({ type: 'UPDATE_QUANTITY', itemId: e.itemId, quantity: e.quantity + 1 }); }}
+                          onPress={(ev) => { ev.stopPropagation(); void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); dispatch({ type: 'UPDATE_QUANTITY', entryId: e.entryId, quantity: e.quantity + 1 }); }}
                           style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
                         >
                           <Text style={{ fontSize: 16, color: colors.ink, lineHeight: 20 }}>+</Text>
@@ -1167,13 +1182,13 @@ function ShoppingActive({
                       </View>
                     ) : (
                       <View style={styles.itemActions}>
-                        <Pressable onPress={(ev) => { ev.stopPropagation(); setQuantityStepperId(e.itemId); }} hitSlop={10}>
+                        <Pressable onPress={(ev) => { ev.stopPropagation(); setQuantityStepperId(e.entryId); }} hitSlop={10}>
                           <Text style={styles.planMeta}>×{e.quantity}</Text>
                         </Pressable>
                         <Pressable
                           onPress={(ev) => {
                             ev.stopPropagation();
-                            setEditingItemId(e.itemId);
+                            setEditingItemId(e.pantryItemId);
                           }}
                           hitSlop={10}
                           accessibilityRole="button"
@@ -1333,7 +1348,7 @@ function ShoppingActive({
               dispatch({
                 type: 'ADD_ENTRY',
                 now: Date.now(),
-                entry: { itemId: i.id, name: i.name, quantity: i.quantity, unit: i.unit, storeId: storeId, picked: false }
+                entry: { pantryItemId: i.id, name: i.name, quantity: i.quantity, unit: i.unit, storeId: storeId, picked: false }
               });
            });
         }}
@@ -1346,7 +1361,7 @@ function ShoppingActive({
         onSave={(price) => {
           if (priceEntry) {
             recordPrice({
-              itemId: priceEntry.itemId,
+              itemId: priceEntry.pantryItemId,
               itemName: priceEntry.name,
               storeId,
               price,
@@ -2369,7 +2384,7 @@ function TripSummary({ session, dispatch, storeById, tsStyles, colors }: SubProp
               .map((b, idx) => {
                 const store = storeById(b.storeId);
                 const barColor = ROUTE_COLORS[idx % ROUTE_COLORS.length];
-                const boughtHere = session.entries.filter((e) => e.storeId === b.storeId && e.picked && e.itemId !== '__quick_scan__');
+                const boughtHere = session.entries.filter((e) => e.storeId === b.storeId && e.picked && e.pantryItemId !== '__quick_scan__');
                 return (
                   <Card key={b.storeId} style={tsStyles.storeCard}>
                     <View style={tsStyles.storeRow}>

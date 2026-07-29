@@ -1,6 +1,74 @@
 import { initialSession, type ShoppingEvent } from '../shopping-machine';
-import type { PantryItem, SharedShoppingSession, ShoppingEntry } from '../../types';
+import type {
+  PantryItem,
+  SharedShoppingSession,
+  ShoppingEntry,
+} from '../../types';
 import { syncDiag } from './syncDiag'; // DIAG: temporary — remove after OTA 389 investigation
+import {
+  entryDraft,
+  occurrenceId,
+  stopIdForStoreOccurrence,
+  stopIndexForEntry,
+} from './shoppingOccurrence';
+
+type LegacyShoppingEntry = Omit<
+  ShoppingEntry,
+  'entryId' | 'pantryItemId' | 'stopId'
+> & {
+  itemId: string;
+  entryId?: string;
+  pantryItemId?: string;
+  stopId?: string;
+};
+
+export function decodeShoppingSession<T extends SharedShoppingSession>(session: T): T {
+  const rawEntries = session.entries as unknown as Array<ShoppingEntry | LegacyShoppingEntry>;
+  let changed = Boolean(session.removedItemIds) || session.removedEntryIds === undefined;
+  const entries = rawEntries.map((raw) => {
+    if ('entryId' in raw && raw.entryId && 'pantryItemId' in raw && raw.pantryItemId && raw.stopId) {
+      if (!('itemId' in raw)) return raw;
+      changed = true;
+      const { itemId: _wireItemId, ...entry } = raw as ShoppingEntry & { itemId?: string };
+      return entry;
+    }
+    changed = true;
+    const legacy = raw as LegacyShoppingEntry;
+    const index = stopIndexForEntry(session, legacy.storeId);
+    const stopId = legacy.stopId ?? stopIdForStoreOccurrence(
+      session.tripId,
+      session.storeQueue,
+      Math.max(index, 0),
+    );
+    const pantryItemId = legacy.pantryItemId ?? legacy.itemId;
+    const entryId = legacy.entryId ?? legacy.itemId;
+    const { itemId: _legacyItemId, ...rest } = legacy;
+    return { ...rest, entryId, pantryItemId, stopId } as ShoppingEntry;
+  });
+  const removedEntryIds = session.removedEntryIds ?? session.removedItemIds ?? [];
+  if (!changed) return session;
+  const { removedItemIds: _wireRemovedIds, ...rest } = session;
+  return { ...rest, entries, removedEntryIds } as T;
+}
+
+export function encodeShoppingSession<T extends SharedShoppingSession>(session: T): T {
+  const decoded = decodeShoppingSession(session);
+  const entries = decoded.entries.map((entry) => {
+    if (entry.entryId === entry.pantryItemId) {
+      const {
+        entryId,
+        pantryItemId: _pantryItemId,
+        stopId: _stopId,
+        ...legacyCompatible
+      } = entry;
+      return { ...legacyCompatible, itemId: entryId };
+    }
+    return { ...entry, itemId: entry.entryId };
+  });
+  const removedItemIds = decoded.removedEntryIds ?? [];
+  const { removedEntryIds: _internalRemovedIds, ...rest } = decoded;
+  return { ...rest, entries, removedItemIds } as unknown as T;
+}
 
 function isShoppingItem(item: PantryItem): boolean {
   return (item.status === 'low' || item.status === 'expiring') && Boolean(item.storeId);
@@ -12,16 +80,6 @@ function canonicalizeCompletionShape(entry: ShoppingEntry): ShoppingEntry {
   if (next.pickedAt === undefined) delete next.pickedAt;
   if (next.outOfStockAt === undefined) delete next.outOfStockAt;
   return next;
-}
-
-function resetCompletionState(entry: ShoppingEntry): ShoppingEntry {
-  const {
-    pickedAt: _pickedAt,
-    outOfStock: _outOfStock,
-    outOfStockAt: _outOfStockAt,
-    ...rest
-  } = entry;
-  return { ...rest, picked: false };
 }
 
 /**
@@ -51,31 +109,43 @@ function resolveTimedFlag(
 export function mergeShoppingEntries(
   localEntries: ShoppingEntry[],
   remoteEntries: ShoppingEntry[],
-  removedItemIds: string[],
+  removedEntryIds: string[],
 ): ShoppingEntry[] {
   const byId = new Map<string, ShoppingEntry>();
-  for (const entry of localEntries) byId.set(entry.itemId, canonicalizeCompletionShape(entry));
+  for (const entry of localEntries) byId.set(entry.entryId, canonicalizeCompletionShape(entry));
   for (const entry of remoteEntries) {
-    const existing = byId.get(entry.itemId);
+    const existing = byId.get(entry.entryId);
     if (!existing) {
-      byId.set(entry.itemId, canonicalizeCompletionShape(entry));
+      byId.set(entry.entryId, canonicalizeCompletionShape(entry));
+      syncDiag('shopping_occurrence_merge', {
+        decision: 'preserve_sibling',
+        reason: 'new_entry_id',
+        entryId: entry.entryId,
+        pantryItemId: entry.pantryItemId,
+        stopId: entry.stopId,
+        storeId: entry.storeId,
+      });
       continue;
     }
     const existingAddedAt = existing.addedAt ?? -Infinity;
     const incomingAddedAt = entry.addedAt ?? -Infinity;
-    // `addedAt` is the occurrence/generation boundary for one itemId. A later
-    // add represents a new shopping occurrence, so its complete shape must win
-    // before pickedAt/outOfStockAt are compared. Those timestamps only order
-    // taps within the same occurrence. Reattaching an earlier occurrence's
-    // completion fields made a member snapshot change RLS-protected fields on
-    // the newer cloud entry, causing PostgREST 42501/HTTP 403 rejection.
+    // entryId is the occurrence boundary. addedAt only versions two copies of
+    // that same occurrence; it must never decide whether sibling occurrences
+    // are the same row.
     if (existingAddedAt !== incomingAddedAt) {
+      const winner = existingAddedAt > incomingAddedAt ? existing : entry;
       byId.set(
-        entry.itemId,
-        canonicalizeCompletionShape(
-          existingAddedAt > incomingAddedAt ? existing : entry,
-        ),
+        entry.entryId,
+        canonicalizeCompletionShape(winner),
       );
+      syncDiag('shopping_occurrence_merge', {
+        decision: 'merge_same_occurrence',
+        reason: 'newer_added_at',
+        entryId: winner.entryId,
+        pantryItemId: winner.pantryItemId,
+        stopId: winner.stopId,
+        storeId: winner.storeId,
+      });
       continue;
     }
     const picked = resolveTimedFlag(existing.picked, existing.pickedAt, entry.picked, entry.pickedAt);
@@ -87,7 +157,7 @@ export function mergeShoppingEntries(
     // resolved values above/below are unchanged.
     if (existing.picked !== entry.picked) {
       syncDiag('flag_merge', {
-        itemId: entry.itemId, flag: 'picked',
+        entryId: entry.entryId, pantryItemId: entry.pantryItemId, flag: 'picked',
         localValue: existing.picked, localAt: existing.pickedAt,
         incomingValue: entry.picked, incomingAt: entry.pickedAt,
         winner: picked.value,
@@ -95,7 +165,7 @@ export function mergeShoppingEntries(
     }
     if (Boolean(existing.outOfStock) !== Boolean(entry.outOfStock)) {
       syncDiag('flag_merge', {
-        itemId: entry.itemId, flag: 'outOfStock',
+        entryId: entry.entryId, pantryItemId: entry.pantryItemId, flag: 'outOfStock',
         localValue: Boolean(existing.outOfStock), localAt: existing.outOfStockAt,
         incomingValue: Boolean(entry.outOfStock), incomingAt: entry.outOfStockAt,
         winner: outOfStock.value,
@@ -115,15 +185,25 @@ export function mergeShoppingEntries(
       ...(outOfStock.at !== undefined ? { outOfStockAt: outOfStock.at } : {}),
     };
     if (!hasOutOfStock) delete mergedEntry.outOfStock;
-    byId.set(entry.itemId, mergedEntry);
+    byId.set(entry.entryId, mergedEntry);
+    syncDiag('shopping_occurrence_merge', {
+      decision: 'merge_same_occurrence',
+      reason: 'same_entry_id',
+      entryId: mergedEntry.entryId,
+      pantryItemId: mergedEntry.pantryItemId,
+      stopId: mergedEntry.stopId,
+      storeId: mergedEntry.storeId,
+    });
   }
-  return Array.from(byId.values()).filter((entry) => !removedItemIds.includes(entry.itemId));
+  return Array.from(byId.values())
+    .filter((entry) => !removedEntryIds.includes(entry.entryId))
+    .sort((a, b) => a.entryId.localeCompare(b.entryId));
 }
 /**
  * Union two sides' removal tombstones, but drop any id that has since been
  * re-added on either side.
  *
- * Why this exists: `removedItemIds` is a plain string[] with no timestamp, so
+ * Why this exists: occurrence tombstones are strings with no timestamp, so
  * once an id landed there on ANY device, every subsequent merge re-unioned it
  * and mergeShoppingEntries filtered that item out again — permanently. The
  * local reducer un-tombstones on ADD_ENTRY, but the peer still carried the old
@@ -136,11 +216,14 @@ export function mergeShoppingEntries(
  * Legacy data (no addedAt / no removedAt) keeps the original tombstone-wins
  * behavior, so genuine deletions still propagate exactly as before.
  */
-export function resolveRemovedItemIds(
-  a: Pick<SharedShoppingSession, 'entries' | 'removedItemIds' | 'removedAt'>,
-  b: Pick<SharedShoppingSession, 'entries' | 'removedItemIds' | 'removedAt'>,
-): { removedItemIds: string[]; removedAt?: Record<string, number> } {
-  const unionIds = Array.from(new Set([...(a.removedItemIds ?? []), ...(b.removedItemIds ?? [])]));
+export function resolveRemovedEntryIds(
+  a: Pick<SharedShoppingSession, 'entries' | 'removedItemIds' | 'removedEntryIds' | 'removedAt'>,
+  b: Pick<SharedShoppingSession, 'entries' | 'removedItemIds' | 'removedEntryIds' | 'removedAt'>,
+): { removedEntryIds: string[]; removedAt?: Record<string, number> } {
+  const unionIds = Array.from(new Set([
+    ...(a.removedEntryIds ?? a.removedItemIds ?? []),
+    ...(b.removedEntryIds ?? b.removedItemIds ?? []),
+  ]));
 
   const removedAt: Record<string, number> = {};
   for (const side of [a, b]) {
@@ -153,8 +236,9 @@ export function resolveRemovedItemIds(
   for (const side of [a, b]) {
     for (const entry of side.entries ?? []) {
       if (entry.addedAt === undefined) continue;
-      const prev = newestAddedAt.get(entry.itemId);
-      if (prev === undefined || entry.addedAt > prev) newestAddedAt.set(entry.itemId, entry.addedAt);
+      const entryId = entry.entryId ?? (entry as unknown as { itemId: string }).itemId;
+      const prev = newestAddedAt.get(entryId);
+      if (prev === undefined || entry.addedAt > prev) newestAddedAt.set(entryId, entry.addedAt);
     }
   }
 
@@ -173,7 +257,7 @@ export function resolveRemovedItemIds(
   );
 
   return {
-    removedItemIds: stillRemoved,
+    removedEntryIds: stillRemoved,
     ...(Object.keys(prunedRemovedAt).length > 0 ? { removedAt: prunedRemovedAt } : {}),
   };
 }
@@ -278,19 +362,21 @@ export function foldRemoteActiveSession<T extends SharedShoppingSession>(
     if (remoteSession.tripId && isClosedTripId?.(remoteSession.tripId)) {
       return previous ?? (initialSession as unknown as T);
     }
-    return remoteSession;
+    return decodeShoppingSession(remoteSession);
   }
-  const preferred = compareSessionProgress(previous, remoteSession) > 0
-    ? previous
-    : remoteSession;
-  const other = preferred === previous ? remoteSession : previous;
-  const { removedItemIds, removedAt } = resolveRemovedItemIds(previous, remoteSession);
-  const skipped = resolveSkippedStoreIds(previous, remoteSession);
+  const local = decodeShoppingSession(previous);
+  const incoming = decodeShoppingSession(remoteSession);
+  const preferred = compareSessionProgress(local, incoming) > 0
+    ? local
+    : incoming;
+  const other = preferred === local ? incoming : local;
+  const { removedEntryIds, removedAt } = resolveRemovedEntryIds(local, incoming);
+  const skipped = resolveSkippedStoreIds(local, incoming);
   return {
     ...preferred,
     storeQueue: mergeStoreQueues(preferred.storeQueue, other.storeQueue),
-    entries: mergeShoppingEntries(previous.entries, remoteSession.entries, removedItemIds),
-    removedItemIds,
+    entries: mergeShoppingEntries(local.entries, incoming.entries, removedEntryIds),
+    removedEntryIds,
     ...(removedAt !== undefined ? { removedAt } : {}),
     ...skipped,
   };
@@ -319,35 +405,37 @@ export function reconcileShoppingSession<T extends SharedShoppingSession>(
   items: PantryItem[],
 ): T {
   if (session.status !== 'shopping_store') return session;
+  const decoded = decodeShoppingSession(session);
   const byId = new Map(items.map((item) => [item.id, item]));
-  const removedItemIds = new Set(session.removedItemIds ?? []);
-  const storesToQueue = new Set<string>();
+  const removedEntryIds = new Set(decoded.removedEntryIds ?? []);
   let changed = false;
-  const entries = session.entries.flatMap((entry) => {
-    if (entry.itemId === '__quick_scan__') return [entry];
-    const item = byId.get(entry.itemId);
-    if (!item || !isShoppingItem(item)) {
+  const entries = decoded.entries.flatMap((entry) => {
+    if (entry.pantryItemId === '__quick_scan__') return [entry];
+    const item = byId.get(entry.pantryItemId);
+    const stopIndex = decoded.storeQueue.findIndex(
+      (_, index) =>
+        stopIdForStoreOccurrence(decoded.tripId, decoded.storeQueue, index) === entry.stopId,
+    );
+    const occurrenceIsActiveOrPending = stopIndex < 0 || stopIndex >= decoded.currentIndex;
+    if (!item || (!isShoppingItem(item) && occurrenceIsActiveOrPending)) {
       changed = true;
       return [];
     }
-    const completionIsFromFinishedAssignment =
-      entry.storeId !== item.storeId ||
-      !session.storeQueue.slice(session.currentIndex).includes(entry.storeId);
-    if (completionIsFromFinishedAssignment) storesToQueue.add(item.storeId!);
+    if (!occurrenceIsActiveOrPending) {
+      const completed = canonicalizeCompletionShape(entry);
+      if (Object.keys(completed).length !== Object.keys(entry).length) changed = true;
+      return [completed];
+    }
     const next: ShoppingEntry = {
-      ...(completionIsFromFinishedAssignment
-        ? resetCompletionState(entry)
-        : canonicalizeCompletionShape(entry)),
+      ...canonicalizeCompletionShape(entry),
       name: item.name,
       quantity: item.quantity,
       unit: item.unit,
-      storeId: item.storeId!,
     };
     if (
       next.name !== entry.name ||
       next.quantity !== entry.quantity ||
       next.unit !== entry.unit ||
-      next.storeId !== entry.storeId ||
       next.picked !== entry.picked ||
       next.pickedAt !== entry.pickedAt ||
       next.outOfStock !== entry.outOfStock ||
@@ -356,54 +444,71 @@ export function reconcileShoppingSession<T extends SharedShoppingSession>(
     ) changed = true;
     return [next];
   });
-  const entryIds = new Set(entries.map((entry) => entry.itemId));
+  const storeQueue = [...decoded.storeQueue];
   for (const item of items) {
-    if (!isShoppingItem(item) || entryIds.has(item.id) || removedItemIds.has(item.id)) continue;
+    if (!isShoppingItem(item)) continue;
+    let targetIndex = storeQueue.findIndex(
+      (storeId, index) => index >= decoded.currentIndex && storeId === item.storeId,
+    );
+    if (targetIndex < 0) {
+      const hasCompletedOccurrence = entries.some(
+        (entry) =>
+          entry.pantryItemId === item.id &&
+          entry.storeId === item.storeId,
+      );
+      if (hasCompletedOccurrence) continue;
+      storeQueue.push(item.storeId!);
+      targetIndex = storeQueue.length - 1;
+      changed = true;
+    }
+    const stopId = stopIdForStoreOccurrence(decoded.tripId, storeQueue, targetIndex);
+    if (entries.some(
+      (entry) => entry.pantryItemId === item.id && entry.stopId === stopId,
+    )) continue;
+    const entryId = removedEntryIds.has(item.id)
+      ? item.id
+      : occurrenceId(decoded.tripId, stopId, item.id);
+    if (removedEntryIds.has(entryId)) continue;
     entries.push({
-      itemId: item.id,
+      entryId,
+      pantryItemId: item.id,
+      stopId,
       name: item.name,
       quantity: item.quantity,
       unit: item.unit,
       storeId: item.storeId!,
       picked: false,
     });
-    entryIds.add(item.id);
-    if (!session.storeQueue.slice(session.currentIndex).includes(item.storeId!)) {
-      storesToQueue.add(item.storeId!);
-    }
     changed = true;
   }
-  const storeQueue = [...session.storeQueue];
-  for (const storeId of storesToQueue) {
-    if (!storeQueue.slice(session.currentIndex).includes(storeId)) {
-      storeQueue.push(storeId);
-      changed = true;
-    }
-  }
-  return changed ? { ...session, entries, storeQueue } : session;
+  return changed || decoded !== session
+    ? { ...decoded, entries, storeQueue } as T
+    : session;
 }
 
 export function shoppingEntryEventForItem(
   session: SharedShoppingSession | null,
   item: PantryItem | null,
-  itemId: string,
+  pantryItemId: string,
 ): ShoppingEvent | null {
   if (!session || session.status !== 'shopping_store') return null;
   if (item && isShoppingItem(item)) {
     return {
       type: 'ADD_ENTRY',
       now: Date.now(),
-      entry: {
-        itemId: item.id,
-        name: item.name,
-        quantity: item.quantity,
-        unit: item.unit,
-        storeId: item.storeId!,
-        picked: false,
-      },
+      entry: entryDraft(item.id, item.name, item.quantity, item.unit, item.storeId!),
     };
   }
-  return session.entries.some((entry) => entry.itemId === itemId)
-    ? { type: 'REMOVE_ENTRY', itemId, now: Date.now() }
+  const decoded = decodeShoppingSession(session);
+  const currentStopId = stopIdForStoreOccurrence(
+    decoded.tripId,
+    decoded.storeQueue,
+    decoded.currentIndex,
+  );
+  const occurrence = decoded.entries.find(
+    (entry) => entry.pantryItemId === pantryItemId && entry.stopId === currentStopId,
+  ) ?? decoded.entries.find((entry) => entry.pantryItemId === pantryItemId);
+  return occurrence
+    ? { type: 'REMOVE_ENTRY', entryId: occurrence.entryId, now: Date.now() }
     : null;
 }

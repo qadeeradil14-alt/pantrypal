@@ -12,7 +12,7 @@ import { join } from 'node:path';
 const shopping = readFileSync(join(process.cwd(), 'app/(tabs)/shopping.tsx'), 'utf8');
 
 const syncEffect = shopping.slice(
-  shopping.indexOf('useEffect(() => {\n    const entryIds = new Set(session.entries'),
+  shopping.indexOf('useEffect(() => {\n    items\n      .filter((item) => {'),
   shopping.indexOf('const handleNotifyHousehold'),
 );
 
@@ -26,18 +26,18 @@ test('eligibility no longer requires the item to match the current store', () =>
 });
 
 test('unassigned items (no storeId) are still ignored', () => {
-  assert.match(syncEffect, /item\.storeId &&/,
+  assert.match(syncEffect, /if \(!item\.storeId \|\|/,
     'a truthy-storeId check must remain so items with no store assignment never enter the trip');
 });
 
 test('tombstoned (removed) items still never resurrect', () => {
-  assert.match(syncEffect, /!removedItemIds\.has\(item\.id\)/,
-    'the removedItemIds guard must be preserved so REMOVE_ENTRY tombstones still hold');
+  assert.match(syncEffect, /session\.removedEntryIds\.includes\(item\.id\)/,
+    'the occurrence tombstone guard must be preserved so REMOVE_ENTRY tombstones still hold');
 });
 
 test('items already present as an entry are still skipped (no duplicate dispatch)', () => {
-  assert.match(syncEffect, /!entryIds\.has\(item\.id\)/,
-    'the entryIds guard must be preserved regardless of which store the entry is under');
+  assert.match(syncEffect, /entry\.pantryItemId === item\.id && entry\.stopId === stopId/,
+    'same pantry item and stop must remain idempotent');
 });
 
 test('the dispatched entry keeps the item\'s own storeId — no re-homing to the current store', () => {

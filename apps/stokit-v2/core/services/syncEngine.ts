@@ -3,7 +3,11 @@ import { decode } from 'base64-arraybuffer';
 import { supabase } from '../../lib/supabase';
 import type { DurableState, Receipt, ShoppingEntry } from '../../types';
 import { shouldApplyRemoteSnapshot, remoteSkipReason, markRemoteApplied, markPushed, isSelfEcho, resetSyncWatermark } from './syncWatermark';
-import { reconcileShoppingSession } from './shoppingEntrySync';
+import {
+  decodeShoppingSession,
+  encodeShoppingSession,
+  reconcileShoppingSession,
+} from './shoppingEntrySync';
 import { createDebouncedPullScheduler, createRealtimeFallbackScheduler } from './realtimePullScheduler';
 import { syncDiag, syncDiagEnabled } from './syncDiag'; // DIAG: temporary — remove after OTA 389 investigation
 import { withTimeout } from './withTimeout';
@@ -136,6 +140,24 @@ function durableSnapshot(state: DurableState): DurableState {
   };
 }
 
+function decodeShoppingState(state: DurableState): DurableState {
+  return {
+    ...state,
+    activeSession: state.activeSession
+      ? decodeShoppingSession(state.activeSession)
+      : null,
+  };
+}
+
+function encodeShoppingState(state: DurableState): DurableState {
+  return {
+    ...state,
+    activeSession: state.activeSession
+      ? encodeShoppingSession(state.activeSession)
+      : null,
+  };
+}
+
 /**
  * DIAG(RLS): TEMPORARY — collaborator-write investigation (OTA 419).
  * Summarises each entry's id/name and its exact JSON key set, so a capture can
@@ -147,10 +169,10 @@ function diagEntryShapes(entries: ShoppingEntry[] | undefined): Record<string, u
   const list = entries ?? [];
   return {
     count: list.length,
-    ids: list.map((e) => e.itemId),
+    ids: list.map((e) => e.entryId),
     names: list.map((e) => e.name),
-    keySets: list.map((e) => `${e.itemId}:{${Object.keys(e).sort().join(',')}}`),
-    withOutOfStockKey: list.filter((e) => 'outOfStock' in e).map((e) => e.itemId),
+    keySets: list.map((e) => `${e.entryId}:{${Object.keys(e).sort().join(',')}}`),
+    withOutOfStockKey: list.filter((e) => 'outOfStock' in e).map((e) => e.entryId),
   };
 }
 
@@ -253,11 +275,15 @@ export async function pushLocalState(state: DurableState, options?: { isDeferred
       } else if (!currentResult.data?.state) {
         const writeAt = Math.max(Date.now(), localSnapshot.updatedAt + 1);
         snapshot = { ...localSnapshot, updatedAt: writeAt };
-        const insertResult = await supabase.from(CLOUD_TABLE).insert({ household_id: id, state: snapshot, updated_at: writeAt });
+        const insertResult = await supabase.from(CLOUD_TABLE).insert({
+          household_id: id,
+          state: encodeShoppingState(snapshot),
+          updated_at: writeAt,
+        });
         error = insertResult.error;
         if (!error) break;
       } else {
-        const remote = currentResult.data.state as DurableState;
+        const remote = decodeShoppingState(currentResult.data.state as DurableState);
         const remoteUpdatedAt = Number(currentResult.data.updated_at ?? remote.updatedAt ?? 0);
         const merged = mergeDurableSnapshotForPush(remote, localSnapshot);
         const writeAt = Math.max(Date.now(), remoteUpdatedAt + 1, merged.updatedAt + 1);
@@ -281,7 +307,7 @@ export async function pushLocalState(state: DurableState, options?: { isDeferred
           remoteSessionStatus: remote.activeSession?.status ?? null,
         });
         const updateResult = await supabase.from(CLOUD_TABLE)
-          .update({ state: snapshot, updated_at: writeAt })
+          .update({ state: encodeShoppingState(snapshot), updated_at: writeAt })
           .eq('household_id', id)
           .eq('updated_at', remoteUpdatedAt)
           .select('updated_at')
@@ -453,7 +479,7 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
     return true;
   }
 
-  const remote = data.state as DurableState;
+  const remote = decodeShoppingState(data.state as DurableState);
   const remoteUpdatedAt = (remote.updatedAt ?? data.updated_at ?? 0) as number;
   const hasActiveSession = 'activeSession' in remote;
 

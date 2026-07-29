@@ -22,7 +22,8 @@ const item = (o: Partial<PantryItem> = {}): PantryItem => ({
 });
 
 const entry = (o: Partial<ShoppingEntry> = {}): ShoppingEntry => ({
-  itemId: 'env', name: 'Envelopes', quantity: 1, unit: 'unit', storeId: 'dollar-general',
+  entryId: 'env', pantryItemId: 'env', stopId: 'stop:t:dollar-general:1',
+  name: 'Envelopes', quantity: 1, unit: 'unit', storeId: 'dollar-general',
   picked: false, ...o,
 });
 
@@ -84,13 +85,13 @@ test('both directions converge to the latest edit after a skewed round-trip', ()
 test('check then uncheck across skewed clocks: the uncheck still wins the merge', () => {
   let session = active([entry({ picked: false })]);
   // iPad (behind clock) checks at wall-time 1000.
-  session = reduce(session, { type: 'TOGGLE_PICK', itemId: 'env', now: 1000 });
+  session = reduce(session, { type: 'TOGGLE_PICK', entryId: 'env', now: 1000 });
   assert.equal(session.entries[0].picked, true);
   const checkedAt = session.entries[0].pickedAt!;
 
   // iPad unchecks moments later, but its clock reads the same or even a
   // slightly lower value (e.g. NTP correction) — not strictly advanced.
-  session = reduce(session, { type: 'TOGGLE_PICK', itemId: 'env', now: 999 });
+  session = reduce(session, { type: 'TOGGLE_PICK', entryId: 'env', now: 999 });
   assert.equal(session.entries[0].picked, false);
   assert.ok(session.entries[0].pickedAt! > checkedAt, 'the uncheck stamp must exceed the prior check even under a non-advancing clock');
 
@@ -104,12 +105,12 @@ test('check then uncheck across skewed clocks: the uncheck still wins the merge'
 
 test('out-of-stock set then clear across skewed clocks: the clear still wins the merge', () => {
   let session = active([entry({ outOfStock: false })]);
-  session = reduce(session, { type: 'MARK_OUT_OF_STOCK', itemId: 'env', now: 1000 });
+  session = reduce(session, { type: 'MARK_OUT_OF_STOCK', entryId: 'env', now: 1000 });
   assert.equal(session.entries[0].outOfStock, true);
   const setAt = session.entries[0].outOfStockAt!;
 
   // Cleared moments later under a non-advancing / behind clock.
-  session = reduce(session, { type: 'MARK_OUT_OF_STOCK', itemId: 'env', now: 999 });
+  session = reduce(session, { type: 'MARK_OUT_OF_STOCK', entryId: 'env', now: 999 });
   assert.equal(session.entries[0].outOfStock, false);
   assert.ok(session.entries[0].outOfStockAt! > setAt, 'the clear stamp must exceed the prior set even under a non-advancing clock');
 

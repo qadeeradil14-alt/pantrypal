@@ -16,7 +16,9 @@ const session: ShoppingSession = {
   skippedStoreIds: [],
   entries: [
     {
-      itemId: 'item',
+      entryId: 'item',
+      pantryItemId: 'item',
+      stopId: 'stop:trip:store:1',
       name: 'Milk',
       quantity: 1,
       unit: 'unit',
@@ -24,7 +26,7 @@ const session: ShoppingSession = {
       picked: false,
     },
   ],
-  removedItemIds: [],
+  removedEntryIds: [],
   receipts: [],
   completedTrip: null,
 };
@@ -39,14 +41,14 @@ test('unchanged fields do not count as a durable mutation', () => {
 
 test('quantity decrement at one preserves the exact shopping session object', () => {
   assert.equal(
-    reduce(session, { type: 'UPDATE_QUANTITY', itemId: 'item', quantity: 0 }),
+    reduce(session, { type: 'UPDATE_QUANTITY', entryId: 'item', quantity: 0 }),
     session,
   );
 });
 
 test('quantity update for a missing item preserves the exact shopping session object', () => {
   assert.equal(
-    reduce(session, { type: 'UPDATE_QUANTITY', itemId: 'missing', quantity: 2 }),
+    reduce(session, { type: 'UPDATE_QUANTITY', entryId: 'missing', quantity: 2 }),
     session,
   );
 });

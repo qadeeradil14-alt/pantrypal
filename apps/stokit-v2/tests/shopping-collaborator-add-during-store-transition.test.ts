@@ -32,15 +32,15 @@ import {
 } from '../core/shopping-machine';
 import { foldRemoteActiveSession } from '../core/services/shoppingEntrySync';
 import { findDuplicateStore } from '../core/services/storeDuplicates';
-import type { ShoppingEntry } from '../types';
+import type { ShoppingEntryDraft } from '../types';
 
 const NOW = 1_700_000_000_000;
 
-function threeStoreEntries(): ShoppingEntry[] {
+function threeStoreEntries(): ShoppingEntryDraft[] {
   return [
-    { itemId: 'milk', name: 'Milk', quantity: 1, unit: 'unit', storeId: 's1', picked: false },
-    { itemId: 'eggs', name: 'Eggs', quantity: 1, unit: 'unit', storeId: 's2', picked: false },
-    { itemId: 'bread', name: 'Bread', quantity: 1, unit: 'unit', storeId: 's3', picked: false },
+    { pantryItemId: 'milk', name: 'Milk', quantity: 1, unit: 'unit', storeId: 's1', picked: false },
+    { pantryItemId: 'eggs', name: 'Eggs', quantity: 1, unit: 'unit', storeId: 's2', picked: false },
+    { pantryItemId: 'bread', name: 'Bread', quantity: 1, unit: 'unit', storeId: 's3', picked: false },
   ];
 }
 
@@ -71,9 +71,9 @@ test('[repro] the exact bug: shopper finishing the late stop before the collabor
   let abdul: ShoppingSession = { ...nargisAfterAddingCostco };
   abdul = reduce(abdul, {
     type: 'ADD_ENTRY',
-    entry: { itemId: 'tires', name: 'Tires', quantity: 1, unit: 'unit', storeId: 'costco', picked: false },
+    entry: { pantryItemId: 'tires', name: 'Tires', quantity: 1, unit: 'unit', storeId: 'costco', picked: false },
   });
-  assert.ok(abdul.entries.some((e) => e.itemId === 'tires'), 'sanity: Abdul has the item locally');
+  assert.ok(abdul.entries.some((e) => e.pantryItemId === 'tires'), 'sanity: Abdul has the item locally');
 
   const nargisFinishesCostco = reduce(nargisAfterAddingCostco, { type: 'FINISH_STORE', now: NOW + 40 });
   assert.notEqual(nargisFinishesCostco.status, abdul.status, 'sanity: statuses now differ (shopping_store vs receipt_prompt)');
@@ -86,7 +86,7 @@ test('[repro] the exact bug: shopper finishing the late stop before the collabor
     : nargisFinishesCostco; // blind replace — this is what actually shipped
 
   assert.equal(
-    oldNarrowGateResult.entries.some((e) => e.itemId === 'tires'),
+    oldNarrowGateResult.entries.some((e) => e.pantryItemId === 'tires'),
     false,
     'confirms the OLD narrow status-equality gate loses the collaborator\'s item',
   );
@@ -100,20 +100,20 @@ test('[fixed] foldRemoteActiveSession preserves a collaborator\'s newly-added it
   let abdul: ShoppingSession = { ...nargisAfterAddingCostco };
   abdul = reduce(abdul, {
     type: 'ADD_ENTRY',
-    entry: { itemId: 'tires', name: 'Tires', quantity: 1, unit: 'unit', storeId: 'costco', picked: false },
+    entry: { pantryItemId: 'tires', name: 'Tires', quantity: 1, unit: 'unit', storeId: 'costco', picked: false },
   });
 
   // Shopper finishes the Costco stop before Abdul's item has round-tripped back to her.
   const nargisFinishesCostco = reduce(nargisAfterAddingCostco, { type: 'FINISH_STORE', now: NOW + 40 });
 
   const abdulAfterPull = foldRemoteActiveSession(abdul, nargisFinishesCostco);
-  assert.ok(abdulAfterPull.entries.some((e) => e.itemId === 'tires'), 'item survives on the collaborator\'s own device');
+  assert.ok(abdulAfterPull.entries.some((e) => e.pantryItemId === 'tires'), 'item survives on the collaborator\'s own device');
   assert.equal(abdulAfterPull.status, 'receipt_prompt', 'shopper\'s progression is still authoritative');
   assert.equal(abdulAfterPull.storeQueue.join(','), 's1,s2,s3,costco');
 
   // Symmetric: the shopper eventually receives the collaborator's push too.
   const nargisAfterAbdulPush = foldRemoteActiveSession(nargisFinishesCostco, abdul);
-  assert.ok(nargisAfterAbdulPush.entries.some((e) => e.itemId === 'tires'), 'item reaches the shopper');
+  assert.ok(nargisAfterAbdulPush.entries.some((e) => e.pantryItemId === 'tires'), 'item reaches the shopper');
 });
 
 test('[fixed] a single item added by the collaborator survives', () => {
@@ -121,11 +121,11 @@ test('[fixed] a single item added by the collaborator survives', () => {
   let abdul: ShoppingSession = { ...nargis };
   abdul = reduce(abdul, {
     type: 'ADD_ENTRY',
-    entry: { itemId: 'tires', name: 'Tires', quantity: 1, unit: 'unit', storeId: 'costco', picked: false },
+    entry: { pantryItemId: 'tires', name: 'Tires', quantity: 1, unit: 'unit', storeId: 'costco', picked: false },
   });
   const nargisMoved = reduce(nargis, { type: 'FINISH_STORE', now: NOW + 40 });
   const result = foldRemoteActiveSession(abdul, nargisMoved);
-  assert.deepEqual(result.entries.map((e) => e.itemId), ['milk', 'eggs', 'bread', 'tires']);
+  assert.deepEqual(result.entries.map((e) => e.pantryItemId).sort(), ['bread', 'eggs', 'milk', 'tires']);
 });
 
 test('[fixed] several items added quickly all survive', () => {
@@ -134,13 +134,13 @@ test('[fixed] several items added quickly all survive', () => {
   for (const id of ['tires', 'oil', 'wipers', 'battery']) {
     abdul = reduce(abdul, {
       type: 'ADD_ENTRY',
-      entry: { itemId: id, name: id, quantity: 1, unit: 'unit', storeId: 'costco', picked: false },
+      entry: { pantryItemId: id, name: id, quantity: 1, unit: 'unit', storeId: 'costco', picked: false },
     });
   }
   const nargisMoved = reduce(nargis, { type: 'FINISH_STORE', now: NOW + 40 });
   const result = foldRemoteActiveSession(abdul, nargisMoved);
   for (const id of ['tires', 'oil', 'wipers', 'battery']) {
-    assert.ok(result.entries.some((e) => e.itemId === id), `${id} survives`);
+    assert.ok(result.entries.some((e) => e.pantryItemId === id), `${id} survives`);
   }
 });
 
@@ -162,7 +162,7 @@ test('120 member additions cannot move a three-store shopper back to an earlier 
       type: 'ADD_ENTRY',
       now: NOW + 100 + i,
       entry: {
-        itemId: `store-2-item-${i}`,
+        pantryItemId: `store-2-item-${i}`,
         name: `Store 2 item ${i}`,
         quantity: 1,
         unit: 'unit',
@@ -184,7 +184,7 @@ test('120 member additions cannot move a three-store shopper back to an earlier 
       type: 'ADD_ENTRY',
       now: NOW + 300 + i,
       entry: {
-        itemId: `store-3-item-${i}`,
+        pantryItemId: `store-3-item-${i}`,
         name: `Store 3 item ${i}`,
         quantity: 1,
         unit: 'unit',
@@ -205,7 +205,7 @@ test('[fixed] collaborator adding while shopper has already advanced to a later 
   let abdul: ShoppingSession = { ...nargis };
   abdul = reduce(abdul, {
     type: 'ADD_ENTRY',
-    entry: { itemId: 'tires', name: 'Tires', quantity: 1, unit: 'unit', storeId: 'costco', picked: false },
+    entry: { pantryItemId: 'tires', name: 'Tires', quantity: 1, unit: 'unit', storeId: 'costco', picked: false },
   });
 
   // Shopper races further ahead: finish -> skip receipt -> store_summary -> (no more pending) -> nothing left,
@@ -216,7 +216,7 @@ test('[fixed] collaborator adding while shopper has already advanced to a later 
   assert.equal(nargisAhead.status, 'store_summary');
 
   const result = foldRemoteActiveSession(abdul, nargisAhead);
-  assert.ok(result.entries.some((e) => e.itemId === 'tires'), 'item survives even against store_summary');
+  assert.ok(result.entries.some((e) => e.pantryItemId === 'tires'), 'item survives even against store_summary');
 });
 
 test('[fixed] a terminal local session (trip_summary) is never merged — the completed trip is preserved as-is', () => {
@@ -242,12 +242,12 @@ test('[fixed] app background/foreground during the write: rehydrating an older l
   let saved: ShoppingSession = { ...nargis };
   saved = reduce(saved, {
     type: 'ADD_ENTRY',
-    entry: { itemId: 'tires', name: 'Tires', quantity: 1, unit: 'unit', storeId: 'costco', picked: false },
+    entry: { pantryItemId: 'tires', name: 'Tires', quantity: 1, unit: 'unit', storeId: 'costco', picked: false },
   });
   const durableSession = reduce(nargis, { type: 'FINISH_STORE', now: NOW + 40 });
 
   const rehydrated = foldRemoteActiveSession(saved, durableSession);
-  assert.ok(rehydrated.entries.some((e) => e.itemId === 'tires'), 'item survives a background/foreground rehydrate race');
+  assert.ok(rehydrated.entries.some((e) => e.pantryItemId === 'tires'), 'item survives a background/foreground rehydrate race');
 });
 
 test('[fixed] items persist through a second, later fold (simulated app restart after the fix already applied)', () => {
@@ -255,13 +255,13 @@ test('[fixed] items persist through a second, later fold (simulated app restart 
   let abdul: ShoppingSession = { ...nargis };
   abdul = reduce(abdul, {
     type: 'ADD_ENTRY',
-    entry: { itemId: 'tires', name: 'Tires', quantity: 1, unit: 'unit', storeId: 'costco', picked: false },
+    entry: { pantryItemId: 'tires', name: 'Tires', quantity: 1, unit: 'unit', storeId: 'costco', picked: false },
   });
   const nargisMoved = reduce(nargis, { type: 'FINISH_STORE', now: NOW + 40 });
   const afterFirstPull = foldRemoteActiveSession(abdul, nargisMoved);
   // A second, later pull of the same remote state (e.g. after a restart) must not re-drop it.
   const afterSecondPull = foldRemoteActiveSession(afterFirstPull, nargisMoved);
-  assert.ok(afterSecondPull.entries.some((e) => e.itemId === 'tires'));
+  assert.ok(afterSecondPull.entries.some((e) => e.pantryItemId === 'tires'));
 });
 
 test('[fixed] near-identical store labels (Costco vs Costco Tire Service) do not collide — distinct ids are never merged as duplicates without a stronger identity signal', () => {
@@ -284,7 +284,7 @@ test('[fixed] items attached to a distinct "Costco Tire Service" store id are ne
   // to a different id that merely shares a similar display name.
   abdul = reduce(abdul, {
     type: 'ADD_ENTRY',
-    entry: { itemId: 'tires', name: 'Tires', quantity: 1, unit: 'unit', storeId: 'costco-tire-service', picked: false },
+    entry: { pantryItemId: 'tires', name: 'Tires', quantity: 1, unit: 'unit', storeId: 'costco-tire-service', picked: false },
   });
 
   // The item is tracked in the session (storeQueue gains the new id at the
@@ -292,6 +292,6 @@ test('[fixed] items attached to a distinct "Costco Tire Service" store id are ne
   // stop's ("costco") visible item list — proving why storeId identity, not
   // display-name similarity, is what the UI keys off.
   assert.equal(currentStoreId(abdul), 'costco');
-  assert.equal(currentStoreEntries(abdul).some((e) => e.itemId === 'tires'), false);
+  assert.equal(currentStoreEntries(abdul).some((e) => e.pantryItemId === 'tires'), false);
   assert.ok(abdul.storeQueue.includes('costco-tire-service'), 'the entry is not lost — just attributed to a different stop');
 });

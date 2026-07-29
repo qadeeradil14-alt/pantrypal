@@ -108,7 +108,7 @@ test('a newer unskip defeats a stale skipped-store copy', () => {
     currentIndex: 0,
     skippedStoreIds: [],
     entries: [],
-    removedItemIds: [],
+    removedEntryIds: [],
     receipts: [],
     completedTrip: null,
   };
@@ -126,16 +126,26 @@ test('a stamped re-add defeats a legacy untimestamped tombstone', () => {
     currentIndex: 0,
     skippedStoreIds: [],
     entries: [],
-    removedItemIds: [],
+    removedEntryIds: [],
     receipts: [],
     completedTrip: null,
   };
-  const stale: SharedShoppingSession = { ...base, removedItemIds: ['item'] };
+  const stale: SharedShoppingSession = { ...base, removedEntryIds: ['item'] };
   const readded: SharedShoppingSession = {
     ...base,
-    entries: [{ itemId: 'item', name: 'Milk', quantity: 1, unit: 'unit' as const, storeId: 'store', picked: false, addedAt: 20 }],
+    entries: [{
+      entryId: 'item',
+      pantryItemId: 'item',
+      stopId: 'stop:trip:store:1',
+      name: 'Milk',
+      quantity: 1,
+      unit: 'unit' as const,
+      storeId: 'store',
+      picked: false,
+      addedAt: 20,
+    }],
   };
   const merged = foldRemoteActiveSession(stale, readded);
-  assert.equal(merged.entries.some((entry) => entry.itemId === 'item'), true);
-  assert.deepEqual(merged.removedItemIds, []);
+  assert.equal(merged.entries.some((entry) => entry.entryId === 'item'), true);
+  assert.deepEqual(merged.removedEntryIds, []);
 });

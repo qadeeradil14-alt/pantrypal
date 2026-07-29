@@ -28,8 +28,8 @@ import type { DurableState, PantryItem } from '../types';
 
 const T = 1_700_000_000_000;
 
-const entry = (itemId: string, storeId: string) => ({
-  itemId, name: itemId, quantity: 1, unit: 'unit' as const, storeId, picked: false,
+const entry = (pantryItemId: string, storeId: string) => ({
+  pantryItemId, name: pantryItemId, quantity: 1, unit: 'unit' as const, storeId, picked: false,
 });
 
 const pantryItem = (id: string, storeId: string): PantryItem => ({
@@ -65,7 +65,7 @@ function collaboratorAddsStoreB(base: ShoppingSession): ShoppingSession {
   return s;
 }
 
-const ids = (s: ShoppingSession | null) => (s?.entries ?? []).map((e) => e.itemId).sort();
+const ids = (s: ShoppingSession | null) => (s?.entries ?? []).map((e) => e.pantryItemId).sort();
 
 // Every status the shopper passes through between Store A and Store B.
 const TRANSITION_STATUSES: Array<[string, (s: ShoppingSession) => ShoppingSession]> = [
@@ -124,7 +124,7 @@ test('[fixed] no duplicate entries after repeated push/pull rounds', () => {
 
     assert.deepEqual(ids(shopper), ['beans', 'hammer', 'nails', 'soup'], `round ${round + 1}: shopper`);
     assert.deepEqual(ids(collaborator), ['beans', 'hammer', 'nails', 'soup'], `round ${round + 1}: collaborator`);
-    assert.equal(new Set(shopper.entries.map((e) => e.itemId)).size, shopper.entries.length, 'no duplicates');
+    assert.equal(new Set(shopper.entries.map((e) => e.entryId)).size, shopper.entries.length, 'no duplicates');
   }
 });
 

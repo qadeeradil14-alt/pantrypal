@@ -24,7 +24,7 @@ export function PricePromptSheet({
   const [value, setValue] = useState('');
   const price = Math.round((parseFloat(value.replace(/[^0-9.]/g, '')) || 0) * 100) / 100;
 
-  useEffect(() => setValue(''), [entry?.itemId]);
+  useEffect(() => setValue(''), [entry?.entryId]);
 
   return (
     <Sheet visible={!!entry} title="Remember this price?" onClose={onClose}>

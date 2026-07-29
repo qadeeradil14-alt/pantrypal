@@ -28,7 +28,7 @@ test('Home excludes every item already attached to the active trip', () => {
 
   const visible = homeShoppingItems(
     items,
-    [{ itemId: 'completed-store-item' }, { itemId: 'current-store-item' }],
+    [{ pantryItemId: 'completed-store-item' }, { pantryItemId: 'current-store-item' }],
   );
 
   assert.deepEqual(visible.map((entry) => entry.id), ['future-item']);

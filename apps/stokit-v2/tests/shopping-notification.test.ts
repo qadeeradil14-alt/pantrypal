@@ -82,9 +82,9 @@ test('active shopping session ingests live household items for any assigned stor
   const shoppingPath = path.join(__dirname, '../app/(tabs)/shopping.tsx');
   const src = fs.readFileSync(shoppingPath, 'utf-8');
   assert.ok(src.includes('const items = useDurableStore((s) => s.items);'), 'active trip must observe durable synced items');
-  assert.ok(src.includes('item.storeId &&'), 'live ingest must include items for any assigned store, not just the current one');
+  assert.ok(src.includes('if (!item.storeId ||'), 'live ingest must include items for any assigned store, not just the current one');
   assert.ok(!src.includes('item.storeId === storeId'), 'live ingest must not be restricted to the current store — items would get stranded until the trip ends');
-  assert.ok(src.includes("item.status === 'low' || item.status === 'expiring'"), 'live ingest must only add shopping items');
+  assert.ok(src.includes("item.status !== 'low' && item.status !== 'expiring'"), 'live ingest must only add shopping items');
   assert.ok(src.includes("type: 'ADD_ENTRY'"), 'live synced items must be added into the active session');
   assert.ok(src.includes('storeId: item.storeId!'), 'the added entry must keep the item\'s own store, not be re-homed to the current one');
 });

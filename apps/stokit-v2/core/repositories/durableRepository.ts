@@ -9,6 +9,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { DurableState, HouseholdPrefs } from '../../types';
+import { decodeShoppingSession } from '../services/shoppingEntrySync';
 
 const STORAGE_KEY = 'stokit.v2.durable.v1';
 
@@ -49,7 +50,7 @@ function normalize(parsed: unknown): DurableState {
     trips: Array.isArray(p.trips) ? p.trips : [],
     activity: Array.isArray(p.activity) ? p.activity : [],
     prefs: { ...defaultPrefs, ...(p.prefs ?? {}) },
-    activeSession: p.activeSession ?? null,
+    activeSession: p.activeSession ? decodeShoppingSession(p.activeSession) : null,
     updatedAt: typeof p.updatedAt === 'number' ? p.updatedAt : 0,
     deletedItems: Array.isArray(p.deletedItems) ? p.deletedItems : [],
     deletedStores: Array.isArray(p.deletedStores) ? p.deletedStores : [],

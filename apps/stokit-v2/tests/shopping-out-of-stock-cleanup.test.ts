@@ -20,7 +20,7 @@ const src = readFileSync(join(process.cwd(), 'store/session-store.ts'), 'utf8');
 test('the store_summary transition unassigns out-of-stock items from the completed store', () => {
   assert.match(
     src,
-    /next\.entries\s*\n\s*\.filter\(\(e\) => e\.storeId === completedStoreId && e\.outOfStock\)\s*\n\s*\.forEach\(\(e\) => durable\.updateItem\(e\.itemId, \{ storeId: null \}\)\);/,
+    /next\.entries\s*\n\s*\.filter\(\(e\) => e\.stopId === completedStopId && e\.outOfStock\)\s*\n\s*\.forEach\(\(e\) => durable\.updateItem\(e\.pantryItemId, \{ storeId: null \}\)\);/,
     'store_summary must unassign out-of-stock entries for the completed store, not just clear picked ones',
   );
 });
@@ -30,11 +30,14 @@ test('MARK_OUT_OF_STOCK produces an entry the store_summary handler can detect',
     type: 'START_TRIP',
     now: 1,
     entries: [
-      { itemId: 'i1', name: 'Milk', quantity: 1, unit: 'unit', storeId: 'walmart', picked: false },
+      { pantryItemId: 'i1', name: 'Milk', quantity: 1, unit: 'unit', storeId: 'walmart', picked: false },
     ],
   });
-  const marked = reduce(started, { type: 'MARK_OUT_OF_STOCK', itemId: 'i1' });
-  const entry = marked.entries.find((e) => e.itemId === 'i1');
+  const marked = reduce(started, {
+    type: 'MARK_OUT_OF_STOCK',
+    entryId: started.entries[0].entryId,
+  });
+  const entry = marked.entries.find((e) => e.pantryItemId === 'i1');
 
   assert.equal(entry?.outOfStock, true);
   assert.equal(entry?.picked, false, 'out-of-stock items must not also count as picked');
@@ -46,6 +49,6 @@ test('MARK_OUT_OF_STOCK produces an entry the store_summary handler can detect',
   }) as ShoppingSession;
 
   assert.equal(afterReceipt.status, 'store_summary');
-  const stillOutOfStock = afterReceipt.entries.find((e) => e.itemId === 'i1');
+  const stillOutOfStock = afterReceipt.entries.find((e) => e.pantryItemId === 'i1');
   assert.equal(stillOutOfStock?.storeId, 'walmart', 'session-level storeId is untouched — the durable item unassignment happens in session-store.ts, not the pure reducer');
 });

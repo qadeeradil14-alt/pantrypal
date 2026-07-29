@@ -47,7 +47,7 @@ test('[P0] the initial-sync gate falls through to the guarded snapshot write onc
   );
 
   const gateMatch = pushSrc.match(/if \(!initialHouseholdSyncComplete\.has\(id\)\) \{[\s\S]*?\n  \}/);
-  const writeIndex = pushSrc.indexOf(".update({ state: snapshot, updated_at: writeAt })");
+  const writeIndex = pushSrc.indexOf(".update({ state: encodeShoppingState(snapshot), updated_at: writeAt })");
   assert.ok(gateMatch, 'expected to locate the initial-sync gate block');
   assert.ok(
     writeIndex > (gateMatch!.index! + gateMatch![0].length),

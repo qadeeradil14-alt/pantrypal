@@ -46,7 +46,7 @@ function singleStoreTrip(now = NOW): ShoppingSession {
     type: 'START_TRIP',
     now,
     shopperId: 'nargis',
-    entries: [{ itemId: 'milk', name: 'Milk', quantity: 1, unit: 'unit', storeId: 'lidl', picked: false }],
+    entries: [{ pantryItemId: 'milk', name: 'Milk', quantity: 1, unit: 'unit', storeId: 'lidl', picked: false }],
   });
 }
 

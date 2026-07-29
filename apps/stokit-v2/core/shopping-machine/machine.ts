@@ -18,7 +18,7 @@
  *     -> idle                END_TRIP
  *
  * Hard rules:
- *  - No duplicate shopping items (deduped by itemId on START_TRIP).
+ *  - One pantry item may have one independent occurrence per store stop.
  *  - A store with zero items never enters the queue.
  *  - Receipts live in session; committed to durable state at trip_summary.
  *  - Skipping a receipt advances exactly like saving one.
@@ -31,11 +31,16 @@ import type {
   ReceiptLineItem,
   ReceiptStatus,
   ShoppingEntry,
+  ShoppingEntryDraft,
   Trip,
   TripPurchasedItem,
   TripStoreBreakdown,
 } from '../../types';
 import { nextTimestamp } from '../services/id';
+import {
+  occurrenceId,
+  stopIdForStoreOccurrence,
+} from '../services/shoppingOccurrence';
 
 export type SessionStatus =
   | 'idle'
@@ -61,10 +66,10 @@ export interface ShoppingSession {
   skippedAt?: Record<string, number>;
   unskippedAt?: Record<string, number>;
   entries: ShoppingEntry[];
-  /** Item ids removed mid-trip. Tombstones so a deletion propagates across devices instead of being resurrected by a merge. */
-  removedItemIds: string[];
+  /** Shopping occurrence ids removed mid-trip. */
+  removedEntryIds: string[];
   /**
-   * Wall-clock ms each removedItemIds entry was removed. Compared against an
+   * Wall-clock ms each removedEntryIds entry was removed. Compared against an
    * entry's `addedAt` so re-adding a previously-removed item wins over the old
    * tombstone. Absent on legacy sessions (merge then keeps tombstone-wins).
    */
@@ -84,15 +89,15 @@ export const initialSession: ShoppingSession = {
   currentIndex: 0,
   skippedStoreIds: [],
   entries: [],
-  removedItemIds: [],
+  removedEntryIds: [],
   receipts: [],
   completedTrip: null,
 };
 
 export type ShoppingEvent =
-  | { type: 'START_TRIP'; entries: ShoppingEntry[]; now: number; shopperId?: string | null }
-  | { type: 'TOGGLE_PICK'; itemId: string; now?: number }
-  | { type: 'SET_PICK'; itemId: string; picked: boolean; now?: number }
+  | { type: 'START_TRIP'; entries: ShoppingEntryDraft[]; now: number; shopperId?: string | null }
+  | { type: 'TOGGLE_PICK'; entryId: string; now?: number }
+  | { type: 'SET_PICK'; entryId: string; picked: boolean; now?: number }
   | { type: 'FINISH_STORE'; now: number }
   | {
       type: 'SAVE_RECEIPT';
@@ -117,17 +122,17 @@ export type ShoppingEvent =
   /** Legacy — picks first pending store. Kept for test backward-compat. */
   | { type: 'ADVANCE_STORE' }
   | { type: 'END_TRIP' }
-  | { type: 'ADD_ENTRY'; entry: ShoppingEntry; now?: number }
+  | { type: 'ADD_ENTRY'; entry: ShoppingEntryDraft; now?: number }
   /** Removes an entry added by mistake mid-trip (e.g. accidental item). */
-  | { type: 'REMOVE_ENTRY'; itemId: string; now?: number }
+  | { type: 'REMOVE_ENTRY'; entryId: string; now?: number }
   | { type: 'RESUME_TRIP' }
-  | { type: 'MARK_OUT_OF_STOCK'; itemId: string; now?: number }
+  | { type: 'MARK_OUT_OF_STOCK'; entryId: string; now?: number }
   | { type: 'UNSKIP_STORE'; storeId: string; now?: number }
-  | { type: 'UPDATE_QUANTITY'; itemId: string; quantity: number };
+  | { type: 'UPDATE_QUANTITY'; entryId: string; quantity: number };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function buildQueue(raw: ShoppingEntry[], addedAt?: number): {
+function buildQueue(raw: ShoppingEntryDraft[], tripId: string, addedAt?: number): {
   queue: string[];
   entries: ShoppingEntry[];
 } {
@@ -135,16 +140,21 @@ function buildQueue(raw: ShoppingEntry[], addedAt?: number): {
   const entries: ShoppingEntry[] = [];
   const queue: string[] = [];
   for (const e of raw) {
-    if (seen.has(e.itemId)) continue;
-    seen.add(e.itemId);
-    const {
-      pickedAt: _pickedAt,
-      outOfStock: _outOfStock,
-      outOfStockAt: _outOfStockAt,
-      ...freshEntry
-    } = e;
-    entries.push({ ...freshEntry, picked: false, ...(addedAt !== undefined ? { addedAt } : {}) });
+    if (seen.has(e.pantryItemId)) continue;
+    seen.add(e.pantryItemId);
     if (!queue.includes(e.storeId)) queue.push(e.storeId);
+    const stopIndex = queue.indexOf(e.storeId);
+    entries.push({
+      ...e,
+      entryId: occurrenceId(
+        tripId,
+        stopIdForStoreOccurrence(tripId, queue, stopIndex),
+        e.pantryItemId,
+      ),
+      stopId: stopIdForStoreOccurrence(tripId, queue, stopIndex),
+      picked: false,
+      ...(addedAt !== undefined ? { addedAt } : {}),
+    });
   }
   return { queue, entries };
 }
@@ -163,8 +173,15 @@ export function currentStoreId(session: ShoppingSession): string | null {
 }
 
 export function currentStoreEntries(session: ShoppingSession): ShoppingEntry[] {
-  const id = currentStoreId(session);
-  return id ? entriesForStore(session, id) : [];
+  const stopId = stopIdForQueueIndex(session, session.currentIndex);
+  return stopId ? session.entries.filter((entry) => entry.stopId === stopId) : [];
+}
+
+export function stopIdForQueueIndex(
+  session: Pick<ShoppingSession, 'tripId' | 'storeQueue'>,
+  index: number,
+): string {
+  return stopIdForStoreOccurrence(session.tripId, session.storeQueue, index);
 }
 
 /** Store IDs that are still pending (not yet visited, not explicitly skipped). */
@@ -226,7 +243,7 @@ function buildTrip(session: ShoppingSession, now: number): Trip {
   // Price is filled in at display time from priceHistory (this reducer has no
   // access to it); 0 here just means "no price was logged for this item".
   const purchasedItems: TripPurchasedItem[] = pickedEntries.map((e) => ({
-    itemId: e.itemId,
+    itemId: e.pantryItemId,
     name: e.name,
     storeId: e.storeId,
     price: 0,
@@ -287,12 +304,13 @@ export function reduce(
   switch (event.type) {
     case 'START_TRIP': {
       if (session.status !== 'idle') return session;
-      const { queue, entries } = buildQueue(event.entries, event.now);
+      const tripId = `t_${event.now}`;
+      const { queue, entries } = buildQueue(event.entries, tripId, event.now);
       if (queue.length === 0) return session;
       return {
         shopperId: event.shopperId ?? null,
         status: 'shopping_store',
-        tripId: `t_${event.now}`,
+        tripId,
         startedAt: event.now,
         storeQueue: queue,
         currentIndex: 0,
@@ -300,7 +318,7 @@ export function reduce(
         skippedAt: {},
         unskippedAt: {},
         entries,
-        removedItemIds: [],
+        removedEntryIds: [],
         receipts: [],
         completedTrip: null,
       };
@@ -310,7 +328,7 @@ export function reduce(
     case 'SET_PICK': {
       if (session.status !== 'shopping_store') return session;
       const entries = session.entries.map((e) => {
-        if (e.itemId !== event.itemId) return e;
+        if (e.entryId !== event.entryId) return e;
         const picked = event.type === 'SET_PICK' ? event.picked : !e.picked;
         // Stamp the tap time so a newer check/uncheck wins across devices
         // (last-tap-wins). Only when a timestamp is supplied — legacy/timeless
@@ -322,37 +340,53 @@ export function reduce(
 
     case 'ADD_ENTRY': {
       if (session.status !== 'shopping_store') return session;
-      const existingIdx = session.entries.findIndex((e) => e.itemId === event.entry.itemId);
-      const removedItemIds = session.removedItemIds.includes(event.entry.itemId)
-        ? session.removedItemIds.filter((id) => id !== event.entry.itemId)
-        : session.removedItemIds;
+      const storeQueue = queueStoreForActiveTrip(session, event.entry.storeId);
+      const targetIndex = storeQueue[session.currentIndex] === event.entry.storeId
+        ? session.currentIndex
+        : storeQueue.findIndex(
+          (storeId, index) => index >= session.currentIndex && storeId === event.entry.storeId,
+        );
+      const stopId = stopIdForStoreOccurrence(
+        session.tripId,
+        storeQueue,
+        targetIndex >= 0 ? targetIndex : storeQueue.lastIndexOf(event.entry.storeId),
+      );
+      const existingIdx = session.entries.findIndex(
+        (entry) =>
+          entry.pantryItemId === event.entry.pantryItemId &&
+          entry.stopId === stopId,
+      );
+      const entryId = existingIdx >= 0
+        ? session.entries[existingIdx].entryId
+        : session.removedEntryIds.includes(event.entry.pantryItemId)
+          ? event.entry.pantryItemId
+          : occurrenceId(session.tripId, stopId, event.entry.pantryItemId);
+      const removedEntryIds = session.removedEntryIds.includes(entryId)
+        ? session.removedEntryIds.filter((id) => id !== entryId)
+        : session.removedEntryIds;
       const existing = existingIdx >= 0 ? session.entries[existingIdx] : undefined;
       const priorActionAt = Math.max(
         existing?.addedAt ?? 0,
-        session.removedAt?.[event.entry.itemId] ?? 0,
+        session.removedAt?.[entryId] ?? 0,
       );
       const addedAt = event.now !== undefined
         ? nextTimestamp(priorActionAt, event.now)
-        : event.entry.addedAt;
+        : existing?.addedAt;
       const removedAt = { ...(session.removedAt ?? {}) };
-      delete removedAt[event.entry.itemId];
+      delete removedAt[entryId];
       const removedAtPatch = Object.keys(removedAt).length > 0 ? removedAt : undefined;
       if (existingIdx === -1) {
-        const {
-          pickedAt: _pickedAt,
-          outOfStock: _outOfStock,
-          outOfStockAt: _outOfStockAt,
-          ...freshEntry
-        } = event.entry;
         return {
           ...session,
-          storeQueue: queueStoreForActiveTrip(session, event.entry.storeId),
+          storeQueue,
           entries: [...session.entries, {
-            ...freshEntry,
+            ...event.entry,
+            entryId,
+            stopId,
             picked: false,
             ...(addedAt !== undefined ? { addedAt } : {}),
           }],
-          removedItemIds,
+          removedEntryIds,
           removedAt: removedAtPatch,
         };
       }
@@ -360,28 +394,17 @@ export function reduce(
       const metadataMatches =
         existingEntry.name === event.entry.name &&
         existingEntry.quantity === event.entry.quantity &&
-        existingEntry.unit === event.entry.unit &&
-        existingEntry.storeId === event.entry.storeId;
-      const completionIsFromFinishedAssignment =
-        existingEntry.storeId !== event.entry.storeId ||
-        !hasCurrentOrPendingStore(session, existingEntry.storeId);
+        existingEntry.unit === event.entry.unit;
       if (
         metadataMatches &&
-        removedItemIds === session.removedItemIds &&
-        !completionIsFromFinishedAssignment
+        removedEntryIds === session.removedEntryIds
       ) return session;
-      const {
-        pickedAt: _pickedAt,
-        outOfStock: _outOfStock,
-        outOfStockAt: _outOfStockAt,
-        ...freshEntry
-      } = event.entry;
       const entries = session.entries.map((e, i) =>
         i === existingIdx
-          ? completionIsFromFinishedAssignment
-            ? { ...freshEntry, picked: false }
-            : {
-              ...freshEntry,
+          ? {
+              ...event.entry,
+              entryId,
+              stopId,
               picked: existingEntry.picked,
               ...(existingEntry.outOfStock || existingEntry.outOfStockAt !== undefined
                 ? { outOfStock: Boolean(existingEntry.outOfStock) }
@@ -395,32 +418,32 @@ export function reduce(
       );
       return {
         ...session,
-        storeQueue: queueStoreForActiveTrip(session, event.entry.storeId),
+        storeQueue,
         entries,
-        removedItemIds,
+        removedEntryIds,
         removedAt: removedAtPatch,
       };
     }
 
     case 'REMOVE_ENTRY': {
       if (session.status !== 'shopping_store') return session;
-      if (!session.entries.some((e) => e.itemId === event.itemId)) return session;
-      const entries = session.entries.filter((e) => e.itemId !== event.itemId);
-      const removedItemIds = session.removedItemIds.includes(event.itemId)
-        ? session.removedItemIds
-        : [...session.removedItemIds, event.itemId];
-      const previousRemovedAt = session.removedAt?.[event.itemId];
-      const entryAddedAt = session.entries.find((entry) => entry.itemId === event.itemId)?.addedAt;
+      if (!session.entries.some((e) => e.entryId === event.entryId)) return session;
+      const entries = session.entries.filter((e) => e.entryId !== event.entryId);
+      const removedEntryIds = session.removedEntryIds.includes(event.entryId)
+        ? session.removedEntryIds
+        : [...session.removedEntryIds, event.entryId];
+      const previousRemovedAt = session.removedAt?.[event.entryId];
+      const entryAddedAt = session.entries.find((entry) => entry.entryId === event.entryId)?.addedAt;
       const removedAt = event.now === undefined
         ? session.removedAt
         : {
             ...(session.removedAt ?? {}),
-            [event.itemId]: nextTimestamp(
+            [event.entryId]: nextTimestamp(
               Math.max(previousRemovedAt ?? 0, entryAddedAt ?? 0),
               event.now,
             ),
           };
-      return { ...session, entries, removedItemIds, ...(removedAt ? { removedAt } : {}) };
+      return { ...session, entries, removedEntryIds, ...(removedAt ? { removedAt } : {}) };
     }
 
     case 'FINISH_STORE': {
@@ -543,7 +566,7 @@ export function reduce(
     case 'MARK_OUT_OF_STOCK': {
       if (session.status !== 'shopping_store') return session;
       const entries = session.entries.map((e) =>
-        e.itemId === event.itemId
+        e.entryId === event.entryId
           // Marking out-of-stock also clears `picked`, so stamp both flags for
           // last-tap-wins. Timestamps only when supplied (see TOGGLE_PICK note).
           ? {
@@ -562,11 +585,11 @@ export function reduce(
 
     case 'UPDATE_QUANTITY': {
       if (session.status !== 'shopping_store') return session;
-      const current = session.entries.find((entry) => entry.itemId === event.itemId);
+      const current = session.entries.find((entry) => entry.entryId === event.entryId);
       const quantity = Math.max(1, event.quantity);
       if (!current || current.quantity === quantity) return session;
       const entries = session.entries.map((e) =>
-        e.itemId === event.itemId ? { ...e, quantity } : e,
+        e.entryId === event.entryId ? { ...e, quantity } : e,
       );
       return { ...session, entries };
     }

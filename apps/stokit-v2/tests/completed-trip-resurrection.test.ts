@@ -13,9 +13,16 @@ const item = (id: string, status: PantryItem['status'], storeId: string | null, 
 
 const session = (): SharedShoppingSession => ({
   status: 'shopping_store', tripId: 'fair-price-trip', startedAt: 1, storeQueue: ['fair-price'],
-  currentIndex: 0, skippedStoreIds: [], removedItemIds: [], receipts: [], completedTrip: null,
-  entries: ['banana', 'cod', 'salmon'].map((itemId) => ({
-    itemId, name: itemId, quantity: 1, unit: 'unit', storeId: 'fair-price', picked: false,
+  currentIndex: 0, skippedStoreIds: [], removedEntryIds: [], receipts: [], completedTrip: null,
+  entries: ['banana', 'cod', 'salmon'].map((pantryItemId) => ({
+    entryId: pantryItemId,
+    pantryItemId,
+    stopId: 'stop:fair-price-trip:fair-price:1',
+    name: pantryItemId,
+    quantity: 1,
+    unit: 'unit',
+    storeId: 'fair-price',
+    picked: false,
   })),
 });
 

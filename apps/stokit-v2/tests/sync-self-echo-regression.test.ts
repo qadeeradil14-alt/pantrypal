@@ -30,19 +30,19 @@ import {
   type ShoppingSession,
 } from '../core/shopping-machine';
 
-import type { ShoppingEntry } from '../types';
+import type { ShoppingEntryDraft } from '../types';
 
 function setup() {
   resetSyncWatermark();
 }
 
-function makeEntry(itemId: string, storeId: string): ShoppingEntry {
-  return { itemId, name: `Item ${itemId}`, quantity: 1, unit: 'unit', storeId, picked: true };
+function makeEntry(pantryItemId: string, storeId: string): ShoppingEntryDraft {
+  return { pantryItemId, name: `Item ${pantryItemId}`, quantity: 1, unit: 'unit', storeId, picked: true };
 }
 
 /** Drives the state machine from idle → trip_summary via the minimal valid path. */
 function finishTrip(now = 1000): ShoppingSession {
-  const entries: ShoppingEntry[] = [makeEntry('milk', 'walmart')];
+  const entries: ShoppingEntryDraft[] = [makeEntry('milk', 'walmart')];
   let s = reduce(initialSession, { type: 'START_TRIP', entries, now });
   // Shop the single store
   s = reduce(s, { type: 'FINISH_STORE', now: now + 100 });

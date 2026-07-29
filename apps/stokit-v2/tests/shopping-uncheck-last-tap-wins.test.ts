@@ -10,7 +10,9 @@ import type { ShoppingEntry } from '../types';
 // sticky-OR merge so an OTA rollover never regresses.
 
 const E = (o: Partial<ShoppingEntry> = {}): ShoppingEntry => ({
-  itemId: 'env',
+  entryId: 'env',
+  pantryItemId: 'env',
+  stopId: 'stop:t:s1:1',
   name: 'Envelopes',
   quantity: 1,
   unit: 'unit',
@@ -103,19 +105,19 @@ const activeWith = (entry: ShoppingEntry): ShoppingSession => ({
 });
 
 test('TOGGLE_PICK stamps pickedAt when a timestamp is supplied', () => {
-  const next = reduce(activeWith(E({ picked: false })), { type: 'TOGGLE_PICK', itemId: 'env', now: 777 });
+  const next = reduce(activeWith(E({ picked: false })), { type: 'TOGGLE_PICK', entryId: 'env', now: 777 });
   assert.equal(next.entries[0].picked, true);
   assert.equal(next.entries[0].pickedAt, 777);
 });
 
 test('TOGGLE_PICK omits pickedAt when no timestamp is supplied (legacy shape)', () => {
-  const next = reduce(activeWith(E({ picked: false })), { type: 'TOGGLE_PICK', itemId: 'env' });
+  const next = reduce(activeWith(E({ picked: false })), { type: 'TOGGLE_PICK', entryId: 'env' });
   assert.equal(next.entries[0].picked, true);
   assert.equal('pickedAt' in next.entries[0], false);
 });
 
 test('MARK_OUT_OF_STOCK stamps both outOfStockAt and pickedAt and clears picked', () => {
-  const next = reduce(activeWith(E({ picked: true, pickedAt: 100 })), { type: 'MARK_OUT_OF_STOCK', itemId: 'env', now: 888 });
+  const next = reduce(activeWith(E({ picked: true, pickedAt: 100 })), { type: 'MARK_OUT_OF_STOCK', entryId: 'env', now: 888 });
   assert.equal(next.entries[0].outOfStock, true);
   assert.equal(next.entries[0].outOfStockAt, 888);
   assert.equal(next.entries[0].picked, false);

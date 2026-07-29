@@ -129,7 +129,15 @@ export interface SessionLike {
   storeQueue?: string[];
   currentIndex?: number;
   skippedStoreIds?: string[];
-  entries?: { itemId: string; name: string; storeId: string; picked?: boolean; outOfStock?: boolean }[];
+  entries?: {
+    entryId: string;
+    pantryItemId: string;
+    stopId: string;
+    name: string;
+    storeId: string;
+    picked?: boolean;
+    outOfStock?: boolean;
+  }[];
 }
 
 export function collectShopping(
@@ -171,7 +179,7 @@ export function collectShopping(
     if (entry.outOfStock) flags.push('outOfStock');
     rows.push({
       label: `entry[${index}] ${entry.name}`,
-      value: `itemId = ${entry.itemId} | storeId = ${entry.storeId} | ${resolved}`,
+      value: `entryId = ${entry.entryId} | pantryItemId = ${entry.pantryItemId} | stopId = ${entry.stopId} | storeId = ${entry.storeId} | ${resolved}`,
       flags: flags.length ? flags : undefined,
     });
   });

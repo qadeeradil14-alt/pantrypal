@@ -13,13 +13,15 @@ import type {
 } from '../types';
 
 const entry = (
-  itemId: string,
+  pantryItemId: string,
   storeId: string,
   addedAt: number,
   overrides: Partial<ShoppingEntry> = {},
 ): ShoppingEntry => ({
-  itemId,
-  name: itemId,
+  entryId: `${pantryItemId}:${storeId}`,
+  pantryItemId,
+  stopId: `stop:shared-trip:${storeId}:1`,
+  name: pantryItemId,
   quantity: 1,
   unit: 'unit',
   storeId,
@@ -37,7 +39,7 @@ const session = (entries: ShoppingEntry[]): SharedShoppingSession => ({
   currentIndex: 1,
   skippedStoreIds: [],
   entries,
-  removedItemIds: [],
+  removedEntryIds: [],
   receipts: [],
   completedTrip: null,
 });
@@ -70,10 +72,10 @@ const state = (
   closedTripIds: [],
 });
 
-const repeat = (value: ShoppingEntry[]): ShoppingEntry =>
-  value.find((candidate) => candidate.itemId === 'tomatoes')!;
+const repeats = (value: ShoppingEntry[]): ShoppingEntry[] =>
+  value.filter((candidate) => candidate.pantryItemId === 'tomatoes');
 
-test('same item across three shopping occurrences always resolves to the third occurrence', () => {
+test('same item across three shopping occurrences preserves all three occurrences', () => {
   const first = entry('tomatoes', 'sams', 100, {
     picked: true,
     pickedAt: 150,
@@ -97,12 +99,7 @@ test('same item across three shopping occurrences always resolves to the third o
       (current, next) => mergeShoppingEntries(current, [next], []),
       [],
     );
-    const winner = repeat(merged);
-    assert.equal(winner.storeId, 'target');
-    assert.equal(winner.addedAt, 300);
-    assert.equal(winner.picked, false);
-    assert.equal('pickedAt' in winner, false);
-    assert.equal('outOfStockAt' in winner, false);
+    assert.deepEqual(repeats(merged).map((value) => value.storeId).sort(), ['costco', 'sams', 'target']);
   }
 });
 
@@ -125,9 +122,9 @@ test('a repeat item converges without dropping a large mixed-store batch', () =>
     [],
   );
 
-  assert.equal(merged.length, 301);
-  assert.equal(new Set(merged.map((value) => value.itemId)).size, 301);
-  assert.deepEqual(repeat(merged), newRepeat);
+  assert.equal(merged.length, 302);
+  assert.equal(new Set(merged.map((value) => value.entryId)).size, 302);
+  assert.deepEqual(repeats(merged), [newRepeat, oldRepeat]);
 });
 
 test('owner and member converge when the member still has the prior occurrence', () => {
@@ -149,12 +146,12 @@ test('owner and member converge when the member still has the prior occurrence',
     serverAfterMemberPush.activeSession!,
   );
 
-  assert.deepEqual(repeat(memberAfterPull.entries), current);
-  assert.deepEqual(repeat(serverAfterMemberPush.activeSession!.entries), current);
+  assert.equal(repeats(memberAfterPull.entries).length, 2);
+  assert.equal(repeats(serverAfterMemberPush.activeSession!.entries).length, 2);
   assert.deepEqual(ownerAfterPull.entries, memberAfterPull.entries);
 });
 
-test('offline member reconnect cannot overwrite a newer repeat occurrence', () => {
+test('offline member reconnect preserves both independent occurrences', () => {
   const staleOfflineMember = session([
     entry('tomatoes', 'sams', 100, {
       picked: true,
@@ -167,29 +164,22 @@ test('offline member reconnect cannot overwrite a newer repeat occurrence', () =
     state(cloud, 1_000),
     state(staleOfflineMember, 2_000),
   );
-  const merged = repeat(reconnectPush.activeSession!.entries);
-
-  assert.equal(merged.storeId, 'costco');
-  assert.equal(merged.addedAt, 300);
-  assert.equal(merged.picked, false);
-  assert.equal('pickedAt' in merged, false);
+  const merged = repeats(reconnectPush.activeSession!.entries);
+  assert.deepEqual(merged.map((value) => value.storeId).sort(), ['costco', 'sams']);
 });
 
-test('addedAt alone defines occurrence; completion timestamps only order the same occurrence', () => {
+test('entryId defines occurrence; timestamps only order versions of that occurrence', () => {
   const olderOccurrenceWithLaterTap = entry('tomatoes', 'sams', 100, {
     picked: true,
     pickedAt: 9_000,
   });
   const newerOccurrence = entry('tomatoes', 'costco', 300);
-  const occurrenceWinner = repeat(
-    mergeShoppingEntries(
-      [olderOccurrenceWithLaterTap],
-      [newerOccurrence],
-      [],
-    ),
+  const independent = mergeShoppingEntries(
+    [olderOccurrenceWithLaterTap],
+    [newerOccurrence],
+    [],
   );
-
-  assert.deepEqual(occurrenceWinner, newerOccurrence);
+  assert.equal(repeats(independent).length, 2);
 
   const earlierTap = entry('tomatoes', 'costco', 300, {
     picked: true,
@@ -199,9 +189,9 @@ test('addedAt alone defines occurrence; completion timestamps only order the sam
     picked: false,
     pickedAt: 500,
   });
-  const tapWinner = repeat(
+  const tapWinner = repeats(
     mergeShoppingEntries([earlierTap], [laterTap], []),
-  );
+  )[0];
 
   assert.equal(tapWinner.addedAt, 300);
   assert.equal(tapWinner.picked, false);

@@ -16,7 +16,7 @@ const shopping = readFileSync(join(process.cwd(), 'app/(tabs)/shopping.tsx'), 'u
 test('the "-" button closes the stepper based on the post-decrement quantity, not the stale pre-decrement value', () => {
   assert.match(
     shopping,
-    /dispatch\(\{ type: 'UPDATE_QUANTITY', itemId: e\.itemId, quantity: e\.quantity - 1 \}\); if \(e\.quantity - 1 <= 1\) setQuantityStepperId\(null\);/,
+    /dispatch\(\{ type: 'UPDATE_QUANTITY', entryId: e\.entryId, quantity: e\.quantity - 1 \}\); if \(e\.quantity - 1 <= 1\) setQuantityStepperId\(null\);/,
     'the close check must account for the decrement that was just dispatched (e.quantity - 1 <= 1), not the pre-decrement value (e.quantity <= 1) which stays open when going from 2 to 1',
   );
   assert.doesNotMatch(

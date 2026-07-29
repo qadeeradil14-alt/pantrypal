@@ -9,18 +9,26 @@ import {
   pendingStoreIds,
   type ShoppingSession,
 } from '../core/shopping-machine';
-import type { ShoppingEntry } from '../types';
+import type { ShoppingEntryDraft } from '../types';
 
-function entry(itemId: string, storeId: string): ShoppingEntry {
-  return { itemId, name: `Item ${itemId}`, quantity: 1, unit: 'unit', storeId, picked: false };
+function entry(pantryItemId: string, storeId: string): ShoppingEntryDraft {
+  return { pantryItemId, name: `Item ${pantryItemId}`, quantity: 1, unit: 'unit', storeId, picked: false };
 }
 
-const TWO_STORE_ENTRIES: ShoppingEntry[] = [
+const TWO_STORE_ENTRIES: ShoppingEntryDraft[] = [
   entry('milk', 'aldi'), entry('eggs', 'aldi'), entry('oil', 'target'),
 ];
 
 function startTrip(): ShoppingSession {
   return reduce(initialSession, { type: 'START_TRIP', entries: TWO_STORE_ENTRIES, now: 1000 });
+}
+
+function entryIdFor(session: ShoppingSession, pantryItemId: string, storeId?: string): string {
+  return session.entries.find(
+    (candidate) =>
+      candidate.pantryItemId === pantryItemId &&
+      (storeId === undefined || candidate.storeId === storeId),
+  )!.entryId;
 }
 
 // ── Existing tests (updated for store_summary step) ───────────────────────────
@@ -38,7 +46,7 @@ test('START_TRIP groups items by store and starts at first store', () => {
 test('START_TRIP dedupes duplicate items', () => {
   const dupes = [...TWO_STORE_ENTRIES, entry('milk', 'aldi'), entry('milk', 'target')];
   const s = reduce(initialSession, { type: 'START_TRIP', entries: dupes, now: 1 });
-  assert.equal(s.entries.filter((e) => e.itemId === 'milk').length, 1);
+  assert.equal(s.entries.filter((e) => e.pantryItemId === 'milk').length, 1);
   assert.equal(s.entries.length, 3);
 });
 
@@ -53,17 +61,17 @@ test('a store with zero items never enters the queue', () => {
 
 test('TOGGLE_PICK only affects matching item', () => {
   let s = startTrip();
-  s = reduce(s, { type: 'TOGGLE_PICK', itemId: 'milk' });
-  assert.equal(s.entries.find((e) => e.itemId === 'milk')?.picked, true);
-  assert.equal(s.entries.find((e) => e.itemId === 'eggs')?.picked, false);
+  s = reduce(s, { type: 'TOGGLE_PICK', entryId: entryIdFor(s, 'milk') });
+  assert.equal(s.entries.find((e) => e.pantryItemId === 'milk')?.picked, true);
+  assert.equal(s.entries.find((e) => e.pantryItemId === 'eggs')?.picked, false);
 });
 
 test('full multi-store flow: shop→receipt→summary→next→shop→summary→trip', () => {
   let s = startTrip();
 
   // Store 1 (aldi)
-  s = reduce(s, { type: 'SET_PICK', itemId: 'milk', picked: true });
-  s = reduce(s, { type: 'SET_PICK', itemId: 'eggs', picked: true });
+  s = reduce(s, { type: 'SET_PICK', entryId: entryIdFor(s, 'milk'), picked: true });
+  s = reduce(s, { type: 'SET_PICK', entryId: entryIdFor(s, 'eggs'), picked: true });
   s = reduce(s, { type: 'FINISH_STORE', now: 2000 });
   assert.equal(s.status, 'receipt_prompt');
 
@@ -81,7 +89,7 @@ test('full multi-store flow: shop→receipt→summary→next→shop→summary→
   assert.equal(currentStoreId(s), 'target');
 
   // Store 2 (target)
-  s = reduce(s, { type: 'SET_PICK', itemId: 'oil', picked: true });
+  s = reduce(s, { type: 'SET_PICK', entryId: entryIdFor(s, 'oil'), picked: true });
   s = reduce(s, { type: 'FINISH_STORE', now: 3000 });
   s = reduce(s, { type: 'SAVE_RECEIPT', amount: 10, status: 'logged', now: 3100 });
   assert.equal(s.status, 'store_summary');
@@ -116,7 +124,7 @@ test('skipping a receipt advances exactly like saving (never blocks)', () => {
   s = reduce(s, { type: 'ACKNOWLEDGE_SUMMARY' });
   s = reduce(s, { type: 'CONTINUE_TRIP' });
   s = reduce(s, { type: 'ADVANCE_STORE' });
-  s = reduce(s, { type: 'SET_PICK', itemId: 'oil', picked: true });
+  s = reduce(s, { type: 'SET_PICK', entryId: entryIdFor(s, 'oil'), picked: true });
   s = reduce(s, { type: 'FINISH_STORE', now: 3000 });
   s = reduce(s, { type: 'SAVE_RECEIPT', amount: 20, status: 'logged', now: 3100 });
   s = reduce(s, { type: 'ACKNOWLEDGE_SUMMARY' });
@@ -226,7 +234,7 @@ test('SKIP_STORE with last pending store goes straight to trip_summary', () => {
 test('FINISH_TRIP_EARLY marks all pending as skipped and builds final summary', () => {
   const entries = [entry('a', 'aldi'), entry('b', 'target'), entry('c', 'walmart')];
   let s = reduce(initialSession, { type: 'START_TRIP', entries, now: 1000 });
-  s = reduce(s, { type: 'SET_PICK', itemId: 'a', picked: true });
+  s = reduce(s, { type: 'SET_PICK', entryId: entryIdFor(s, 'a'), picked: true });
   s = reduce(s, { type: 'FINISH_STORE', now: 2000 });
   s = reduce(s, { type: 'SAVE_RECEIPT', amount: 30, status: 'logged', now: 2100 });
   s = reduce(s, { type: 'ACKNOWLEDGE_SUMMARY' });
@@ -375,7 +383,7 @@ test('START_MANUAL_STORE inserts mid-queue without stranding an already-planned 
 test('ADD_ENTRY adds a brand-new item straight to the current store', () => {
   let s = startTrip(); // currently shopping 'aldi'
   s = reduce(s, { type: 'ADD_ENTRY', entry: entry('bread', 'aldi') });
-  assert.equal(currentStoreEntries(s).some((e) => e.itemId === 'bread'), true);
+  assert.equal(currentStoreEntries(s).some((e) => e.pantryItemId === 'bread'), true);
   assert.equal(entriesForStoreCount(s, 'aldi'), 3);
 });
 
@@ -387,23 +395,21 @@ test('ADD_ENTRY is a true no-op for an item already in the current store', () =>
   assert.equal(entriesForStoreCount(s, 'aldi'), 2);
 });
 
-test('ADD_ENTRY re-homes an item already planned for a different store to the current one', () => {
-  // 'oil' starts out tied to target (stop 2), user is actively shopping aldi (stop 1)
-  // and taps "+ Add more" -> selects oil. It must move into aldi's list immediately,
-  // not be dropped, and must not leave a stray entry behind for target.
+test('ADD_ENTRY preserves an item planned for another stop and creates a current-stop occurrence', () => {
   let s = startTrip();
   assert.equal(currentStoreId(s), 'aldi');
-  assert.equal(entriesForStoreCount(s, 'target'), 1); // oil, pre-planned
+  assert.equal(entriesForStoreCount(s, 'target'), 1);
 
   s = reduce(s, { type: 'ADD_ENTRY', entry: entry('oil', 'aldi') });
 
-  assert.equal(currentStoreEntries(s).some((e) => e.itemId === 'oil'), true, 'oil now in current store list');
-  assert.equal(entriesForStoreCount(s, 'target'), 0, 'no leftover entry remains for target');
-  assert.equal(s.entries.filter((e) => e.itemId === 'oil').length, 1, 'exactly one entry for the item, not two');
+  assert.equal(currentStoreEntries(s).some((e) => e.pantryItemId === 'oil'), true, 'oil now in current store list');
+  assert.equal(entriesForStoreCount(s, 'target'), 1, 'the future occurrence remains');
+  assert.equal(s.entries.filter((e) => e.pantryItemId === 'oil').length, 2, 'one occurrence exists per stop');
 
   // Pick it, finish the whole trip, and confirm it's accounted for at aldi, not target.
-  s = reduce(s, { type: 'SET_PICK', itemId: 'milk', picked: true });
-  s = reduce(s, { type: 'SET_PICK', itemId: 'oil', picked: true });
+  s = reduce(s, { type: 'SET_PICK', entryId: entryIdFor(s, 'milk'), picked: true });
+  const aldiOil = currentStoreEntries(s).find((entry) => entry.pantryItemId === 'oil')!;
+  s = reduce(s, { type: 'SET_PICK', entryId: aldiOil.entryId, picked: true });
   s = reduce(s, { type: 'FINISH_STORE', now: 2000 });
   s = reduce(s, { type: 'SKIP_RECEIPT', now: 2100 });
   s = reduce(s, { type: 'ACKNOWLEDGE_SUMMARY' });
@@ -432,10 +438,10 @@ test('item assigned to a brand-new store joins the same trip, appended to the en
 
   assert.equal(s.tripId, tripIdBefore, 'same trip, no new session created');
   assert.equal(s.status, 'shopping_store');
-  assert.equal(s.entries.some((e) => e.itemId === 'bread' && e.storeId === 'costco'), true, 'entry added with its own store');
+  assert.equal(s.entries.some((e) => e.pantryItemId === 'bread' && e.storeId === 'costco'), true, 'entry added with its own store');
   assert.deepEqual(s.storeQueue, ['aldi', 'target', 'costco'], 'new store appended to the end');
   assert.equal(currentStoreId(s), 'aldi', 'current store unchanged');
-  assert.equal(currentStoreEntries(s).some((e) => e.itemId === 'bread'), false, 'not shown at the current store');
+  assert.equal(currentStoreEntries(s).some((e) => e.pantryItemId === 'bread'), false, 'not shown at the current store');
 });
 
 test('item assigned to an already-queued future store keeps that store, no duplicate queue entry', () => {
@@ -443,9 +449,9 @@ test('item assigned to an already-queued future store keeps that store, no dupli
   s = reduce(s, { type: 'ADD_ENTRY', entry: entry('pasta', 'target') });
 
   assert.deepEqual(s.storeQueue, ['aldi', 'target'], 'no duplicate — target was already queued');
-  assert.equal(s.entries.some((e) => e.itemId === 'pasta' && e.storeId === 'target'), true, 'item keeps its own future-store assignment');
+  assert.equal(s.entries.some((e) => e.pantryItemId === 'pasta' && e.storeId === 'target'), true, 'item keeps its own future-store assignment');
   assert.equal(currentStoreId(s), 'aldi', 'current store unchanged');
-  assert.equal(currentStoreEntries(s).some((e) => e.itemId === 'pasta'), false, 'not pulled into the current store early');
+  assert.equal(currentStoreEntries(s).some((e) => e.pantryItemId === 'pasta'), false, 'not pulled into the current store early');
 });
 
 test('item assigned to a finished store reopens that store later in the same trip', () => {
@@ -470,7 +476,7 @@ test('item assigned to a finished store reopens that store later in the same tri
   s = reduce(s, { type: 'ADVANCE_STORE' });
 
   assert.equal(currentStoreId(s), 'aldi');
-  assert.equal(currentStoreEntries(s).some((e) => e.itemId === 'bread'), true);
+  assert.equal(currentStoreEntries(s).some((e) => e.pantryItemId === 'bread'), true);
 });
 
 test('revisiting a store keeps one trip summary row and aggregates both receipts', () => {
@@ -484,7 +490,8 @@ test('revisiting a store keeps one trip summary row and aggregates both receipts
   s = reduce(s, { type: 'SAVE_RECEIPT', amount: 20, status: 'logged', now: 2400 });
   s = reduce(s, { type: 'CONTINUE_TRIP' });
   s = reduce(s, { type: 'ADVANCE_STORE' });
-  s = reduce(s, { type: 'SET_PICK', itemId: 'bread', picked: true });
+  const bread = currentStoreEntries(s).find((entry) => entry.pantryItemId === 'bread')!;
+  s = reduce(s, { type: 'SET_PICK', entryId: bread.entryId, picked: true });
   s = reduce(s, { type: 'FINISH_STORE', now: 2500 });
   s = reduce(s, { type: 'SAVE_RECEIPT', amount: 5, status: 'logged', now: 2600 });
   s = reduce(s, { type: 'FINISH_TRIP', now: 2700 });
@@ -501,14 +508,14 @@ test('item assigned to the current store still appends there directly', () => {
   let s = startTrip();
   s = reduce(s, { type: 'ADD_ENTRY', entry: entry('bagels', currentStoreId(s)!) });
 
-  assert.equal(currentStoreEntries(s).some((e) => e.itemId === 'bagels'), true);
+  assert.equal(currentStoreEntries(s).some((e) => e.pantryItemId === 'bagels'), true);
   assert.deepEqual(s.storeQueue, ['aldi', 'target'], 'storeQueue unchanged — already current');
 });
 
 test('finishing early with a store added mid-trip preserves existing skipped-store accounting', () => {
   let s = startTrip(); // aldi (current), target (queued)
   s = reduce(s, { type: 'ADD_ENTRY', entry: entry('bread', 'costco') }); // new store, never visited
-  s = reduce(s, { type: 'SET_PICK', itemId: 'milk', picked: true });
+  s = reduce(s, { type: 'SET_PICK', entryId: entryIdFor(s, 'milk'), picked: true });
   s = reduce(s, { type: 'FINISH_STORE', now: 2000 });
   s = reduce(s, { type: 'SKIP_RECEIPT', now: 2100 });
   s = reduce(s, { type: 'FINISH_TRIP', now: 2200 }); // target + costco never visited
@@ -528,41 +535,43 @@ test('REMOVE_ENTRY removes the item and tombstones its id', () => {
   s = reduce(s, { type: 'ADD_ENTRY', entry: entry('bread', 'aldi') });
   assert.equal(entriesForStoreCount(s, 'aldi'), 3);
 
-  s = reduce(s, { type: 'REMOVE_ENTRY', itemId: 'bread' });
+  const breadEntry = currentStoreEntries(s).find((entry) => entry.pantryItemId === 'bread')!;
+  s = reduce(s, { type: 'REMOVE_ENTRY', entryId: breadEntry.entryId });
 
-  assert.equal(s.entries.some((e) => e.itemId === 'bread'), false, 'item is gone from entries');
+  assert.equal(s.entries.some((e) => e.pantryItemId === 'bread'), false, 'item is gone from entries');
   assert.equal(entriesForStoreCount(s, 'aldi'), 2);
-  assert.deepEqual(s.removedItemIds, ['bread']);
+  assert.deepEqual(s.removedEntryIds, [breadEntry.entryId]);
 });
 
 test('REMOVE_ENTRY is a no-op outside shopping_store', () => {
   const before = initialSession;
-  const after = reduce(before, { type: 'REMOVE_ENTRY', itemId: 'milk' });
+  const after = reduce(before, { type: 'REMOVE_ENTRY', entryId: 'milk' });
   assert.equal(after, before);
 });
 
 test('REMOVE_ENTRY is a no-op for an id not present in entries', () => {
   let s = startTrip();
   const before = s;
-  s = reduce(s, { type: 'REMOVE_ENTRY', itemId: 'nonexistent' });
+  s = reduce(s, { type: 'REMOVE_ENTRY', entryId: 'nonexistent' });
   assert.equal(s, before, 'must return the same reference when nothing changes');
 });
 
 test('ADD_ENTRY un-tombstones an item previously removed', () => {
   let s = startTrip();
   s = reduce(s, { type: 'ADD_ENTRY', entry: entry('bread', 'aldi') });
-  s = reduce(s, { type: 'REMOVE_ENTRY', itemId: 'bread' });
-  assert.deepEqual(s.removedItemIds, ['bread']);
+  const breadEntry = currentStoreEntries(s).find((entry) => entry.pantryItemId === 'bread')!;
+  s = reduce(s, { type: 'REMOVE_ENTRY', entryId: breadEntry.entryId });
+  assert.deepEqual(s.removedEntryIds, [breadEntry.entryId]);
 
   s = reduce(s, { type: 'ADD_ENTRY', entry: entry('bread', 'aldi') });
 
-  assert.equal(s.entries.some((e) => e.itemId === 'bread'), true, 'item is back in entries');
-  assert.deepEqual(s.removedItemIds, [], 're-adding clears the tombstone');
+  assert.equal(s.entries.some((e) => e.pantryItemId === 'bread'), true, 'item is back in entries');
+  assert.deepEqual(s.removedEntryIds, [], 're-adding clears the tombstone');
 });
 
 test('removing an item does not affect other entries or store queue', () => {
   let s = startTrip();
-  s = reduce(s, { type: 'REMOVE_ENTRY', itemId: 'milk' });
+  s = reduce(s, { type: 'REMOVE_ENTRY', entryId: entryIdFor(s, 'milk') });
   assert.equal(entriesForStoreCount(s, 'aldi'), 1, 'eggs remains');
   assert.deepEqual(s.storeQueue, ['aldi', 'target'], 'store queue unaffected by item removal');
 });
@@ -575,19 +584,19 @@ test('removing an item does not affect other entries or store queue', () => {
 
 test('store_summary entries retain picked=true for the completed store', () => {
   let s = startTrip();
-  s = reduce(s, { type: 'SET_PICK', itemId: 'milk', picked: true });
+  s = reduce(s, { type: 'SET_PICK', entryId: entryIdFor(s, 'milk'), picked: true });
   s = reduce(s, { type: 'FINISH_STORE', now: 2000 });
   s = reduce(s, { type: 'SKIP_RECEIPT', now: 2100 });
 
   assert.equal(s.status, 'store_summary');
   const aldiEntries = s.entries.filter((e) => e.storeId === 'aldi');
-  assert.equal(aldiEntries.find((e) => e.itemId === 'milk')?.picked, true,  'picked item must be picked=true at store_summary');
-  assert.equal(aldiEntries.find((e) => e.itemId === 'eggs')?.picked, false, 'unpicked item stays picked=false');
+  assert.equal(aldiEntries.find((e) => e.pantryItemId === 'milk')?.picked, true,  'picked item must be picked=true at store_summary');
+  assert.equal(aldiEntries.find((e) => e.pantryItemId === 'eggs')?.picked, false, 'unpicked item stays picked=false');
 });
 
 test('picked items at store_summary are in completedTrip.purchasedItems after FINISH_TRIP', () => {
   let s = startTrip();
-  s = reduce(s, { type: 'SET_PICK', itemId: 'milk', picked: true });
+  s = reduce(s, { type: 'SET_PICK', entryId: entryIdFor(s, 'milk'), picked: true });
   s = reduce(s, { type: 'FINISH_STORE', now: 2000 });
   s = reduce(s, { type: 'SKIP_RECEIPT', now: 2100 });
   // Finish trip directly from store_summary (single-stop equivalent)

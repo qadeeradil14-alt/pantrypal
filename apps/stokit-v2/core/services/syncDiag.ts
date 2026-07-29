@@ -6,8 +6,8 @@
  *
  * DIAGNOSTICS ONLY — no behavior change, no conflict-resolution change. Every
  * call site logs and returns; no merge decision, timestamp, or snapshot is
- * altered. Gated OFF unless __DEV__ or EXPO_PUBLIC_SYNC_DIAG === '1', and
- * optionally further restricted to one QA household via
+ * altered. Gated OFF in every release build, and optionally further restricted
+ * in development to one QA household via
  * EXPO_PUBLIC_SYNC_DIAG_HOUSEHOLD.
  *
  * No sensitive data: only generated ids, numeric quantities, booleans, merge
@@ -18,9 +18,7 @@
  * `setSyncDiagIdentity(` / `syncDiagEnabled(` / `dumpSyncDiag(` call site
  * (grep -rn "syncDiag\|SyncDiag" apps/stokit-v2).
  */
-const ENABLED =
-  (typeof __DEV__ !== 'undefined' && __DEV__) ||
-  process.env.EXPO_PUBLIC_SYNC_DIAG === '1';
+const ENABLED = typeof __DEV__ !== 'undefined' && __DEV__;
 
 // Optional runtime household allowlist. Empty => no household restriction (every
 // device on this OTA logs). Set to a household id (via the EAS production env at
