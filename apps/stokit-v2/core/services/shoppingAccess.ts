@@ -18,6 +18,7 @@ const TRIP_LIFECYCLE_EVENTS = new Set<ShoppingEvent['type']>([
   'SAVE_RECEIPT',
   'SKIP_RECEIPT',
   'ACKNOWLEDGE_SUMMARY',
+  'REOPEN_STORE',
   'CONTINUE_TRIP',
   'START_MANUAL_STORE',
   'FINISH_TRIP',
@@ -26,7 +27,6 @@ const TRIP_LIFECYCLE_EVENTS = new Set<ShoppingEvent['type']>([
   'FINISH_TRIP_EARLY',
   'ADVANCE_STORE',
   'END_TRIP',
-  'RESUME_TRIP',
   'UNSKIP_STORE',
 ]);
 

@@ -2087,6 +2087,15 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
 
       {pending.length === 0 ? (
         <Button
+          label="Reopen store"
+          variant="ghost"
+          onPress={() => dispatch({ type: 'REOPEN_STORE', stopId: currentStopId(session)!, now: Date.now() })}
+          style={{ marginTop: spacing.md }}
+        />
+      ) : null}
+
+      {pending.length === 0 ? (
+        <Button
           label="End trip"
           onPress={finishTrip}
           style={{ marginTop: spacing.md }}
@@ -2357,20 +2366,6 @@ function TripSummary({ session, dispatch, storeById, tsStyles, colors }: SubProp
   const prefs = useDurableStore((s) => s.prefs);
   const allTrips = useDurableStore((s) => s.trips);
 
-  const RESUME_WINDOW_MS = 30 * 60 * 1000;
-  const [secsLeft, setSecsLeft] = React.useState(() =>
-    Math.max(0, Math.floor((trip.completedAt + RESUME_WINDOW_MS - Date.now()) / 1000))
-  );
-  useEffect(() => {
-    if (secsLeft <= 0) return;
-    const id = setInterval(() => setSecsLeft((s) => Math.max(0, s - 1)), 1000);
-    return () => clearInterval(id);
-  }, [secsLeft > 0]);
-  const canResume = secsLeft > 0;
-  const resumeLabel = canResume
-    ? `Forgot something? Go back (${Math.floor(secsLeft / 60)}:${String(secsLeft % 60).padStart(2, '0')})`
-    : null;
-
   const visitedCount = trip.storeIdsVisited.length;
   const skippedCount = trip.skippedStoreIds.length;
   const durationMin  = Math.round(trip.duration / 60_000);
@@ -2400,26 +2395,6 @@ function TripSummary({ session, dispatch, storeById, tsStyles, colors }: SubProp
         </View>
       </View>
       <ScrollView contentContainerStyle={tsStyles.scroll}>
-        {canResume && (
-          <Card style={{ marginBottom: spacing.lg }}>
-            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md }}>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink }}>Forgot an item?</Text>
-                <Text style={{ fontFamily: fonts.sans, fontSize: 14, color: colors.muted, marginTop: spacing.xs }}>Reopen the last store and add it before closing out.</Text>
-              </View>
-              <View style={{ backgroundColor: colors.surfaceRaised, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: radii.sm }}>
-                <Text style={{ fontFamily: fonts.sansMedium, fontSize: 12, color: colors.muted }}>{Math.floor(secsLeft / 60)} min left</Text>
-              </View>
-            </View>
-            <Button
-              label="Reopen last store"
-              variant="ghost"
-              onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); dispatch({ type: 'RESUME_TRIP' }); }}
-              style={{ marginTop: spacing.md }}
-            />
-          </Card>
-        )}
-
         <Card style={tsStyles.heroCard}>
           <View style={tsStyles.completeIcon}>
             <Ionicons name="checkmark" size={24} color={colors.onPrimary} />

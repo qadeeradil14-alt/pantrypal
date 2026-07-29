@@ -70,9 +70,12 @@ export interface ShoppingSession {
    * skipped. This is the durable record that a stop is finished — previously
    * the only signal was `currentIndex`, which the item→entry sync paths could
    * not distinguish from "store not planned yet", so they re-queued a finished
-   * store as a fresh occurrence. Monotonic within a trip; unioned across peers.
+   * store as a fresh occurrence. Explicit reopen/completion timestamps resolve
+   * the only supported reversal without letting stale peers restore old state.
    */
   completedStopIds: string[];
+  completedStopAt?: Record<string, number>;
+  reopenedStopAt?: Record<string, number>;
   entries: ShoppingEntry[];
   /** Shopping occurrence ids removed mid-trip. */
   removedEntryIds: string[];
@@ -97,6 +100,8 @@ export const initialSession: ShoppingSession = {
   currentIndex: 0,
   skippedStoreIds: [],
   completedStopIds: [],
+  completedStopAt: {},
+  reopenedStopAt: {},
   entries: [],
   removedEntryIds: [],
   receipts: [],
@@ -119,6 +124,7 @@ export type ShoppingEvent =
   | { type: 'SKIP_RECEIPT'; now: number }
   /** Legacy transition kept for persisted sessions and older clients. */
   | { type: 'ACKNOWLEDGE_SUMMARY' }
+  | { type: 'REOPEN_STORE'; stopId: string; now: number }
   | { type: 'CONTINUE_TRIP' }
   | { type: 'START_MANUAL_STORE'; storeId: string }
   | { type: 'FINISH_TRIP'; now: number }
@@ -134,7 +140,6 @@ export type ShoppingEvent =
   | { type: 'ADD_ENTRY'; entry: ShoppingEntryDraft; now?: number }
   /** Removes an entry added by mistake mid-trip (e.g. accidental item). */
   | { type: 'REMOVE_ENTRY'; entryId: string; now?: number }
-  | { type: 'RESUME_TRIP' }
   | { type: 'MARK_OUT_OF_STOCK'; entryId: string; now?: number }
   | { type: 'UNSKIP_STORE'; storeId: string; now?: number }
   | { type: 'UPDATE_QUANTITY'; entryId: string; quantity: number };
@@ -352,10 +357,25 @@ function afterReceipt(session: ShoppingSession, receipt: Receipt): ShoppingSessi
   const completedStopIds = (session.completedStopIds ?? []).includes(stopId)
     ? session.completedStopIds
     : [...(session.completedStopIds ?? []), stopId];
+  const completedStopAt = {
+    ...(session.completedStopAt ?? {}),
+    [stopId]: nextTimestamp(
+      Math.max(
+        session.completedStopAt?.[stopId] ?? 0,
+        session.reopenedStopAt?.[stopId] ?? 0,
+      ),
+      receipt.createdAt,
+    ),
+  };
+  const receiptIndex = session.receipts.findIndex((candidate) => candidate.id === receipt.id);
+  const receipts = receiptIndex === -1
+    ? [...session.receipts, receipt]
+    : session.receipts.map((candidate, index) => index === receiptIndex ? receipt : candidate);
   return {
     ...session,
-    receipts: [...session.receipts, receipt],
+    receipts,
     completedStopIds,
+    completedStopAt,
     status: 'store_summary',
   };
 }
@@ -393,6 +413,8 @@ export function reduce(
         skippedAt: {},
         unskippedAt: {},
         completedStopIds: [],
+        completedStopAt: {},
+        reopenedStopAt: {},
         entries,
         removedEntryIds: [],
         receipts: [],
@@ -545,6 +567,28 @@ export function reduce(
       return { ...session, status: 'continue_prompt' };
     }
 
+    case 'REOPEN_STORE': {
+      if (session.status !== 'store_summary' && session.status !== 'continue_prompt') return session;
+      if (event.stopId !== currentStopId(session)) return session;
+      if (!(session.completedStopIds ?? []).includes(event.stopId)) return session;
+      const reopenedStopAt = {
+        ...(session.reopenedStopAt ?? {}),
+        [event.stopId]: nextTimestamp(
+          Math.max(
+            session.completedStopAt?.[event.stopId] ?? 0,
+            session.reopenedStopAt?.[event.stopId] ?? 0,
+          ),
+          event.now,
+        ),
+      };
+      return {
+        ...session,
+        status: 'shopping_store',
+        completedStopIds: session.completedStopIds.filter((stopId) => stopId !== event.stopId),
+        reopenedStopAt,
+      };
+    }
+
     case 'CONTINUE_TRIP': {
       if (session.status !== 'store_summary' && session.status !== 'continue_prompt') return session;
       if (pendingStoreIds(session).length === 0) return session;
@@ -627,11 +671,6 @@ export function reduce(
     case 'END_TRIP': {
       if (session.status === 'idle') return session;
       return { ...initialSession };
-    }
-
-    case 'RESUME_TRIP': {
-      if (session.status !== 'trip_summary') return session;
-      return { ...session, status: 'shopping_store', completedTrip: null };
     }
 
     case 'MARK_OUT_OF_STOCK': {

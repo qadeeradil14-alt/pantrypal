@@ -195,13 +195,14 @@ export interface SharedShoppingSession {
   skippedAt?: Record<string, number>;
   unskippedAt?: Record<string, number>;
   /**
-   * Stop ids whose visit has been completed (receipt saved or skipped). Grows
-   * monotonically within a trip, so peers union it on merge. A store with a
-   * completed stop is never silently re-queued by the item→entry sync paths;
-   * only an explicit START_MANUAL_STORE opens a new occurrence of it.
+   * Stop ids whose visit has been completed (receipt saved or skipped).
+   * Explicit reopen/completion timestamps resolve the supported reversal
+   * across peers. A completed stop is never silently re-queued by item sync.
    * Absent on pre-OTA-431 payloads — treated as an empty list.
    */
   completedStopIds?: string[];
+  completedStopAt?: Record<string, number>;
+  reopenedStopAt?: Record<string, number>;
   entries: ShoppingEntry[];
   /** Legacy wire field. Decoded immediately into removedEntryIds. */
   removedItemIds?: string[];

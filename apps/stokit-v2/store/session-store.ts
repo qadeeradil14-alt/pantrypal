@@ -219,12 +219,6 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       }
     }
 
-    // Resume: un-commit the trip so it can be re-committed on next completion.
-    if (event.type === 'RESUME_TRIP' && prev.completedTrip) {
-      const trip = prev.completedTrip;
-      durable.removeTrip(trip.id, trip.receiptIds);
-    }
-
     // Eagerly mark each store's picked items as stocked when the store visit
     // completes. This prevents items from lingering as "low" in the pantry
     // while the user is still in store_summary / deciding to continue.

@@ -352,6 +352,24 @@ function compareSessionProgress(
   return SESSION_STATUS_PROGRESS[a.status] - SESSION_STATUS_PROGRESS[b.status];
 }
 
+function mergeStopTimestamps(
+  left: Record<string, number> | undefined,
+  right: Record<string, number> | undefined,
+): Record<string, number> {
+  const merged = { ...(left ?? {}) };
+  for (const [stopId, timestamp] of Object.entries(right ?? {})) {
+    merged[stopId] = Math.max(merged[stopId] ?? 0, timestamp);
+  }
+  return merged;
+}
+
+function stopIdAtCurrentIndex(session: SharedShoppingSession): string | null {
+  const storeId = session.storeQueue[session.currentIndex];
+  return storeId
+    ? stopIdForStoreOccurrence(session.tripId, session.storeQueue, session.currentIndex)
+    : null;
+}
+
 export function foldRemoteActiveSession<T extends SharedShoppingSession>(
   previous: T | null,
   remoteSession: T,
@@ -370,26 +388,52 @@ export function foldRemoteActiveSession<T extends SharedShoppingSession>(
   }
   const local = decodeShoppingSession(previous);
   const incoming = decodeShoppingSession(remoteSession);
-  const preferred = compareSessionProgress(local, incoming) > 0
+  let preferred = compareSessionProgress(local, incoming) > 0
     ? local
     : incoming;
+  const completedStopAt = mergeStopTimestamps(local.completedStopAt, incoming.completedStopAt);
+  const reopenedStopAt = mergeStopTimestamps(local.reopenedStopAt, incoming.reopenedStopAt);
+  const localStopId = stopIdAtCurrentIndex(local);
+  const incomingStopId = stopIdAtCurrentIndex(incoming);
+  if (localStopId && localStopId === incomingStopId) {
+    const localTransitionAt = Math.max(
+      local.completedStopAt?.[localStopId] ?? 0,
+      local.reopenedStopAt?.[localStopId] ?? 0,
+    );
+    const incomingTransitionAt = Math.max(
+      incoming.completedStopAt?.[incomingStopId] ?? 0,
+      incoming.reopenedStopAt?.[incomingStopId] ?? 0,
+    );
+    if (localTransitionAt !== incomingTransitionAt) {
+      preferred = localTransitionAt > incomingTransitionAt ? local : incoming;
+    }
+  }
   const other = preferred === local ? incoming : local;
   const { removedEntryIds, removedAt } = resolveRemovedEntryIds(local, incoming);
   const skipped = resolveSkippedStoreIds(local, incoming);
-  // Completing a stop is monotonic and never undone within a trip, so the union
-  // is the correct merge: if either device finished a stop, it is finished. This
-  // also stops a peer that has not yet heard about the completion from
-  // re-queueing that store through reconcileShoppingSession.
-  const completedStopIds = Array.from(new Set([
+  const knownCompletedStopIds = Array.from(new Set([
     ...(local.completedStopIds ?? []),
     ...(incoming.completedStopIds ?? []),
   ]));
+  const stopIds = new Set([
+    ...knownCompletedStopIds,
+    ...Object.keys(completedStopAt),
+    ...Object.keys(reopenedStopAt),
+  ]);
+  const completedStopIds = [...stopIds].filter((stopId) => {
+    const completedAt = completedStopAt[stopId] ?? 0;
+    const reopenedAt = reopenedStopAt[stopId] ?? 0;
+    if (completedAt > 0 || reopenedAt > 0) return completedAt > reopenedAt;
+    return knownCompletedStopIds.includes(stopId);
+  });
   return {
     ...preferred,
     storeQueue: mergeStoreQueues(preferred.storeQueue, other.storeQueue),
     entries: mergeShoppingEntries(local.entries, incoming.entries, removedEntryIds),
     removedEntryIds,
     completedStopIds,
+    completedStopAt,
+    reopenedStopAt,
     ...(removedAt !== undefined ? { removedAt } : {}),
     ...skipped,
   };
