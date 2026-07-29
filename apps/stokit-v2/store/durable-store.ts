@@ -171,7 +171,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
   const snapshotPushQueue = createLatestSnapshotQueue(async ({ snap, epoch }: { snap: DurableState; epoch: number }) => {
     if (epoch !== persistEpoch) return;
     await pushLocalState(snap);
-  });
+  }, 400);
   let persistEpoch = 0;
   let lastSnapshotAt = 0;
   const persist = () => {

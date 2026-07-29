@@ -32,6 +32,7 @@ import { useSessionStore } from '../../store/session-store';
 import { currentStoreId, currentStoreEntries } from '../../core/shopping-machine';
 import { useTheme } from '../../hooks/useTheme';
 import { classifyItem } from '../../core/services/itemClassifier';
+import { homeShoppingItems } from '../../core/services/homeShoppingItems';
 import { searchPantryCatalog } from '../../constants/catalogSearch';
 import type { PantryCatalogItem } from '../../constants/pantryCatalog';
 import { fetchRawRecipes, reEvaluateRecipes } from '../../core/services/recipes';
@@ -99,10 +100,13 @@ export default function PantryScreen() {
     Animated.timing(heroAnim, { toValue: 1, duration: 420, useNativeDriver: true }).start();
   }, [heroAnim]);
   const listItems = useMemo(
-    () => items
-      .filter((item) => item.status === 'low' || item.status === 'expiring')
-      .sort((a, b) => a.name.localeCompare(b.name)),
-    [items],
+    () => homeShoppingItems(
+      items,
+      session.status !== 'idle' && session.status !== 'trip_summary'
+        ? session.entries
+        : [],
+    ),
+    [items, session.entries, session.status],
   );
 
   const atHomeItems = useMemo(

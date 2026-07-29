@@ -52,6 +52,32 @@ test('rapid check/uncheck changes are batched without concurrent snapshot writes
   assert.ok(sent.length <= 2, 'rapid changes must not create duplicate outbound writes');
 });
 
+test('a 120-change burst sends only the newest snapshot after the debounce window', async () => {
+  const sent: number[] = [];
+  const queue = createLatestSnapshotQueue(async (itemCount: number) => {
+    sent.push(itemCount);
+  }, 5);
+
+  for (let itemCount = 1; itemCount <= 120; itemCount += 1) {
+    void queue.enqueue(itemCount);
+  }
+  await queue.whenIdle();
+
+  assert.deepEqual(sent, [120], 'one rapid editing burst must produce one latest-state push');
+});
+
+test('whenIdle includes the pending debounce window', async () => {
+  let sent = false;
+  const queue = createLatestSnapshotQueue(async () => {
+    sent = true;
+  }, 5);
+
+  void queue.enqueue('latest');
+  await queue.whenIdle();
+
+  assert.equal(sent, true, 'release and reset flows must wait until the debounced push completes');
+});
+
 test('a picked-up activity is included in the active-session snapshot instead of creating a stale pre-session write', () => {
   const session = readFileSync(join(process.cwd(), 'store/session-store.ts'), 'utf8');
   assert.match(session, /durable\.logActivity\([\s\S]*?\}, false\);/,
