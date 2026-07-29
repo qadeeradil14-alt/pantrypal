@@ -47,3 +47,15 @@ export function entryDraft(
   return { pantryItemId, name, quantity, unit, storeId, picked: false };
 }
 
+export function newestRemainingOccurrenceStoreId(
+  entries: ShoppingEntry[],
+  pantryItemId: string,
+): string | null {
+  const remaining = entries
+    .filter((entry) => entry.pantryItemId === pantryItemId)
+    .sort((a, b) => {
+      const byAddedAt = (b.addedAt ?? -Infinity) - (a.addedAt ?? -Infinity);
+      return byAddedAt || b.entryId.localeCompare(a.entryId);
+    });
+  return remaining[0]?.storeId ?? null;
+}

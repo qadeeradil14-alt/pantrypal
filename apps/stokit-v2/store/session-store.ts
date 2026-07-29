@@ -1,12 +1,9 @@
 /**
- * Session Zustand store — the ONE place the active shopping session lives.
+ * Canonical render/reducer store for the active shopping session.
  *
- * Persisted to AsyncStorage so the session survives an app restart
- * (Test 5: refresh before choosing next store → receipt is still there).
- * A fresh idle session is NOT persisted — only active sessions are saved.
- *
- * Driven exclusively by the shopping state machine reducer.
- * Owns side-effects that bridge transient session → durable state.
+ * Every local mutation mirrors synchronously into DurableState.activeSession,
+ * which is the persisted/uploaded copy. Boot hydrates durable first, folds the
+ * optional session-key backup into it, then mirrors the result before rendering.
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -28,6 +25,11 @@ import {
 } from '../core/services/shoppingEntrySync';
 import { canDispatchShoppingEvent, shoppingCapabilities } from '../core/services/shoppingAccess';
 import { useHouseholdStore } from './household-store';
+import {
+  resolveHydratedShoppingSession,
+  sameActiveShoppingSession,
+} from '../core/services/shoppingSessionHydration';
+import { newestRemainingOccurrenceStoreId } from '../core/services/shoppingOccurrence';
 
 const SESSION_KEY = 'stokit:v2:active-session';
 
@@ -68,50 +70,27 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   hydrated: false,
 
   hydrateSession: async () => {
+    let savedSession: ShoppingSession | null = null;
     try {
       const raw = await AsyncStorage.getItem(SESSION_KEY);
-      if (raw) {
-        const saved = decodeShoppingSession(JSON.parse(raw) as ShoppingSession);
-        // Only restore active sessions — never restore trip_summary (it was committed)
-        if (saved.status !== 'idle' && saved.status !== 'trip_summary') {
-          const durableSession = useDurableStore.getState().activeSession;
-          // Same ongoing trip on both sides — fold per-entry instead of
-          // blindly trusting this device's own possibly stale AsyncStorage
-          // copy, so quantities/picks/newly-added items changed on another
-          // device while this device was closed are not silently dropped as
-          // soon as hydration restores the old blob. The later network pull
-          // reconciles further once it lands, but the very first paint should
-          // already reflect the best locally-available data. Any same-trip
-          // pairing folds now, not only an exact status match — see
-          // foldRemoteActiveSession for why.
-          if (saved.tripId && isClosedTripId(saved.tripId)) {
-            if (__DEV__) console.log('[Shopping Sync] active_session_storage_rehydrate_ignored reason=trip_closed');
-            set({ session: initialSession });
-            AsyncStorage.removeItem(SESSION_KEY).catch(() => {});
-            set({ hydrated: true });
-            return;
-          }
-          if (durableSession && durableSession.tripId === saved.tripId) {
-            const merged = foldRemoteActiveSession(saved, durableSession as ShoppingSession, isClosedTripId);
-            if (__DEV__) console.log('[Shopping Sync] active_session_storage_rehydrate_merged reason=same_trip');
-            set({ session: merged, hydrated: true });
-            return;
-          }
-          if (durableSession && (durableSession.startedAt ?? 0) > (saved.startedAt ?? 0)) {
-            if (__DEV__) console.log('[Shopping Sync] active_session_storage_rehydrate_ignored reason=remote_newer');
-            set({ session: durableSession as ShoppingSession });
-            set({ hydrated: true });
-            return;
-          }
-          const stats = sessionStats(saved);
-          if (__DEV__) console.log(`[Shopping Sync] active_session_storage_rehydrated sessionId=${stats.sessionId} itemCount=${stats.itemCount}`);
-          set({ session: saved });
-        }
-      }
+      if (raw) savedSession = decodeShoppingSession(JSON.parse(raw) as ShoppingSession);
     } catch {
       // Non-fatal — start fresh
     }
-    set({ hydrated: true });
+    const durable = useDurableStore.getState();
+    const canonical = resolveHydratedShoppingSession(
+      savedSession,
+      durable.activeSession,
+      isClosedTripId,
+    );
+    const activeCanonical = canonical.status === 'idle' || canonical.status === 'trip_summary'
+      ? null
+      : canonical;
+    set({ session: canonical, hydrated: true });
+    persistSession(canonical);
+    if (!sameActiveShoppingSession(durable.activeSession, activeCanonical)) {
+      durable.setActiveSession(activeCanonical, 'HYDRATE_SESSION');
+    }
   },
 
   clearSession: async () => {
@@ -218,12 +197,13 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       }
       if (
         removedEntry &&
-        capabilities.canChangePickedState &&
         durableItem &&
         (durableItem.status === 'low' || durableItem.status === 'expiring') &&
         durableItem.storeId === removedEntry.storeId
       ) {
-        durable.updateItem(removedEntry.pantryItemId, { storeId: null });
+        durable.updateItem(removedEntry.pantryItemId, {
+          storeId: newestRemainingOccurrenceStoreId(next.entries, removedEntry.pantryItemId),
+        });
       }
     }
 

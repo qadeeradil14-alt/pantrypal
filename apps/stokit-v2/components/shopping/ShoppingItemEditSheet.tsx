@@ -26,6 +26,9 @@ export function ShoppingItemEditSheet({
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [choosingStore, setChoosingStore] = useState(false);
+  const occurrenceItem = item && store
+    ? { ...item, storeId: store.id }
+    : item;
 
   useEffect(() => {
     if (!item) return;
@@ -117,7 +120,7 @@ export function ShoppingItemEditSheet({
         </View>
       </Sheet>
       <StorePickerSheet
-        item={item}
+        item={occurrenceItem}
         visible={Boolean(item) && choosingStore}
         title="Change store"
         onClose={() => setChoosingStore(false)}

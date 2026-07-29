@@ -143,9 +143,11 @@ test('remote active session folds through the shared helper, and null clears sto
 
 test('stale AsyncStorage cannot override newer remote active session', () => {
   const sessionPath = path.join(__dirname, '../store/session-store.ts');
+  const hydrationPath = path.join(__dirname, '../core/services/shoppingSessionHydration.ts');
   const sessionSrc = fs.readFileSync(sessionPath, 'utf-8');
-  assert.ok(sessionSrc.includes('durableSession && (durableSession.startedAt ?? 0) > (saved.startedAt ?? 0)'), 'hydrate must prefer newer remote activeSession over stale storage');
-  assert.ok(sessionSrc.includes('active_session_storage_rehydrate_ignored reason=remote_newer'), 'ignored stale storage must be logged');
+  const hydrationSrc = fs.readFileSync(hydrationPath, 'utf-8');
+  assert.ok(sessionSrc.includes('resolveHydratedShoppingSession'), 'hydrate must use the shared persisted-session resolver');
+  assert.ok(hydrationSrc.includes('(durable.startedAt ?? 0) >= (saved.startedAt ?? 0)'), 'hydrate must prefer newer durable activeSession over stale storage');
 });
 
 test('missed realtime event is corrected by foreground snapshot pull', () => {

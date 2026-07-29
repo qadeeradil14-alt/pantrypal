@@ -46,7 +46,14 @@ import { getCategoryColors } from '../../theme/categoryPalette';
 import { useDurableStore } from '../../store/durable-store';
 import { useHouseholdStore } from '../../store/household-store';
 import { useSessionStore } from '../../store/session-store';
-import { currentStoreEntries, currentStoreId, entryStopPlacement, pendingStoreIds } from '../../core/shopping-machine';
+import {
+  currentStoreEntries,
+  currentStoreId,
+  entryStopPlacement,
+  pendingStoreIds,
+  stopIdForQueueIndex,
+  type ShoppingSession,
+} from '../../core/shopping-machine';
 import { ROUTE_COLORS } from '../../core/services/storeBrands';
 import { classifyItem, categoryLabel } from '../../core/services/itemClassifier';
 import { cheapestRecentPrice, itemPriceHistory, lastPriceAtStore } from '../../core/services/priceHistory';
@@ -71,6 +78,7 @@ import { UNASSIGNED_STORE_ID, UNASSIGNED_STORE_NAME } from '../../constants/shop
 import { getLastAcknowledgedTripCompletedAt, newestUnseenTrip, setLastAcknowledgedTripCompletedAt } from '../../core/services/tripCompletionAck';
 import { shoppingCapabilities, type ShoppingCapabilities } from '../../core/services/shoppingAccess';
 import { occurrenceId } from '../../core/services/shoppingOccurrence';
+import { shoppingGroups } from '../../core/services/shoppingGroups';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -451,9 +459,12 @@ export default function ShoppingScreen() {
   }
 
   // ── Idle ───────────────────────────────────────────────────────────────────
-  const planEntries = Array.from(plan.entries());
-  const totalItems  = planEntries.reduce((n, [, list]) => n + list.length, 0);
-  const singleStore = planEntries.length === 1 ? storeById(planEntries[0][0]) : undefined;
+  // While a trip is running the session's occurrences are the source of truth,
+  // so the same pantry item can appear under every stop it was assigned to.
+  // Idle falls back to the pantry-derived plan. See shoppingGroups.
+  const planGroups  = shoppingGroups(session, items);
+  const totalItems  = planGroups.reduce((n, group) => n + group.items.length, 0);
+  const singleStore = planGroups.length === 1 ? storeById(planGroups[0].storeId) : undefined;
 
   if (entryStep === 'shopper') {
     return (
@@ -500,7 +511,7 @@ export default function ShoppingScreen() {
           label="Continue"
           disabled={!selectedShopperId}
           onPress={() => {
-            setSelectedStoreId(planEntries[0]?.[0] ?? null);
+            setSelectedStoreId(planGroups[0]?.storeId ?? null);
             setEntryStep('store');
           }}
           style={nsStyles.entryCta}
@@ -522,12 +533,12 @@ export default function ShoppingScreen() {
           <Text style={nsStyles.chooserIntro}>Pick your first stop. The rest of your route stays ready.</Text>
         </View>
         <View style={nsStyles.entryCards}>
-          {planEntries.map(([storeId, list], idx) => {
+          {planGroups.map(({ key, storeId, items: list }, idx) => {
             const store = storeById(storeId);
             const selected = storeId === selectedStoreId;
             return (
               <EntryChoiceCard
-                key={storeId}
+                key={key}
                 selected={selected}
                 onPress={() => setSelectedStoreId(storeId)}
                 style={[
@@ -618,7 +629,7 @@ export default function ShoppingScreen() {
               </View>
               <View style={styles.summaryStatDivider} />
               <View style={styles.summaryStat}>
-                <Text style={styles.summaryBig}>{planEntries.length}</Text>
+                <Text style={styles.summaryBig}>{planGroups.length}</Text>
                 <Text style={styles.summarySub}>Stores</Text>
               </View>
               <View style={styles.summaryStatDivider} />
@@ -689,14 +700,16 @@ export default function ShoppingScreen() {
           ) : null}
 
           {/* Assigned items — tap any row to change its store */}
-          {planEntries.map(([storeId, list]) => {
+          {planGroups.map(({ key, storeId, items: list }) => {
             const store = storeById(storeId);
             return (
-              <Card key={storeId} style={styles.planStoreCard}>
+              <Card key={key} style={styles.planStoreCard}>
                 <PlanStoreHeader store={store} count={list.length} styles={styles} />
                 <View>
                   {list.map((e, idx) => (
-                    <View key={e.pantryItemId}>
+                    // entryId is per-occurrence, so the same pantry item under a
+                    // second stop is a distinct row rather than a duplicate key.
+                    <View key={e.entryId ?? e.pantryItemId}>
                       {idx > 0 && <View style={styles.rowDivider} />}
                       <Pressable
                         onPress={() => {
@@ -1302,6 +1315,13 @@ function ShoppingActive({
         </Card>
       )}
 
+      <TripStopsOverview
+        session={session}
+        storeById={storeById}
+        styles={styles}
+        colors={colors}
+      />
+
       {access.canManageTripLifecycle ? (
         <>
         <Button
@@ -1369,7 +1389,11 @@ function ShoppingActive({
       />
       <ShoppingItemEditSheet
         item={canEditActiveItems ? editingItem : null}
-        store={editingItem?.storeId ? storeById(editingItem.storeId) : undefined}
+        // The row being edited belongs to the stop currently being shopped, so
+        // the stop's store is the right label. The pantry item's own storeId
+        // points at whichever store it was last assigned to, which is a
+        // different store as soon as the item has an occurrence elsewhere.
+        store={storeById(storeId)}
         onClose={() => setEditingItemId(null)}
       />
       </Pressable>
@@ -1876,6 +1900,84 @@ function ReceiptPrompt({ session, dispatch, storeById, rStyles, colors }: SubPro
         })()}
       </Sheet>
     </KeyboardAvoidingView>
+  );
+}
+
+// ── Trip stops overview ───────────────────────────────────────────────────────
+
+/**
+ * Every stop in the active trip, read from shopping occurrences.
+ *
+ * This is the only place the multi-stop shape is visible while shopping, and it
+ * is deliberately read-only: the stop being shopped stays the single
+ * interactive list above, so this adds no second shopping flow. It exists
+ * because a pantry item carries one storeId, so the same item bought at two
+ * stops is only representable as two occurrences — grouping by stopId is what
+ * keeps an earlier stop visible after the shopper moves on.
+ */
+function TripStopsOverview({
+  session,
+  storeById,
+  styles,
+  colors,
+}: {
+  session: ShoppingSession;
+  storeById: (id: string) => Store | undefined;
+  styles: ReturnType<typeof makeStyles>['styles'];
+  colors: AppColors;
+}) {
+  const groups = shoppingGroups(session, []);
+  // Gate on the number of stops, not on how many currently hold occurrences:
+  // arriving at a new stop leaves it empty for a moment, and counting groups
+  // there would hide the whole section and take the previous stop off screen
+  // with it — the exact disappearance this view exists to prevent.
+  if (session.storeQueue.length <= 1) return null;
+  const activeStopId = stopIdForQueueIndex(session, session.currentIndex);
+
+  return (
+    <View>
+      <Text style={[styles.summaryEyebrow, { marginTop: spacing.xl }]}>THIS TRIP</Text>
+      {groups.map((group) => {
+        const isCurrent = group.key === activeStopId;
+        return (
+          <Card key={group.key} style={styles.planStoreCard}>
+            <PlanStoreHeader
+              store={storeById(group.storeId)}
+              count={group.items.length}
+              styles={styles}
+            />
+            {isCurrent ? (
+              <View style={styles.planRow}>
+                <Text style={styles.planMeta}>Now shopping — see the list above</Text>
+              </View>
+            ) : (
+              <View>
+                {group.items.map((occurrence, idx) => (
+                  <View key={occurrence.entryId!}>
+                    {idx > 0 && <View style={styles.rowDivider} />}
+                    <View style={styles.planRow}>
+                      <ItemAvatar name={occurrence.name} size={32} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.planName}>{occurrence.name}</Text>
+                        {occurrence.quantity > 1 || (occurrence.unit && occurrence.unit !== 'unit') ? (
+                          <Text style={styles.planMeta}>
+                            ×{occurrence.quantity}
+                            {occurrence.unit && occurrence.unit !== 'unit' ? ` ${occurrence.unit}` : ''}
+                          </Text>
+                        ) : null}
+                      </View>
+                      {occurrence.picked ? (
+                        <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+                      ) : null}
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+          </Card>
+        );
+      })}
+    </View>
   );
 }
 
