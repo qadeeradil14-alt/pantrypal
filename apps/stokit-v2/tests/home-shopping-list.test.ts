@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  groupHomeShoppingOccurrences,
+  groupHomeShoppingOccurrencesByStore,
+  homeShoppingStorePreview,
   homeShoppingItems,
 } from '../core/services/homeShoppingItems';
 import type { PantryItem, ShoppingStoreAssignment } from '../types';
@@ -93,24 +94,7 @@ test('Home excludes only the occurrence already attached to the active trip', ()
   );
 });
 
-test('Home presentation groups one pantry item assigned to two stores', () => {
-  const occurrences = homeShoppingItems(
-    [{ ...item('apple', 'low'), name: 'Apple', storeId: 'safeway' }],
-    [
-      { id: 'apple-costco', pantryItemId: 'apple', storeId: 'costco', active: true, updatedAt: 1 },
-      { id: 'apple-safeway', pantryItemId: 'apple', storeId: 'safeway', active: true, updatedAt: 2 },
-    ],
-    [],
-  );
-
-  const groups = groupHomeShoppingOccurrences(occurrences);
-
-  assert.equal(groups.length, 1);
-  assert.equal(groups[0]?.pantryItem.id, 'apple');
-  assert.deepEqual(groups[0]?.occurrences.map((entry) => entry.storeId), ['costco', 'safeway']);
-});
-
-test('Home presentation groups two pantry items assigned to two stores without changing occurrence totals', () => {
+test('Home store dashboard preserves repeated items across two stores with correct counts', () => {
   const occurrences = homeShoppingItems(
     [
       { ...item('apple', 'low'), name: 'Apple', storeId: 'safeway' },
@@ -125,28 +109,55 @@ test('Home presentation groups two pantry items assigned to two stores without c
     [],
   );
 
-  const groups = groupHomeShoppingOccurrences(occurrences);
+  const groups = groupHomeShoppingOccurrencesByStore(occurrences);
 
   assert.equal(occurrences.length, 4);
-  assert.equal(groups.length, 2);
   assert.deepEqual(
-    groups.map((group) => [group.pantryItem.name, group.occurrences.length]),
-    [['Apple', 2], ['Banana', 2]],
+    groups.map((group) => ({
+      storeId: group.storeId,
+      count: group.occurrences.length,
+      preview: group.previewNames,
+      remaining: group.remainingCount,
+    })),
+    [
+      { storeId: 'costco', count: 2, preview: ['Apple', 'Banana'], remaining: 0 },
+      { storeId: 'safeway', count: 2, preview: ['Apple', 'Banana'], remaining: 0 },
+    ],
   );
 });
 
-test('Home presentation removes one store occurrence without removing its sibling', () => {
+test('Home store dashboard truncates previews and reports the remaining count', () => {
   const occurrences = homeShoppingItems(
-    [{ ...item('apple', 'low'), name: 'Apple', storeId: 'safeway' }],
-    [
-      { id: 'apple-costco', pantryItemId: 'apple', storeId: 'costco', active: false, updatedAt: 3 },
-      { id: 'apple-safeway', pantryItemId: 'apple', storeId: 'safeway', active: true, updatedAt: 2 },
-    ],
+    ['Apple', 'Banana', 'Bread', 'Eggs', 'Milk'].map((name) => ({
+      ...item(name.toLowerCase(), 'low'),
+      name,
+      storeId: 'costco',
+    })),
+    [],
     [],
   );
 
-  const groups = groupHomeShoppingOccurrences(occurrences);
+  const groups = groupHomeShoppingOccurrencesByStore(occurrences, 3);
+
+  assert.deepEqual(groups[0]?.previewNames, ['Apple', 'Banana', 'Bread']);
+  assert.equal(groups[0]?.remainingCount, 2);
+  assert.equal(homeShoppingStorePreview(groups[0]!), 'Apple • Banana • Bread • +2 more');
+});
+
+test('Home store dashboard handles empty and unassigned shopping occurrences', () => {
+  assert.deepEqual(groupHomeShoppingOccurrencesByStore([]), []);
+
+  const unassigned = homeShoppingItems(
+    [{ ...item('apple', 'low'), name: 'Apple', storeId: null }],
+    [],
+    [],
+  );
+  const groups = groupHomeShoppingOccurrencesByStore(unassigned);
 
   assert.equal(groups.length, 1);
-  assert.deepEqual(groups[0]?.occurrences.map((entry) => entry.storeId), ['safeway']);
+  assert.equal(groups[0]?.storeId, null);
+  assert.equal(groups[0]?.key, 'unassigned');
+  assert.equal(groups[0]?.occurrences.length, 1);
+  assert.deepEqual(groups[0]?.previewNames, ['Apple']);
+  assert.equal(groups[0]?.remainingCount, 0);
 });

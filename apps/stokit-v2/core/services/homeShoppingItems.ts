@@ -10,27 +10,54 @@ export interface HomeShoppingOccurrence {
   storeId: string | null;
 }
 
-export interface HomeShoppingItemGroup {
-  pantryItem: PantryItem;
+export interface HomeShoppingStoreGroup {
+  key: string;
+  storeId: string | null;
   occurrences: HomeShoppingOccurrence[];
+  previewNames: string[];
+  remainingCount: number;
 }
 
-export function groupHomeShoppingOccurrences(
+export function groupHomeShoppingOccurrencesByStore(
   occurrences: readonly HomeShoppingOccurrence[],
-): HomeShoppingItemGroup[] {
-  const groups = new Map<string, HomeShoppingItemGroup>();
+  previewLimit = 3,
+): HomeShoppingStoreGroup[] {
+  const groups = new Map<string, HomeShoppingOccurrence[]>();
   for (const occurrence of occurrences) {
-    const existing = groups.get(occurrence.pantryItem.id);
-    if (existing) {
-      existing.occurrences.push(occurrence);
-    } else {
-      groups.set(occurrence.pantryItem.id, {
-        pantryItem: occurrence.pantryItem,
-        occurrences: [occurrence],
-      });
-    }
+    const key = occurrence.storeId ?? 'unassigned';
+    const existing = groups.get(key) ?? [];
+    existing.push(occurrence);
+    groups.set(key, existing);
   }
-  return [...groups.values()];
+  return [...groups.entries()]
+    .map(([key, storeOccurrences]) => ({
+      key,
+      storeId: storeOccurrences[0]?.storeId ?? null,
+      occurrences: storeOccurrences,
+      previewNames: storeOccurrences
+        .slice(0, Math.max(0, previewLimit))
+        .map((occurrence) => occurrence.pantryItem.name),
+      remainingCount: Math.max(0, storeOccurrences.length - Math.max(0, previewLimit)),
+    }))
+    .sort((a, b) => {
+      if (a.storeId === null && b.storeId === null) return 0;
+      if (a.storeId === null) return 1;
+      if (b.storeId === null) return -1;
+      return a.key.localeCompare(b.key);
+    });
+}
+
+export function homeShoppingStorePreview(
+  group: HomeShoppingStoreGroup,
+  expanded = false,
+): string {
+  const names = expanded
+    ? group.occurrences.map((occurrence) => occurrence.pantryItem.name)
+    : group.previewNames;
+  return [
+    names.join(' • '),
+    !expanded && group.remainingCount > 0 ? `+${group.remainingCount} more` : '',
+  ].filter(Boolean).join(' • ');
 }
 
 export function homeShoppingItems(

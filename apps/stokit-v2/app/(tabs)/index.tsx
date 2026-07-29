@@ -33,7 +33,8 @@ import { currentStoreId, currentStoreEntries } from '../../core/shopping-machine
 import { useTheme } from '../../hooks/useTheme';
 import { classifyItem } from '../../core/services/itemClassifier';
 import {
-  groupHomeShoppingOccurrences,
+  groupHomeShoppingOccurrencesByStore,
+  homeShoppingStorePreview,
   homeShoppingItems,
 } from '../../core/services/homeShoppingItems';
 import { searchPantryCatalog } from '../../constants/catalogSearch';
@@ -68,6 +69,7 @@ export default function PantryScreen() {
   const [joinVisible, setJoinVisible] = useState(false);
   const [showMore, setShowMore] = useState(false);
   const [showAtHome, setShowAtHome] = useState(false);
+  const [expandedShoppingStore, setExpandedShoppingStore] = useState<string | null>(null);
   const [actionItem, setActionItem] = useState<PantryItem | null>(null);
   const [pickerItem, setPickerItem] = useState<PantryItem | null>(null);
   const [recipes, setRecipes] = useState<RecipeSuggestion[]>([]);
@@ -140,9 +142,14 @@ export default function PantryScreen() {
       : listItems,
     [listItems, query],
   );
-  const filteredListGroups = useMemo(
-    () => groupHomeShoppingOccurrences(filteredListItems),
-    [filteredListItems],
+  const filteredStoreGroups = useMemo(
+    () => groupHomeShoppingOccurrencesByStore(filteredListItems)
+      .sort((a, b) => {
+        const aName = storeById(a.storeId)?.name ?? 'Unassigned';
+        const bName = storeById(b.storeId)?.name ?? 'Unassigned';
+        return aName.localeCompare(bName);
+      }),
+    [filteredListItems, stores],
   );
   const filteredAtHomeItems = useMemo(
     () => query ? atHomeItems.filter((i) => i.name.toLowerCase().includes(query)) : atHomeItems,
@@ -404,52 +411,47 @@ export default function PantryScreen() {
         ) : null}
 
         <SectionTitle title="On your list" />
-        {filteredListGroups.length ? (
-          <View style={styles.list}>
-            {filteredListGroups.map((group, index) => (
-            <View key={group.pantryItem.id}>
-              {index > 0 ? <View style={styles.divider} /> : null}
-              <View style={styles.shoppingGroup}>
-                <View style={styles.shoppingGroupHeader}>
-                  <ItemAvatar name={group.pantryItem.name} size={44} />
-                  <View style={styles.itemCopy}>
-                    <Text style={styles.itemName}>{group.pantryItem.name}</Text>
-                    <Text style={styles.itemMeta}>
-                      ×{group.pantryItem.quantity} · {group.occurrences.length} store{group.occurrences.length === 1 ? '' : 's'}
+        {filteredStoreGroups.length ? (
+          <View style={styles.shoppingStoreDashboard}>
+            {filteredStoreGroups.map((group) => {
+              const store = storeById(group.storeId);
+              const storeName = store?.name ?? 'Unassigned';
+              const expanded = expandedShoppingStore === group.key;
+              return (
+                <Pressable
+                  key={group.key}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${storeName}, ${group.occurrences.length} item${group.occurrences.length === 1 ? '' : 's'}`}
+                  accessibilityHint={expanded ? 'Collapses the item preview' : 'Expands the item preview'}
+                  onPress={() => setExpandedShoppingStore(expanded ? null : group.key)}
+                  style={({ pressed }) => [
+                    styles.shoppingStoreSummary,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <StoreChip store={store} name={storeName} size={42} />
+                  <View style={styles.shoppingStoreSummaryCopy}>
+                    <View style={styles.shoppingStoreSummaryTitleRow}>
+                      <Text style={styles.shoppingStoreSummaryName} numberOfLines={1}>{storeName}</Text>
+                      <Text style={styles.shoppingStoreSummaryCount}>
+                        {group.occurrences.length} item{group.occurrences.length === 1 ? '' : 's'}
+                      </Text>
+                    </View>
+                    <Text
+                      style={styles.shoppingStorePreview}
+                      numberOfLines={expanded ? undefined : 2}
+                    >
+                      {homeShoppingStorePreview(group, expanded)}
                     </Text>
                   </View>
-                </View>
-                <View style={styles.shoppingStoreList}>
-                  {group.occurrences.map((occurrence) => {
-                    const store = storeById(occurrence.storeId);
-                    const storeName = store?.name ?? 'No store assigned';
-                    return (
-                      <Pressable
-                        key={occurrence.occurrenceId}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Open ${group.pantryItem.name} actions for ${storeName}`}
-                        onPress={() => {
-                          setSearchQuery('');
-                          Keyboard.dismiss();
-                          setActionItem(occurrence.pantryItem);
-                        }}
-                        style={({ pressed }) => [
-                          styles.shoppingStoreRow,
-                          pressed && styles.pressed,
-                        ]}
-                      >
-                        <StoreChip store={store} name={storeName} size={30} />
-                        <Text style={styles.shoppingStoreName}>{storeName}</Text>
-                        <View style={styles.shoppingStoreCart}>
-                          <Ionicons name="cart-outline" size={20} color={colors.primary} />
-                        </View>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </View>
-            </View>
-            ))}
+                  <Ionicons
+                    name={expanded ? 'chevron-up' : 'chevron-down'}
+                    size={18}
+                    color={colors.muted}
+                  />
+                </Pressable>
+              );
+            })}
           </View>
         ) : (
           <EmptyState
@@ -831,12 +833,13 @@ function makeStyles(c: AppColors) {
     itemAction:       { minHeight: 38, borderRadius: 19, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 3 },
     itemCartAction:   { width: 44, height: 44, borderRadius: 13, justifyContent: 'center', paddingHorizontal: 0, backgroundColor: c.surface },
     itemActionText:   { fontFamily: fonts.sansSemibold, fontSize: 12, color: c.primary },
-    shoppingGroup:    { paddingVertical: spacing.md },
-    shoppingGroupHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-    shoppingStoreList:{ marginLeft: 56, marginTop: spacing.xs },
-    shoppingStoreRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xs },
-    shoppingStoreName:{ flex: 1, fontFamily: fonts.sansMedium, fontSize: 14, color: c.ink },
-    shoppingStoreCart:{ width: 36, height: 36, borderRadius: 11, borderWidth: 1, borderColor: c.border, alignItems: 'center', justifyContent: 'center' },
+    shoppingStoreDashboard: { gap: spacing.sm },
+    shoppingStoreSummary: { minHeight: 82, flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: c.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: c.borderSoft, padding: spacing.md, ...shadow.card },
+    shoppingStoreSummaryCopy: { flex: 1 },
+    shoppingStoreSummaryTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    shoppingStoreSummaryName: { flex: 1, fontFamily: fonts.sansSemibold, fontSize: 16, color: c.ink },
+    shoppingStoreSummaryCount: { fontFamily: fonts.mono, fontSize: 11, color: c.primary, fontVariant: ['tabular-nums'] },
+    shoppingStorePreview: { fontFamily: fonts.sans, fontSize: 13, lineHeight: 18, color: c.muted, marginTop: 4 },
     swipeActionLeft:  { backgroundColor: c.success, justifyContent: 'center', alignItems: 'flex-start', paddingLeft: 20, flex: 1 },
     swipeActionRight: { backgroundColor: c.danger, justifyContent: 'center', alignItems: 'flex-end', paddingRight: 20, flex: 1 },
   });
