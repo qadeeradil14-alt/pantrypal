@@ -32,7 +32,10 @@ import { useSessionStore } from '../../store/session-store';
 import { currentStoreId, currentStoreEntries } from '../../core/shopping-machine';
 import { useTheme } from '../../hooks/useTheme';
 import { classifyItem } from '../../core/services/itemClassifier';
-import { homeShoppingItems } from '../../core/services/homeShoppingItems';
+import {
+  groupHomeShoppingOccurrences,
+  homeShoppingItems,
+} from '../../core/services/homeShoppingItems';
 import { searchPantryCatalog } from '../../constants/catalogSearch';
 import type { PantryCatalogItem } from '../../constants/pantryCatalog';
 import { fetchRawRecipes, reEvaluateRecipes } from '../../core/services/recipes';
@@ -136,6 +139,10 @@ export default function PantryScreen() {
       ? listItems.filter((item) => item.pantryItem.name.toLowerCase().includes(query))
       : listItems,
     [listItems, query],
+  );
+  const filteredListGroups = useMemo(
+    () => groupHomeShoppingOccurrences(filteredListItems),
+    [filteredListItems],
   );
   const filteredAtHomeItems = useMemo(
     () => query ? atHomeItems.filter((i) => i.name.toLowerCase().includes(query)) : atHomeItems,
@@ -397,18 +404,50 @@ export default function PantryScreen() {
         ) : null}
 
         <SectionTitle title="On your list" />
-        {filteredListItems.length ? (
+        {filteredListGroups.length ? (
           <View style={styles.list}>
-            {filteredListItems.map((item, index) => (
-            <View key={item.occurrenceId}>
+            {filteredListGroups.map((group, index) => (
+            <View key={group.pantryItem.id}>
               {index > 0 ? <View style={styles.divider} /> : null}
-              <SimpleItemRow
-                item={item.pantryItem}
-                store={storeById(item.storeId)}
-                onPress={() => { setSearchQuery(''); Keyboard.dismiss(); setActionItem(item.pantryItem); }}
-                action="cart"
-                onSwipeLeft={() => animatedDelete(item.pantryItem.id)}
-              />
+              <View style={styles.shoppingGroup}>
+                <View style={styles.shoppingGroupHeader}>
+                  <ItemAvatar name={group.pantryItem.name} size={44} />
+                  <View style={styles.itemCopy}>
+                    <Text style={styles.itemName}>{group.pantryItem.name}</Text>
+                    <Text style={styles.itemMeta}>
+                      ×{group.pantryItem.quantity} · {group.occurrences.length} store{group.occurrences.length === 1 ? '' : 's'}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.shoppingStoreList}>
+                  {group.occurrences.map((occurrence) => {
+                    const store = storeById(occurrence.storeId);
+                    const storeName = store?.name ?? 'No store assigned';
+                    return (
+                      <Pressable
+                        key={occurrence.occurrenceId}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Open ${group.pantryItem.name} actions for ${storeName}`}
+                        onPress={() => {
+                          setSearchQuery('');
+                          Keyboard.dismiss();
+                          setActionItem(occurrence.pantryItem);
+                        }}
+                        style={({ pressed }) => [
+                          styles.shoppingStoreRow,
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        <StoreChip store={store} name={storeName} size={30} />
+                        <Text style={styles.shoppingStoreName}>{storeName}</Text>
+                        <View style={styles.shoppingStoreCart}>
+                          <Ionicons name="cart-outline" size={20} color={colors.primary} />
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
             </View>
             ))}
           </View>
@@ -792,6 +831,12 @@ function makeStyles(c: AppColors) {
     itemAction:       { minHeight: 38, borderRadius: 19, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 3 },
     itemCartAction:   { width: 44, height: 44, borderRadius: 13, justifyContent: 'center', paddingHorizontal: 0, backgroundColor: c.surface },
     itemActionText:   { fontFamily: fonts.sansSemibold, fontSize: 12, color: c.primary },
+    shoppingGroup:    { paddingVertical: spacing.md },
+    shoppingGroupHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+    shoppingStoreList:{ marginLeft: 56, marginTop: spacing.xs },
+    shoppingStoreRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xs },
+    shoppingStoreName:{ flex: 1, fontFamily: fonts.sansMedium, fontSize: 14, color: c.ink },
+    shoppingStoreCart:{ width: 36, height: 36, borderRadius: 11, borderWidth: 1, borderColor: c.border, alignItems: 'center', justifyContent: 'center' },
     swipeActionLeft:  { backgroundColor: c.success, justifyContent: 'center', alignItems: 'flex-start', paddingLeft: 20, flex: 1 },
     swipeActionRight: { backgroundColor: c.danger, justifyContent: 'center', alignItems: 'flex-end', paddingRight: 20, flex: 1 },
   });

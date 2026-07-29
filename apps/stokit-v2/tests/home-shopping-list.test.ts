@@ -1,7 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { homeShoppingItems } from '../core/services/homeShoppingItems';
+import {
+  groupHomeShoppingOccurrences,
+  homeShoppingItems,
+} from '../core/services/homeShoppingItems';
 import type { PantryItem, ShoppingStoreAssignment } from '../types';
 
 function item(id: string, status: PantryItem['status']): PantryItem {
@@ -88,4 +91,62 @@ test('Home excludes only the occurrence already attached to the active trip', ()
     visible.map((entry) => `${entry.storeId}:${entry.pantryItem.id}`),
     ['safeway:apple'],
   );
+});
+
+test('Home presentation groups one pantry item assigned to two stores', () => {
+  const occurrences = homeShoppingItems(
+    [{ ...item('apple', 'low'), name: 'Apple', storeId: 'safeway' }],
+    [
+      { id: 'apple-costco', pantryItemId: 'apple', storeId: 'costco', active: true, updatedAt: 1 },
+      { id: 'apple-safeway', pantryItemId: 'apple', storeId: 'safeway', active: true, updatedAt: 2 },
+    ],
+    [],
+  );
+
+  const groups = groupHomeShoppingOccurrences(occurrences);
+
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0]?.pantryItem.id, 'apple');
+  assert.deepEqual(groups[0]?.occurrences.map((entry) => entry.storeId), ['costco', 'safeway']);
+});
+
+test('Home presentation groups two pantry items assigned to two stores without changing occurrence totals', () => {
+  const occurrences = homeShoppingItems(
+    [
+      { ...item('apple', 'low'), name: 'Apple', storeId: 'safeway' },
+      { ...item('banana', 'low'), name: 'Banana', storeId: 'safeway' },
+    ],
+    [
+      { id: 'apple-costco', pantryItemId: 'apple', storeId: 'costco', active: true, updatedAt: 1 },
+      { id: 'apple-safeway', pantryItemId: 'apple', storeId: 'safeway', active: true, updatedAt: 2 },
+      { id: 'banana-costco', pantryItemId: 'banana', storeId: 'costco', active: true, updatedAt: 3 },
+      { id: 'banana-safeway', pantryItemId: 'banana', storeId: 'safeway', active: true, updatedAt: 4 },
+    ],
+    [],
+  );
+
+  const groups = groupHomeShoppingOccurrences(occurrences);
+
+  assert.equal(occurrences.length, 4);
+  assert.equal(groups.length, 2);
+  assert.deepEqual(
+    groups.map((group) => [group.pantryItem.name, group.occurrences.length]),
+    [['Apple', 2], ['Banana', 2]],
+  );
+});
+
+test('Home presentation removes one store occurrence without removing its sibling', () => {
+  const occurrences = homeShoppingItems(
+    [{ ...item('apple', 'low'), name: 'Apple', storeId: 'safeway' }],
+    [
+      { id: 'apple-costco', pantryItemId: 'apple', storeId: 'costco', active: false, updatedAt: 3 },
+      { id: 'apple-safeway', pantryItemId: 'apple', storeId: 'safeway', active: true, updatedAt: 2 },
+    ],
+    [],
+  );
+
+  const groups = groupHomeShoppingOccurrences(occurrences);
+
+  assert.equal(groups.length, 1);
+  assert.deepEqual(groups[0]?.occurrences.map((entry) => entry.storeId), ['safeway']);
 });

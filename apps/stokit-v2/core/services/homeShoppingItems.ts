@@ -10,6 +10,29 @@ export interface HomeShoppingOccurrence {
   storeId: string | null;
 }
 
+export interface HomeShoppingItemGroup {
+  pantryItem: PantryItem;
+  occurrences: HomeShoppingOccurrence[];
+}
+
+export function groupHomeShoppingOccurrences(
+  occurrences: readonly HomeShoppingOccurrence[],
+): HomeShoppingItemGroup[] {
+  const groups = new Map<string, HomeShoppingItemGroup>();
+  for (const occurrence of occurrences) {
+    const existing = groups.get(occurrence.pantryItem.id);
+    if (existing) {
+      existing.occurrences.push(occurrence);
+    } else {
+      groups.set(occurrence.pantryItem.id, {
+        pantryItem: occurrence.pantryItem,
+        occurrences: [occurrence],
+      });
+    }
+  }
+  return [...groups.values()];
+}
+
 export function homeShoppingItems(
   items: readonly PantryItem[],
   assignments: readonly ShoppingStoreAssignment[],
