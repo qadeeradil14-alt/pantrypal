@@ -29,6 +29,7 @@ export const emptyDurableState: DurableState = {
   activity: [],
   prefs: defaultPrefs,
   activeSession: null,
+  shoppingStoreAssignments: [],
   updatedAt: 0,
   deletedItems: [],
   deletedStores: [],
@@ -51,6 +52,9 @@ function normalize(parsed: unknown): DurableState {
     activity: Array.isArray(p.activity) ? p.activity : [],
     prefs: { ...defaultPrefs, ...(p.prefs ?? {}) },
     activeSession: p.activeSession ? decodeShoppingSession(p.activeSession) : null,
+    shoppingStoreAssignments: Array.isArray(p.shoppingStoreAssignments)
+      ? p.shoppingStoreAssignments
+      : [],
     updatedAt: typeof p.updatedAt === 'number' ? p.updatedAt : 0,
     deletedItems: Array.isArray(p.deletedItems) ? p.deletedItems : [],
     deletedStores: Array.isArray(p.deletedStores) ? p.deletedStores : [],

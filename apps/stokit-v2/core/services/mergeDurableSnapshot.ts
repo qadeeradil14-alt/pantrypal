@@ -10,6 +10,7 @@ import {
 } from './mergeDurableCollections';
 import { canFoldActiveSessions, foldRemoteActiveSession, reconcileShoppingSession } from './shoppingEntrySync';
 import { isCompletedShoppingSession } from './shoppingSessionSyncPolicy';
+import { mergeShoppingStoreAssignments } from './shoppingStoreAssignments';
 
 function mergeActiveSession(
   remote: SharedShoppingSession | null,
@@ -91,6 +92,10 @@ export function mergeDurableSnapshotForPush(remote: DurableState, local: Durable
       remote.activeSession, local.activeSession, mergedItems, knownTrips,
       preferLocal, remote.trips, local.trips, mergedClosedTripIds,
     ),
+    shoppingStoreAssignments: mergeShoppingStoreAssignments(
+      remote.shoppingStoreAssignments,
+      local.shoppingStoreAssignments,
+    ),
     updatedAt: Math.max(remote.updatedAt, local.updatedAt),
     deletedItems: mergedTombstones,
     deletedStores: mergedStoreTombstones,
@@ -127,6 +132,7 @@ function syncSignature(state: DurableState): string {
     prefs: state.prefs,
     prefsUpdatedAt: state.prefsUpdatedAt ?? {},
     activeSession,
+    shoppingStoreAssignments: byId(state.shoppingStoreAssignments),
     deletedItems: tombstones(state.deletedItems),
     deletedStores: tombstones(state.deletedStores),
     deletedTrips: tombstones(state.deletedTrips),

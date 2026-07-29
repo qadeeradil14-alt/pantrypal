@@ -149,8 +149,9 @@ function buildQueue(raw: ShoppingEntryDraft[], tripId: string, addedAt?: number)
   const entries: ShoppingEntry[] = [];
   const queue: string[] = [];
   for (const e of raw) {
-    if (seen.has(e.pantryItemId)) continue;
-    seen.add(e.pantryItemId);
+    const occurrenceKey = `${e.pantryItemId}\u0000${e.storeId}`;
+    if (seen.has(occurrenceKey)) continue;
+    seen.add(occurrenceKey);
     if (!queue.includes(e.storeId)) queue.push(e.storeId);
     const stopIndex = queue.indexOf(e.storeId);
     entries.push({

@@ -60,6 +60,7 @@ export function AddItemSheet({
   const items = useDurableStore((s) => s.items);
   const addItem = useDurableStore((s) => s.addItem);
   const updateItem = useDurableStore((s) => s.updateItem);
+  const assignItemToStore = useDurableStore((s) => s.assignItemToStore);
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<typeof PANTRY_CATEGORIES[number]>('Produce');
   const [selected, setSelected] = useState<Record<string, SelectedItem>>({});
@@ -111,7 +112,10 @@ export function AddItemSheet({
             updatedAt: Date.now(),
           }
         : addItem({ name: catalog.name, quantity, unit, status, storeId: effectiveStoreId });
-      if (existing) updateItem(existing.id, { quantity: item.quantity, status: item.status, storeId: item.storeId });
+      if (existing) {
+        updateItem(existing.id, { quantity: item.quantity, status: item.status });
+        if (effectiveStoreId) assignItemToStore(existing.id, effectiveStoreId);
+      }
       addedItems.push(item);
     });
     reset();

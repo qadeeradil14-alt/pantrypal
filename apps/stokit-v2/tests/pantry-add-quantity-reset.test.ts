@@ -40,8 +40,13 @@ test('AddItemSheet no longer reuses the stale existing quantity on reactivation'
   );
   assert.match(
     commitItems,
-    /updateItem\(existing\.id, \{ quantity: item\.quantity, status: item\.status, storeId: item\.storeId \}\)/,
+    /updateItem\(existing\.id, \{ quantity: item\.quantity, status: item\.status \}\)/,
     'the persisted pantry item must be patched with the fresh quantity, not left stale',
+  );
+  assert.match(
+    commitItems,
+    /if \(effectiveStoreId\) assignItemToStore\(existing\.id, effectiveStoreId\)/,
+    'the store request must use the occurrence ledger instead of collapsing into PantryItem.storeId',
   );
 });
 

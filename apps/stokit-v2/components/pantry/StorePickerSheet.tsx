@@ -45,7 +45,7 @@ export function StorePickerSheet({
   const { colors } = useTheme();
   const stores = useDurableStore((s) => s.stores);
   const items = useDurableStore((s) => s.items);
-  const updateItem = useDurableStore((s) => s.updateItem);
+  const assignItemToStore = useDurableStore((s) => s.assignItemToStore);
 
   const [addOpen, setAddOpen] = useState(false);
 
@@ -61,7 +61,7 @@ export function StorePickerSheet({
       return;
     }
     if (!item) return;
-    updateItem(item.id, { storeId });
+    assignItemToStore(item.id, storeId);
     close();
   };
 

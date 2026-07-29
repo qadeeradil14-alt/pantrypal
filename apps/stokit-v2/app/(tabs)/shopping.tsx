@@ -79,6 +79,10 @@ import { getLastAcknowledgedTripCompletedAt, newestUnseenTrip, setLastAcknowledg
 import { shoppingCapabilities, type ShoppingCapabilities } from '../../core/services/shoppingAccess';
 import { occurrenceId } from '../../core/services/shoppingOccurrence';
 import { shoppingGroups } from '../../core/services/shoppingGroups';
+import {
+  activeShoppingStoreIds,
+  shoppingEntryDraftsFromAssignments,
+} from '../../core/services/shoppingStoreAssignments';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -139,6 +143,7 @@ export default function ShoppingScreen() {
   const updateItem = useDurableStore((s) => s.updateItem);
   const resetShoppingList = useDurableStore((s) => s.resetShoppingList);
   const assignItemsToStore = useDurableStore((s) => s.assignItemsToStore);
+  const shoppingStoreAssignments = useDurableStore((s) => s.shoppingStoreAssignments);
   const session    = useSessionStore((s) => s.session);
   const dispatch   = useSessionStore((s) => s.dispatch);
   const trips      = useDurableStore((s) => s.trips);
@@ -252,28 +257,25 @@ export default function ShoppingScreen() {
     : stores.find((s) => s.id === id);
 
   const plan = useMemo(() => {
-    const eligible = items.filter(
-      (i) => (i.status === 'low' || i.status === 'expiring') && i.storeId,
-    );
     const byStore = new Map<string, ShoppingEntryDraft[]>();
-    for (const it of eligible) {
-      const list = byStore.get(it.storeId!) ?? [];
-      list.push({ pantryItemId: it.id, name: it.name, quantity: it.quantity, unit: it.unit, storeId: it.storeId!, picked: false });
-      byStore.set(it.storeId!, list);
+    for (const entry of shoppingEntryDraftsFromAssignments(items, shoppingStoreAssignments)) {
+      const list = byStore.get(entry.storeId) ?? [];
+      list.push(entry);
+      byStore.set(entry.storeId, list);
     }
     byStore.forEach((list) => list.sort((a, b) => a.name.localeCompare(b.name)));
     return byStore;
-  }, [items]);
+  }, [items, shoppingStoreAssignments]);
 
   const unassigned = useMemo(
-    () => items.filter((i) => (i.status === 'low' || i.status === 'expiring') && !i.storeId),
-    [items],
+    () => items.filter(
+      (item) =>
+        (item.status === 'low' || item.status === 'expiring') &&
+        activeShoppingStoreIds(item, shoppingStoreAssignments).length === 0,
+    ),
+    [items, shoppingStoreAssignments],
   );
   const unassignedCount = unassigned.length;
-  const planItemsFull = useMemo(
-    () => items.filter((i) => (i.status === 'low' || i.status === 'expiring') && !!i.storeId),
-    [items],
-  );
 
   const startTripAt = async (
     firstStoreId: string,
@@ -291,12 +293,15 @@ export default function ShoppingScreen() {
         ? { ...item, storeId: firstStoreId, updatedAt: Date.now() }
         : item
     );
+    const entriesByAssignment = shoppingEntryDraftsFromAssignments(
+      nextItems,
+      shoppingStoreAssignments,
+    );
     const byStore = new Map<string, ShoppingEntryDraft[]>();
-    for (const item of shoppable) {
-      const sid = item.storeId ?? firstStoreId;
-      const list = byStore.get(sid) ?? [];
-      list.push({ pantryItemId: item.id, name: item.name, quantity: item.quantity, unit: item.unit, storeId: sid, picked: false });
-      byStore.set(sid, list);
+    for (const entry of entriesByAssignment) {
+      const list = byStore.get(entry.storeId) ?? [];
+      list.push(entry);
+      byStore.set(entry.storeId, list);
     }
     const entries: ShoppingEntryDraft[] = [...(byStore.get(firstStoreId) ?? [])];
     byStore.forEach((list, sid) => {
@@ -462,7 +467,7 @@ export default function ShoppingScreen() {
   // While a trip is running the session's occurrences are the source of truth,
   // so the same pantry item can appear under every stop it was assigned to.
   // Idle falls back to the pantry-derived plan. See shoppingGroups.
-  const planGroups  = shoppingGroups(session, items);
+  const planGroups  = shoppingGroups(session, items, shoppingStoreAssignments);
   const totalItems  = planGroups.reduce((n, group) => n + group.items.length, 0);
   const singleStore = planGroups.length === 1 ? storeById(planGroups[0].storeId) : undefined;
 

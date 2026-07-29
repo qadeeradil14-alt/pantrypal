@@ -8,7 +8,8 @@
  *    under as many stops as the shopper assigned it to. One group per stop, in
  *    queue order, so a revisited store yields two distinct groups.
  *
- *  - Idle → pantry items grouped by item.storeId, the planning view.
+ *  - Idle → durable item/store assignments, with PantryItem.storeId only as
+ *    a legacy fallback for snapshots created before the occurrence ledger.
  *
  * Why this split exists: PantryItem.storeId is a single scalar, so durable state
  * can only ever say "Apple belongs to Safeway". Grouping the in-trip view by
@@ -18,8 +19,14 @@
  * inventory — nothing here writes to it.
  */
 
-import type { PantryItem, ShoppingEntry, Unit } from '../../types';
+import type {
+  PantryItem,
+  ShoppingEntry,
+  ShoppingStoreAssignment,
+  Unit,
+} from '../../types';
 import { stopIdForQueueIndex, type ShoppingSession } from '../shopping-machine';
+import { shoppingEntryDraftsFromAssignments } from './shoppingStoreAssignments';
 
 export interface ShoppingGroupItem {
   pantryItemId: string;
@@ -36,10 +43,6 @@ export interface ShoppingGroup {
   key: string;
   storeId: string;
   items: ShoppingGroupItem[];
-}
-
-function isShoppable(item: PantryItem): boolean {
-  return item.status === 'low' || item.status === 'expiring';
 }
 
 function byName(a: { name: string }, b: { name: string }): number {
@@ -66,6 +69,7 @@ export function isTripActive(
 export function shoppingGroups(
   session: Pick<ShoppingSession, 'status' | 'tripId' | 'storeQueue' | 'entries'>,
   items: PantryItem[],
+  assignments?: ShoppingStoreAssignment[],
 ): ShoppingGroup[] {
   if (isTripActive(session)) {
     const groups: ShoppingGroup[] = [];
@@ -85,17 +89,16 @@ export function shoppingGroups(
 
   const order: string[] = [];
   const byStore = new Map<string, ShoppingGroupItem[]>();
-  for (const item of items) {
-    if (!isShoppable(item) || !item.storeId) continue;
-    if (!byStore.has(item.storeId)) {
-      byStore.set(item.storeId, []);
-      order.push(item.storeId);
+  for (const entry of shoppingEntryDraftsFromAssignments(items, assignments)) {
+    if (!byStore.has(entry.storeId)) {
+      byStore.set(entry.storeId, []);
+      order.push(entry.storeId);
     }
-    byStore.get(item.storeId)!.push({
-      pantryItemId: item.id,
-      name: item.name,
-      quantity: item.quantity,
-      unit: item.unit,
+    byStore.get(entry.storeId)!.push({
+      pantryItemId: entry.pantryItemId,
+      name: entry.name,
+      quantity: entry.quantity,
+      unit: entry.unit,
       picked: false,
     });
   }

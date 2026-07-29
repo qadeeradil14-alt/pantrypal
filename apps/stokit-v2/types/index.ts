@@ -94,6 +94,15 @@ export interface ShoppingEntry {
   addedAt?: number;
 }
 
+export interface ShoppingStoreAssignment {
+  /** Stable identity of one pantry-item/store shopping request. */
+  id: string;
+  pantryItemId: string;
+  storeId: string;
+  active: boolean;
+  updatedAt: number;
+}
+
 export type ShoppingEntryDraft = Omit<
   ShoppingEntry,
   'entryId' | 'stopId' | 'pickedAt' | 'outOfStock' | 'outOfStockAt' | 'addedAt'
@@ -292,6 +301,8 @@ export interface DurableState {
   activity: ActivityEvent[];
   prefs: HouseholdPrefs;
   activeSession: SharedShoppingSession | null;
+  /** Multi-store shopping requests kept separately from PantryItem.storeId. */
+  shoppingStoreAssignments?: ShoppingStoreAssignment[];
   updatedAt: number;
   /** Tombstones for deleted items (optional: absent in pre-OTA-340 snapshots). */
   deletedItems?: ItemTombstone[];

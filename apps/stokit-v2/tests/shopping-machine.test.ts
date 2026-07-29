@@ -43,11 +43,11 @@ test('START_TRIP groups items by store and starts at first store', () => {
   assert.equal(s.tripId, 't_1000');
 });
 
-test('START_TRIP dedupes duplicate items', () => {
+test('START_TRIP dedupes only the same item/store occurrence', () => {
   const dupes = [...TWO_STORE_ENTRIES, entry('milk', 'aldi'), entry('milk', 'target')];
   const s = reduce(initialSession, { type: 'START_TRIP', entries: dupes, now: 1 });
-  assert.equal(s.entries.filter((e) => e.pantryItemId === 'milk').length, 1);
-  assert.equal(s.entries.length, 3);
+  assert.equal(s.entries.filter((e) => e.pantryItemId === 'milk').length, 2);
+  assert.equal(s.entries.length, 4);
 });
 
 test('START_TRIP with no entries stays idle', () => {

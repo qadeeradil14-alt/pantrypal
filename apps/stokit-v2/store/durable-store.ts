@@ -26,6 +26,12 @@ import type {
 import { shoppingEntryEventForItem, foldRemoteActiveSession } from '../core/services/shoppingEntrySync';
 import { remoteShoppingSessionAction } from '../core/services/shoppingSessionSyncPolicy';
 import { hasValidStoreCoordinates } from '../core/services/storeCoordinates';
+import {
+  assignShoppingItemToStore,
+  assignShoppingItemToStorePreservingLegacy,
+  deactivateShoppingItemStores,
+  mergeShoppingStoreAssignments,
+} from '../core/services/shoppingStoreAssignments';
 export type { StorageLocation as StorageLocationImport };
 import { uid, now, nextTimestamp } from '../core/services/id';
 import {
@@ -85,6 +91,7 @@ interface DurableStore extends DurableState {
   setItemStatus: (id: string, status: PantryStatus) => void;
   clearShoppingEntries: (entries: ShoppingEntry[]) => void;
   assignItemsToStore: (ids: string[], storeId: string) => void;
+  assignItemToStore: (id: string, storeId: string | null) => void;
   resetShoppingList: () => void;
   deleteItem: (id: string) => void;
   tombstoneShoppingOccurrence: (entryId: string) => void;
@@ -157,6 +164,7 @@ function snapshot(s: DurableState): DurableState {
     activity: s.activity,
     prefs: s.prefs,
     activeSession: s.activeSession ?? null,
+    shoppingStoreAssignments: s.shoppingStoreAssignments ?? [],
     updatedAt: s.updatedAt,
     deletedItems: s.deletedItems ?? [],
     deletedStores: s.deletedStores ?? [],
@@ -279,6 +287,13 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         };
         set((s) => ({
           items: consolidatePantryItems(s.items.map((item) => item.id === existing.id ? updated : item)),
+          shoppingStoreAssignments: input.storeId
+            ? assignShoppingItemToStorePreservingLegacy(
+                s.shoppingStoreAssignments,
+                existing,
+                input.storeId,
+              )
+            : s.shoppingStoreAssignments,
         }));
         if (updated.status === 'low' && existing.status !== 'low') {
           pushActivity('marked_low', `${updated.name} marked low`, { itemId: updated.id });
@@ -304,7 +319,17 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         updatedAt: createdAt,
         statusUpdatedAt: createdAt,
       };
-      set((s) => ({ items: [item, ...s.items] }));
+      set((s) => ({
+        items: [item, ...s.items],
+        shoppingStoreAssignments: input.storeId
+          ? assignShoppingItemToStore(
+              s.shoppingStoreAssignments,
+              item.id,
+              input.storeId,
+              createdAt,
+            )
+          : s.shoppingStoreAssignments,
+      }));
       pushActivity('item_added', `Added ${item.name}`, { itemId: item.id });
       if (item.status === 'low') {
         pushActivity('marked_low', `${item.name} marked low`, { itemId: item.id });
@@ -414,11 +439,58 @@ export const useDurableStore = create<DurableStore>((set, get) => {
             ? { ...item, storeId, updatedAt: nextTimestamp(item.updatedAt), statusUpdatedAt: nextTimestamp(item.statusUpdatedAt) }
             : item
         ),
+        shoppingStoreAssignments: [...idSet].reduce(
+          (assignments, id) => {
+            const item = s.items.find((candidate) => candidate.id === id);
+            return item
+              ? assignShoppingItemToStorePreservingLegacy(
+                  assignments,
+                  item,
+                  storeId,
+                )
+              : assignments;
+          },
+          s.shoppingStoreAssignments ?? [],
+        ),
       }));
       persist();
       get().items
         .filter((item) => idSet.has(item.id))
         .forEach((item) => syncShoppingItem(item, item.id));
+      void refreshGeofencedStoreData();
+    },
+
+    assignItemToStore: (id, storeId) => {
+      const item = get().items.find((candidate) => candidate.id === id);
+      if (!item) return;
+      const assignments = storeId
+        ? assignShoppingItemToStorePreservingLegacy(
+            get().shoppingStoreAssignments,
+            item,
+            storeId,
+          )
+        : deactivateShoppingItemStores(
+            get().shoppingStoreAssignments,
+            id,
+          );
+      const assignmentChanged = assignments !== (get().shoppingStoreAssignments ?? []);
+      const storeChanged = item.storeId !== storeId;
+      if (!assignmentChanged && !storeChanged) return;
+      set((s) => ({
+        items: s.items.map((candidate) =>
+          candidate.id === id
+            ? {
+                ...candidate,
+                storeId,
+                updatedAt: nextTimestamp(candidate.updatedAt),
+                statusUpdatedAt: nextTimestamp(candidate.statusUpdatedAt),
+              }
+            : candidate
+        ),
+        shoppingStoreAssignments: assignments,
+      }));
+      persist();
+      syncShoppingItem(get().items.find((candidate) => candidate.id === id) ?? null, id);
       void refreshGeofencedStoreData();
     },
 
@@ -746,6 +818,12 @@ export const useDurableStore = create<DurableStore>((set, get) => {
             ? mergeActivity(s.activity, patch.activity)
             : s.activity,
           ...mergedPrefs,
+          shoppingStoreAssignments: patch.shoppingStoreAssignments
+            ? mergeShoppingStoreAssignments(
+                s.shoppingStoreAssignments,
+                patch.shoppingStoreAssignments,
+              )
+            : s.shoppingStoreAssignments ?? [],
           // Gated: never write an unvalidated remote session — same policy as
           // session-store.ts's applyRemoteSession (clear guard + same-trip merge).
           activeSession: 'activeSession' in patch ? gatedActiveSession ?? null : s.activeSession ?? null,
