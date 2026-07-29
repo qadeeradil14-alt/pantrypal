@@ -54,6 +54,7 @@ export default function PantryScreen() {
   const { colors } = useTheme();
   const items = useDurableStore((state) => state.items);
   const stores = useDurableStore((state) => state.stores);
+  const shoppingStoreAssignments = useDurableStore((state) => state.shoppingStoreAssignments);
   const setItemStatus = useDurableStore((state) => state.setItemStatus);
   const deleteItem = useDurableStore((state) => state.deleteItem);
   const addItem = useDurableStore((state) => state.addItem);
@@ -102,11 +103,12 @@ export default function PantryScreen() {
   const listItems = useMemo(
     () => homeShoppingItems(
       items,
+      shoppingStoreAssignments ?? [],
       session.status !== 'idle' && session.status !== 'trip_summary'
         ? session.entries
         : [],
     ),
-    [items, session.entries, session.status],
+    [items, session.entries, session.status, shoppingStoreAssignments],
   );
 
   const atHomeItems = useMemo(
@@ -119,18 +121,20 @@ export default function PantryScreen() {
   const shoppingCount = listItems.length;
   const pantryCount = atHomeItems.length;
   const expiringCount = useMemo(
-    () => listItems.filter((item) => item.status === 'expiring').length,
+    () => listItems.filter((item) => item.pantryItem.status === 'expiring').length,
     [listItems],
   );
   const storeCount = useMemo(
-    () => new Set(listItems.filter((item) => item.storeId).map((item) => item.storeId)).size,
+    () => new Set(listItems.flatMap((item) => item.storeId ? [item.storeId] : [])).size,
     [listItems],
   );
 
   // Filtered views based on search query
   const query = searchQuery.trim().toLowerCase();
   const filteredListItems = useMemo(
-    () => query ? listItems.filter((i) => i.name.toLowerCase().includes(query)) : listItems,
+    () => query
+      ? listItems.filter((item) => item.pantryItem.name.toLowerCase().includes(query))
+      : listItems,
     [listItems, query],
   );
   const filteredAtHomeItems = useMemo(
@@ -342,13 +346,13 @@ export default function PantryScreen() {
             )}
             {filteredListItems.map((item) => (
               <Pressable
-                key={item.id}
+                key={item.occurrenceId}
                 style={({ pressed }) => [styles.catalogRow, pressed && styles.pressed]}
-                onPress={() => { setSearchQuery(''); Keyboard.dismiss(); setActionItem(item); }}
+                onPress={() => { setSearchQuery(''); Keyboard.dismiss(); setActionItem(item.pantryItem); }}
               >
-                <ItemAvatar name={item.name} size={40} />
+                <ItemAvatar name={item.pantryItem.name} size={40} />
                 <View style={styles.catalogCopy}>
-                  <Text style={styles.catalogName}>{item.name}</Text>
+                  <Text style={styles.catalogName}>{item.pantryItem.name}</Text>
                   <Text style={styles.catalogCategory}>On your list</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={18} color={colors.muted} />
@@ -396,14 +400,14 @@ export default function PantryScreen() {
         {filteredListItems.length ? (
           <View style={styles.list}>
             {filteredListItems.map((item, index) => (
-            <View key={item.id}>
+            <View key={item.occurrenceId}>
               {index > 0 ? <View style={styles.divider} /> : null}
               <SimpleItemRow
-                item={item}
+                item={item.pantryItem}
                 store={storeById(item.storeId)}
-                onPress={() => { setSearchQuery(''); Keyboard.dismiss(); setActionItem(item); }}
+                onPress={() => { setSearchQuery(''); Keyboard.dismiss(); setActionItem(item.pantryItem); }}
                 action="cart"
-                onSwipeLeft={() => animatedDelete(item.id)}
+                onSwipeLeft={() => animatedDelete(item.pantryItem.id)}
               />
             </View>
             ))}
