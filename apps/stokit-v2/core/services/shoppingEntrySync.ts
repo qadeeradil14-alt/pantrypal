@@ -61,6 +61,23 @@ export function mergeShoppingEntries(
       byId.set(entry.itemId, canonicalizeCompletionShape(entry));
       continue;
     }
+    const existingAddedAt = existing.addedAt ?? -Infinity;
+    const incomingAddedAt = entry.addedAt ?? -Infinity;
+    // `addedAt` is the occurrence/generation boundary for one itemId. A later
+    // add represents a new shopping occurrence, so its complete shape must win
+    // before pickedAt/outOfStockAt are compared. Those timestamps only order
+    // taps within the same occurrence. Reattaching an earlier occurrence's
+    // completion fields made a member snapshot change RLS-protected fields on
+    // the newer cloud entry, causing PostgREST 42501/HTTP 403 rejection.
+    if (existingAddedAt !== incomingAddedAt) {
+      byId.set(
+        entry.itemId,
+        canonicalizeCompletionShape(
+          existingAddedAt > incomingAddedAt ? existing : entry,
+        ),
+      );
+      continue;
+    }
     const picked = resolveTimedFlag(existing.picked, existing.pickedAt, entry.picked, entry.pickedAt);
     const outOfStock = resolveTimedFlag(
       Boolean(existing.outOfStock), existing.outOfStockAt,

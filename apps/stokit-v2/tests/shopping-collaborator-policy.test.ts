@@ -64,6 +64,12 @@ test('backend policy permits member item metadata but protects trip lifecycle fi
   assert.match(readdSql, /'removedAt'/);
   assert.match(readdSql, /'addedAt'/);
   assert.match(readdSql, /jsonb_typeof\(new_entry -> 'addedAt'\) = 'number'/);
+  assert.match(
+    readdSql,
+    /old_entry - array\['name', 'quantity', 'unit', 'storeId', 'addedAt'\]/,
+  );
+  assert.match(readdSql, /new_entry \? 'pickedAt'/);
+  assert.match(readdSql, /new_entry \? 'outOfStockAt'/);
   assert.match(readdSql, /from public, anon/i);
 });
 

@@ -84,11 +84,12 @@ export interface ShoppingEntry {
   /** Wall-clock ms of the last `outOfStock` change. Same last-tap-wins role as pickedAt. */
   outOfStockAt?: number;
   /**
-   * Wall-clock ms this entry was (re-)added to the trip. Compared against the
-   * session's `removedAt` stamp for the same itemId so a re-add beats an older
-   * removal instead of being permanently filtered out by the removedItemIds
-   * tombstone. Absent on legacy snapshots — the merge then keeps the old
-   * "tombstone always wins" behavior.
+   * Wall-clock ms this entry was (re-)added to shopping. This is the identity
+   * of an item occurrence: a larger addedAt means a new occurrence whose store
+   * and completion state replace every older occurrence for the same itemId.
+   * pickedAt/outOfStockAt order changes only when addedAt is equal. addedAt is
+   * also compared with removedAt so a re-add beats an older tombstone. Absent
+   * on legacy snapshots, which retain the legacy merge behavior.
    */
   addedAt?: number;
 }

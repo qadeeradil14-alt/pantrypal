@@ -80,6 +80,54 @@ test('remote entry metadata wins over stale local metadata while completion rema
   });
 });
 
+test('a newer shopping occurrence wins store and completion state in both merge directions', () => {
+  const purchasedAtFirstStore = entry({
+    storeId: 'sams',
+    picked: true,
+    pickedAt: 110,
+    addedAt: 100,
+  });
+  const readdedAtNextStore = entry({
+    storeId: 'target',
+    picked: false,
+    addedAt: 200,
+  });
+
+  for (const merged of [
+    mergeShoppingEntries([purchasedAtFirstStore], [readdedAtNextStore], []),
+    mergeShoppingEntries([readdedAtNextStore], [purchasedAtFirstStore], []),
+  ]) {
+    assert.equal(merged[0].storeId, 'target');
+    assert.equal(merged[0].addedAt, 200);
+    assert.equal(merged[0].picked, false);
+    assert.equal('pickedAt' in merged[0], false);
+  }
+});
+
+test('a newer shopping occurrence clears stale out-of-stock state in both merge directions', () => {
+  const unavailableAtFirstStore = entry({
+    storeId: 'sams',
+    picked: false,
+    outOfStock: true,
+    outOfStockAt: 110,
+    addedAt: 100,
+  });
+  const readdedAtNextStore = entry({
+    storeId: 'target',
+    picked: false,
+    addedAt: 200,
+  });
+
+  for (const merged of [
+    mergeShoppingEntries([unavailableAtFirstStore], [readdedAtNextStore], []),
+    mergeShoppingEntries([readdedAtNextStore], [unavailableAtFirstStore], []),
+  ]) {
+    assert.equal(merged[0].storeId, 'target');
+    assert.equal(Boolean(merged[0].outOfStock), false);
+    assert.equal('outOfStockAt' in merged[0], false);
+  }
+});
+
 test('valid names, capitalization, emoji metadata, and quantity survive reconciliation', () => {
   const items = [
     item({ id: 'apple', name: 'Apple' }),
