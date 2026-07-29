@@ -5,24 +5,40 @@ import test from 'node:test';
 
 import { reduce, initialSession, type ShoppingSession } from '../core/shopping-machine';
 
-// Bug: completing a store visit (store_summary) only cleared *picked* entries
-// for that store via durable.clearShoppingEntries. An item marked out of
-// stock during the visit is a definitive decision too, but MARK_OUT_OF_STOCK
-// never touches durable state — the item kept status 'low' and storeId
-// pointing at the just-finished store forever, so the Shopping tab's `plan`
-// (derived from items with status low/expiring + a storeId) kept showing that
-// store as active even after the trip was fully finished.
-// Fix: at store_summary, also null the storeId of that store's out-of-stock
-// entries in store/session-store.ts's dispatch.
+// History: completing a store used to null the storeId of that store's
+// unpicked and out-of-stock items, so the finished store could not reactivate.
+// That overloaded "no storeId" (which everywhere else means "needs a store")
+// to also mean "already shopped here", and because the Shopping tab's `plan`
+// groups strictly by item.storeId, it erased the completed store from the
+// shopping list entirely — the "Safeway takes over Costco" bug.
+// Reactivation is now blocked directly by session.completedStopIds, so the
+// items keep their store assignment. These tests pin that contract.
 
 const src = readFileSync(join(process.cwd(), 'store/session-store.ts'), 'utf8');
 
-test('the store_summary transition unassigns out-of-stock items from the completed store', () => {
-  assert.match(
+test('the store_summary transition no longer unassigns items from the completed store', () => {
+  assert.doesNotMatch(
     src,
-    /next\.entries\s*\n\s*\.filter\(\(e\) => e\.stopId === completedStopId && e\.outOfStock\)\s*\n\s*\.forEach\(\(e\) => durable\.updateItem\(e\.pantryItemId, \{ storeId: null \}\)\);/,
-    'store_summary must unassign out-of-stock entries for the completed store, not just clear picked ones',
+    /completedStopId[\s\S]{0,400}?durable\.updateItem\([^)]*\{ storeId: null \}\)/,
+    'completing a store must not null item.storeId — that erases the store from the shopping list',
   );
+});
+
+test('completing a store records the stop in completedStopIds', () => {
+  const started = reduce(initialSession, {
+    type: 'START_TRIP',
+    now: 1,
+    entries: [
+      { pantryItemId: 'i1', name: 'Milk', quantity: 1, unit: 'unit', storeId: 'walmart', picked: false },
+    ],
+  });
+  const done = reduce(
+    reduce(started, { type: 'FINISH_STORE', now: 2 }),
+    { type: 'SKIP_RECEIPT', now: 3 },
+  );
+
+  assert.equal(done.status, 'store_summary');
+  assert.deepEqual(done.completedStopIds, [started.entries[0].stopId]);
 });
 
 test('MARK_OUT_OF_STOCK produces an entry the store_summary handler can detect', () => {

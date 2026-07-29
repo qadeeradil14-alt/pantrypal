@@ -46,7 +46,7 @@ import { getCategoryColors } from '../../theme/categoryPalette';
 import { useDurableStore } from '../../store/durable-store';
 import { useHouseholdStore } from '../../store/household-store';
 import { useSessionStore } from '../../store/session-store';
-import { currentStoreEntries, currentStoreId, pendingStoreIds } from '../../core/shopping-machine';
+import { currentStoreEntries, currentStoreId, entryStopPlacement, pendingStoreIds } from '../../core/shopping-machine';
 import { ROUTE_COLORS } from '../../core/services/storeBrands';
 import { classifyItem, categoryLabel } from '../../core/services/itemClassifier';
 import { cheapestRecentPrice, itemPriceHistory, lastPriceAtStore } from '../../core/services/priceHistory';
@@ -70,7 +70,7 @@ import { useTheme } from '../../hooks/useTheme';
 import { UNASSIGNED_STORE_ID, UNASSIGNED_STORE_NAME } from '../../constants/shopping';
 import { getLastAcknowledgedTripCompletedAt, newestUnseenTrip, setLastAcknowledgedTripCompletedAt } from '../../core/services/tripCompletionAck';
 import { shoppingCapabilities, type ShoppingCapabilities } from '../../core/services/shoppingAccess';
-import { occurrenceId, stopIdForStoreOccurrence } from '../../core/services/shoppingOccurrence';
+import { occurrenceId } from '../../core/services/shoppingOccurrence';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -953,14 +953,11 @@ function ShoppingActive({
     items
       .filter((item) => {
         if (!item.storeId || (item.status !== 'low' && item.status !== 'expiring')) return false;
-        const pendingIndex = session.storeQueue.findIndex(
-          (storeId, index) => index >= session.currentIndex && storeId === item.storeId,
-        );
-        const candidateQueue = pendingIndex >= 0
-          ? session.storeQueue
-          : [...session.storeQueue, item.storeId];
-        const targetIndex = pendingIndex >= 0 ? pendingIndex : candidateQueue.length - 1;
-        const stopId = stopIdForStoreOccurrence(session.tripId, candidateQueue, targetIndex);
+        // null → this item was already shopped at that store's completed stop;
+        // leave it assigned there instead of reopening the finished stop.
+        const placement = entryStopPlacement(session, item.storeId, item.id);
+        if (!placement) return false;
+        const { stopId } = placement;
         const entryId = occurrenceId(session.tripId, stopId, item.id);
         const isRemoved = session.removedEntryIds.includes(item.id)
           || session.removedEntryIds.includes(entryId);
@@ -975,7 +972,7 @@ function ShoppingActive({
           entry: { pantryItemId: item.id, name: item.name, quantity: item.quantity, unit: item.unit, storeId: item.storeId!, picked: false },
         });
       });
-  }, [items, session.entries, session.removedEntryIds, session.storeQueue, session.currentIndex, session.tripId, dispatch]);
+  }, [items, session.entries, session.removedEntryIds, session.storeQueue, session.currentIndex, session.completedStopIds, session.tripId, dispatch]);
 
   const handleNotifyHousehold = async () => {
     const store = storeById(storeId);

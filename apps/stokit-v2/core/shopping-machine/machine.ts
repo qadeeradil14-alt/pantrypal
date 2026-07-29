@@ -65,6 +65,14 @@ export interface ShoppingSession {
   skippedStoreIds: string[];
   skippedAt?: Record<string, number>;
   unskippedAt?: Record<string, number>;
+  /**
+   * Stop ids already visited and closed out. Set when a receipt is saved or
+   * skipped. This is the durable record that a stop is finished — previously
+   * the only signal was `currentIndex`, which the item→entry sync paths could
+   * not distinguish from "store not planned yet", so they re-queued a finished
+   * store as a fresh occurrence. Monotonic within a trip; unioned across peers.
+   */
+  completedStopIds: string[];
   entries: ShoppingEntry[];
   /** Shopping occurrence ids removed mid-trip. */
   removedEntryIds: string[];
@@ -88,6 +96,7 @@ export const initialSession: ShoppingSession = {
   storeQueue: [],
   currentIndex: 0,
   skippedStoreIds: [],
+  completedStopIds: [],
   entries: [],
   removedEntryIds: [],
   receipts: [],
@@ -184,6 +193,66 @@ export function stopIdForQueueIndex(
   return stopIdForStoreOccurrence(session.tripId, session.storeQueue, index);
 }
 
+/** True when this trip already closed out a stop at `storeId`. */
+export function hasCompletedStopForStore(
+  session: Pick<ShoppingSession, 'tripId' | 'storeQueue'> & { completedStopIds?: string[] },
+  storeId: string,
+): boolean {
+  const completed = session.completedStopIds ?? [];
+  if (completed.length === 0) return false;
+  return session.storeQueue.some(
+    (candidate, index) =>
+      candidate === storeId &&
+      completed.includes(stopIdForQueueIndex(session, index)),
+  );
+}
+
+/**
+ * Where `pantryItemId` should land for the active trip, given its store.
+ *
+ * Returns the (possibly extended) queue and the stop the entry joins, or null
+ * when the item must NOT be auto-added at all.
+ *
+ * The null case is deliberately per-item, not per-store. An item that already
+ * had an occurrence at a *completed* stop for this store was shopped there and
+ * left unpicked (or out of stock); re-adding it appends a phantom second
+ * occurrence, so the finished store reappears forever. But an item newly
+ * assigned to that store mid-trip has no such occurrence, and *should* reopen
+ * the store as a genuine revisit — see the 'reopens that store later in the
+ * same trip' case in shopping-machine.test.ts.
+ *
+ * Single source of truth for the reducer, the screen's sync effect, and the
+ * remote reconciler, which previously each reimplemented this math.
+ */
+export function entryStopPlacement(
+  session: Pick<ShoppingSession, 'tripId' | 'storeQueue' | 'currentIndex' | 'entries'> & { completedStopIds?: string[] },
+  storeId: string,
+  pantryItemId: string,
+): { storeQueue: string[]; stopId: string } | null {
+  const pendingIndex = session.storeQueue.findIndex(
+    (candidate, index) => index >= session.currentIndex && candidate === storeId,
+  );
+  if (pendingIndex >= 0) {
+    return {
+      storeQueue: session.storeQueue,
+      stopId: stopIdForQueueIndex(session, pendingIndex),
+    };
+  }
+  const completed = session.completedStopIds ?? [];
+  const alreadyShoppedHere = session.entries.some(
+    (entry) =>
+      entry.pantryItemId === pantryItemId &&
+      entry.storeId === storeId &&
+      completed.includes(entry.stopId),
+  );
+  if (alreadyShoppedHere) return null;
+  const storeQueue = [...session.storeQueue, storeId];
+  return {
+    storeQueue,
+    stopId: stopIdForStoreOccurrence(session.tripId, storeQueue, storeQueue.length - 1),
+  };
+}
+
 /** Store IDs that are still pending (not yet visited, not explicitly skipped). */
 export function pendingStoreIds(session: ShoppingSession): string[] {
   return session.storeQueue
@@ -272,7 +341,16 @@ function buildTrip(session: ShoppingSession, now: number): Trip {
 
 /** After any receipt decision → always land on store_summary first. */
 function afterReceipt(session: ShoppingSession, receipt: Receipt): ShoppingSession {
-  return { ...session, receipts: [...session.receipts, receipt], status: 'store_summary' };
+  const stopId = stopIdForQueueIndex(session, session.currentIndex);
+  const completedStopIds = (session.completedStopIds ?? []).includes(stopId)
+    ? session.completedStopIds
+    : [...(session.completedStopIds ?? []), stopId];
+  return {
+    ...session,
+    receipts: [...session.receipts, receipt],
+    completedStopIds,
+    status: 'store_summary',
+  };
 }
 
 /** Move `storeId` to position currentIndex+1 in the queue (non-mutating). */
@@ -283,16 +361,6 @@ function promoteStore(session: ShoppingSession, storeId: string): ShoppingSessio
   const nextPos = session.currentIndex + 1;
   [newQueue[nextPos], newQueue[chosenIdx]] = [newQueue[chosenIdx], newQueue[nextPos]];
   return { ...session, storeQueue: newQueue, currentIndex: nextPos, status: 'shopping_store' };
-}
-
-function hasCurrentOrPendingStore(session: ShoppingSession, storeId: string): boolean {
-  return session.storeQueue.slice(session.currentIndex).includes(storeId);
-}
-
-function queueStoreForActiveTrip(session: ShoppingSession, storeId: string): string[] {
-  return hasCurrentOrPendingStore(session, storeId)
-    ? session.storeQueue
-    : [...session.storeQueue, storeId];
 }
 
 // ── Reducer ───────────────────────────────────────────────────────────────────
@@ -317,6 +385,7 @@ export function reduce(
         skippedStoreIds: [],
         skippedAt: {},
         unskippedAt: {},
+        completedStopIds: [],
         entries,
         removedEntryIds: [],
         receipts: [],
@@ -340,17 +409,11 @@ export function reduce(
 
     case 'ADD_ENTRY': {
       if (session.status !== 'shopping_store') return session;
-      const storeQueue = queueStoreForActiveTrip(session, event.entry.storeId);
-      const targetIndex = storeQueue[session.currentIndex] === event.entry.storeId
-        ? session.currentIndex
-        : storeQueue.findIndex(
-          (storeId, index) => index >= session.currentIndex && storeId === event.entry.storeId,
-        );
-      const stopId = stopIdForStoreOccurrence(
-        session.tripId,
-        storeQueue,
-        targetIndex >= 0 ? targetIndex : storeQueue.lastIndexOf(event.entry.storeId),
-      );
+      // An item already shopped at this store's completed stop is not re-queued
+      // here — that is what used to reopen a finished store forever.
+      const placement = entryStopPlacement(session, event.entry.storeId, event.entry.pantryItemId);
+      if (!placement) return session;
+      const { storeQueue, stopId } = placement;
       const existingIdx = session.entries.findIndex(
         (entry) =>
           entry.pantryItemId === event.entry.pantryItemId &&

@@ -13,6 +13,7 @@ const session: ShoppingSession = {
   startedAt: 1,
   storeQueue: ['store'],
   currentIndex: 0,
+  completedStopIds: [],
   skippedStoreIds: [],
   entries: [
     {

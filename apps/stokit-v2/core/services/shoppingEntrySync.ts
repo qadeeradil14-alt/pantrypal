@@ -1,4 +1,4 @@
-import { initialSession, type ShoppingEvent } from '../shopping-machine';
+import { entryStopPlacement, initialSession, type ShoppingEvent } from '../shopping-machine';
 import type {
   PantryItem,
   SharedShoppingSession,
@@ -46,9 +46,13 @@ export function decodeShoppingSession<T extends SharedShoppingSession>(session: 
     return { ...rest, entryId, pantryItemId, stopId } as ShoppingEntry;
   });
   const removedEntryIds = session.removedEntryIds ?? session.removedItemIds ?? [];
+  // Pre-OTA-431 payloads have no completedStopIds. Absent means "nothing known
+  // to be completed", which keeps legacy sessions on their existing behaviour.
+  if (session.completedStopIds === undefined) changed = true;
+  const completedStopIds = session.completedStopIds ?? [];
   if (!changed) return session;
   const { removedItemIds: _wireRemovedIds, ...rest } = session;
-  return { ...rest, entries, removedEntryIds } as T;
+  return { ...rest, entries, removedEntryIds, completedStopIds } as T;
 }
 
 export function encodeShoppingSession<T extends SharedShoppingSession>(session: T): T {
@@ -372,11 +376,20 @@ export function foldRemoteActiveSession<T extends SharedShoppingSession>(
   const other = preferred === local ? incoming : local;
   const { removedEntryIds, removedAt } = resolveRemovedEntryIds(local, incoming);
   const skipped = resolveSkippedStoreIds(local, incoming);
+  // Completing a stop is monotonic and never undone within a trip, so the union
+  // is the correct merge: if either device finished a stop, it is finished. This
+  // also stops a peer that has not yet heard about the completion from
+  // re-queueing that store through reconcileShoppingSession.
+  const completedStopIds = Array.from(new Set([
+    ...(local.completedStopIds ?? []),
+    ...(incoming.completedStopIds ?? []),
+  ]));
   return {
     ...preferred,
     storeQueue: mergeStoreQueues(preferred.storeQueue, other.storeQueue),
     entries: mergeShoppingEntries(local.entries, incoming.entries, removedEntryIds),
     removedEntryIds,
+    completedStopIds,
     ...(removedAt !== undefined ? { removedAt } : {}),
     ...skipped,
   };
@@ -447,21 +460,22 @@ export function reconcileShoppingSession<T extends SharedShoppingSession>(
   const storeQueue = [...decoded.storeQueue];
   for (const item of items) {
     if (!isShoppingItem(item)) continue;
-    let targetIndex = storeQueue.findIndex(
-      (storeId, index) => index >= decoded.currentIndex && storeId === item.storeId,
+    // Shares entryStopPlacement with the reducer and the shopping screen so all
+    // three agree on when a store may be queued. null means the stop is already
+    // completed — previously this was approximated by "an entry for this
+    // item+store exists", which missed the case where that entry had been
+    // cleared, letting a finished store reappear as a phantom occurrence.
+    const placement = entryStopPlacement(
+      { ...decoded, storeQueue, entries },
+      item.storeId!,
+      item.id,
     );
-    if (targetIndex < 0) {
-      const hasCompletedOccurrence = entries.some(
-        (entry) =>
-          entry.pantryItemId === item.id &&
-          entry.storeId === item.storeId,
-      );
-      if (hasCompletedOccurrence) continue;
+    if (!placement) continue;
+    const { stopId } = placement;
+    if (placement.storeQueue.length !== storeQueue.length) {
       storeQueue.push(item.storeId!);
-      targetIndex = storeQueue.length - 1;
       changed = true;
     }
-    const stopId = stopIdForStoreOccurrence(decoded.tripId, storeQueue, targetIndex);
     if (entries.some(
       (entry) => entry.pantryItemId === item.id && entry.stopId === stopId,
     )) continue;

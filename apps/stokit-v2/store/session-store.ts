@@ -253,14 +253,13 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       durable.clearShoppingEntries(
         next.entries.filter((e) => e.stopId === completedStopId && e.picked),
       );
-      // The store visit is complete. Keep unpurchased items low, but remove this
-      // store assignment so the completed store does not immediately reactivate.
-      next.entries
-        .filter((e) => e.stopId === completedStopId && e.outOfStock)
-        .forEach((e) => durable.updateItem(e.pantryItemId, { storeId: null }));
-      next.entries
-        .filter((e) => e.stopId === completedStopId && !e.picked && !e.outOfStock)
-        .forEach((e) => durable.updateItem(e.pantryItemId, { storeId: null }));
+      // Unpurchased and out-of-stock items keep both their `low` status AND
+      // their store assignment. Clearing storeId here used to be how a
+      // completed store was stopped from immediately reactivating, but
+      // `completedStopIds` now records that directly. Nulling it also erased
+      // the store from the shopping list (which groups purely by item.storeId)
+      // and made the items read as "needs a store" in the pantry — see
+      // entryStopPlacement.
     }
 
     // Commit to durable state exactly once when trip_summary is reached.
