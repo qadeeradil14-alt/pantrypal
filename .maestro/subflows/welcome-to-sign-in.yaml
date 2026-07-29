@@ -1,4 +1,4 @@
-appId: com.pantrypal.app
+appId: com.hewadadil.pantrypal
 ---
 - tapOn:
-    id: auth-welcome-sign-in
+    text: "Sign in"

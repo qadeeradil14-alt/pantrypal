@@ -47,6 +47,7 @@ case "$CMD" in
     echo "→ Typechecking…"
     npx tsc --noEmit
     echo "✓ Types clean."
+    bash scripts/preflight-ota.sh
     echo "→ Publishing OTA to production (from $(pwd))…"
     eas update --branch production --environment production --message "$MSG"
     echo "✓ OTA published. Force-close + reopen the app twice to apply."

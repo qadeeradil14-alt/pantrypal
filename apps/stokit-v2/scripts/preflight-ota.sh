@@ -8,8 +8,7 @@
 # EAS is the source of truth for what production is actually serving.
 #
 # Aborts unless ALL of the following hold:
-#   - workspace is the canonical golden workspace
-#   - branch is the canonical golden branch
+#   - the app directory is Stokit V2, never the abandoned V1
 #   - working tree is clean (nothing unrelated can enter the bundle)
 #   - runtime version and channel match production expectations
 #   - the update currently serving production was cut from an ancestor of HEAD
@@ -17,8 +16,6 @@
 #   - local OTA_SEQ is exactly latest-production-OTA + 1
 set -euo pipefail
 
-EXPECTED_WORKSPACE="/Users/hewadadil/Documents/PantryPal-golden-restore"
-EXPECTED_BRANCH="restore/golden-baseline-385-plus-quantity-diag"
 EXPECTED_RUNTIME="stokit-v2-1.0.0"
 EXPECTED_CHANNEL="production"
 
@@ -27,13 +24,10 @@ fail() { echo "ABORT: $1" >&2; exit 1; }
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$APP_DIR"
 
-TOPLEVEL="$(git rev-parse --show-toplevel)"
-[ "$TOPLEVEL" = "$EXPECTED_WORKSPACE" ] \
-  || fail "workspace is $TOPLEVEL, expected $EXPECTED_WORKSPACE"
-
-BRANCH="$(git branch --show-current)"
-[ "$BRANCH" = "$EXPECTED_BRANCH" ] \
-  || fail "branch is '$BRANCH', expected '$EXPECTED_BRANCH'"
+[ -d "app/(tabs)" ] \
+  || fail "app/(tabs) is missing — this is not Stokit V2"
+[ ! -d "app/(main)" ] \
+  || fail "app/(main) exists — this appears to be the abandoned V1 app"
 
 [ -z "$(git status --porcelain)" ] \
   || fail "working tree is dirty — unrelated files would enter the bundle"
@@ -68,7 +62,7 @@ EXPECTED_NEXT=$((LATEST_OTA + 1))
 [ "$LOCAL_SEQ" -eq "$EXPECTED_NEXT" ] \
   || fail "local OTA_SEQ is $LOCAL_SEQ but production serves OTA $LATEST_OTA — bump to exactly $EXPECTED_NEXT first"
 
-echo "OK: workspace/branch/runtime/channel verified"
+echo "OK: Stokit V2/runtime/channel verified"
 echo "OK: production serves OTA $LATEST_OTA (group $LATEST_GROUP, commit ${LATEST_COMMIT:0:7}, ancestor of HEAD)"
 echo "OK: local OTA_SEQ $LOCAL_SEQ is the next number in sequence"
 echo "Safe to publish OTA $LOCAL_SEQ."

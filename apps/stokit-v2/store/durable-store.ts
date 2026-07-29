@@ -57,6 +57,7 @@ import { refreshWidgets } from '../core/services/widgets';
 import { findDuplicateStore } from '../core/services/storeDuplicates';
 import { createLatestSnapshotQueue } from '../core/services/latestSnapshotQueue';
 import { shoppingCapabilities } from '../core/services/shoppingAccess';
+import { changedFields, hasChangedFields } from '../core/services/changedFields';
 import { useHouseholdStore } from './household-store';
 
 let persistedDurableState = false;
@@ -257,9 +258,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       const { getStorageLocation } = require('../core/services/itemClassifier');
       const existing = get().items.find((item) => normalizeItemName(item.name) === normalizeItemName(input.name));
       if (existing) {
-        const touchesStatus = input.status !== undefined || input.storeId !== undefined;
-        const updated: PantryItem = {
-          ...existing,
+        const candidate: Partial<PantryItem> = {
           name: input.name.trim(),
           quantity: input.quantity,
           unit: input.unit,
@@ -267,6 +266,13 @@ export const useDurableStore = create<DurableStore>((set, get) => {
           storageLocation: input.storageLocation ?? existing.storageLocation,
           storeId: input.storeId ?? existing.storeId,
           expiryDate: input.expiryDate ?? existing.expiryDate,
+        };
+        const meaningfulPatch = changedFields(existing, candidate);
+        if (!Object.keys(meaningfulPatch).length) return existing;
+        const touchesStatus = 'status' in meaningfulPatch || 'storeId' in meaningfulPatch;
+        const updated: PantryItem = {
+          ...existing,
+          ...meaningfulPatch,
           updatedAt: nextTimestamp(existing.updatedAt),
           ...(touchesStatus ? { statusUpdatedAt: nextTimestamp(existing.statusUpdatedAt) } : {}),
         };
@@ -311,21 +317,25 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     },
 
     updateItem: (id, patch) => {
-      const diagBefore = 'quantity' in patch ? get().items.find((it) => it.id === id) : undefined; // DIAG
-      const touchesStatus = 'status' in patch || 'storeId' in patch;
+      const current = get().items.find((item) => item.id === id);
+      if (!current) return;
+      const meaningfulPatch = changedFields(current, patch);
+      if (!Object.keys(meaningfulPatch).length) return;
+      const diagBefore = 'quantity' in meaningfulPatch ? current : undefined;
+      const touchesStatus = 'status' in meaningfulPatch || 'storeId' in meaningfulPatch;
       set((s) => ({
         items: s.items.map((it) =>
           it.id === id
             ? {
                 ...it,
-                ...patch,
+                ...meaningfulPatch,
                 updatedAt: nextTimestamp(it.updatedAt),
                 ...(touchesStatus ? { statusUpdatedAt: nextTimestamp(it.statusUpdatedAt) } : {}),
               }
             : it
         ),
       }));
-      if ('quantity' in patch) { // DIAG: temporary — remove after OTA 389 investigation
+      if ('quantity' in meaningfulPatch) { // DIAG: temporary — remove after OTA 389 investigation
         const after = get().items.find((it) => it.id === id);
         syncDiag('local_item_edit', {
           itemId: id, field: 'quantity',
@@ -342,6 +352,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
 
     setItemStatus: (id, status) => {
       const item = get().items.find((it) => it.id === id);
+      if (!item || item.status === status) return;
       set((s) => ({
         items: s.items.map((it) =>
           it.id === id
@@ -361,7 +372,15 @@ export const useDurableStore = create<DurableStore>((set, get) => {
 
     clearShoppingEntries: (entries) => {
       if (!entries.length) return;
-      const entryIds = new Set(entries.map((entry) => entry.itemId));
+      const entryIds = new Set(
+        entries
+          .map((entry) => entry.itemId)
+          .filter((id) => {
+            const item = get().items.find((candidate) => candidate.id === id);
+            return item && (item.status !== 'stocked' || item.storeId !== null);
+          }),
+      );
+      if (!entryIds.size) return;
       set((s) => ({
         items: s.items.map((item) =>
           entryIds.has(item.id)
@@ -381,7 +400,13 @@ export const useDurableStore = create<DurableStore>((set, get) => {
 
     assignItemsToStore: (ids, storeId) => {
       if (!ids.length) return;
-      const idSet = new Set(ids);
+      const requestedIds = new Set(ids);
+      const idSet = new Set(
+        get().items
+          .filter((item) => requestedIds.has(item.id) && item.storeId !== storeId)
+          .map((item) => item.id),
+      );
+      if (!idSet.size) return;
       set((s) => ({
         items: s.items.map((item) =>
           idSet.has(item.id)
@@ -398,6 +423,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
 
     resetShoppingList: () => {
       if (!currentShoppingAccess().canStartTrip) return;
+      if (!get().items.some((item) => item.status === 'low' || item.status === 'expiring')) return;
       set((s) => ({
         items: s.items.map((item) =>
           item.status === 'low' || item.status === 'expiring'
@@ -416,7 +442,9 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     },
 
     deleteItem: (id) => {
-      const itemUpdatedAt = get().items.find((item) => item.id === id)?.updatedAt ?? 0;
+      const item = get().items.find((candidate) => candidate.id === id);
+      if (!item) return;
+      const itemUpdatedAt = item.updatedAt;
       const previousDeletedAt = get().deletedItems?.find((tombstone) => tombstone.id === id)?.deletedAt ?? 0;
       const at = nextTimestamp(Math.max(itemUpdatedAt, previousDeletedAt));
       set((s) => ({
@@ -465,9 +493,15 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     },
 
     updateStore: (id, patch) => {
+      const current = get().stores.find((store) => store.id === id);
+      if (!current) return;
+      const meaningfulPatch = changedFields(current, patch);
+      if (!Object.keys(meaningfulPatch).length) return;
       set((s) => ({
         stores: s.stores.map((st) =>
-          st.id === id ? { ...st, ...patch, updatedAt: now() } : st
+          st.id === id
+            ? { ...st, ...meaningfulPatch, updatedAt: nextTimestamp(st.updatedAt) }
+            : st
         ),
       }));
       persist();
@@ -476,6 +510,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
 
     deleteStore: (id) => {
       const currentStore = get().stores.find((store) => store.id === id);
+      if (!currentStore) return;
       const previousDeletedAt = get().deletedStores?.find((entry) => entry.id === id)?.deletedAt;
       const deletedAt = nextTimestamp(
         Math.max(currentStore?.updatedAt ?? 0, previousDeletedAt ?? 0),
@@ -526,6 +561,10 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     removeTrip: (tripId, receiptIds) => {
       const receiptSet = new Set(receiptIds);
       const trip = get().trips.find((entry) => entry.id === tripId);
+      const existingReceiptIds = get().receipts
+        .filter((receipt) => receiptSet.has(receipt.id))
+        .map((receipt) => receipt.id);
+      if (!trip && !existingReceiptIds.length) return;
       const tripDeletedAt = nextTimestamp(Math.max(
         trip?.completedAt ?? 0,
         get().deletedTrips?.find((entry) => entry.id === tripId)?.deletedAt ?? 0,
@@ -551,6 +590,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
 
     closeTrip: (tripId) => {
       if (!tripId) return;
+      if (get().closedTripIds?.some((entry) => entry.id === tripId)) return;
       set((s) => ({
         closedTripIds: mergeTombstones(s.closedTripIds, [{ id: tripId, deletedAt: now() }]),
       }));
@@ -558,10 +598,14 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     },
 
     updateReceipt: (receiptId, patch) => {
+      const current = get().receipts.find((receipt) => receipt.id === receiptId);
+      if (!current) return;
+      const meaningfulPatch = changedFields(current, patch);
+      if (!Object.keys(meaningfulPatch).length) return;
       set((s) => ({
         receipts: s.receipts.map((r) =>
           r.id === receiptId
-            ? { ...r, ...patch, updatedAt: nextTimestamp(r.updatedAt ?? r.createdAt) }
+            ? { ...r, ...meaningfulPatch, updatedAt: nextTimestamp(r.updatedAt ?? r.createdAt) }
             : r
         ),
       }));
@@ -595,21 +639,25 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         eventType === 'MARK_OUT_OF_STOCK' ? 'remove' :
         eventType === 'FINISH_STORE' || eventType === 'FINISH_TRIP' || eventType === 'FINISH_TRIP_EARLY' || eventType === 'END_TRIP' ? 'finish' :
         eventType ?? 'unknown';
-      console.log(`[Shopping Sync] active_session_mutation_local action=${action} itemCount=${itemCount} pickedCount=${pickedCount} sessionId=${sessionId}`);
-      console.log(`[Shopping Sync] active_session_snapshot_write_requested action=${action} itemCount=${itemCount} pickedCount=${pickedCount} sessionId=${sessionId}`);
-      if (eventType === 'START_TRIP') console.log('[Shopping Sync] trip_start synced', session?.tripId ?? 'none');
-      if (eventType === 'TOGGLE_PICK' || eventType === 'SET_PICK') console.log('[Shopping Sync] item_checked synced', session?.tripId ?? 'none');
-      if (eventType === 'END_TRIP' || eventType === 'FINISH_TRIP' || eventType === 'FINISH_TRIP_EARLY') console.log('[Shopping Sync] trip_end synced', session?.tripId ?? 'none');
+      if (__DEV__) {
+        console.log(`[Shopping Sync] active_session_mutation_local action=${action} itemCount=${itemCount} pickedCount=${pickedCount} sessionId=${sessionId}`);
+        console.log(`[Shopping Sync] active_session_snapshot_write_requested action=${action} itemCount=${itemCount} pickedCount=${pickedCount} sessionId=${sessionId}`);
+        if (eventType === 'START_TRIP') console.log('[Shopping Sync] trip_start synced', session?.tripId ?? 'none');
+        if (eventType === 'TOGGLE_PICK' || eventType === 'SET_PICK') console.log('[Shopping Sync] item_checked synced', session?.tripId ?? 'none');
+        if (eventType === 'END_TRIP' || eventType === 'FINISH_TRIP' || eventType === 'FINISH_TRIP_EARLY') console.log('[Shopping Sync] trip_end synced', session?.tripId ?? 'none');
+      }
       persist();
     },
 
     updatePrefs: (patch) => {
+      if (!hasChangedFields(get().prefs, patch)) return;
       set((s) => {
+        const meaningfulPatch = changedFields(s.prefs, patch);
         const prefsUpdatedAt = { ...(s.prefsUpdatedAt ?? {}) };
-        for (const key of Object.keys(patch) as (keyof HouseholdPrefs)[]) {
+        for (const key of Object.keys(meaningfulPatch) as (keyof HouseholdPrefs)[]) {
           prefsUpdatedAt[key] = nextTimestamp(prefsUpdatedAt[key]);
         }
-        return { prefs: { ...s.prefs, ...patch }, prefsUpdatedAt };
+        return { prefs: { ...s.prefs, ...meaningfulPatch }, prefsUpdatedAt };
       });
       persist();
     },

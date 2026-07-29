@@ -1,0 +1,21 @@
+appId: com.hewadadil.pantrypal
+---
+- launchApp:
+    clearState: true
+- tapOn:
+    text: "Skip onboarding"
+    optional: true
+- extendedWaitUntil:
+    visible: "Everything you need, ready when you are."
+    timeout: 30000
+- assertVisible: "Create account"
+- assertVisible: "Sign in"
+- assertVisible: "Use invite code"
+- tapOn: "Sign in"
+- extendedWaitUntil:
+    visible: "Welcome back"
+    timeout: 15000
+- assertVisible: "Email"
+- assertVisible: "Password"
+- assertVisible: "Forgot password?"
+- assertVisible: "Use invite code"

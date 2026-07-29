@@ -1,4 +1,4 @@
-appId: com.pantrypal.app
+appId: com.hewadadil.pantrypal
 ---
 - tapOn:
     id: setup-continue-pantry

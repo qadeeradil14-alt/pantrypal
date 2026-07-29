@@ -1,20 +1,24 @@
-appId: com.pantrypal.app
+appId: com.hewadadil.pantrypal
 ---
-- tapOn:
-    id: tab-receipts
+- assertVisible: "Items to Buy"
+- assertVisible: "Pantry Items"
+- tapOn: "Shopping"
 - extendedWaitUntil:
-    visible:
-      id: receipts-header
+    visible: "Shopping"
     timeout: 15000
-- tapOn:
-    id: tab-stores
+- tapOn: "Stores"
 - extendedWaitUntil:
-    visible:
-      id: stores-header
+    visible: "Where you shop"
     timeout: 15000
-- tapOn:
-    id: tab-settings
+- tapOn: "Receipts"
 - extendedWaitUntil:
-    visible:
-      id: settings-header
+    visible: "Spending"
+    timeout: 15000
+- tapOn: "Activity"
+- extendedWaitUntil:
+    visible: "History"
+    timeout: 15000
+- tapOn: "Home"
+- extendedWaitUntil:
+    visible: "Items to Buy"
     timeout: 15000

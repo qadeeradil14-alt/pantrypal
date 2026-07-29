@@ -562,8 +562,11 @@ export function reduce(
 
     case 'UPDATE_QUANTITY': {
       if (session.status !== 'shopping_store') return session;
+      const current = session.entries.find((entry) => entry.itemId === event.itemId);
+      const quantity = Math.max(1, event.quantity);
+      if (!current || current.quantity === quantity) return session;
       const entries = session.entries.map((e) =>
-        e.itemId === event.itemId ? { ...e, quantity: Math.max(1, event.quantity) } : e,
+        e.itemId === event.itemId ? { ...e, quantity } : e,
       );
       return { ...session, entries };
     }

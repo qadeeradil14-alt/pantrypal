@@ -81,7 +81,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
           // pairing folds now, not only an exact status match — see
           // foldRemoteActiveSession for why.
           if (saved.tripId && isClosedTripId(saved.tripId)) {
-            console.log('[Shopping Sync] active_session_storage_rehydrate_ignored reason=trip_closed');
+            if (__DEV__) console.log('[Shopping Sync] active_session_storage_rehydrate_ignored reason=trip_closed');
             set({ session: initialSession });
             AsyncStorage.removeItem(SESSION_KEY).catch(() => {});
             set({ hydrated: true });
@@ -89,18 +89,18 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
           }
           if (durableSession && durableSession.tripId === saved.tripId) {
             const merged = foldRemoteActiveSession(saved, durableSession as ShoppingSession, isClosedTripId);
-            console.log('[Shopping Sync] active_session_storage_rehydrate_merged reason=same_trip');
+            if (__DEV__) console.log('[Shopping Sync] active_session_storage_rehydrate_merged reason=same_trip');
             set({ session: merged, hydrated: true });
             return;
           }
           if (durableSession && (durableSession.startedAt ?? 0) > (saved.startedAt ?? 0)) {
-            console.log('[Shopping Sync] active_session_storage_rehydrate_ignored reason=remote_newer');
+            if (__DEV__) console.log('[Shopping Sync] active_session_storage_rehydrate_ignored reason=remote_newer');
             set({ session: durableSession as ShoppingSession });
             set({ hydrated: true });
             return;
           }
           const stats = sessionStats(saved);
-          console.log(`[Shopping Sync] active_session_storage_rehydrated sessionId=${stats.sessionId} itemCount=${stats.itemCount}`);
+          if (__DEV__) console.log(`[Shopping Sync] active_session_storage_rehydrated sessionId=${stats.sessionId} itemCount=${stats.itemCount}`);
           set({ session: saved });
         }
       }
