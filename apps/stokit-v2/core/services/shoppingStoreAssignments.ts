@@ -34,28 +34,38 @@ export function assignShoppingItemToStore(
   ];
 }
 
-export function assignShoppingItemToStorePreservingLegacy(
-  assignments: ShoppingStoreAssignment[] | undefined,
-  item: Pick<PantryItem, 'id' | 'storeId'>,
-  storeId: string,
-  at = Date.now(),
-): ShoppingStoreAssignment[] {
-  const withLegacy = item.storeId
-    ? assignShoppingItemToStore(assignments, item.id, item.storeId, at)
-    : assignments ?? [];
-  return assignShoppingItemToStore(withLegacy, item.id, storeId, at);
-}
-
 export function activeShoppingStoreIds(
   item: PantryItem,
   assignments: ShoppingStoreAssignment[] | undefined,
 ): string[] {
-  const assigned = (assignments ?? [])
-    .filter((assignment) => assignment.pantryItemId === item.id && assignment.active)
+  const itemAssignments = (assignments ?? [])
+    .filter((assignment) => assignment.pantryItemId === item.id);
+  const assigned = itemAssignments
+    .filter((assignment) => assignment.active)
     .sort((a, b) => a.updatedAt - b.updatedAt || a.id.localeCompare(b.id))
     .map((assignment) => assignment.storeId);
-  if (assigned.length > 0) return [...new Set(assigned)];
+  if (itemAssignments.length > 0) return [...new Set(assigned)];
   return item.storeId ? [item.storeId] : [];
+}
+
+export function deactivateShoppingItemStore(
+  assignments: ShoppingStoreAssignment[] | undefined,
+  pantryItemId: string,
+  storeId: string,
+  at = Date.now(),
+): ShoppingStoreAssignment[] {
+  const id = shoppingStoreAssignmentId(pantryItemId, storeId);
+  let changed = false;
+  const next = (assignments ?? []).map((assignment) => {
+    if (assignment.id !== id || !assignment.active) return assignment;
+    changed = true;
+    return {
+      ...assignment,
+      active: false,
+      updatedAt: nextTimestamp(assignment.updatedAt, at),
+    };
+  });
+  return changed ? next : assignments ?? [];
 }
 
 export function deactivateShoppingItemStores(

@@ -67,7 +67,7 @@ test('every central durable mutation drops unchanged writes before persistence',
   assert.match(source, /closeTrip:[\s\S]*?if \(get\(\)\.closedTripIds\?\.some\(\(entry\) => entry\.id === tripId\)\) return;/);
   assert.match(source, /updateReceipt:[\s\S]*?changedFields\(current, patch\)/);
   assert.match(source, /updatePrefs:[\s\S]*?hasChangedFields\(get\(\)\.prefs, patch\)/);
-  assert.match(source, /resetShoppingList:[\s\S]*?if \(!get\(\)\.items\.some\([\s\S]*?\)\) return;/);
+  assert.match(source, /resetShoppingList:[\s\S]*?const shoppingItemIds = get\(\)\.items[\s\S]*?if \(!shoppingItemIds\.length\) return;/);
 });
 
 test('release config does not request microphone access for photo-only receipt scanning', () => {

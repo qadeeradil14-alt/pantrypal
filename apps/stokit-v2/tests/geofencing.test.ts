@@ -239,7 +239,8 @@ test('shopping start re-registers geofences when reminders are already running',
   const screen = readFileSync(new URL('../app/(tabs)/shopping.tsx', import.meta.url), 'utf8');
 
   assert.match(screen, /isGeofencingRunning\(\)/);
-  assert.match(screen, /startGeofencing\(stores, nextItems\)/);
+  assert.match(screen, /startGeofencing\(stores, items\)/);
+  assert.doesNotMatch(screen, /const nextItems = items\.map/);
 });
 
 // ── Item-level mutations must re-register geofences ───────────────────────────

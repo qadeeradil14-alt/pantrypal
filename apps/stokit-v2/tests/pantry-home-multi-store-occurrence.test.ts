@@ -6,7 +6,7 @@ import {
 } from '../core/shopping-machine';
 import { shoppingGroups } from '../core/services/shoppingGroups';
 import {
-  assignShoppingItemToStorePreservingLegacy,
+  assignShoppingItemToStore,
   mergeShoppingStoreAssignments,
   shoppingEntryDraftsFromAssignments,
 } from '../core/services/shoppingStoreAssignments';
@@ -34,9 +34,9 @@ test('owner/member Pantry assignments merge without collapsing item/store occurr
     { id: 'banana', storeId: 'costco' },
   ].reduce(
     (assignments, value, index) =>
-      assignShoppingItemToStorePreservingLegacy(
+      assignShoppingItemToStore(
         assignments,
-        { id: value.id, storeId: null },
+        value.id,
         value.storeId,
         20 + index,
       ),
@@ -47,9 +47,9 @@ test('owner/member Pantry assignments merge without collapsing item/store occurr
     { id: 'banana', storeId: 'safeway' },
   ].reduce(
     (assignments, value, index) =>
-      assignShoppingItemToStorePreservingLegacy(
+      assignShoppingItemToStore(
         assignments,
-        { id: value.id, storeId: null },
+        value.id,
         value.storeId,
         30 + index,
       ),
@@ -76,30 +76,30 @@ test('Pantry/Home keeps Apple and Banana at Costco and Safeway as four session o
   ];
   let persistedAssignments: ShoppingStoreAssignment[] = [];
 
-  persistedAssignments = assignShoppingItemToStorePreservingLegacy(
+  persistedAssignments = assignShoppingItemToStore(
     persistedAssignments,
-    items[0],
+    items[0].id,
     'costco',
     10,
   );
   items = items.map((value) => value.id === 'apple' ? { ...value, storeId: 'costco' } : value);
-  persistedAssignments = assignShoppingItemToStorePreservingLegacy(
+  persistedAssignments = assignShoppingItemToStore(
     persistedAssignments,
-    items[1],
+    items[1].id,
     'costco',
     11,
   );
   items = items.map((value) => value.id === 'banana' ? { ...value, storeId: 'costco' } : value);
-  persistedAssignments = assignShoppingItemToStorePreservingLegacy(
+  persistedAssignments = assignShoppingItemToStore(
     persistedAssignments,
-    items[0],
+    items[0].id,
     'safeway',
     12,
   );
   items = items.map((value) => value.id === 'apple' ? { ...value, storeId: 'safeway' } : value);
-  persistedAssignments = assignShoppingItemToStorePreservingLegacy(
+  persistedAssignments = assignShoppingItemToStore(
     persistedAssignments,
-    items[1],
+    items[1].id,
     'safeway',
     13,
   );

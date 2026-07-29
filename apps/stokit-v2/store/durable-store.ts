@@ -17,6 +17,7 @@ import type {
   PriceEntry,
   Receipt,
   ShoppingEntry,
+  ShoppingStoreAssignment,
   SharedShoppingSession,
   Store,
   StorageLocation,
@@ -28,7 +29,7 @@ import { remoteShoppingSessionAction } from '../core/services/shoppingSessionSyn
 import { hasValidStoreCoordinates } from '../core/services/storeCoordinates';
 import {
   assignShoppingItemToStore,
-  assignShoppingItemToStorePreservingLegacy,
+  deactivateShoppingItemStore,
   deactivateShoppingItemStores,
   mergeShoppingStoreAssignments,
 } from '../core/services/shoppingStoreAssignments';
@@ -70,6 +71,35 @@ let persistedDurableState = false;
 
 export function hasPersistedDurableState(): boolean {
   return persistedDurableState;
+}
+
+function logShoppingAssignmentMutation(
+  source:
+    | 'assignItemToStore'
+    | 'assignItemsToStore'
+    | 'clearShoppingEntries'
+    | 'resetShoppingList',
+  pantryItemIds: string[],
+  storeId: string | null,
+  before: ShoppingStoreAssignment[],
+  after: ShoppingStoreAssignment[],
+): void {
+  const snapshot = (assignments: ShoppingStoreAssignment[]) =>
+    assignments
+      .filter((assignment) => pantryItemIds.includes(assignment.pantryItemId))
+      .map(({ id, pantryItemId, storeId: assignmentStoreId, active }) => ({
+        id,
+        pantryItemId,
+        storeId: assignmentStoreId,
+        active,
+      }));
+  syncDiag('shopping_assignment_mutation', {
+    source,
+    pantryItemIds,
+    requestedStoreId: storeId,
+    before: snapshot(before),
+    after: snapshot(after),
+  });
 }
 
 interface DurableStore extends DurableState {
@@ -288,9 +318,9 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         set((s) => ({
           items: consolidatePantryItems(s.items.map((item) => item.id === existing.id ? updated : item)),
           shoppingStoreAssignments: input.storeId
-            ? assignShoppingItemToStorePreservingLegacy(
+            ? assignShoppingItemToStore(
                 s.shoppingStoreAssignments,
-                existing,
+                existing.id,
                 input.storeId,
               )
             : s.shoppingStoreAssignments,
@@ -398,34 +428,51 @@ export const useDurableStore = create<DurableStore>((set, get) => {
 
     clearShoppingEntries: (entries) => {
       if (!entries.length) return;
-      const pantryItemIds = new Set(
-        entries
-          .map((entry) => entry.pantryItemId)
-          .filter((id) => {
-            const item = get().items.find((candidate) => candidate.id === id);
-            return item && (item.status !== 'stocked' || item.storeId !== null);
-          }),
+      const pantryItemIds = new Set(entries.map((entry) => entry.pantryItemId));
+      const assignmentsBefore = get().shoppingStoreAssignments ?? [];
+      const assignments = entries.reduce(
+        (current, entry) =>
+          deactivateShoppingItemStore(
+            current,
+            entry.pantryItemId,
+            entry.storeId,
+          ),
+        assignmentsBefore,
       );
-      if (!pantryItemIds.size) return;
+      const remainingStoreByItem = new Map<string, string>();
+      for (const assignment of assignments) {
+        if (assignment.active && pantryItemIds.has(assignment.pantryItemId)) {
+          remainingStoreByItem.set(assignment.pantryItemId, assignment.storeId);
+        }
+      }
       set((s) => ({
         items: s.items.map((item) =>
           pantryItemIds.has(item.id)
             ? {
                 ...item,
-                status: 'stocked',
-                storeId: null,
+                status: remainingStoreByItem.has(item.id) ? item.status : 'stocked',
+                storeId: remainingStoreByItem.get(item.id) ?? null,
                 updatedAt: nextTimestamp(item.updatedAt),
                 statusUpdatedAt: nextTimestamp(item.statusUpdatedAt),
               }
             : item
         ),
+        shoppingStoreAssignments: assignments,
       }));
+      logShoppingAssignmentMutation(
+        'clearShoppingEntries',
+        [...pantryItemIds],
+        null,
+        assignmentsBefore,
+        assignments,
+      );
       persist();
       void refreshGeofencedStoreData();
     },
 
     assignItemsToStore: (ids, storeId) => {
       if (!ids.length) return;
+      const assignmentsBefore = get().shoppingStoreAssignments ?? [];
       const requestedIds = new Set(ids);
       const idSet = new Set(
         get().items
@@ -443,9 +490,9 @@ export const useDurableStore = create<DurableStore>((set, get) => {
           (assignments, id) => {
             const item = s.items.find((candidate) => candidate.id === id);
             return item
-              ? assignShoppingItemToStorePreservingLegacy(
+              ? assignShoppingItemToStore(
                   assignments,
-                  item,
+                  item.id,
                   storeId,
                 )
               : assignments;
@@ -453,6 +500,13 @@ export const useDurableStore = create<DurableStore>((set, get) => {
           s.shoppingStoreAssignments ?? [],
         ),
       }));
+      logShoppingAssignmentMutation(
+        'assignItemsToStore',
+        [...idSet],
+        storeId,
+        assignmentsBefore,
+        get().shoppingStoreAssignments ?? [],
+      );
       persist();
       get().items
         .filter((item) => idSet.has(item.id))
@@ -463,10 +517,11 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     assignItemToStore: (id, storeId) => {
       const item = get().items.find((candidate) => candidate.id === id);
       if (!item) return;
+      const assignmentsBefore = get().shoppingStoreAssignments ?? [];
       const assignments = storeId
-        ? assignShoppingItemToStorePreservingLegacy(
+        ? assignShoppingItemToStore(
             get().shoppingStoreAssignments,
-            item,
+            item.id,
             storeId,
           )
         : deactivateShoppingItemStores(
@@ -489,6 +544,13 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         ),
         shoppingStoreAssignments: assignments,
       }));
+      logShoppingAssignmentMutation(
+        'assignItemToStore',
+        [id],
+        storeId,
+        assignmentsBefore,
+        assignments,
+      );
       persist();
       syncShoppingItem(get().items.find((candidate) => candidate.id === id) ?? null, id);
       void refreshGeofencedStoreData();
@@ -496,7 +558,15 @@ export const useDurableStore = create<DurableStore>((set, get) => {
 
     resetShoppingList: () => {
       if (!currentShoppingAccess().canStartTrip) return;
-      if (!get().items.some((item) => item.status === 'low' || item.status === 'expiring')) return;
+      const shoppingItemIds = get().items
+        .filter((item) => item.status === 'low' || item.status === 'expiring')
+        .map((item) => item.id);
+      if (!shoppingItemIds.length) return;
+      const assignmentsBefore = get().shoppingStoreAssignments ?? [];
+      const assignments = shoppingItemIds.reduce(
+        (current, id) => deactivateShoppingItemStores(current, id),
+        assignmentsBefore,
+      );
       set((s) => ({
         items: s.items.map((item) =>
           item.status === 'low' || item.status === 'expiring'
@@ -509,7 +579,15 @@ export const useDurableStore = create<DurableStore>((set, get) => {
               }
             : item
         ),
+        shoppingStoreAssignments: assignments,
       }));
+      logShoppingAssignmentMutation(
+        'resetShoppingList',
+        shoppingItemIds,
+        null,
+        assignmentsBefore,
+        assignments,
+      );
       persist();
       void refreshGeofencedStoreData();
     },

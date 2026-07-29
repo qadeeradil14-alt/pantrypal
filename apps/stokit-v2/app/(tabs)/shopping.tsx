@@ -288,17 +288,8 @@ export default function ShoppingScreen() {
   ) => {
     if (!access.canStartTrip) return;
     if (tripStartIdRef.current) return;
-    const shoppable = items.filter((i) => i.status === 'low' || i.status === 'expiring');
-    shoppable
-      .filter((i) => !i.storeId)
-      .forEach((i) => updateItem(i.id, { storeId: firstStoreId }));
-    const nextItems = items.map((item) =>
-      shoppable.some((candidate) => candidate.id === item.id && !candidate.storeId)
-        ? { ...item, storeId: firstStoreId, updatedAt: Date.now() }
-        : item
-    );
     const entriesByAssignment = shoppingEntryDraftsFromAssignments(
-      nextItems,
+      items,
       shoppingStoreAssignments,
     );
     const byStore = new Map<string, ShoppingEntryDraft[]>();
@@ -327,7 +318,7 @@ export default function ShoppingScreen() {
         : undefined,
     });
     if (await isGeofencingRunning()) {
-      const result = await startGeofencing(stores, nextItems);
+      const result = await startGeofencing(stores, items);
       if (result === 'no_permission') {
         Alert.alert('Location permission needed', 'Allow "Always" location access in Settings to enable store arrival reminders.');
       } else if (result === 'no_notification_permission') {
