@@ -144,6 +144,62 @@ test('[fixed] several items added quickly all survive', () => {
   }
 });
 
+test('120 member additions cannot move a three-store shopper back to an earlier stop', () => {
+  const base = reduce(initialSession, {
+    type: 'START_TRIP',
+    now: NOW,
+    shopperId: 'nargis',
+    entries: threeStoreEntries(),
+  });
+  let member = { ...base };
+  let shopper = reduce(base, { type: 'FINISH_STORE', now: NOW + 10 });
+  shopper = reduce(shopper, { type: 'SKIP_RECEIPT', now: NOW + 11 });
+  shopper = reduce(shopper, { type: 'CONTINUE_TRIP' });
+  shopper = reduce(shopper, { type: 'ADVANCE_STORE' });
+
+  for (let i = 0; i < 60; i += 1) {
+    member = reduce(member, {
+      type: 'ADD_ENTRY',
+      now: NOW + 100 + i,
+      entry: {
+        itemId: `store-2-item-${i}`,
+        name: `Store 2 item ${i}`,
+        quantity: 1,
+        unit: 'unit',
+        storeId: 's2',
+        picked: false,
+      },
+    });
+    shopper = foldRemoteActiveSession(shopper, member);
+  }
+  assert.equal(shopper.currentIndex, 1);
+
+  shopper = reduce(shopper, { type: 'FINISH_STORE', now: NOW + 200 });
+  shopper = reduce(shopper, { type: 'SKIP_RECEIPT', now: NOW + 201 });
+  shopper = reduce(shopper, { type: 'CONTINUE_TRIP' });
+  shopper = reduce(shopper, { type: 'ADVANCE_STORE' });
+
+  for (let i = 60; i < 120; i += 1) {
+    member = reduce(member, {
+      type: 'ADD_ENTRY',
+      now: NOW + 300 + i,
+      entry: {
+        itemId: `store-3-item-${i}`,
+        name: `Store 3 item ${i}`,
+        quantity: 1,
+        unit: 'unit',
+        storeId: 's3',
+        picked: false,
+      },
+    });
+    shopper = foldRemoteActiveSession(shopper, member);
+  }
+
+  assert.equal(shopper.currentIndex, 2, 'the shopper must remain at the third stop');
+  assert.equal(shopper.status, 'shopping_store');
+  assert.equal(shopper.entries.length, 123, 'all original and member-added entries survive');
+});
+
 test('[fixed] collaborator adding while shopper has already advanced to a later status still folds, never blind-replaces', () => {
   const nargis = shopperAddsCostco();
   let abdul: ShoppingSession = { ...nargis };

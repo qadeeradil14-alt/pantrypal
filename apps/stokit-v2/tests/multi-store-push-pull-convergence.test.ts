@@ -138,6 +138,41 @@ test('[fixed] no entries are lost when the collaborator pushes last instead', ()
   assert.deepEqual(ids(pushed.activeSession as ShoppingSession), ['beans', 'hammer', 'nails', 'soup']);
 });
 
+test('a newer collaborator edit cannot roll the shared trip back to an earlier store', () => {
+  const base = collaboratorAddsStoreB(shopperTrip());
+  const collaborator = { ...base };
+  let shopper = reduce(base, { type: 'FINISH_STORE', now: T + 15 });
+  shopper = reduce(shopper, { type: 'SKIP_RECEIPT', now: T + 16 });
+  shopper = reduce(shopper, { type: 'CONTINUE_TRIP' });
+  shopper = reduce(shopper, { type: 'ADVANCE_STORE' });
+  assert.equal(shopper.currentIndex, 1);
+
+  const pushed = mergeDurableSnapshotForPush(
+    state(shopper, T + 20),
+    state(collaborator, T + 30),
+  ).activeSession as ShoppingSession;
+
+  assert.equal(pushed.currentIndex, 1, 'a later item edit must not return everyone to Store A');
+  assert.equal(pushed.status, 'shopping_store');
+  assert.deepEqual(ids(pushed), ['beans', 'hammer', 'nails', 'soup']);
+});
+
+test('a newer collaborator edit cannot reopen a store after the shopper finishes it', () => {
+  const base = shopperTrip();
+  const collaborator = collaboratorAddsStoreB(base);
+  const shopper = reduce(base, { type: 'FINISH_STORE', now: T + 15 });
+
+  const pushed = mergeDurableSnapshotForPush(
+    state(shopper, T + 20),
+    state(collaborator, T + 30),
+  ).activeSession as ShoppingSession;
+  const shopperAfterPull = foldRemoteActiveSession(shopper, collaborator);
+
+  assert.equal(pushed.status, 'receipt_prompt', 'the cloud must retain the shopper progression');
+  assert.equal(shopperAfterPull.status, 'receipt_prompt', 'the shopper must not regress on pull');
+  assert.deepEqual(ids(pushed), ['beans', 'hammer', 'nails', 'soup']);
+});
+
 test('push and pull share one merge policy (canFoldActiveSessions)', () => {
   const base = shopperTrip();
   const collaborator = collaboratorAddsStoreB(base);

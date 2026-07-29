@@ -229,6 +229,24 @@ export function canFoldActiveSessions(
   return previous.tripId === incoming.tripId;
 }
 
+const SESSION_STATUS_PROGRESS: Record<SharedShoppingSession['status'], number> = {
+  idle: -1,
+  shopping_store: 0,
+  receipt_prompt: 1,
+  store_summary: 2,
+  continue_prompt: 3,
+  next_store_ready: 4,
+  trip_summary: 5,
+};
+
+function compareSessionProgress(
+  a: SharedShoppingSession,
+  b: SharedShoppingSession,
+): number {
+  if (a.currentIndex !== b.currentIndex) return a.currentIndex - b.currentIndex;
+  return SESSION_STATUS_PROGRESS[a.status] - SESSION_STATUS_PROGRESS[b.status];
+}
+
 export function foldRemoteActiveSession<T extends SharedShoppingSession>(
   previous: T | null,
   remoteSession: T,
@@ -245,11 +263,15 @@ export function foldRemoteActiveSession<T extends SharedShoppingSession>(
     }
     return remoteSession;
   }
+  const preferred = compareSessionProgress(previous, remoteSession) > 0
+    ? previous
+    : remoteSession;
+  const other = preferred === previous ? remoteSession : previous;
   const { removedItemIds, removedAt } = resolveRemovedItemIds(previous, remoteSession);
   const skipped = resolveSkippedStoreIds(previous, remoteSession);
   return {
-    ...remoteSession,
-    storeQueue: mergeStoreQueues(remoteSession.storeQueue, previous.storeQueue),
+    ...preferred,
+    storeQueue: mergeStoreQueues(preferred.storeQueue, other.storeQueue),
     entries: mergeShoppingEntries(previous.entries, remoteSession.entries, removedItemIds),
     removedItemIds,
     ...(removedAt !== undefined ? { removedAt } : {}),
