@@ -59,7 +59,7 @@ import { ROUTE_COLORS } from '../../core/services/storeBrands';
 import { classifyItem, categoryLabel } from '../../core/services/itemClassifier';
 import { cheapestRecentPrice, itemPriceHistory, lastPriceAtStore } from '../../core/services/priceHistory';
 import { normalizeItemName } from '../../core/services/pantryItems';
-import { receiptContinuationEvent, receiptLineItemsFromScan, renameReviewItem, reviewReceiptItems, unplannedStores } from '../../core/services/shoppingUx';
+import { receiptContinuationEvent, receiptLineItemsFromScan, renameReviewItem, reviewReceiptItems, storeCompletionCopy, unplannedStores } from '../../core/services/shoppingUx';
 import { isGeofencingRunning, startGeofencing } from '../../core/services/geofencing';
 import { sendHouseholdShoppingAlert } from '../../core/services/notifications';
 import { sendShoppingAlertOnce } from '../../core/services/shoppingAlertOnce';
@@ -356,16 +356,6 @@ export default function ShoppingScreen() {
     void startTripAt(arrivalStoreId, false, localMember?.id ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [arrivalStoreId, session.status]);
-
-  // Skip the per-store summary when another planned stop remains.
-  useEffect(() => {
-    if (
-      (session.status === 'store_summary' || session.status === 'continue_prompt') &&
-      pendingStoreIds(session).length > 0
-    ) {
-      dispatch({ type: 'CONTINUE_TRIP' });
-    }
-  }, [session.status, dispatch]);
 
   // Continue in queue order without duplicating a separate next-stop chooser.
   useEffect(() => {
@@ -1991,6 +1981,15 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
   const bought  = entries.filter((e) => e.picked).length;
   const left    = entries.filter((e) => !e.picked).length;
   const pending = pendingStoreIds(session);
+  const nextStoreName = pending.length > 0
+    ? storeById(pending[0])?.name ?? 'next store'
+    : null;
+  const copy = storeCompletionCopy(
+    store?.name ?? 'Store',
+    session.currentIndex,
+    session.storeQueue.length,
+    nextStoreName,
+  );
   const manualStores = stores.filter((candidate) => !session.storeQueue.includes(candidate.id));
   const spent   = receipt && receipt.status !== 'skipped' ? receipt.amount : 0;
   const completedAt = receipt?.createdAt ?? Date.now();
@@ -2000,7 +1999,7 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
 
   return (
     <Screen>
-      <PageTitle eyebrow="Stop completed" title={store?.name ?? 'Store'} />
+      <PageTitle eyebrow={copy.progressLabel} title={copy.heading} />
 
       <Card style={ssStyles.card}>
         <View style={ssStyles.completedBadge}>
@@ -2038,8 +2037,8 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
             <Ionicons name="navigate" size={20} color={colors.primary} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={ssStyles.routeEyebrow}>UP NEXT</Text>
-            <Text style={ssStyles.routeTitle}>{storeById(pending[0])?.name ?? 'Next store'}</Text>
+            <Text style={ssStyles.routeEyebrow}>SAME TRIP</Text>
+            <Text style={ssStyles.routeTitle}>{copy.nextStopLabel}</Text>
             <Text style={ssStyles.routeMeta}>{pending.length} stop{pending.length > 1 ? 's' : ''} left on your route</Text>
           </View>
         </Card>
@@ -2052,7 +2051,7 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
 
       {pending.length > 0 ? (
         <Button
-          label={`Continue to ${storeById(pending[0])?.name ?? 'next store'}`}
+          label={copy.primaryActionLabel}
           onPress={() => dispatch({ type: 'CONTINUE_TRIP' })}
           style={{ marginTop: spacing.lg }}
         />
@@ -2096,7 +2095,7 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
 
       {pending.length === 0 ? (
         <Button
-          label="End trip"
+          label={copy.primaryActionLabel}
           onPress={finishTrip}
           style={{ marginTop: spacing.md }}
         />

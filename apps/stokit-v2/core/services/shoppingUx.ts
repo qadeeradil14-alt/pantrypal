@@ -40,6 +40,20 @@ export function unplannedStores<T extends { id: string }>(stores: T[], storeQueu
   return stores.filter((store) => !planned.has(store.id));
 }
 
+export function storeCompletionCopy(
+  currentStoreName: string,
+  currentIndex: number,
+  totalStops: number,
+  nextStoreName: string | null,
+) {
+  return {
+    heading: `${currentStoreName} complete`,
+    progressLabel: `Store ${currentIndex + 1} of ${totalStops}`,
+    nextStopLabel: nextStoreName ? `Next stop: ${nextStoreName}` : null,
+    primaryActionLabel: nextStoreName ? `Continue to ${nextStoreName}` : 'End Trip',
+  };
+}
+
 export type ReceiptReviewReason = 'code' | 'duplicate' | null;
 
 export interface ReceiptReviewItem<T> {

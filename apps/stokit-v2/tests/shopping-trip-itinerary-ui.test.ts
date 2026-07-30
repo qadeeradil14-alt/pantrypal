@@ -59,7 +59,7 @@ test('End trip is rendered only when no planned stores remain', () => {
 
   assert.match(
     summary,
-    /pending\.length === 0 \? \(\s*<Button\s+label="End trip"/s,
+    /pending\.length === 0 \? \(\s*<Button\s+label=\{copy\.primaryActionLabel\}/s,
   );
   assert.doesNotMatch(summary, /label=\{hasOptions \? 'Finish trip' : 'Done'\}/);
 });
