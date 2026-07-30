@@ -1,5 +1,5 @@
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Sheet } from '../shared/Sheet';
 import { ChipSelect } from '../shared/Field';
@@ -25,6 +25,10 @@ import { DiagnosticsPanel } from '../diagnostics/DiagnosticsPanel';
 import { collectAddItemSheet } from '../../core/services/diagnostics/collect';
 import { useDiagnosticsAuthorization } from '../../core/services/diagnostics/useDiagnosticsAuthorization';
 import { shouldRenderInlineDiagnostics } from '../../core/services/diagnostics/visibility';
+import {
+  duplicatePurchaseMessage,
+  purchasedAtStoreThisTrip,
+} from '../../core/services/shoppingDuplicateGuard';
 
 interface SelectedItem {
   catalog: PantryCatalogItem;
@@ -61,6 +65,7 @@ export function AddItemSheet({
   const addItem = useDurableStore((s) => s.addItem);
   const updateItem = useDurableStore((s) => s.updateItem);
   const assignItemToStore = useDurableStore((s) => s.assignItemToStore);
+  const activeSession = useDurableStore((s) => s.activeSession);
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<typeof PANTRY_CATEGORIES[number]>('Produce');
   const [selected, setSelected] = useState<Record<string, SelectedItem>>({});
@@ -89,15 +94,16 @@ export function AddItemSheet({
     committingRef.current = false;
   }, [visible]);
 
-  const commitItems = (chosen: SelectedItem[]) => {
-    if (!chosen.length || committingRef.current) return;
-    committingRef.current = true;
-    setIsCommitting(true);
+  /** The pantry item a chosen row resolves to, if it already exists. */
+  const resolveExisting = (catalog: PantryCatalogItem): PantryItem | undefined =>
+    items.find(
+      (item) => item.name.trim().toLowerCase() === catalog.name.trim().toLowerCase(),
+    );
+
+  const writeItems = (chosen: SelectedItem[], allowRepurchase: boolean) => {
     const addedItems: PantryItem[] = [];
     chosen.forEach(({ catalog, quantity, unit, status, storeId }) => {
-      const existing = quickAdd
-        ? items.find((item) => item.name.trim().toLowerCase() === catalog.name.trim().toLowerCase())
-        : undefined;
+      const existing = quickAdd ? resolveExisting(catalog) : undefined;
       const effectiveStoreId = storeId ?? bulkStoreId;
       const item = existing
         ? {
@@ -105,22 +111,76 @@ export function AddItemSheet({
             // A fresh add always starts a new shopping request at the chosen
             // quantity (default 1) — never silently reuse whatever quantity
             // this item last held (e.g. a prior trip's stepper adjustment,
-            // or its "how many I have at home" stocked count).
+            // or its "how many I have at home" stocked count). Note this
+            // OVERWRITES rather than accumulates, so repeated taps or a sync
+            // retry can never inflate the quantity.
             quantity,
             status,
             storeId: effectiveStoreId ?? existing.storeId,
             updatedAt: Date.now(),
           }
-        : addItem({ name: catalog.name, quantity, unit, status, storeId: effectiveStoreId });
+        : addItem(
+            { name: catalog.name, quantity, unit, status, storeId: effectiveStoreId },
+            { allowRepurchase },
+          );
       if (existing) {
         updateItem(existing.id, { quantity: item.quantity, status: item.status });
-        if (effectiveStoreId) assignItemToStore(existing.id, effectiveStoreId);
+        if (effectiveStoreId) {
+          assignItemToStore(existing.id, effectiveStoreId, { allowRepurchase });
+        }
       }
       addedItems.push(item);
     });
     reset();
     onClose();
     if (onItemsAdded) onItemsAdded(addedItems);
+  };
+
+  const commitItems = (chosen: SelectedItem[]) => {
+    if (!chosen.length || committingRef.current) return;
+
+    // Anything already bought at this store on the running trip is held back
+    // and confirmed explicitly, so an accidental re-add can never silently
+    // resurrect a finished store's list. Everything else commits normally.
+    const duplicates = chosen.filter(({ catalog, storeId }) => {
+      const targetStoreId = storeId ?? bulkStoreId;
+      if (!targetStoreId) return false;
+      const existing = resolveExisting(catalog);
+      return Boolean(
+        purchasedAtStoreThisTrip(
+          activeSession,
+          existing?.id ?? catalog.name,
+          catalog.name,
+          targetStoreId,
+        ),
+      );
+    });
+
+    if (duplicates.length > 0) {
+      const targetStoreId = duplicates[0].storeId ?? bulkStoreId;
+      const storeName = stores.find((store) => store.id === targetStoreId)?.name ?? 'this store';
+      Alert.alert(
+        'Already bought',
+        duplicatePurchaseMessage(duplicates.map((d) => d.catalog.name), storeName),
+        [
+          { text: 'Dismiss', style: 'cancel' },
+          {
+            text: 'Add again',
+            onPress: () => {
+              if (committingRef.current) return;
+              committingRef.current = true;
+              setIsCommitting(true);
+              writeItems(chosen, true);
+            },
+          },
+        ],
+      );
+      return;
+    }
+
+    committingRef.current = true;
+    setIsCommitting(true);
+    writeItems(chosen, false);
   };
 
   const submit = () => {

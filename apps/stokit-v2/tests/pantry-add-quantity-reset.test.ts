@@ -31,21 +31,23 @@ const item = (o: Partial<PantryItem> = {}): PantryItem => ({
 
 test('AddItemSheet no longer reuses the stale existing quantity on reactivation', () => {
   const source = readFileSync(join(process.cwd(), 'components/pantry/AddItemSheet.tsx'), 'utf8');
-  const commitItems = source.slice(source.indexOf('const commitItems ='), source.indexOf('const submit ='));
+  // The write path lives in writeItems; commitItems in front of it only decides
+  // whether a duplicate needs confirming first. Slice covers both.
+  const writePath = source.slice(source.indexOf('const writeItems ='), source.indexOf('const submit ='));
 
   assert.match(
-    commitItems,
+    writePath,
     /\{\s*\n\s*\.\.\.existing,\s*\n(?:\s*\/\/.*\n)*\s*quantity,/,
     'the reactivated item must take quantity from the current add action, not from ...existing',
   );
   assert.match(
-    commitItems,
+    writePath,
     /updateItem\(existing\.id, \{ quantity: item\.quantity, status: item\.status \}\)/,
     'the persisted pantry item must be patched with the fresh quantity, not left stale',
   );
   assert.match(
-    commitItems,
-    /if \(effectiveStoreId\) assignItemToStore\(existing\.id, effectiveStoreId\)/,
+    writePath,
+    /assignItemToStore\(existing\.id, effectiveStoreId, \{ allowRepurchase \}\)/,
     'the store request must use the occurrence ledger instead of collapsing into PantryItem.storeId',
   );
 });

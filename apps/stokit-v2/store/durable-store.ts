@@ -33,6 +33,7 @@ import {
   deactivateShoppingItemStores,
   mergeShoppingStoreAssignments,
 } from '../core/services/shoppingStoreAssignments';
+import { isAlreadyPurchasedThisTrip } from '../core/services/shoppingDuplicateGuard';
 export type { StorageLocation as StorageLocationImport };
 import { uid, now, nextTimestamp } from '../core/services/id';
 import {
@@ -102,6 +103,16 @@ function logShoppingAssignmentMutation(
   });
 }
 
+/**
+ * `allowRepurchase` is the caller asserting the user explicitly chose "Add
+ * again" for something already bought at that store on the running trip.
+ * Without it, the assignment is left deactivated rather than silently
+ * resurrecting the finished store's list.
+ */
+interface ShoppingAssignmentOptions {
+  allowRepurchase?: boolean;
+}
+
 interface DurableStore extends DurableState {
   hydrated: boolean;
 
@@ -116,12 +127,12 @@ interface DurableStore extends DurableState {
     status?: PantryStatus;
     storageLocation?: StorageLocation;
     expiryDate?: string | null;
-  }) => PantryItem;
+  }, options?: ShoppingAssignmentOptions) => PantryItem;
   updateItem: (id: string, patch: Partial<PantryItem>) => void;
   setItemStatus: (id: string, status: PantryStatus) => void;
   clearShoppingEntries: (entries: ShoppingEntry[]) => void;
-  assignItemsToStore: (ids: string[], storeId: string) => void;
-  assignItemToStore: (id: string, storeId: string | null) => void;
+  assignItemsToStore: (ids: string[], storeId: string, options?: ShoppingAssignmentOptions) => void;
+  assignItemToStore: (id: string, storeId: string | null, options?: ShoppingAssignmentOptions) => void;
   resetShoppingList: () => void;
   deleteItem: (id: string) => void;
   tombstoneShoppingOccurrence: (entryId: string) => void;
@@ -206,6 +217,26 @@ function snapshot(s: DurableState): DurableState {
 }
 
 export const useDurableStore = create<DurableStore>((set, get) => {
+  /**
+   * Refuses to re-activate a store assignment for something already bought at
+   * that store on the running trip, unless the caller explicitly opted in.
+   *
+   * assignShoppingItemToStore flips a deactivated assignment back to active
+   * with no history awareness, so an accidental re-add silently resurrected a
+   * finished store's list. This is the backstop that makes that impossible
+   * from ANY path — the UI asks first and passes allowRepurchase for a
+   * deliberate "Add again". Planning data only: it never reopens the stop
+   * itself, which stays governed by entryStopPlacement (OTA 442).
+   */
+  const canAssignToStore = (
+    pantryItemId: string,
+    name: string,
+    storeId: string,
+    allowRepurchase?: boolean,
+  ): boolean =>
+    Boolean(allowRepurchase)
+    || !isAlreadyPurchasedThisTrip(get().activeSession, pantryItemId, name, storeId);
+
   // is swallowed by the repository so the in-memory state stays authoritative.
   let persistQueue = Promise.resolve();
   const snapshotPushQueue = createLatestSnapshotQueue(async ({ snap, epoch }: { snap: DurableState; epoch: number }) => {
@@ -293,7 +324,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       set({ hydrated: true });
     },
 
-    addItem: (input) => {
+    addItem: (input, options) => {
       const { getStorageLocation } = require('../core/services/itemClassifier');
       const existing = get().items.find((item) => normalizeItemName(item.name) === normalizeItemName(input.name));
       if (existing) {
@@ -315,13 +346,16 @@ export const useDurableStore = create<DurableStore>((set, get) => {
           updatedAt: nextTimestamp(existing.updatedAt),
           ...(touchesStatus ? { statusUpdatedAt: nextTimestamp(existing.statusUpdatedAt) } : {}),
         };
+        const mayAssign = input.storeId
+          ? canAssignToStore(existing.id, input.name, input.storeId, options?.allowRepurchase)
+          : false;
         set((s) => ({
           items: consolidatePantryItems(s.items.map((item) => item.id === existing.id ? updated : item)),
-          shoppingStoreAssignments: input.storeId
+          shoppingStoreAssignments: mayAssign
             ? assignShoppingItemToStore(
                 s.shoppingStoreAssignments,
                 existing.id,
-                input.storeId,
+                input.storeId!,
               )
             : s.shoppingStoreAssignments,
         }));
@@ -470,7 +504,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       void refreshGeofencedStoreData();
     },
 
-    assignItemsToStore: (ids, storeId) => {
+    assignItemsToStore: (ids, storeId, options) => {
       if (!ids.length) return;
       const assignmentsBefore = get().shoppingStoreAssignments ?? [];
       const requestedIds = new Set(ids);
@@ -489,7 +523,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         shoppingStoreAssignments: [...idSet].reduce(
           (assignments, id) => {
             const item = s.items.find((candidate) => candidate.id === id);
-            return item
+            return item && canAssignToStore(item.id, item.name, storeId, options?.allowRepurchase)
               ? assignShoppingItemToStore(
                   assignments,
                   item.id,
@@ -514,16 +548,18 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       void refreshGeofencedStoreData();
     },
 
-    assignItemToStore: (id, storeId) => {
+    assignItemToStore: (id, storeId, options) => {
       const item = get().items.find((candidate) => candidate.id === id);
       if (!item) return;
       const assignmentsBefore = get().shoppingStoreAssignments ?? [];
       const assignments = storeId
-        ? assignShoppingItemToStore(
-            get().shoppingStoreAssignments,
-            item.id,
-            storeId,
-          )
+        ? (canAssignToStore(item.id, item.name, storeId, options?.allowRepurchase)
+            ? assignShoppingItemToStore(
+                get().shoppingStoreAssignments,
+                item.id,
+                storeId,
+              )
+            : assignmentsBefore)
         : deactivateShoppingItemStores(
             get().shoppingStoreAssignments,
             id,

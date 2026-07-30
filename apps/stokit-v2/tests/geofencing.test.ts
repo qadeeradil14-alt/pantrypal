@@ -254,7 +254,7 @@ test('addItem triggers a geofence refresh on both the merge path and the create 
   // Anchor on the *implementation* signature (no type annotations) — the
   // interface declaration earlier in the file uses a different signature
   // shape ("addItem: (input: {"), so this won't accidentally match that.
-  const addItemBody = store.slice(store.indexOf('addItem: (input) => {'), store.indexOf('updateItem: (id, patch) => {'));
+  const addItemBody = store.slice(store.indexOf('addItem: (input, options) => {'), store.indexOf('updateItem: (id, patch) => {'));
 
   // Two return points inside addItem: merging into an existing item, and
   // creating a brand new one. Both can change storeId/status and must refresh.
