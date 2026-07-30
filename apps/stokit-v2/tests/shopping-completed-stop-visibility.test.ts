@@ -150,19 +150,29 @@ test('three stores each complete independently and all stay in the queue', () =>
 
 // ── 3. Revisiting Costco ──────────────────────────────────────────────────────
 
-test('a newly assigned item reopens a completed store as a second occurrence', () => {
+test('a newly assigned item stays planning-only until the completed store is explicitly revisited', () => {
   let s = startAt('costco', [item('apple', 'Apple', 'costco')]);
   s = completeStore(s, 2000);
   s = reduce(s, { type: 'START_MANUAL_STORE', storeId: 'safeway' });
 
-  // Milk was never shopped at Costco, so assigning it there is a real revisit.
   s = reduce(s, {
     type: 'ADD_ENTRY',
     now: 3000,
     entry: { pantryItemId: 'milk', name: 'Milk', quantity: 1, unit: 'unit', storeId: 'costco', picked: false },
   });
 
-  assert.deepEqual(s.storeQueue, ['costco', 'safeway', 'costco'], 'Costco is queued again for a revisit');
+  assert.deepEqual(s.storeQueue, ['costco', 'safeway']);
+  assert.equal(s.entries.some((entry) => entry.pantryItemId === 'milk'), false);
+
+  s = completeStore(s, 3001);
+  s = reduce(s, { type: 'START_MANUAL_STORE', storeId: 'costco' });
+  s = reduce(s, {
+    type: 'ADD_ENTRY',
+    now: 3002,
+    entry: { pantryItemId: 'milk', name: 'Milk', quantity: 1, unit: 'unit', storeId: 'costco', picked: false },
+  });
+
+  assert.deepEqual(s.storeQueue, ['costco', 'safeway', 'costco']);
   const revisitStop = stopIdForQueueIndex(s, 2);
   assert.notEqual(revisitStop, stopIdForQueueIndex(s, 0), 'the revisit is a distinct occurrence');
   assert.equal(

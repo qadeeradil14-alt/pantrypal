@@ -225,13 +225,11 @@ export function hasCompletedStopForStore(
  * Returns the (possibly extended) queue and the stop the entry joins, or null
  * when the item must NOT be auto-added at all.
  *
- * The null case is deliberately per-item, not per-store. An item that already
- * had an occurrence at a *completed* stop for this store was shopped there and
- * left unpicked (or out of stock); re-adding it appends a phantom second
- * occurrence, so the finished store reappears forever. But an item newly
- * assigned to that store mid-trip has no such occurrence, and *should* reopen
- * the store as a genuine revisit — see the 'reopens that store later in the
- * same trip' case in shopping-machine.test.ts.
+ * Assignments never create a second visit after this trip has completed a
+ * store. They remain planning data until the user explicitly reopens or starts
+ * another visit to that store. This prevents one newly assigned item from
+ * manufacturing a pending stop that subsequent bulk-assigned, already-bought
+ * items can incorrectly join.
  *
  * Single source of truth for the reducer, the screen's sync effect, and the
  * remote reconciler, which previously each reimplemented this math.
@@ -241,15 +239,18 @@ export function entryStopPlacement(
   storeId: string,
   pantryItemId: string,
 ): { storeQueue: string[]; stopId: string } | null {
+  const storeWasCompleted = hasCompletedStopForStore(session, storeId);
   const pendingIndex = session.storeQueue.findIndex(
     (candidate, index) => index >= session.currentIndex && candidate === storeId,
   );
   if (pendingIndex >= 0) {
+    if (storeWasCompleted && pendingIndex !== session.currentIndex) return null;
     return {
       storeQueue: session.storeQueue,
       stopId: stopIdForQueueIndex(session, pendingIndex),
     };
   }
+  if (storeWasCompleted) return null;
   const completed = session.completedStopIds ?? [];
   const alreadyShoppedHere = session.entries.some(
     (entry) =>

@@ -454,7 +454,7 @@ test('item assigned to an already-queued future store keeps that store, no dupli
   assert.equal(currentStoreEntries(s).some((e) => e.pantryItemId === 'pasta'), false, 'not pulled into the current store early');
 });
 
-test('item assigned to a finished store reopens that store later in the same trip', () => {
+test('item assigned to a finished store waits for an explicit revisit', () => {
   let s = startTrip();
   const tripId = s.tripId;
   s = reduce(s, { type: 'FINISH_STORE', now: 2000 });
@@ -467,13 +467,13 @@ test('item assigned to a finished store reopens that store later in the same tri
 
   assert.equal(s.tripId, tripId, 'the active trip remains authoritative');
   assert.equal(currentStoreId(s), 'target', 'the shopper stays at the current store');
-  assert.deepEqual(s.storeQueue, ['aldi', 'target', 'aldi'], 'the finished store is queued as a later revisit');
-  assert.deepEqual(pendingStoreIds(s), ['aldi']);
+  assert.deepEqual(s.storeQueue, ['aldi', 'target']);
+  assert.deepEqual(pendingStoreIds(s), []);
 
   s = reduce(s, { type: 'FINISH_STORE', now: 2300 });
   s = reduce(s, { type: 'SKIP_RECEIPT', now: 2400 });
-  s = reduce(s, { type: 'CONTINUE_TRIP' });
-  s = reduce(s, { type: 'ADVANCE_STORE' });
+  s = reduce(s, { type: 'START_MANUAL_STORE', storeId: 'aldi' });
+  s = reduce(s, { type: 'ADD_ENTRY', entry: entry('bread', 'aldi'), now: 2500 });
 
   assert.equal(currentStoreId(s), 'aldi');
   assert.equal(currentStoreEntries(s).some((e) => e.pantryItemId === 'bread'), true);
@@ -485,11 +485,10 @@ test('revisiting a store keeps one trip summary row and aggregates both receipts
   s = reduce(s, { type: 'SAVE_RECEIPT', amount: 10, status: 'logged', now: 2100 });
   s = reduce(s, { type: 'CONTINUE_TRIP' });
   s = reduce(s, { type: 'ADVANCE_STORE' });
-  s = reduce(s, { type: 'ADD_ENTRY', entry: entry('bread', 'aldi'), now: 2200 });
   s = reduce(s, { type: 'FINISH_STORE', now: 2300 });
   s = reduce(s, { type: 'SAVE_RECEIPT', amount: 20, status: 'logged', now: 2400 });
-  s = reduce(s, { type: 'CONTINUE_TRIP' });
-  s = reduce(s, { type: 'ADVANCE_STORE' });
+  s = reduce(s, { type: 'START_MANUAL_STORE', storeId: 'aldi' });
+  s = reduce(s, { type: 'ADD_ENTRY', entry: entry('bread', 'aldi'), now: 2450 });
   const bread = currentStoreEntries(s).find((entry) => entry.pantryItemId === 'bread')!;
   s = reduce(s, { type: 'SET_PICK', entryId: bread.entryId, picked: true });
   s = reduce(s, { type: 'FINISH_STORE', now: 2500 });
