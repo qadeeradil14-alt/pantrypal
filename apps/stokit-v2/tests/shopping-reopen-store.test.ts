@@ -75,7 +75,7 @@ test('reopening the final store reactivates the exact stop without rebuilding it
   assert.deepEqual(reopened.storeQueue, ['costco']);
 });
 
-test('reopening clears only the selected final stop and preserves earlier completed stops', () => {
+test('reopening the current stop is an in-place undo; reopening an earlier stop creates a new occurrence instead', () => {
   let session = reduce(initialSession, {
     type: 'START_TRIP',
     entries: [
@@ -94,6 +94,9 @@ test('reopening clears only the selected final stop and preserves earlier comple
   session = reduce(session, { type: 'SKIP_RECEIPT', now: 240 });
   const finalStopId = currentStopId(session)!;
 
+  // Reopening the CURRENT stop (finalStopId, costco's second entry — the one
+  // the shopper is resting at) is the original in-place undo: same stopId,
+  // firstStopId's completion untouched.
   const reopened = reduce(session, {
     type: 'REOPEN_STORE',
     stopId: finalStopId,
@@ -103,10 +106,16 @@ test('reopening clears only the selected final stop and preserves earlier comple
   assert.deepEqual(reopened.completedStopIds, [firstStopId]);
   assert.equal(currentStopId(reopened), finalStopId);
   assert.equal(reopened.status, 'shopping_store');
-  assert.equal(
-    reduce(session, { type: 'REOPEN_STORE', stopId: firstStopId, now: 250 }),
-    session,
-  );
+
+  // Reopening the EARLIER, non-current stop (firstStopId) from this same
+  // store_summary resting position never rewinds into it — it creates a NEW,
+  // independent occurrence instead, leaving firstStopId itself completed.
+  const revisited = reduce(session, { type: 'REOPEN_STORE', stopId: firstStopId, now: 250 });
+
+  assert.equal(revisited.status, 'shopping_store');
+  assert.notEqual(currentStopId(revisited), firstStopId, 'a new stop identity, not the original');
+  assert.ok(revisited.completedStopIds.includes(firstStopId), 'the original first stop stays completed');
+  assert.deepEqual(revisited.storeQueue, ['costco', 'costco', 'safeway']);
 });
 
 test('forgotten item joins the reopened stop and re-completion creates no duplicate identities', () => {

@@ -266,11 +266,16 @@ export function entryStopPlacement(
   };
 }
 
-/** Store IDs that are still pending (not yet visited, not explicitly skipped). */
+/** Store IDs that are still pending (not yet visited, not skipped, and not already completed). */
 export function pendingStoreIds(session: ShoppingSession): string[] {
+  const completed = session.completedStopIds ?? [];
   return session.storeQueue
     .slice(session.currentIndex + 1)
-    .filter((id) => !session.skippedStoreIds.includes(id));
+    .filter((_, relIdx) => {
+      const absIdx = session.currentIndex + 1 + relIdx;
+      if (session.skippedStoreIds.includes(session.storeQueue[absIdx])) return false;
+      return !completed.includes(stopIdForQueueIndex(session, absIdx));
+    });
 }
 
 function makeReceipt(
@@ -283,7 +288,13 @@ function makeReceipt(
   now: number,
 ): Receipt {
   return {
-    id: `r_${session.tripId}_${session.currentIndex}`,
+    // Keyed by stopId, not raw currentIndex: REOPEN_STORE's earlier-stop
+    // revisit can land at a queue position an unrelated, already-completed
+    // store used for ITS receipt id, which silently overwrote that receipt
+    // (afterReceipt dedups by id) before this changed. stopId is occurrence-
+    // unique by construction (storeId + visit count), so it can never collide
+    // across two different stops, reopened or not.
+    id: `r_${session.tripId}_${stopIdForQueueIndex(session, session.currentIndex)}`,
     tripId: session.tripId ?? `t_${now}`,
     storeId,
     amount,
@@ -569,24 +580,94 @@ export function reduce(
     }
 
     case 'REOPEN_STORE': {
-      if (session.status !== 'store_summary' && session.status !== 'continue_prompt') return session;
-      if (event.stopId !== currentStopId(session)) return session;
       if (!(session.completedStopIds ?? []).includes(event.stopId)) return session;
-      const reopenedStopAt = {
-        ...(session.reopenedStopAt ?? {}),
-        [event.stopId]: nextTimestamp(
-          Math.max(
-            session.completedStopAt?.[event.stopId] ?? 0,
-            session.reopenedStopAt?.[event.stopId] ?? 0,
+
+      // In-place undo: the shopper is still standing at the stop they just
+      // completed (store_summary/continue_prompt, before choosing what's next),
+      // so currentIndex already points here. Reactivating it touches no queue
+      // order and no other stop's history — this is the StoreSummary "Reopen
+      // store" button's exact, unchanged behavior since before this feature.
+      if (
+        (session.status === 'store_summary' || session.status === 'continue_prompt') &&
+        event.stopId === currentStopId(session)
+      ) {
+        const reopenedStopAt = {
+          ...(session.reopenedStopAt ?? {}),
+          [event.stopId]: nextTimestamp(
+            Math.max(
+              session.completedStopAt?.[event.stopId] ?? 0,
+              session.reopenedStopAt?.[event.stopId] ?? 0,
+            ),
+            event.now,
           ),
-          event.now,
-        ),
-      };
+        };
+        return {
+          ...session,
+          status: 'shopping_store',
+          completedStopIds: session.completedStopIds.filter((stopId) => stopId !== event.stopId),
+          reopenedStopAt,
+        };
+      }
+
+      // Reopening an earlier, already-left-behind stop from the Completed
+      // Stops list (rendered in NextStoreSelector while stores are still
+      // pending, and in StoreSummary once nothing is). The original stop is
+      // immutable from here on: its stopId stays in completedStopIds, its
+      // completedStopAt is never touched, its receipt and entries stay
+      // exactly where they are. What activates is a NEW occurrence of the
+      // same store, with its own stopId, its own (empty, until items are
+      // added) entries, and its own future completion/receipt lifecycle —
+      // identical in kind to any other revisit (see entryStopPlacement /
+      // START_MANUAL_STORE).
+      if (
+        session.status !== 'store_summary' &&
+        session.status !== 'continue_prompt' &&
+        session.status !== 'next_store_ready'
+      ) return session;
+      const stopQueueIndex = session.storeQueue.findIndex(
+        (_, idx) => stopIdForQueueIndex(session, idx) === event.stopId,
+      );
+      if (stopQueueIndex < 0) return session;
+      const storeId = session.storeQueue[stopQueueIndex];
+      const completed = session.completedStopIds ?? [];
+
+      // A revisit already queued and not yet completed — from an earlier
+      // Reopen tap, or merged in from another device — is activated instead
+      // of minting a duplicate.
+      const pendingRevisitIndex = session.storeQueue.findIndex(
+        (candidate, idx) =>
+          idx > session.currentIndex &&
+          candidate === storeId &&
+          !session.skippedStoreIds.includes(candidate) &&
+          !completed.includes(stopIdForQueueIndex(session, idx)),
+      );
+      if (pendingRevisitIndex >= 0) {
+        return { ...session, currentIndex: pendingRevisitIndex, status: 'shopping_store' };
+      }
+
+      // No revisit exists yet — create one. It is inserted directly after this
+      // store's LAST existing occurrence anywhere in the queue (not simply
+      // after currentIndex), so stopIdForStoreOccurrence's same-store
+      // occurrence count for every other entry — reopened or not — is
+      // provably unaffected: nothing belonging to this store's family sits
+      // after the insertion point to be renumbered. Everything else in the
+      // queue keeps its relative order (a stable insertion), so no stop —
+      // completed, skipped, or still pending — is stranded or reclassified.
+      let lastOccurrenceIndex = stopQueueIndex;
+      for (let i = session.storeQueue.length - 1; i > stopQueueIndex; i -= 1) {
+        if (session.storeQueue[i] === storeId) { lastOccurrenceIndex = i; break; }
+      }
+      const insertAt = lastOccurrenceIndex + 1;
+      const storeQueue = [
+        ...session.storeQueue.slice(0, insertAt),
+        storeId,
+        ...session.storeQueue.slice(insertAt),
+      ];
       return {
         ...session,
+        storeQueue,
+        currentIndex: insertAt,
         status: 'shopping_store',
-        completedStopIds: session.completedStopIds.filter((stopId) => stopId !== event.stopId),
-        reopenedStopAt,
       };
     }
 

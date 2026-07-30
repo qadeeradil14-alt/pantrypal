@@ -1971,7 +1971,7 @@ function TripStopsOverview({
 
 // ── 3. Per-store summary ──────────────────────────────────────────────────────
 
-function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubProps) {
+function StoreSummary({ session, dispatch, storeById, ssStyles, nsStyles, colors }: SubProps) {
   const stores = useDurableStore((s) => s.stores);
   const [showAddStore, setShowAddStore] = useState(false);
   const storeId = currentStoreId(session)!;
@@ -2081,6 +2081,46 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, colors }: SubPro
             <Text style={ssStyles.manualStoreName}>Add a new store</Text>
             <Ionicons name="chevron-forward" size={18} color={colors.muted} />
           </Pressable>
+        </View>
+      ) : null}
+
+      {/* Once nothing is pending, next_store_ready — and NextStoreSelector's
+          "Completed stops" list — is unreachable (CONTINUE_TRIP refuses to
+          advance with nothing left). This mirrors that same list here so an
+          EARLIER stop stays reopenable even at the very end of the trip. The
+          current stop itself is excluded — the dedicated "Reopen store"
+          button below already covers it. */}
+      {pending.length === 0 && session.completedStopIds.some((stopId) => stopId !== currentStopId(session)) ? (
+        <View style={{ marginTop: spacing.xl, gap: spacing.sm }}>
+          <Text style={ssStyles.sectionLabel}>Completed stops</Text>
+          {session.completedStopIds
+            .filter((stopId) => stopId !== currentStopId(session))
+            .map((stopId) => {
+              const stopIdx = session.storeQueue.findIndex(
+                (_, idx) => stopIdForQueueIndex(session, idx) === stopId,
+              );
+              const stopStoreId = stopIdx >= 0 ? session.storeQueue[stopIdx] : null;
+              if (!stopStoreId) return null;
+              const stopStore = storeById(stopStoreId);
+              const stopBought = session.entries.filter((e) => e.stopId === stopId && e.picked).length;
+              return (
+                <Card key={stopId} style={[nsStyles.storeCard, { opacity: 0.75 }]}>
+                  <View style={nsStyles.storeRow}>
+                    <StoreChip store={stopStore} name={stopStore?.name ?? '?'} size={40} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={nsStyles.storeName}>{stopStore?.name ?? 'Unknown'}</Text>
+                      <Text style={nsStyles.storeItems}>{stopBought} item{stopBought !== 1 ? 's' : ''} bought</Text>
+                    </View>
+                    <Pressable
+                      onPress={() => dispatch({ type: 'REOPEN_STORE', stopId, now: Date.now() })}
+                      style={{ backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 }}
+                    >
+                      <Text style={{ fontFamily: fonts.sansMedium, fontSize: 13, color: colors.ink }}>Reopen</Text>
+                    </Pressable>
+                  </View>
+                </Card>
+              );
+            })}
         </View>
       ) : null}
 
@@ -2230,6 +2270,39 @@ function NextStoreSelector({ session, dispatch, storeById, styles, nsStyles, col
             <Text style={nsStyles.addStoreBtnText}>Add another stop</Text>
           </Pressable>
         </>
+      )}
+
+      {/* Completed stops — allow reopening any of them */}
+      {session.completedStopIds.length > 0 && (
+        <View style={{ marginTop: spacing.md }}>
+          <Text style={[nsStyles.subtitle, { marginBottom: spacing.sm }]}>Completed stops:</Text>
+          {session.completedStopIds.map((stopId) => {
+            const stopIdx = session.storeQueue.findIndex(
+              (_, idx) => stopIdForQueueIndex(session, idx) === stopId,
+            );
+            const storeId = stopIdx >= 0 ? session.storeQueue[stopIdx] : null;
+            if (!storeId) return null;
+            const store = storeById(storeId);
+            const bought = session.entries.filter(e => e.stopId === stopId && e.picked).length;
+            return (
+              <Card key={stopId} style={[nsStyles.storeCard, { opacity: 0.75 }]}>
+                <View style={nsStyles.storeRow}>
+                  <StoreChip store={store} name={store?.name ?? '?'} size={40} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={nsStyles.storeName}>{store?.name ?? 'Unknown'}</Text>
+                    <Text style={nsStyles.storeItems}>{bought} item{bought !== 1 ? 's' : ''} bought</Text>
+                  </View>
+                  <Pressable
+                    onPress={() => dispatch({ type: 'REOPEN_STORE', stopId, now: Date.now() })}
+                    style={{ backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 }}
+                  >
+                    <Text style={{ fontFamily: fonts.sansMedium, fontSize: 13, color: colors.ink }}>Reopen</Text>
+                  </Pressable>
+                </View>
+              </Card>
+            );
+          })}
+        </View>
       )}
 
       <Pressable
