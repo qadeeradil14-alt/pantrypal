@@ -47,13 +47,17 @@ import { useDurableStore } from '../../store/durable-store';
 import { useHouseholdStore } from '../../store/household-store';
 import { useSessionStore } from '../../store/session-store';
 import {
+  completedStops,
   currentStopId,
   currentStoreEntries,
   currentStoreId,
   entryStopPlacement,
+  pendingStops,
   pendingStoreIds,
+  receiptIdForStop,
   stopIdForQueueIndex,
   type ShoppingSession,
+  type TripStop,
 } from '../../core/shopping-machine';
 import { ROUTE_COLORS } from '../../core/services/storeBrands';
 import { classifyItem, categoryLabel } from '../../core/services/itemClassifier';
@@ -357,15 +361,14 @@ export default function ShoppingScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [arrivalStoreId, session.status]);
 
-  // Continue in queue order without duplicating a separate next-stop chooser.
-  useEffect(() => {
-    if (
-      session.status === 'next_store_ready'
-      && pendingStoreIds(session).length > 0
-    ) {
-      dispatch({ type: 'ADVANCE_STORE' });
-    }
-  }, [session.status, dispatch]);
+  // Deliberately no auto-advance effect here.
+  //
+  // This used to dispatch ADVANCE_STORE the moment status became
+  // next_store_ready, which silently moved the trip to whichever store came
+  // first in queue order. That both removed the shopper's choice of next store
+  // and made the screen listing the other stores unreachable — the reason
+  // reopen controls only ever appeared at the end of a trip. The shopper now
+  // picks explicitly from PostStoreDecision.
 
   const handleResetShopping = () => {
     if (!access.canStartTrip) return;
@@ -1969,32 +1972,77 @@ function TripStopsOverview({
   );
 }
 
-// ── 3. Per-store summary ──────────────────────────────────────────────────────
+// ── 3. Post-store decision ────────────────────────────────────────────────────
 
-function StoreSummary({ session, dispatch, storeById, ssStyles, nsStyles, colors }: SubProps) {
-  const stores = useDurableStore((s) => s.stores);
+/**
+ * The single screen shown after every completed store.
+ *
+ * This replaces the old StoreSummary + NextStoreSelector pair. Those were two
+ * screens for one moment, and the seam between them caused both reported
+ * problems: StoreSummary offered a single forced "Continue to {next}" button,
+ * and the only screen that listed the other stores (NextStoreSelector) was
+ * skipped past by an auto-ADVANCE_STORE effect, so it was effectively
+ * unreachable while any store was still pending. Reopen controls lived there
+ * too, which is why they only appeared at the very end of a trip.
+ *
+ * Everything is now one state: the shopper sees what they just finished, and
+ * chooses what happens next. Nothing advances on its own. A suggestion is
+ * shown, but it is only a label — selection is always explicit.
+ */
+function PostStoreDecision({ session, dispatch, storeById, styles, ssStyles, nsStyles, colors }: SubProps) {
+  const allStores = useDurableStore((s) => s.stores);
   const [showAddStore, setShowAddStore] = useState(false);
+  const [addStoreMode, setAddStoreMode] = useState<'choose' | 'create'>('choose');
+
   const storeId = currentStoreId(session)!;
-  const store   = storeById(storeId);
-  const receipt = session.receipts.find((r) => r.storeId === storeId);
+  const stopId = currentStopId(session)!;
+  const store = storeById(storeId);
+
+  // Matched on the stop's own receipt id, not storeId — after a revisit a
+  // store has more than one receipt, and storeId would find the earlier one.
+  const receipt = session.receipts.find(
+    (r) => r.id === receiptIdForStop(session.tripId, stopId),
+  );
   const entries = currentStoreEntries(session);
-  const bought  = entries.filter((e) => e.picked).length;
-  const left    = entries.filter((e) => !e.picked).length;
-  const pending = pendingStoreIds(session);
-  const nextStoreName = pending.length > 0
-    ? storeById(pending[0])?.name ?? 'next store'
-    : null;
+  const bought = entries.filter((e) => e.picked).length;
+  const left = entries.filter((e) => !e.picked).length;
+
+  const pending = pendingStops(session);
+  const otherCompleted = completedStops(session).filter((s) => s.stopId !== stopId);
+  const availableStores = unplannedStores(allStores, session.storeQueue);
+
   const copy = storeCompletionCopy(
     store?.name ?? 'Store',
     session.currentIndex,
     session.storeQueue.length,
-    nextStoreName,
+    pending.length > 0 ? storeById(pending[0].storeId)?.name ?? 'next store' : null,
   );
-  const manualStores = stores.filter((candidate) => !session.storeQueue.includes(candidate.id));
-  const spent   = receipt && receipt.status !== 'skipped' ? receipt.amount : 0;
+
+  const spent = receipt && receipt.status !== 'skipped' ? receipt.amount : 0;
   const completedAt = receipt?.createdAt ?? Date.now();
-  const finishTrip = () => {
-    dispatch({ type: 'FINISH_TRIP', now: Date.now() });
+
+  const closeAddStore = () => {
+    setShowAddStore(false);
+    setAddStoreMode('choose');
+  };
+
+  const endTrip = () => {
+    if (pending.length === 0) {
+      dispatch({ type: 'FINISH_TRIP', now: Date.now() });
+      return;
+    }
+    Alert.alert(
+      'Finish entire trip?',
+      `${pending.length} stop${pending.length > 1 ? 's' : ''} will be marked as skipped.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Finish trip',
+          style: 'destructive',
+          onPress: () => dispatch({ type: 'FINISH_TRIP', now: Date.now() }),
+        },
+      ],
+    );
   };
 
   return (
@@ -2030,270 +2078,118 @@ function StoreSummary({ session, dispatch, storeById, ssStyles, nsStyles, colors
         </View>
       </Card>
 
-      {/* What's next hint */}
-      {pending.length > 0 ? (
-        <Card style={ssStyles.routeCard}>
-          <View style={ssStyles.routeIcon}>
-            <Ionicons name="navigate" size={20} color={colors.primary} />
+      {/* Undo the completion that just happened, in place — no new occurrence. */}
+      <Button
+        label={`Reopen ${store?.name ?? 'this store'}`}
+        variant="ghost"
+        onPress={() => dispatch({ type: 'REOPEN_STORE', stopId, now: Date.now() })}
+        style={{ marginTop: spacing.md }}
+      />
+
+      {/* Where next — every remaining stop, none of them forced. */}
+      <View style={{ marginTop: spacing.xl }}>
+        <Text style={ssStyles.sectionLabel}>{copy.nextPromptLabel}</Text>
+
+        {pending.length === 0 ? (
+          <View style={[ssStyles.nextHint, ssStyles.completeHint]}>
+            <Ionicons name="checkmark-circle-outline" size={16} color={colors.success} />
+            <Text style={[ssStyles.nextHintText, { color: colors.success }]}>All stops completed!</Text>
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={ssStyles.routeEyebrow}>SAME TRIP</Text>
-            <Text style={ssStyles.routeTitle}>{copy.nextStopLabel}</Text>
-            <Text style={ssStyles.routeMeta}>{pending.length} stop{pending.length > 1 ? 's' : ''} left on your route</Text>
-          </View>
-        </Card>
-      ) : (
-        <View style={[ssStyles.nextHint, ssStyles.completeHint]}>
-          <Ionicons name="checkmark-circle-outline" size={16} color={colors.success} />
-          <Text style={[ssStyles.nextHintText, { color: colors.success }]}>All stops completed!</Text>
-        </View>
-      )}
-
-      {pending.length > 0 ? (
-        <Button
-          label={copy.primaryActionLabel}
-          onPress={() => dispatch({ type: 'CONTINUE_TRIP' })}
-          style={{ marginTop: spacing.lg }}
-        />
-      ) : null}
-
-      {pending.length === 0 ? (
-        <View style={{ marginTop: spacing.xl, gap: spacing.sm }}>
-          <Text style={ssStyles.sectionLabel}>Shopping somewhere else?</Text>
-          {manualStores.map((candidate) => (
-            <Pressable
-              key={candidate.id}
-              onPress={() => dispatch({ type: 'START_MANUAL_STORE', storeId: candidate.id })}
-              style={ssStyles.manualStore}
-            >
-              <StoreChip store={candidate} size={40} />
-              <Text style={ssStyles.manualStoreName}>{candidate.name}</Text>
-              <Ionicons name="chevron-forward" size={18} color={colors.muted} />
-            </Pressable>
-          ))}
-          <Pressable
-            onPress={() => setShowAddStore(true)}
-            style={ssStyles.manualStore}
-          >
-            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' }}>
-              <Ionicons name="add" size={22} color={colors.primary} />
-            </View>
-            <Text style={ssStyles.manualStoreName}>Add a new store</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.muted} />
-          </Pressable>
-        </View>
-      ) : null}
-
-      {/* Once nothing is pending, next_store_ready — and NextStoreSelector's
-          "Completed stops" list — is unreachable (CONTINUE_TRIP refuses to
-          advance with nothing left). This mirrors that same list here so an
-          EARLIER stop stays reopenable even at the very end of the trip. The
-          current stop itself is excluded — the dedicated "Reopen store"
-          button below already covers it. */}
-      {pending.length === 0 && session.completedStopIds.some((stopId) => stopId !== currentStopId(session)) ? (
-        <View style={{ marginTop: spacing.xl, gap: spacing.sm }}>
-          <Text style={ssStyles.sectionLabel}>Completed stops</Text>
-          {session.completedStopIds
-            .filter((stopId) => stopId !== currentStopId(session))
-            .map((stopId) => {
-              const stopIdx = session.storeQueue.findIndex(
-                (_, idx) => stopIdForQueueIndex(session, idx) === stopId,
-              );
-              const stopStoreId = stopIdx >= 0 ? session.storeQueue[stopIdx] : null;
-              if (!stopStoreId) return null;
-              const stopStore = storeById(stopStoreId);
-              const stopBought = session.entries.filter((e) => e.stopId === stopId && e.picked).length;
-              return (
-                <Card key={stopId} style={[nsStyles.storeCard, { opacity: 0.75 }]}>
-                  <View style={nsStyles.storeRow}>
-                    <StoreChip store={stopStore} name={stopStore?.name ?? '?'} size={40} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={nsStyles.storeName}>{stopStore?.name ?? 'Unknown'}</Text>
-                      <Text style={nsStyles.storeItems}>{stopBought} item{stopBought !== 1 ? 's' : ''} bought</Text>
-                    </View>
-                    <Pressable
-                      onPress={() => dispatch({ type: 'REOPEN_STORE', stopId, now: Date.now() })}
-                      style={{ backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 }}
-                    >
-                      <Text style={{ fontFamily: fonts.sansMedium, fontSize: 13, color: colors.ink }}>Reopen</Text>
-                    </Pressable>
-                  </View>
-                </Card>
-              );
-            })}
-        </View>
-      ) : null}
-
-      {pending.length === 0 ? (
-        <Button
-          label="Reopen store"
-          variant="ghost"
-          onPress={() => dispatch({ type: 'REOPEN_STORE', stopId: currentStopId(session)!, now: Date.now() })}
-          style={{ marginTop: spacing.md }}
-        />
-      ) : null}
-
-      {pending.length === 0 ? (
-        <Button
-          label={copy.primaryActionLabel}
-          onPress={finishTrip}
-          style={{ marginTop: spacing.md }}
-        />
-      ) : null}
-      <Sheet
-        visible={showAddStore}
-        title="Add a new store"
-        onClose={() => setShowAddStore(false)}
-      >
-        <AddStoreContent
-          isActive={showAddStore}
-          onClose={() => setShowAddStore(false)}
-          onStoreAdded={(newStoreId) => {
-            dispatch({ type: 'START_MANUAL_STORE', storeId: newStoreId });
-            setShowAddStore(false);
-          }}
-        />
-      </Sheet>
-      <CancelTripLink dispatch={dispatch} colors={colors} />
-    </Screen>
-  );
-}
-
-// ── 5. Next store selector ────────────────────────────────────────────────────
-
-function NextStoreSelector({ session, dispatch, storeById, styles, nsStyles, colors }: SubProps) {
-  const pending = pendingStoreIds(session);
-  const allStores = useDurableStore((s) => s.stores);
-  const [skipping, setSkipping] = useState<string | null>(null);
-  const [showAddStore, setShowAddStore] = useState(false);
-  const [addStoreMode, setAddStoreMode] = useState<'choose' | 'create'>('choose');
-
-  // Saved stores the user hasn't planned into this trip yet
-  const availableStores = unplannedStores(allStores, session.storeQueue);
-  const closeAddStore = () => {
-    setShowAddStore(false);
-    setAddStoreMode('choose');
-  };
-
-  return (
-    <Screen>
-      <PageTitle eyebrow="On the move" title="Where next?" />
-
-      {pending.length === 0 ? (
-        <Card>
-          <Text style={styles.emptyNote}>All planned stores done or skipped.</Text>
-          <Button
-            label="See trip summary"
-            onPress={() => dispatch({ type: 'FINISH_TRIP_EARLY', now: Date.now() })}
-            style={{ marginTop: spacing.lg }}
-          />
-        </Card>
-      ) : (
-        <>
-          <View style={nsStyles.routeSummary}>
-            <View style={nsStyles.routeSummaryIcon}>
-              <Ionicons name="map-outline" size={20} color={colors.primary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={nsStyles.routeSummaryTitle}>{pending.length} stop{pending.length === 1 ? '' : 's'} remaining</Text>
-              <Text style={nsStyles.routeSummaryText}>Choose where you want to shop next.</Text>
-            </View>
-          </View>
-
-          {pending.map((storeId, idx) => {
-            const store    = storeById(storeId);
-            const itemCount = session.entries.filter((e) => e.storeId === storeId).length;
+        ) : (
+          pending.map((stop, idx) => {
+            const pendingStore = storeById(stop.storeId);
+            const itemCount = session.entries.filter((e) => e.stopId === stop.stopId).length;
             const barColor = ROUTE_COLORS[idx % ROUTE_COLORS.length];
-
             return (
-              <Card key={storeId} style={[nsStyles.storeCard, idx === 0 && nsStyles.recommendedStoreCard]}>
+              <Card
+                key={stop.stopId}
+                style={[nsStyles.storeCard, idx === 0 && nsStyles.recommendedStoreCard]}
+              >
                 <View style={nsStyles.storeRow}>
-                  <StoreChip store={store} name={store?.name ?? '?'} size={48} />
+                  <StoreChip store={pendingStore} name={pendingStore?.name ?? '?'} size={48} />
                   <View style={{ flex: 1 }}>
-                    {idx === 0 ? <Text style={nsStyles.recommendedLabel}>NEXT ON ROUTE</Text> : null}
-                    <Text style={nsStyles.storeName}>{store?.name ?? 'Unknown Store'}</Text>
+                    {idx === 0 ? <Text style={nsStyles.recommendedLabel}>{copy.suggestedNextLabel}</Text> : null}
+                    <Text style={nsStyles.storeName}>{pendingStore?.name ?? 'Unknown Store'}</Text>
                     <Text style={nsStyles.storeItems}>{itemCount} item{itemCount !== 1 ? 's' : ''} waiting</Text>
                   </View>
                   <Pressable
-                    onPress={() => dispatch({ type: 'CHOOSE_NEXT_STORE', storeId })}
+                    onPress={() => dispatch({ type: 'CHOOSE_NEXT_STORE', storeId: stop.storeId })}
                     style={({ pressed }) => [nsStyles.startBtn, { borderColor: barColor }, pressed && { opacity: 0.8 }]}
                   >
                     <Text style={[nsStyles.startBtnText, { color: barColor }]}>Go</Text>
                   </Pressable>
                 </View>
-
-                {/* Skip this store link */}
                 <Pressable
-                  onPress={() => {
-                    setSkipping(storeId);
-                    dispatch({ type: 'SKIP_STORE', storeId, now: Date.now() });
-                  }}
+                  onPress={() => dispatch({ type: 'SKIP_STORE', storeId: stop.storeId, now: Date.now() })}
                   style={nsStyles.skipStoreBtn}
                 >
-                  <Text style={nsStyles.skipStoreText}>Skip {store?.name ?? 'Unknown Store'}</Text>
+                  <Text style={nsStyles.skipStoreText}>Skip {pendingStore?.name ?? 'this store'}</Text>
                 </Pressable>
               </Card>
             );
-          })}
+          })
+        )}
+      </View>
 
-          {/* Skipped stores — allow un-skipping */}
-          {session.skippedStoreIds.length > 0 && (
-            <View style={{ marginTop: spacing.md }}>
-              <Text style={[nsStyles.subtitle, { marginBottom: spacing.sm }]}>Skipped:</Text>
-              {session.skippedStoreIds.map((storeId) => {
-                const store = storeById(storeId);
-                const itemCount = session.entries.filter((e) => e.storeId === storeId).length;
-                return (
-                  <Card key={storeId} style={[nsStyles.storeCard, { opacity: 0.65 }]}>
-                    <View style={nsStyles.storeRow}>
-                      <StoreChip store={store} name={store?.name ?? '?'} size={40} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={nsStyles.storeName}>{store?.name ?? 'Unknown'}</Text>
-                        <Text style={nsStyles.storeItems}>{itemCount} item{itemCount !== 1 ? 's' : ''}</Text>
-                      </View>
-                      <Pressable
-                        onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); dispatch({ type: 'UNSKIP_STORE', storeId, now: Date.now() }); }}
-                        style={{ backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 }}
-                      >
-                        <Text style={{ fontFamily: fonts.sansMedium, fontSize: 13, color: colors.ink }}>Un-skip</Text>
-                      </Pressable>
-                    </View>
-                  </Card>
-                );
-              })}
-            </View>
-          )}
+      {/* Add an unplanned stop mid-trip. */}
+      <Pressable
+        onPress={() => { setAddStoreMode('choose'); setShowAddStore(true); }}
+        style={nsStyles.addStoreBtn}
+      >
+        <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
+        <Text style={nsStyles.addStoreBtnText}>Add another store</Text>
+      </Pressable>
 
-          {/* Add an unplanned store mid-trip */}
-          <Pressable onPress={() => { setAddStoreMode('choose'); setShowAddStore(true); }} style={nsStyles.addStoreBtn}>
-            <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
-            <Text style={nsStyles.addStoreBtnText}>Add another stop</Text>
-          </Pressable>
-        </>
-      )}
-
-      {/* Completed stops — allow reopening any of them */}
-      {session.completedStopIds.length > 0 && (
-        <View style={{ marginTop: spacing.md }}>
-          <Text style={[nsStyles.subtitle, { marginBottom: spacing.sm }]}>Completed stops:</Text>
-          {session.completedStopIds.map((stopId) => {
-            const stopIdx = session.storeQueue.findIndex(
-              (_, idx) => stopIdForQueueIndex(session, idx) === stopId,
-            );
-            const storeId = stopIdx >= 0 ? session.storeQueue[stopIdx] : null;
-            if (!storeId) return null;
-            const store = storeById(storeId);
-            const bought = session.entries.filter(e => e.stopId === stopId && e.picked).length;
+      {/* Skipped stops — still un-skippable from here. */}
+      {session.skippedStoreIds.length > 0 && (
+        <View style={{ marginTop: spacing.xl }}>
+          <Text style={ssStyles.sectionLabel}>Skipped</Text>
+          {session.skippedStoreIds.map((skippedStoreId) => {
+            const skippedStore = storeById(skippedStoreId);
+            const itemCount = session.entries.filter((e) => e.storeId === skippedStoreId).length;
             return (
-              <Card key={stopId} style={[nsStyles.storeCard, { opacity: 0.75 }]}>
+              <Card key={skippedStoreId} style={[nsStyles.storeCard, { opacity: 0.65 }]}>
                 <View style={nsStyles.storeRow}>
-                  <StoreChip store={store} name={store?.name ?? '?'} size={40} />
+                  <StoreChip store={skippedStore} name={skippedStore?.name ?? '?'} size={40} />
                   <View style={{ flex: 1 }}>
-                    <Text style={nsStyles.storeName}>{store?.name ?? 'Unknown'}</Text>
-                    <Text style={nsStyles.storeItems}>{bought} item{bought !== 1 ? 's' : ''} bought</Text>
+                    <Text style={nsStyles.storeName}>{skippedStore?.name ?? 'Unknown'}</Text>
+                    <Text style={nsStyles.storeItems}>{itemCount} item{itemCount !== 1 ? 's' : ''}</Text>
                   </View>
                   <Pressable
-                    onPress={() => dispatch({ type: 'REOPEN_STORE', stopId, now: Date.now() })}
+                    onPress={() => {
+                      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      dispatch({ type: 'UNSKIP_STORE', storeId: skippedStoreId, now: Date.now() });
+                    }}
+                    style={{ backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 }}
+                  >
+                    <Text style={{ fontFamily: fonts.sansMedium, fontSize: 13, color: colors.ink }}>Un-skip</Text>
+                  </Pressable>
+                </View>
+              </Card>
+            );
+          })}
+        </View>
+      )}
+
+      {/* Every OTHER completed stop, each independently reopenable. Reopening
+          one of these never touches its original stop — it activates a fresh
+          revisit occurrence (see REOPEN_STORE). */}
+      {otherCompleted.length > 0 && (
+        <View style={{ marginTop: spacing.xl }}>
+          <Text style={ssStyles.sectionLabel}>Completed stops</Text>
+          {otherCompleted.map((stop) => {
+            const completedStore = storeById(stop.storeId);
+            const stopBought = session.entries.filter((e) => e.stopId === stop.stopId && e.picked).length;
+            return (
+              <Card key={stop.stopId} style={[nsStyles.storeCard, { opacity: 0.75 }]}>
+                <View style={nsStyles.storeRow}>
+                  <StoreChip store={completedStore} name={completedStore?.name ?? '?'} size={40} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={nsStyles.storeName}>{completedStore?.name ?? 'Unknown'}</Text>
+                    <Text style={nsStyles.storeItems}>{stopBought} item{stopBought !== 1 ? 's' : ''} bought</Text>
+                  </View>
+                  <Pressable
+                    onPress={() => dispatch({ type: 'REOPEN_STORE', stopId: stop.stopId, now: Date.now() })}
                     style={{ backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 }}
                   >
                     <Text style={{ fontFamily: fonts.sansMedium, fontSize: 13, color: colors.ink }}>Reopen</Text>
@@ -2305,21 +2201,7 @@ function NextStoreSelector({ session, dispatch, storeById, styles, nsStyles, col
         </View>
       )}
 
-      <Pressable
-        onPress={() => {
-          Alert.alert(
-            'Finish entire trip?',
-            `${pending.length} store${pending.length > 1 ? 's' : ''} will be marked as skipped.`,
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Finish trip', style: 'destructive', onPress: () => dispatch({ type: 'FINISH_TRIP_EARLY', now: Date.now() }) },
-            ],
-          );
-        }}
-        style={nsStyles.finishBtn}
-      >
-        <Text style={nsStyles.finishBtnText}>Finish entire shopping trip</Text>
-      </Pressable>
+      <Button label={copy.endTripLabel} onPress={endTrip} style={{ marginTop: spacing.xl }} />
 
       {/* Sheet: pick an unplanned store to add mid-trip */}
       <Sheet
@@ -2331,8 +2213,8 @@ function NextStoreSelector({ session, dispatch, storeById, styles, nsStyles, col
           <AddStoreContent
             isActive={showAddStore}
             onClose={() => setAddStoreMode('choose')}
-            onStoreAdded={(storeId) => {
-              dispatch({ type: 'START_MANUAL_STORE', storeId });
+            onStoreAdded={(newStoreId) => {
+              dispatch({ type: 'START_MANUAL_STORE', storeId: newStoreId });
               closeAddStore();
             }}
           />
@@ -2349,17 +2231,17 @@ function NextStoreSelector({ session, dispatch, storeById, styles, nsStyles, col
             <Text style={{ fontFamily: fonts.sans, fontSize: 13, color: colors.muted, marginBottom: spacing.lg }}>
               Pick a store to add to your current trip. You can add items once you're there.
             </Text>
-            {availableStores.map((store) => (
+            {availableStores.map((candidate) => (
               <Pressable
-                key={store.id}
+                key={candidate.id}
                 onPress={() => {
-                  dispatch({ type: 'START_MANUAL_STORE', storeId: store.id });
+                  dispatch({ type: 'START_MANUAL_STORE', storeId: candidate.id });
                   closeAddStore();
                 }}
                 style={({ pressed }) => [nsStyles.addStoreRow, pressed && { opacity: 0.7 }]}
               >
-                <StoreChip store={store} size={44} />
-                <Text style={nsStyles.addStoreRowName}>{store.name}</Text>
+                <StoreChip store={candidate} size={44} />
+                <Text style={nsStyles.addStoreRowName}>{candidate.name}</Text>
                 <Ionicons name="chevron-forward" size={18} color={colors.muted} />
               </Pressable>
             ))}
@@ -2394,8 +2276,15 @@ function ActiveTripShell(props: SubProps) {
 
   if (!props.access.canManageTripLifecycle) return <ShoppingActive {...props} />;
   if (session.status === 'receipt_prompt') return <ReceiptPrompt {...props} />;
-  if (session.status === 'store_summary' || session.status === 'continue_prompt') return <StoreSummary {...props} />;
-  if (session.status === 'next_store_ready') return <NextStoreSelector {...props} />;
+  // One screen for the whole post-store decision point. next_store_ready is no
+  // longer entered by this app, but a persisted session or a peer that has not
+  // updated can still arrive in it, so it renders the same screen rather than
+  // a second one that would offer a different set of choices.
+  if (
+    session.status === 'store_summary'
+    || session.status === 'continue_prompt'
+    || session.status === 'next_store_ready'
+  ) return <PostStoreDecision {...props} />;
   return <ShoppingActive {...props} />;
 }
 

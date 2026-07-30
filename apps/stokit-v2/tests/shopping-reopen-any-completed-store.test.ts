@@ -246,27 +246,31 @@ test('a Reopen for a store that already has a pending revisit activates it inste
 
 // ── Test 9: the Completed Stops list stays reachable once nothing is pending ──
 
-test('StoreSummary mirrors the Completed Stops list so an earlier stop is still reopenable at trip end', () => {
+test('the decision screen lists every earlier completed stop for reopening, at any point in the trip', () => {
   const screen = readFileSync(join(process.cwd(), 'app/(tabs)/shopping.tsx'), 'utf8');
-  const storeSummary = screen.slice(
-    screen.indexOf('function StoreSummary'),
-    screen.indexOf('// ── 5. Next store selector'),
+  const decision = screen.slice(
+    screen.indexOf('function PostStoreDecision'),
+    screen.indexOf('// ── Active trip shell'),
   );
 
-  // next_store_ready (and with it NextStoreSelector's own Completed Stops
-  // list) is unreachable once pendingStoreIds is empty — CONTINUE_TRIP's own
-  // guard refuses to advance with nothing pending. Without this mirror, an
-  // earlier stop would have no way to be reopened once the trip has nothing
-  // left to visit.
+  // OTA 443 had to mirror this list into StoreSummary because next_store_ready
+  // — the only screen that carried it — was unreachable once nothing was
+  // pending. There is now one screen for the whole decision point, so the list
+  // is simply always present and needs no pending-count gating at all.
   assert.match(
-    storeSummary,
-    /pending\.length === 0 && session\.completedStopIds\.some/,
-    'StoreSummary must expose completed-earlier-stop reopening once nothing is pending',
+    decision,
+    /const otherCompleted = completedStops\(session\)\.filter\(\(s\) => s\.stopId !== stopId\)/,
+    'every completed stop except the current one is offered for reopening',
   );
-  assert.match(storeSummary, /type: 'REOPEN_STORE', stopId, now: Date\.now\(\)/);
-  // The current stop is excluded here — StoreSummary's own dedicated "Reopen
-  // store" button already covers it via the in-place undo path.
-  assert.match(storeSummary, /\.filter\(\(stopId\) => stopId !== currentStopId\(session\)\)/);
+  assert.match(decision, /otherCompleted\.length > 0 &&/);
+  assert.match(decision, /type: 'REOPEN_STORE', stopId: stop\.stopId, now: Date\.now\(\)/);
+  // The current stop keeps its own dedicated in-place undo button.
+  assert.match(decision, /type: 'REOPEN_STORE', stopId, now: Date\.now\(\)/);
+  assert.doesNotMatch(
+    decision,
+    /pending\.length === 0 && session\.completedStopIds\.some/,
+    'the reopen list must not be gated on the trip having nothing left to visit',
+  );
 });
 
 // ── Test 6: Ordinary ADD_ENTRY for a completed store stays blocked (OTA 442) ──

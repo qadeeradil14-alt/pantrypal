@@ -266,16 +266,64 @@ export function entryStopPlacement(
   };
 }
 
-/** Store IDs that are still pending (not yet visited, not skipped, and not already completed). */
-export function pendingStoreIds(session: ShoppingSession): string[] {
+/** A single queue position, paired with the stop identity it resolves to. */
+export interface TripStop {
+  /** Position in storeQueue. Not stable across reorders — use stopId as identity. */
+  index: number;
+  storeId: string;
+  stopId: string;
+}
+
+/** Every queue position with its resolved stop identity, in visit order. */
+export function tripStops(session: Pick<ShoppingSession, 'tripId' | 'storeQueue'>): TripStop[] {
+  return session.storeQueue.map((storeId, index) => ({
+    index,
+    storeId,
+    stopId: stopIdForQueueIndex(session, index),
+  }));
+}
+
+/**
+ * Stops still to visit: after the current position, not skipped, not already
+ * completed. Stop-level rather than store-level so a store with two queued
+ * occurrences (an explicit revisit) surfaces as two distinct, addressable rows.
+ */
+export function pendingStops(session: ShoppingSession): TripStop[] {
   const completed = session.completedStopIds ?? [];
-  return session.storeQueue
-    .slice(session.currentIndex + 1)
-    .filter((_, relIdx) => {
-      const absIdx = session.currentIndex + 1 + relIdx;
-      if (session.skippedStoreIds.includes(session.storeQueue[absIdx])) return false;
-      return !completed.includes(stopIdForQueueIndex(session, absIdx));
-    });
+  return tripStops(session).filter(
+    (stop) =>
+      stop.index > session.currentIndex &&
+      !session.skippedStoreIds.includes(stop.storeId) &&
+      !completed.includes(stop.stopId),
+  );
+}
+
+/**
+ * The receipt belonging to one stop.
+ *
+ * Keyed by stopId, not by storeId or raw currentIndex. storeId is ambiguous
+ * the moment a store is revisited (two stops, two receipts, same store), and
+ * currentIndex is reused across stops when a revisit is inserted — which
+ * silently overwrote an unrelated store's receipt, since afterReceipt dedups
+ * by id. stopId is occurrence-unique by construction (storeId + visit count),
+ * so it can never collide across two different stops, reopened or not.
+ */
+export function receiptIdForStop(tripId: string | null, stopId: string): string {
+  return `r_${tripId}_${stopId}`;
+}
+
+/** Stops already closed out, in visit order. */
+export function completedStops(session: ShoppingSession): TripStop[] {
+  const completed = session.completedStopIds ?? [];
+  return tripStops(session).filter((stop) => completed.includes(stop.stopId));
+}
+
+/**
+ * Store IDs that are still pending (not yet visited, not skipped, and not
+ * already completed). Derived from pendingStops so the two can never drift.
+ */
+export function pendingStoreIds(session: ShoppingSession): string[] {
+  return pendingStops(session).map((stop) => stop.storeId);
 }
 
 function makeReceipt(
@@ -288,13 +336,7 @@ function makeReceipt(
   now: number,
 ): Receipt {
   return {
-    // Keyed by stopId, not raw currentIndex: REOPEN_STORE's earlier-stop
-    // revisit can land at a queue position an unrelated, already-completed
-    // store used for ITS receipt id, which silently overwrote that receipt
-    // (afterReceipt dedups by id) before this changed. stopId is occurrence-
-    // unique by construction (storeId + visit count), so it can never collide
-    // across two different stops, reopened or not.
-    id: `r_${session.tripId}_${stopIdForQueueIndex(session, session.currentIndex)}`,
+    id: receiptIdForStop(session.tripId, stopIdForQueueIndex(session, session.currentIndex)),
     tripId: session.tripId ?? `t_${now}`,
     storeId,
     amount,
@@ -390,6 +432,24 @@ function afterReceipt(session: ShoppingSession, receipt: Receipt): ShoppingSessi
     completedStopAt,
     status: 'store_summary',
   };
+}
+
+/**
+ * The post-store decision point: the shopper has closed out a stop and has not
+ * yet committed to what happens next.
+ *
+ * All three statuses are the same moment in the flow. `store_summary` is where
+ * a completion lands; `continue_prompt` and `next_store_ready` are legacy
+ * sub-states that persisted sessions and not-yet-updated peers can still be
+ * sitting in, and that the merge can still hand us. Every decision the screen
+ * offers (choose any remaining stop, reopen, skip, add a store, end the trip)
+ * is valid from any of them, so they share one guard rather than each event
+ * hard-coding a different subset.
+ */
+function isPostStoreDecision(status: SessionStatus): boolean {
+  return status === 'store_summary'
+    || status === 'continue_prompt'
+    || status === 'next_store_ready';
 }
 
 /** Move `storeId` to position currentIndex+1 in the queue (non-mutating). */
@@ -678,7 +738,7 @@ export function reduce(
     }
 
     case 'START_MANUAL_STORE': {
-      if (session.status !== 'store_summary' && session.status !== 'continue_prompt' && session.status !== 'next_store_ready') return session;
+      if (!isPostStoreDecision(session.status)) return session;
       if (session.storeQueue.slice(session.currentIndex + 1).includes(event.storeId)) return session;
       // Insert right after the current position (like promoteStore) so any
       // already-queued, not-yet-visited store stays ahead of currentIndex and
@@ -698,7 +758,11 @@ export function reduce(
     }
 
     case 'FINISH_TRIP': {
-      if (session.status !== 'store_summary' && session.status !== 'continue_prompt') return session;
+      // Accepted from the whole decision point, so "End Trip" is one action on
+      // one screen rather than FINISH_TRIP or FINISH_TRIP_EARLY depending on
+      // which legacy sub-state the session happens to be in. Body is unchanged
+      // and identical to FINISH_TRIP_EARLY's.
+      if (!isPostStoreDecision(session.status)) return session;
       const skippedStoreIds = [
         ...session.skippedStoreIds,
         ...pendingStoreIds(session),
@@ -708,7 +772,12 @@ export function reduce(
     }
 
     case 'CHOOSE_NEXT_STORE': {
-      if (session.status !== 'next_store_ready') return session;
+      // The shopper picks any remaining stop directly from the decision screen,
+      // with no forced CONTINUE_TRIP hop first. promoteStore swaps the chosen
+      // stop to currentIndex+1 rather than jumping currentIndex forward, so
+      // every stop the shopper did NOT choose stays after currentIndex and
+      // remains pending — picking C never strands B.
+      if (!isPostStoreDecision(session.status)) return session;
       return promoteStore(session, event.storeId);
     }
 
@@ -721,7 +790,7 @@ export function reduce(
     }
 
     case 'SKIP_STORE': {
-      if (session.status !== 'next_store_ready') return session;
+      if (!isPostStoreDecision(session.status)) return session;
       const skippedStoreIds = [...session.skippedStoreIds, event.storeId];
       const skippedAt = {
         ...(session.skippedAt ?? {}),
@@ -787,7 +856,7 @@ export function reduce(
     }
 
     case 'UNSKIP_STORE': {
-      if (session.status !== 'next_store_ready') return session;
+      if (!isPostStoreDecision(session.status)) return session;
       const skippedStoreIds = session.skippedStoreIds.filter((id) => id !== event.storeId);
       const unskippedAt = event.now === undefined
         ? session.unskippedAt

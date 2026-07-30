@@ -215,17 +215,16 @@ test('reopened active stop survives hydration and remains the durable Shopping s
 
 test('Reopen store is a pre-commit Shopping action and never navigates to Home', () => {
   const screen = readFileSync(join(process.cwd(), 'app/(tabs)/shopping.tsx'), 'utf8');
-  const storeSummary = screen.slice(
-    screen.indexOf('function StoreSummary'),
-    screen.indexOf('// ── 5. Next store selector'),
+  const decision = screen.slice(
+    screen.indexOf('function PostStoreDecision'),
+    screen.indexOf('// ── Active trip shell'),
   );
   const tripSummary = screen.slice(screen.indexOf('function TripSummary'));
 
-  assert.match(storeSummary, /label="Reopen store"/);
-  assert.match(
-    storeSummary,
-    /type: 'REOPEN_STORE', stopId: currentStopId\(session\)!, now: Date\.now\(\)/,
-  );
-  assert.doesNotMatch(storeSummary, /router\.(push|replace)/);
+  // Named after the store now ("Reopen Costco") rather than the generic
+  // "Reopen store", since the same screen also lists other stores to reopen.
+  assert.match(decision, /label=\{`Reopen \$\{store\?\.name \?\? 'this store'\}`\}/);
+  assert.match(decision, /type: 'REOPEN_STORE', stopId, now: Date\.now\(\)/);
+  assert.doesNotMatch(decision, /router\.(push|replace)/);
   assert.doesNotMatch(tripSummary, /RESUME_TRIP|Reopen last store/);
 });

@@ -40,17 +40,28 @@ export function unplannedStores<T extends { id: string }>(stores: T[], storeQueu
   return stores.filter((store) => !planned.has(store.id));
 }
 
+/**
+ * Copy for the post-store decision screen.
+ *
+ * `suggestedNextStoreName` is advisory only — the next stop in queue order,
+ * shown so the shopper has a default to reach for. It deliberately does NOT
+ * become a primary action: the screen offers every remaining stop and the
+ * shopper picks one, so the trip never advances to a store nobody chose.
+ */
 export function storeCompletionCopy(
   currentStoreName: string,
   currentIndex: number,
   totalStops: number,
-  nextStoreName: string | null,
+  suggestedNextStoreName: string | null,
 ) {
   return {
     heading: `${currentStoreName} complete`,
     progressLabel: `Store ${currentIndex + 1} of ${totalStops}`,
-    nextStopLabel: nextStoreName ? `Next stop: ${nextStoreName}` : null,
-    primaryActionLabel: nextStoreName ? `Continue to ${nextStoreName}` : 'End Trip',
+    suggestedNextLabel: suggestedNextStoreName ? `Suggested: ${suggestedNextStoreName}` : null,
+    nextPromptLabel: suggestedNextStoreName
+      ? 'Where are you shopping next?'
+      : 'All planned stops are done.',
+    endTripLabel: 'End Trip',
   };
 }
 

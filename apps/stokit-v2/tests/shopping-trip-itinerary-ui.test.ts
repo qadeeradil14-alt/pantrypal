@@ -33,7 +33,7 @@ test('Shopping keeps only the active stop expanded and renders remaining stops w
   const start = source.indexOf('function TripStopsOverview');
   const overview = source.slice(
     start,
-    source.indexOf('// ── 3. Per-store summary', start),
+    source.indexOf('// ── 3. Post-store decision', start),
   );
 
   assert.match(overview, />UP NEXT</);
@@ -46,20 +46,21 @@ test('Shopping keeps only the active stop expanded and renders remaining stops w
   );
 });
 
-test('End trip is rendered only when no planned stores remain', () => {
+test('End Trip is always available on the decision screen, never gated on remaining stops', () => {
   const source = readFileSync(
     new URL('../app/(tabs)/shopping.tsx', import.meta.url),
     'utf8',
   );
-  const start = source.indexOf('function StoreSummary');
-  const summary = source.slice(
+  const start = source.indexOf('function PostStoreDecision');
+  const decision = source.slice(
     start,
-    source.indexOf('// ── 4.', start),
+    source.indexOf('// ── Active trip shell', start),
   );
 
-  assert.match(
-    summary,
-    /pending\.length === 0 \? \(\s*<Button\s+label=\{copy\.primaryActionLabel\}/s,
-  );
-  assert.doesNotMatch(summary, /label=\{hasOptions \? 'Finish trip' : 'Done'\}/);
+  // Previously End Trip only rendered once nothing remained, which is why a
+  // shopper mid-route had no way out except walking the rest of the queue.
+  // It is now an unconditional action on every post-store screen.
+  assert.match(decision, /<Button label=\{copy\.endTripLabel\} onPress=\{endTrip\}/);
+  assert.doesNotMatch(decision, /pending\.length === 0 \? \(\s*<Button\s+label=\{copy\./s);
+  assert.doesNotMatch(decision, /label=\{hasOptions \? 'Finish trip' : 'Done'\}/);
 });

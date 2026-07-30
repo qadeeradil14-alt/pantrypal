@@ -91,13 +91,16 @@ test('next stop activates and completed stop is classified without item loss', (
   assert.deepEqual(session.entries, entriesBefore);
 });
 
-test('Shopping UI names and targets the active store and auto-advances the ordered next stop', () => {
+test('Shopping UI names and targets the active store, and never auto-advances', () => {
   const screen = readFileSync(join(process.cwd(), 'app/(tabs)/shopping.tsx'), 'utf8');
 
   assert.match(screen, /label=\{`Finish \$\{currentStoreName\}`\}/);
   assert.match(screen, /type: 'FINISH_STORE', now: Date\.now\(\), stopId: activeStopId/);
-  assert.match(
+  // The ordered next stop is no longer auto-selected — the shopper picks any
+  // remaining stop from PostStoreDecision instead.
+  assert.doesNotMatch(
     screen,
     /session\.status === 'next_store_ready'[\s\S]{0,300}?type: 'ADVANCE_STORE'/,
   );
+  assert.match(screen, /type: 'CHOOSE_NEXT_STORE', storeId: stop\.storeId/);
 });
