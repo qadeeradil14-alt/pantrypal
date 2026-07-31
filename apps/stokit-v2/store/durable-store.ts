@@ -34,6 +34,7 @@ import {
   mergeShoppingStoreAssignments,
 } from '../core/services/shoppingStoreAssignments';
 import { isAlreadyPurchasedThisTrip } from '../core/services/shoppingDuplicateGuard';
+import { hasCompletedStopForStore } from '../core/shopping-machine';
 export type { StorageLocation as StorageLocationImport };
 import { uid, now, nextTimestamp } from '../core/services/id';
 import {
@@ -236,6 +237,38 @@ export const useDurableStore = create<DurableStore>((set, get) => {
   ): boolean =>
     Boolean(allowRepurchase)
     || !isAlreadyPurchasedThisTrip(get().activeSession, pantryItemId, name, storeId);
+
+  /**
+   * When reassigning an item to a new store mid-trip, retire any OTHER active
+   * assignment of the SAME item whose store's stop has already been completed
+   * in the running trip. Such an assignment is stale — the shopper is picking
+   * the item up at the new store instead — and left active it silently
+   * resurrects that finished store's list once the new purchase is cleared:
+   * clearShoppingEntries can only deactivate the assignment matching the
+   * entry it's clearing, never a lingering one from an earlier, unbought stop.
+   *
+   * Stores whose stop is still open (not yet completed, or not part of the
+   * running trip at all) are left untouched — that's the deliberate "same
+   * item wanted at two still-open stores" case (e.g. milk at both Lidl and
+   * Aldi), which must keep working exactly as before.
+   */
+  const retireStaleCompletedAssignments = (
+    assignments: ShoppingStoreAssignment[],
+    pantryItemId: string,
+    newStoreId: string,
+  ): ShoppingStoreAssignment[] => {
+    const session = get().activeSession;
+    if (!session) return assignments;
+    return assignments
+      .filter((a) => a.pantryItemId === pantryItemId && a.active && a.storeId !== newStoreId)
+      .reduce(
+        (current, stale) =>
+          hasCompletedStopForStore(session, stale.storeId)
+            ? deactivateShoppingItemStore(current, pantryItemId, stale.storeId)
+            : current,
+        assignments,
+      );
+  };
 
   // is swallowed by the repository so the in-memory state stays authoritative.
   let persistQueue = Promise.resolve();
@@ -541,8 +574,12 @@ export const useDurableStore = create<DurableStore>((set, get) => {
           (assignments, id) => {
             const item = s.items.find((candidate) => candidate.id === id);
             return item && mayAssignMap.get(id)
-              ? assignShoppingItemToStore(
-                  assignments,
+              ? retireStaleCompletedAssignments(
+                  assignShoppingItemToStore(
+                    assignments,
+                    item.id,
+                    storeId,
+                  ),
                   item.id,
                   storeId,
                 )
@@ -574,8 +611,12 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         : true;
       const assignments = storeId
         ? (mayAssign
-            ? assignShoppingItemToStore(
-                get().shoppingStoreAssignments,
+            ? retireStaleCompletedAssignments(
+                assignShoppingItemToStore(
+                  get().shoppingStoreAssignments,
+                  item.id,
+                  storeId,
+                ),
                 item.id,
                 storeId,
               )
