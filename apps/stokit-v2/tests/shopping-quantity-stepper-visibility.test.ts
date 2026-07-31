@@ -38,7 +38,7 @@ const shoppingActive = shopping.slice(
 test('tapping anywhere on the active-trip screen closes an open quantity stepper', () => {
   assert.match(
     shoppingActive,
-    /<Pressable onPress=\{\(\) => setQuantityStepperId\(null\)\}>\s*\n\s*<PageTitle/,
+    /<Screen>\s*\n[\s\S]{0,320}<Pressable onPress=\{\(\) => setQuantityStepperId\(null\)\}>/,
     'the whole screen must be wrapped in a dismiss-on-tap Pressable, not just the list card, so taps on Finish store / Add another item / Notify family / blank space also close the stepper',
   );
 });

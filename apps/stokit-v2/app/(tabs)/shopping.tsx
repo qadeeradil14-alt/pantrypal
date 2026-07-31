@@ -868,13 +868,13 @@ function PeerTripCompletedNotice({
 
 // ── Shared sub-component ──────────────────────────────────────────────────────
 
-function StoreHeader({ store, eyebrow, styles }: { store?: Store; eyebrow?: string; styles: any }) {
+function StoreHeader({ store, meta, styles }: { store?: Store; meta?: string; styles: any }) {
   return (
     <View style={styles.activeHeader}>
-      <StoreChip store={store} name={store?.name ?? '?'} size={52} />
+      <StoreChip store={store} name={store?.name ?? '?'} size={40} />
       <View style={{ flex: 1 }}>
-        {eyebrow ? <Text style={styles.activeStep}>{eyebrow}</Text> : null}
-        <Text style={styles.activeStore}>{store?.name ?? 'Store'}</Text>
+        <Text style={styles.activeStore} numberOfLines={1}>{store?.name ?? 'Store'}</Text>
+        {meta ? <Text style={styles.activeMeta}>{meta}</Text> : null}
       </View>
     </View>
   );
@@ -939,6 +939,7 @@ function ShoppingActive({
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [quantityStepperId, setQuantityStepperId] = useState<string | null>(null);
   const [notifyState, setNotifyState] = useState<NotifyState>('idle');
+  const [upNextVisible, setUpNextVisible] = useState(false);
   const priceHistory = useDurableStore((s) => s.priceHistory);
   const recordPrice = useDurableStore((s) => s.recordPrice);
   const members = useHouseholdStore((s) => s.members);
@@ -1033,52 +1034,37 @@ function ShoppingActive({
           closes it — mirrors the existing per-row close below, just scoped
           to the whole screen instead of only the list card. */}
       <Pressable onPress={() => setQuantityStepperId(null)}>
-      <PageTitle eyebrow={total > 1 ? `Stop ${stepNo} of ${total}` : (storeById(storeId)?.name ? `At ${storeById(storeId)!.name}` : undefined)} title="Shopping" />
       {isCollaborator ? (
-        <Card style={styles.collaboratorCard}>
+        <View style={styles.shopperChip}>
           <Avatar
             photoUrl={activeShopper?.avatarUrl}
             displayName={activeShopper?.displayName}
             color={activeShopper?.avatarColor ?? colors.primary}
-            size={32}
+            size={20}
           />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.collaboratorTitle}>
-              Shopping with {activeShopper?.displayName ?? 'your household shopper'}
-            </Text>
-            <Text style={styles.collaboratorBody}>
-              You're helping from home.
-            </Text>
-          </View>
-        </Card>
-      ) : null}
-      <Card style={styles.activeTripCard}>
-        <StoreHeader store={storeById(storeId)} eyebrow="Now shopping" styles={styles} />
-        <View style={styles.progressWrap}>
-          <View style={styles.progressHeader}>
-            <Text style={styles.progressLabel}>TRIP PROGRESS</Text>
-            <Text style={styles.progressCount}>{picked} of {entries.length}</Text>
-          </View>
-          <View style={styles.progressTrack}>
-            <Animated.View
-              style={[
-                styles.progressFill,
-                {
-                  width: progressAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: ['0%', '100%'],
-                  }),
-                },
-              ]}
-            />
-          </View>
-          <Text style={styles.progressText}>
-            {entries.length === picked && entries.length > 0
-              ? 'Everything on this list is checked off'
-              : `${entries.length - picked} item${entries.length - picked === 1 ? '' : 's'} left at this stop`}
+          <Text style={styles.shopperChipText} numberOfLines={1}>
+            Shopping with {activeShopper?.displayName ?? 'your household shopper'}
           </Text>
         </View>
-      </Card>
+      ) : null}
+      <StoreHeader
+        store={storeById(storeId)}
+        meta={`${picked} of ${entries.length} picked${total > 1 ? ` · Stop ${stepNo} of ${total}` : ''}`}
+        styles={styles}
+      />
+      <View style={styles.progressTrackCompact}>
+        <Animated.View
+          style={[
+            styles.progressFillCompact,
+            {
+              width: progressAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: ['0%', '100%'],
+              }),
+            },
+          ]}
+        />
+      </View>
 
       <View style={styles.listHeading}>
         <Text style={styles.listTitle}>Shopping list</Text>
@@ -1246,45 +1232,16 @@ function ShoppingActive({
       )}
 
       {isSharedHousehold && access.canManageTripLifecycle && (
-        <Card style={{ marginTop: spacing.xl }}>
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, marginBottom: spacing.md }}>
-            <View style={{
-              width: 40, height: 40, borderRadius: 20,
-              backgroundColor: colors.primarySoft,
-              alignItems: 'center', justifyContent: 'center',
-              flexShrink: 0,
-            }}>
-              <Ionicons name="people-outline" size={20} color={colors.primary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink, marginBottom: 3 }}>
-                Need anything else?
-              </Text>
-              <Text style={{ fontFamily: fonts.sans, fontSize: 13, color: colors.muted, lineHeight: 18 }}>
-                {"Let your household add last-minute items to your "}
-                <Text style={{ fontFamily: fonts.sansMedium, color: colors.inkSoft }}>
-                  {storeById(storeId)?.name ?? 'this store'}
-                </Text>
-                {" list."}
-              </Text>
-            </View>
-          </View>
-          <Pressable
-            onPress={() => { void handleNotifyHousehold(); }}
-            disabled={notifyState === 'sending' || notifyState === 'sent'}
-            style={({ pressed }) => [{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: spacing.sm,
-              backgroundColor: notifyState === 'sent'  ? colors.successSoft
-                             : notifyState === 'error'  ? colors.dangerSoft
-                             : colors.primarySoft,
-              borderRadius: radii.md,
-              paddingVertical: spacing.md,
-              opacity: pressed ? 0.8 : 1,
-            }]}
-          >
+        <Pressable
+          onPress={() => { void handleNotifyHousehold(); }}
+          disabled={notifyState === 'sending' || notifyState === 'sent'}
+          style={({ pressed }) => [styles.notifyRow, pressed && { opacity: 0.7 }]}
+        >
+          <View style={[
+            styles.notifyIcon,
+            notifyState === 'sent'  && { backgroundColor: colors.successSoft },
+            notifyState === 'error' && { backgroundColor: colors.dangerSoft },
+          ]}>
             <Ionicons
               name={
                 notifyState === 'sent'    ? 'checkmark-circle' :
@@ -1299,32 +1256,35 @@ function ShoppingActive({
                                           colors.primary
               }
             />
-            <Text style={{
-              flexShrink: 1,
-              fontFamily: fonts.sansSemibold,
-              fontSize: 13,
-              lineHeight: 18,
-              textAlign: 'center',
-              color: notifyState === 'sent'  ? colors.success
-                   : notifyState === 'error' ? colors.danger
-                   : colors.primary,
-            }}>
-              {notifyState === 'sending'   ? 'Notifying family…'
-             : notifyState === 'sent'      ? 'Family notified'
-             : notifyState === 'no_tokens' ? 'Notifications off — members must sign in first'
-             : notifyState === 'error'     ? "Couldn't notify family. Try again."
-             :                               'Notify family'}
-            </Text>
-          </Pressable>
-        </Card>
+          </View>
+          <Text
+            style={[
+              styles.notifyText,
+              notifyState === 'sent'  && { color: colors.success },
+              notifyState === 'error' && { color: colors.danger },
+            ]}
+            numberOfLines={1}
+          >
+            {notifyState === 'sending'   ? 'Notifying family…'
+           : notifyState === 'sent'      ? 'Family notified'
+           : notifyState === 'no_tokens' ? 'Notifications off — members must sign in first'
+           : notifyState === 'error'     ? "Couldn't notify family. Try again."
+           :                               'Notify family'}
+          </Text>
+          <Ionicons name="chevron-forward" size={18} color={colors.faintText} />
+        </Pressable>
       )}
 
-      <TripStopsOverview
-        session={session}
-        storeById={storeById}
-        styles={styles}
-        colors={colors}
-      />
+      {tripStopsOverviewGroups(session).some((g) => g.classification === 'remaining') ? (
+        <Pressable onPress={() => setUpNextVisible(true)}>
+          <TripStopsOverview
+            session={session}
+            storeById={storeById}
+            styles={styles}
+            colors={colors}
+          />
+        </Pressable>
+      ) : null}
 
       {access.canManageTripLifecycle ? (
         <>
@@ -1400,6 +1360,33 @@ function ShoppingActive({
         store={storeById(storeId)}
         onClose={() => setEditingItemId(null)}
       />
+      <Sheet visible={upNextVisible} title="Up next" onClose={() => setUpNextVisible(false)}>
+        {tripStopsOverviewGroups(session)
+          .filter((g) => g.classification === 'remaining')
+          .map((group) => {
+            const nextStore = storeById(group.storeId);
+            return (
+              <View key={group.key} style={{ marginBottom: spacing.xl }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.md }}>
+                  <StoreChip store={nextStore} name={nextStore?.name ?? 'Unknown Store'} size={40} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink }}>
+                      {nextStore?.name ?? 'Unknown Store'}
+                    </Text>
+                    <Text style={{ fontFamily: fonts.mono, fontSize: 12, color: colors.muted, fontVariant: ['tabular-nums'] }}>
+                      {group.items.length} item{group.items.length === 1 ? '' : 's'}
+                    </Text>
+                  </View>
+                </View>
+                {group.items.map((occurrence) => (
+                  <View key={occurrence.entryId ?? occurrence.pantryItemId} style={{ paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.borderSoft }}>
+                    <Text style={{ fontFamily: fonts.sansMedium, fontSize: 15, color: colors.ink }}>{occurrence.name}</Text>
+                  </View>
+                ))}
+              </View>
+            );
+          })}
+      </Sheet>
       </Pressable>
     </Screen>
   );
@@ -2050,10 +2037,13 @@ function PostStoreDecision({ session, dispatch, storeById, styles, ssStyles, nsS
       <PageTitle eyebrow={copy.progressLabel} title={copy.heading} />
 
       <Card style={ssStyles.card}>
-        <View style={ssStyles.completedBadge}>
-          <Ionicons name="checkmark-circle" size={18} color={colors.success} />
-          <Text style={ssStyles.completedBadgeText}>Stop saved</Text>
+        <View style={ssStyles.celebrateIcon}>
+          <Ionicons name="checkmark" size={26} color={colors.onPrimary} />
         </View>
+        <Text style={ssStyles.celebrateTitle}>Great job!</Text>
+        <Text style={ssStyles.celebrateSubtitle} numberOfLines={2}>
+          You've completed {store?.name ?? 'this store'}.
+        </Text>
         <View style={ssStyles.row}>
           <View style={ssStyles.statBox}>
             <Text style={ssStyles.statVal}>{spent > 0 ? `$${spent.toFixed(2)}` : '—'}</Text>
@@ -2360,6 +2350,8 @@ function TripSummary({ session, dispatch, storeById, tsStyles, colors }: SubProp
           <View style={tsStyles.completeIcon}>
             <Ionicons name="checkmark" size={24} color={colors.onPrimary} />
           </View>
+          <Text style={tsStyles.celebrateTitle}>Trip completed!</Text>
+          <Text style={tsStyles.celebrateSubtitle}>All stops are complete.</Text>
           <Text style={tsStyles.heroEyebrow}>SHOPPING COMPLETE</Text>
           <Text style={tsStyles.total}>${trip.totalSpent.toFixed(2)}</Text>
           <Text style={tsStyles.totalLabel}>total spent this trip</Text>
@@ -2549,39 +2541,24 @@ function makeStyles(colors: AppColors) {
     routeNotReady:{ borderColor: colors.primary, borderWidth: 1, gap: spacing.sm },
     routeNotReadyHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     routeNotReadyTitle: { fontFamily: fonts.sansSemibold, fontSize: 16, color: colors.ink },
-    activeTripCard: { padding: spacing.xl, borderColor: colors.primary + '24' },
-    collaboratorCard: {
+    shopperChip: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.sm,
       marginBottom: spacing.sm,
-      paddingVertical: spacing.xs,
-      borderColor: colors.primary + '35',
-      backgroundColor: colors.primarySoft,
     },
-    collaboratorTitle: {
+    shopperChipText: {
+      flexShrink: 1,
       fontFamily: fonts.sansSemibold,
       fontSize: 13,
-      color: colors.ink,
-    },
-    collaboratorBody: {
-      fontFamily: fonts.sans,
-      fontSize: 11,
-      lineHeight: 15,
-      color: colors.muted,
-      marginTop: 1,
+      color: colors.inkSoft,
     },
     activeHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-    activeStep:   { fontFamily: fonts.monoMedium, fontSize: 11, color: colors.muted, textTransform: 'uppercase', letterSpacing: 1 },
-    activeStore:  { fontFamily: fonts.serifItalic, fontSize: 25, color: colors.ink, marginTop: 2 },
-    progressWrap: { marginTop: spacing.xl },
-    progressHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
-    progressLabel: { fontFamily: fonts.monoMedium, fontSize: 10, color: colors.muted, letterSpacing: 1 },
-    progressCount: { fontFamily: fonts.monoMedium, fontSize: 12, color: colors.primary, fontVariant: ['tabular-nums'] },
-    progressTrack:{ height: 10, borderRadius: 5, backgroundColor: colors.surfaceRaised, overflow: 'hidden' },
-    progressFill: { height: 10, borderRadius: 5, backgroundColor: colors.primary },
-    progressText: { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: spacing.sm },
-    listHeading: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.xl, marginBottom: spacing.sm, paddingHorizontal: spacing.xs },
+    activeStore:  { fontFamily: fonts.serifItalic, fontSize: 25, color: colors.ink },
+    activeMeta:   { fontFamily: fonts.sans, fontSize: 12, color: colors.muted, marginTop: 2 },
+    progressTrackCompact: { height: 6, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden', marginTop: spacing.md },
+    progressFillCompact:  { height: 6, borderRadius: 3, backgroundColor: colors.primary },
+    listHeading: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.lg, marginBottom: spacing.sm, paddingHorizontal: spacing.xs },
     listTitle: { fontFamily: fonts.serifItalic, fontSize: 20, lineHeight: 26, color: colors.ink, flex: 1 },
     listCountBadge: { minWidth: 28, height: 28, paddingHorizontal: spacing.sm, borderRadius: 14, backgroundColor: colors.surfaceRaised, alignItems: 'center', justifyContent: 'center' },
     listCountText: { fontFamily: fonts.monoMedium, fontSize: 12, color: colors.ink, fontVariant: ['tabular-nums'] },
@@ -2608,6 +2585,9 @@ function makeStyles(colors: AppColors) {
     addMoreRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.sm, padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, backgroundColor: colors.surface },
     addMoreIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
     addMoreText: { flex: 1, fontFamily: fonts.sansSemibold, fontSize: 14, color: colors.ink },
+    notifyRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.xl, padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, backgroundColor: colors.surface },
+    notifyIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
+    notifyText: { flex: 1, fontFamily: fonts.sansSemibold, fontSize: 13, color: colors.primary },
     activeEmptyCard: { alignItems: 'center', paddingVertical: spacing.xxl },
     activeEmptyIcon: { width: 58, height: 58, borderRadius: 29, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
     activeEmptyTitle: { fontFamily: fonts.serifItalic, fontSize: 22, color: colors.ink, marginTop: spacing.md },
@@ -2710,8 +2690,9 @@ function makeStyles(colors: AppColors) {
 
   const ssStyles = StyleSheet.create({
     card:     { paddingVertical: spacing.xl, borderColor: colors.success + '24' },
-    completedBadge: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: radii.pill, backgroundColor: colors.successSoft, marginBottom: spacing.xl },
-    completedBadgeText: { fontFamily: fonts.sansSemibold, fontSize: 12, color: colors.success },
+    celebrateIcon: { alignSelf: 'center', width: 52, height: 52, borderRadius: 26, backgroundColor: colors.success, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.md },
+    celebrateTitle: { fontFamily: fonts.serifItalic, fontSize: 24, color: colors.ink, textAlign: 'center' },
+    celebrateSubtitle: { fontFamily: fonts.sans, fontSize: 14, color: colors.muted, textAlign: 'center', marginTop: spacing.xs, marginBottom: spacing.xl, paddingHorizontal: spacing.md },
     row:      { flexDirection: 'row', alignItems: 'center' },
     statBox:  { flex: 1, alignItems: 'center', gap: 4 },
     statVal:  { fontFamily: fonts.mono, fontSize: 26, color: colors.ink, fontVariant: ['tabular-nums'] },
@@ -2804,6 +2785,8 @@ function makeStyles(colors: AppColors) {
     header:       { alignItems: 'center', marginBottom: spacing.md },
     heroCard:     { alignItems: 'center', paddingVertical: spacing.xxl, borderColor: colors.primary + '24' },
     completeIcon: { width: 52, height: 52, borderRadius: 26, backgroundColor: colors.success, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.md },
+    celebrateTitle: { fontFamily: fonts.serifItalic, fontSize: 24, color: colors.ink, textAlign: 'center' },
+    celebrateSubtitle: { fontFamily: fonts.sans, fontSize: 14, color: colors.muted, textAlign: 'center', marginTop: spacing.xs, marginBottom: spacing.lg },
     heroEyebrow:  { fontFamily: fonts.monoMedium, fontSize: 10, color: colors.success, letterSpacing: 1.2, marginBottom: spacing.xs },
     eyebrow:      { fontFamily: fonts.monoMedium, fontSize: 12, color: colors.muted, letterSpacing: 1, marginBottom: spacing.sm },
     total:        { fontFamily: fonts.mono, fontSize: 48, color: colors.primary, lineHeight: 60, fontVariant: ['tabular-nums'] },
