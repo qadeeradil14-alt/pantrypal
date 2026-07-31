@@ -379,7 +379,10 @@ test('the add sheet asks before resurrecting a purchased store', () => {
 
   assert.match(sheet, /purchasedAtStoreThisTrip\(/, 'duplicates are detected before writing');
   assert.match(sheet, /duplicatePurchaseMessage\(/);
-  assert.match(sheet, /text: 'Dismiss', style: 'cancel'/);
+  // Dismiss must reset the sheet's own state (selection/count/CTA), not just
+  // close the native Alert — see shopping-cross-store-reassignment-guard.test.ts.
+  assert.match(sheet, /text: 'Dismiss',\s*\n\s*style: 'cancel',/);
+  assert.match(sheet, /onPress: \(\) => \{\s*\n\s*reset\(\);\s*\n\s*onClose\(\);\s*\n\s*\},/);
   assert.match(sheet, /text: 'Add again'/);
   // Only the explicit branch may override the guard.
   assert.match(sheet, /writeItems\(chosen, true\)/);

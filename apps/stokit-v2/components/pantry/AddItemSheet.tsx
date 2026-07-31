@@ -170,7 +170,21 @@ export function AddItemSheet({
         'Already bought',
         duplicatePurchaseMessage(duplicates.map((d) => d.selection.catalog.name), storeName),
         [
-          { text: 'Dismiss', style: 'cancel' },
+          {
+            text: 'Dismiss',
+            style: 'cancel',
+            // Alert.alert's cancel button had no onPress, so tapping it only
+            // dismissed the native alert — the sheet's `selected` state (and
+            // its derived count/CTA/highlight) lived on untouched, leaving a
+            // stale selection behind Flour's own duplicate. Closing exactly
+            // like the sheet's own close button both clears that state and
+            // guarantees the next open starts clean, with no write of any
+            // kind having happened for the duplicate.
+            onPress: () => {
+              reset();
+              onClose();
+            },
+          },
           {
             text: 'Add again',
             onPress: () => {

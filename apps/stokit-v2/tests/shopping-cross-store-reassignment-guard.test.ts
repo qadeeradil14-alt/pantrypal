@@ -273,3 +273,40 @@ test('shoppingDuplicateGuard keeps resolveDuplicateState store-scoped only', () 
     'resolveDuplicateState must stay store-scoped; cross-store checks belong only in the forced-store caller',
   );
 });
+
+// ── 7. Dismiss must clear the stale selection, not just close the alert ──────
+//
+// Live OTA 447 verification found a follow-up bug: the "Already bought"
+// alert's Dismiss button was `{ text: 'Dismiss', style: 'cancel' }` with no
+// onPress, so tapping it closed only the native Alert. The sheet's `selected`
+// state — Flour's highlight, the "Selected items 1" count, the "Add 1 item to
+// Petco" CTA — lived on untouched, and reopening Add Item still showed Flour
+// pre-selected.
+
+test('Dismiss resets the sheet exactly like its own close button (clears selection, closes the sheet)', () => {
+  const sheet = readFileSync(join(process.cwd(), 'components/pantry/AddItemSheet.tsx'), 'utf8');
+  const alertCall = sheet.slice(sheet.indexOf("Alert.alert(\n        'Already bought'"));
+  const dismissButton = alertCall.slice(0, alertCall.indexOf("text: 'Add again'"));
+  assert.match(
+    dismissButton,
+    /text: 'Dismiss',\s*\n\s*style: 'cancel',\s*\n\s*[\s\S]*?onPress: \(\) => \{\s*\n\s*reset\(\);\s*\n\s*onClose\(\);\s*\n\s*\},/,
+    'Dismiss must call the same reset()+onClose() pair as the sheet\'s own close button',
+  );
+});
+
+test('Dismiss makes no write: only Add again reaches writeItems', () => {
+  const sheet = readFileSync(join(process.cwd(), 'components/pantry/AddItemSheet.tsx'), 'utf8');
+  const start = sheet.indexOf("Alert.alert(\n        'Already bought'");
+  const end = sheet.indexOf('\n      );', start);
+  const alertCall = sheet.slice(start, end);
+  const [dismissBlock, addAgainBlock] = alertCall.split("text: 'Add again'");
+  assert.ok(addAgainBlock, 'the Add again button must exist in the alert call');
+  assert.ok(!dismissBlock.includes('writeItems('), 'Dismiss must never call writeItems');
+  assert.match(addAgainBlock, /writeItems\(chosen, true\)/, 'Add again remains the explicit override');
+});
+
+test('reset() clears the selection AddItemSheet resurfaces as "Selected items" / CTA / highlight', () => {
+  const sheet = readFileSync(join(process.cwd(), 'components/pantry/AddItemSheet.tsx'), 'utf8');
+  const resetBody = sheet.slice(sheet.indexOf('const reset = () => {'), sheet.indexOf('const reset = () => {') + 300);
+  assert.match(resetBody, /setSelected\(\{\}\)/, 'reset must clear the selected-items map the count/CTA/highlight derive from');
+});
