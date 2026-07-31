@@ -28,6 +28,8 @@ import { shouldRenderInlineDiagnostics } from '../../core/services/diagnostics/v
 import {
   duplicatePurchaseMessage,
   purchasedAtStoreThisTrip,
+  purchasedThisTrip,
+  type PurchasedOccurrence,
 } from '../../core/services/shoppingDuplicateGuard';
 
 interface SelectedItem {
@@ -139,29 +141,34 @@ export function AddItemSheet({
   const commitItems = (chosen: SelectedItem[]) => {
     if (!chosen.length || committingRef.current) return;
 
-    // Anything already bought at this store on the running trip is held back
-    // and confirmed explicitly, so an accidental re-add can never silently
-    // resurrect a finished store's list. Everything else commits normally.
-    const duplicates = chosen.filter(({ catalog, storeId }) => {
-      const targetStoreId = storeId ?? bulkStoreId;
-      if (!targetStoreId) return false;
-      const existing = resolveExisting(catalog);
-      return Boolean(
-        purchasedAtStoreThisTrip(
-          activeSession,
-          existing?.id ?? catalog.name,
-          catalog.name,
-          targetStoreId,
-        ),
-      );
-    });
+    // Anything already bought at this store OR at a different store on the
+    // running trip is held back and confirmed explicitly. Same-store catches
+    // an accidental re-add resurrecting a finished store's list; cross-store
+    // catches this sheet's forced storeId (hideStorePicker mode assigns
+    // whatever's added to the CURRENT stop) silently moving an item that was
+    // already bought at an earlier stop to this one. Everything else commits
+    // normally.
+    const duplicates = chosen
+      .map((selection) => {
+        const targetStoreId = selection.storeId ?? bulkStoreId;
+        if (!targetStoreId) return null;
+        const existing = resolveExisting(selection.catalog);
+        const itemId = existing?.id ?? selection.catalog.name;
+        // The occurrence's own storeId is the store the item was ACTUALLY
+        // bought at, which for a cross-store match is not targetStoreId — the
+        // confirmation must name that store, not the one being assigned now.
+        const occurrence =
+          purchasedAtStoreThisTrip(activeSession, itemId, selection.catalog.name, targetStoreId)
+          ?? purchasedThisTrip(activeSession, itemId, selection.catalog.name);
+        return occurrence ? { selection, occurrence } : null;
+      })
+      .filter((entry): entry is { selection: SelectedItem; occurrence: PurchasedOccurrence } => entry !== null);
 
     if (duplicates.length > 0) {
-      const targetStoreId = duplicates[0].storeId ?? bulkStoreId;
-      const storeName = stores.find((store) => store.id === targetStoreId)?.name ?? 'this store';
+      const storeName = stores.find((store) => store.id === duplicates[0].occurrence.storeId)?.name ?? 'this store';
       Alert.alert(
         'Already bought',
-        duplicatePurchaseMessage(duplicates.map((d) => d.catalog.name), storeName),
+        duplicatePurchaseMessage(duplicates.map((d) => d.selection.catalog.name), storeName),
         [
           { text: 'Dismiss', style: 'cancel' },
           {

@@ -59,6 +59,18 @@ function isSameThing(entry: ShoppingEntry, pantryItemId: string, name: string): 
 }
 
 /**
+ * Identity only — "the same thing", regardless of which store. Store-scoped
+ * `isSameThing` can't answer "was this bought ANYWHERE this trip" because its
+ * key folds storeId in; this strips that down to just pantryItemId (or name).
+ */
+function isSameItem(entry: ShoppingEntry, pantryItemId: string, name: string): boolean {
+  const usableId = pantryItemId && pantryItemId !== UNLINKED_PANTRY_ITEM_ID;
+  const entryUsableId = entry.pantryItemId && entry.pantryItemId !== UNLINKED_PANTRY_ITEM_ID;
+  if (usableId && entryUsableId) return entry.pantryItemId === pantryItemId;
+  return normalizeItemName(entry.name) === normalizeItemName(name);
+}
+
+/**
  * The completed occurrence proving this item was already bought at this store
  * on the running trip, or null.
  *
@@ -88,6 +100,34 @@ export function purchasedAtStoreThisTrip(
 }
 
 /**
+ * The completed occurrence proving this item was already bought SOMEWHERE on
+ * the running trip, at whatever store that turns out to be, or null.
+ *
+ * Store-agnostic counterpart to `purchasedAtStoreThisTrip`. A caller assigning
+ * to store B needs to know about a purchase already made at store A — that
+ * pairing can never itself equal (B, B), so the store-scoped check alone is
+ * blind to it and silently reassigns the item to B instead of asking first.
+ */
+export function purchasedThisTrip(
+  session: SharedShoppingSession | null | undefined,
+  pantryItemId: string,
+  name: string,
+): PurchasedOccurrence | null {
+  if (!session || session.status === 'idle' || session.status === 'trip_summary') return null;
+  const completed = new Set(session.completedStopIds ?? []);
+  if (completed.size === 0) return null;
+  const match = (session.entries ?? []).find(
+    (entry) =>
+      entry.picked &&
+      completed.has(entry.stopId) &&
+      isSameItem(entry, pantryItemId, name),
+  );
+  return match
+    ? { pantryItemId: match.pantryItemId, name: match.name, storeId: match.storeId, stopId: match.stopId }
+    : null;
+}
+
+/**
  * Whether the running trip's purchase history can be read at all.
  *
  * 'unresolved' means a trip IS running and has closed out at least one stop,
@@ -112,6 +152,15 @@ export function resolveDuplicateState(
   // Stops are known to be completed but their entries are missing: we cannot
   // prove this item was NOT bought at one of them.
   if (!session.entries || session.entries.length === 0) return 'unresolved';
+  // Deliberately store-scoped only: wanting the same product from a second,
+  // different store this trip (e.g. milk at both Lidl and Aldi) is a
+  // legitimate independent need, not a duplicate — see
+  // "a purchase at one store does not mask the same item pending at
+  // another". `purchasedThisTrip` (any store) exists for callers that force
+  // a storeId onto an item with no explicit user choice of store (e.g. the
+  // in-trip "Add to {current store}" sheet); it is deliberately NOT folded
+  // in here, since every caller of this function — including deliberate
+  // reassignment via the store picker — must keep treating that as valid.
   return 'clear';
 }
 
