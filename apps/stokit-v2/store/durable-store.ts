@@ -328,13 +328,22 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       const { getStorageLocation } = require('../core/services/itemClassifier');
       const existing = get().items.find((item) => normalizeItemName(item.name) === normalizeItemName(input.name));
       if (existing) {
+        const mayAssign = input.storeId
+          ? canAssignToStore(existing.id, input.name, input.storeId, options?.allowRepurchase)
+          : false;
         const candidate: Partial<PantryItem> = {
           name: input.name.trim(),
           quantity: input.quantity,
           unit: input.unit,
           status: input.status ?? existing.status,
           storageLocation: input.storageLocation ?? existing.storageLocation,
-          storeId: input.storeId ?? existing.storeId,
+          // When the guard refuses, storeId must stay where it is. Writing it
+          // anyway left the ledger correctly deactivated but planted the store
+          // back on the item, and activeShoppingStoreIds falls back to
+          // item.storeId on any device holding no assignment record for this
+          // item — which is exactly how the completed store reappeared on the
+          // member's Home list while the owner's looked fine.
+          storeId: (input.storeId && mayAssign) ? input.storeId : existing.storeId,
           expiryDate: input.expiryDate ?? existing.expiryDate,
         };
         const meaningfulPatch = changedFields(existing, candidate);
@@ -346,9 +355,6 @@ export const useDurableStore = create<DurableStore>((set, get) => {
           updatedAt: nextTimestamp(existing.updatedAt),
           ...(touchesStatus ? { statusUpdatedAt: nextTimestamp(existing.statusUpdatedAt) } : {}),
         };
-        const mayAssign = input.storeId
-          ? canAssignToStore(existing.id, input.name, input.storeId, options?.allowRepurchase)
-          : false;
         set((s) => ({
           items: consolidatePantryItems(s.items.map((item) => item.id === existing.id ? updated : item)),
           shoppingStoreAssignments: mayAssign
@@ -514,16 +520,27 @@ export const useDurableStore = create<DurableStore>((set, get) => {
           .map((item) => item.id),
       );
       if (!idSet.size) return;
+      // Same-trip duplicates keep their existing storeId. Writing the
+      // requested storeId regardless of the guard's answer left the ledger
+      // correctly deactivated but planted the store back on the item, and
+      // activeShoppingStoreIds falls back to item.storeId on any device
+      // holding no assignment record for it (see addItem for the same bug).
+      const mayAssignMap = new Map(
+        [...idSet].map((id) => {
+          const item = get().items.find((candidate) => candidate.id === id);
+          return [id, Boolean(item && canAssignToStore(item.id, item.name, storeId, options?.allowRepurchase))] as const;
+        }),
+      );
       set((s) => ({
         items: s.items.map((item) =>
-          idSet.has(item.id)
+          idSet.has(item.id) && mayAssignMap.get(item.id)
             ? { ...item, storeId, updatedAt: nextTimestamp(item.updatedAt), statusUpdatedAt: nextTimestamp(item.statusUpdatedAt) }
             : item
         ),
         shoppingStoreAssignments: [...idSet].reduce(
           (assignments, id) => {
             const item = s.items.find((candidate) => candidate.id === id);
-            return item && canAssignToStore(item.id, item.name, storeId, options?.allowRepurchase)
+            return item && mayAssignMap.get(id)
               ? assignShoppingItemToStore(
                   assignments,
                   item.id,
@@ -552,8 +569,11 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       const item = get().items.find((candidate) => candidate.id === id);
       if (!item) return;
       const assignmentsBefore = get().shoppingStoreAssignments ?? [];
+      const mayAssign = storeId
+        ? canAssignToStore(item.id, item.name, storeId, options?.allowRepurchase)
+        : true;
       const assignments = storeId
-        ? (canAssignToStore(item.id, item.name, storeId, options?.allowRepurchase)
+        ? (mayAssign
             ? assignShoppingItemToStore(
                 get().shoppingStoreAssignments,
                 item.id,
@@ -564,15 +584,19 @@ export const useDurableStore = create<DurableStore>((set, get) => {
             get().shoppingStoreAssignments,
             id,
           );
+      // A refused reactivation must not plant storeId back on the item either
+      // — see addItem's fix for why a stale item.storeId alone resurrects a
+      // completed store on a device with no local assignment record.
+      const nextStoreId = storeId && !mayAssign ? item.storeId : storeId;
       const assignmentChanged = assignments !== (get().shoppingStoreAssignments ?? []);
-      const storeChanged = item.storeId !== storeId;
+      const storeChanged = item.storeId !== nextStoreId;
       if (!assignmentChanged && !storeChanged) return;
       set((s) => ({
         items: s.items.map((candidate) =>
           candidate.id === id
             ? {
                 ...candidate,
-                storeId,
+                storeId: nextStoreId,
                 updatedAt: nextTimestamp(candidate.updatedAt),
                 statusUpdatedAt: nextTimestamp(candidate.statusUpdatedAt),
               }

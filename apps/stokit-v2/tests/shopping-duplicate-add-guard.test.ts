@@ -361,10 +361,17 @@ test('every assignment-reactivation path in the durable store is guarded', () =>
   assert.match(source, /const canAssignToStore = \(/);
   assert.match(source, /isAlreadyPurchasedThisTrip\(get\(\)\.activeSession/);
 
-  // addItem's existing-item branch, bulk assign, and single assign.
+  // addItem's existing-item branch, bulk assign, and single assign all consult
+  // the guard AND gate the storeId write on its answer — a refused
+  // reactivation must leave item.storeId untouched too, or
+  // activeShoppingStoreIds resurrects the store from the item alone on any
+  // device with no local assignment record (the actual OTA 445 regression).
   assert.match(source, /const mayAssign = input\.storeId\s*\?\s*canAssignToStore\(/);
-  assert.match(source, /item && canAssignToStore\(item\.id, item\.name, storeId, options\?\.allowRepurchase\)/);
-  assert.match(source, /storeId\s*\?\s*\(canAssignToStore\(item\.id, item\.name, storeId, options\?\.allowRepurchase\)/);
+  assert.match(source, /storeId:\s*\(input\.storeId && mayAssign\)\s*\?\s*input\.storeId\s*:\s*existing\.storeId/);
+  assert.match(source, /canAssignToStore\(item\.id, item\.name, storeId, options\?\.allowRepurchase\)/);
+  assert.match(source, /idSet\.has\(item\.id\) && mayAssignMap\.get\(item\.id\)/);
+  assert.match(source, /const mayAssign = storeId\s*\n\s*\? canAssignToStore\(item\.id, item\.name, storeId, options\?\.allowRepurchase\)/);
+  assert.match(source, /const nextStoreId = storeId && !mayAssign \? item\.storeId : storeId/);
 });
 
 test('the add sheet asks before resurrecting a purchased store', () => {
