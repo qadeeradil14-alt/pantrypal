@@ -244,17 +244,21 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       const pickedEntries = next.entries.filter((entry) => entry.picked);
       durable.clearShoppingEntries(pickedEntries);
 
+      // Release every (item, store) pairing this trip never bought, keyed off
+      // the trip's own entries rather than item.storeId. Nulling item.storeId
+      // alone left the assignment ledger active, and activeShoppingStoreIds
+      // prefers the ledger — so the store (a skipped one especially) rebuilt
+      // its "ready to shop" plan the moment the trip closed. Items picked up
+      // somewhere on this trip are already handled by clearShoppingEntries
+      // above and are skipped here.
       const pickedItemIds = new Set(pickedEntries.map((entry) => entry.pantryItemId));
-      const resolvedStoreIds = new Set(next.storeQueue);
-      durable.items
+      next.entries
         .filter(
-          (item) =>
-            !pickedItemIds.has(item.id) &&
-            (item.status === 'low' || item.status === 'expiring') &&
-            Boolean(item.storeId) &&
-            resolvedStoreIds.has(item.storeId!),
+          (entry) =>
+            !pickedItemIds.has(entry.pantryItemId) &&
+            entry.pantryItemId !== '__quick_scan__',
         )
-        .forEach((item) => durable.updateItem(item.id, { storeId: null }));
+        .forEach((entry) => durable.releaseStoreAssignment(entry.pantryItemId, entry.storeId));
     }
 
     set({ session: next });

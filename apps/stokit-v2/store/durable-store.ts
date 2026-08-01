@@ -80,6 +80,7 @@ function logShoppingAssignmentMutation(
     | 'assignItemToStore'
     | 'assignItemsToStore'
     | 'clearShoppingEntries'
+    | 'releaseStoreAssignment'
     | 'resetShoppingList',
   pantryItemIds: string[],
   storeId: string | null,
@@ -132,6 +133,7 @@ interface DurableStore extends DurableState {
   updateItem: (id: string, patch: Partial<PantryItem>) => void;
   setItemStatus: (id: string, status: PantryStatus) => void;
   clearShoppingEntries: (entries: ShoppingEntry[]) => void;
+  releaseStoreAssignment: (pantryItemId: string, storeId: string) => void;
   assignItemsToStore: (ids: string[], storeId: string, options?: ShoppingAssignmentOptions) => void;
   assignItemToStore: (id: string, storeId: string | null, options?: ShoppingAssignmentOptions) => void;
   resetShoppingList: () => void;
@@ -540,6 +542,62 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         assignments,
       );
       persist();
+      void refreshGeofencedStoreData();
+    },
+
+    /**
+     * Trip closure: release ONE (item, store) pairing that the finished trip
+     * never bought.
+     *
+     * The item keeps its `low`/`expiring` status — you still need it — but it
+     * must not stay assigned to a store belonging to the trip that just
+     * ended. Nulling `item.storeId` alone (what the trip-summary block used to
+     * do) cannot achieve that: activeShoppingStoreIds reads the assignment
+     * ledger in preference to item.storeId, so a still-active assignment
+     * rebuilt that store's "ready to shop" plan the instant the trip closed —
+     * most visibly for a store the shopper explicitly SKIPPED, which then
+     * reappeared as the active store.
+     *
+     * Deliberately scoped to the single store passed in, not the item's whole
+     * ledger: an assignment to a store outside this trip is a separate,
+     * still-valid need and survives untouched (as does the mid-trip
+     * two-open-stores case, which never reaches this path).
+     */
+    releaseStoreAssignment: (pantryItemId, storeId) => {
+      const item = get().items.find((candidate) => candidate.id === pantryItemId);
+      if (!item) return;
+      const assignmentsBefore = get().shoppingStoreAssignments ?? [];
+      const assignments = deactivateShoppingItemStore(assignmentsBefore, pantryItemId, storeId);
+      // Fall back to whichever other store is still actively wanted, exactly
+      // like clearShoppingEntries' remainingStoreByItem, so an item needed at
+      // a second store keeps pointing there instead of going store-less.
+      const remaining = assignments.find(
+        (assignment) => assignment.active && assignment.pantryItemId === pantryItemId,
+      );
+      const nextStoreId = remaining?.storeId ?? null;
+      if (assignments === assignmentsBefore && item.storeId === nextStoreId) return;
+      set((s) => ({
+        items: s.items.map((candidate) =>
+          candidate.id === pantryItemId
+            ? {
+                ...candidate,
+                storeId: nextStoreId,
+                updatedAt: nextTimestamp(candidate.updatedAt),
+                statusUpdatedAt: nextTimestamp(candidate.statusUpdatedAt),
+              }
+            : candidate
+        ),
+        shoppingStoreAssignments: assignments,
+      }));
+      logShoppingAssignmentMutation(
+        'releaseStoreAssignment',
+        [pantryItemId],
+        storeId,
+        assignmentsBefore,
+        assignments,
+      );
+      persist();
+      syncShoppingItem(get().items.find((candidate) => candidate.id === pantryItemId) ?? null, pantryItemId);
       void refreshGeofencedStoreData();
     },
 
