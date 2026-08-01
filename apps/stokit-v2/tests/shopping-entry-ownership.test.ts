@@ -63,11 +63,16 @@ test('only the selected shopper can perform picked-state and lifecycle operation
     'SKIP_RECEIPT',
     'FINISH_TRIP',
     'FINISH_TRIP_EARLY',
-    'END_TRIP',
   ] as const) {
     assert.equal(canDispatchShoppingEvent(type, shopper), true, `${type} must remain available to the selected shopper`);
     assert.equal(canDispatchShoppingEvent(type, collaborator), false, `${type} must remain blocked for collaborators`);
   }
+
+  // END_TRIP (cancel/reset) is deliberately NOT shopper-only — see
+  // shopping-member-trip-cancel.test.ts. A collaborator must not be locked
+  // behind a trip they didn't start.
+  assert.equal(canDispatchShoppingEvent('END_TRIP', shopper), true);
+  assert.equal(canDispatchShoppingEvent('END_TRIP', collaborator), true);
 });
 
 test('household collaborators can edit items without receiving trip controls', () => {

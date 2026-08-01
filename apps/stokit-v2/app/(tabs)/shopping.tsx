@@ -1287,7 +1287,6 @@ function ShoppingActive({
       ) : null}
 
       {access.canManageTripLifecycle ? (
-        <>
         <Button
           label={`Finish ${currentStoreName}`}
           onPress={() => {
@@ -1313,8 +1312,13 @@ function ShoppingActive({
         }}
           style={styles.finishStoreCta}
         />
+      ) : null}
+      {/* Cancel is available to any household member, not just the active
+          shopper — see canCancelTrip — so a member is never locked behind a
+          session they didn't start. Every other lifecycle control above
+          stays shopper-only. */}
+      {access.canCancelTrip ? (
         <CancelTripLink dispatch={dispatch} colors={colors} />
-        </>
       ) : null}
       <AddItemSheet
         visible={addSheetVisible && canEditActiveItems}

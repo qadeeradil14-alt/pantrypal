@@ -26,7 +26,6 @@ const TRIP_LIFECYCLE_EVENTS = new Set<ShoppingEvent['type']>([
   'SKIP_STORE',
   'FINISH_TRIP_EARLY',
   'ADVANCE_STORE',
-  'END_TRIP',
   'UNSKIP_STORE',
 ]);
 
@@ -35,6 +34,15 @@ export type ShoppingCapabilities = {
   canEditItems: boolean;
   canChangePickedState: boolean;
   canManageTripLifecycle: boolean;
+  /**
+   * Cancel/reset the active trip (END_TRIP), specifically. Deliberately
+   * broader than canManageTripLifecycle: any signed-in household member may
+   * cancel — not just the active shopper — so a member is never locked
+   * behind a session they didn't start and can't otherwise get out of. Every
+   * OTHER trip-lifecycle action (finishing a store, choosing the next stop,
+   * reopening, etc.) stays shopper-only via canManageTripLifecycle.
+   */
+  canCancelTrip: boolean;
   canLogPrices: boolean;
   canManageHousehold: boolean;
 };
@@ -60,6 +68,7 @@ export function shoppingCapabilities(
     canEditItems: Boolean(localMemberId),
     canChangePickedState: isSelectedShopper,
     canManageTripLifecycle: isSelectedShopper,
+    canCancelTrip: Boolean(localMemberId),
     canLogPrices: isSelectedShopper,
     canManageHousehold: isOwner,
   };
@@ -70,6 +79,7 @@ export function canDispatchShoppingEvent(
   capabilities: ShoppingCapabilities,
 ): boolean {
   if (type === 'START_TRIP') return capabilities.canStartTrip;
+  if (type === 'END_TRIP') return capabilities.canCancelTrip;
   if (ITEM_MUTATION_EVENTS.has(type)) return capabilities.canEditItems;
   if (PICKED_STATE_EVENTS.has(type)) return capabilities.canChangePickedState;
   if (TRIP_LIFECYCLE_EVENTS.has(type)) return capabilities.canManageTripLifecycle;
