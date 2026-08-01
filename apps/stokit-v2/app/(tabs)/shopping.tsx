@@ -2114,7 +2114,27 @@ function PostStoreDecision({ session, dispatch, storeById, styles, ssStyles, nsS
                   </Pressable>
                 </View>
                 <Pressable
-                  onPress={() => dispatch({ type: 'SKIP_STORE', storeId: stop.storeId, now: Date.now() })}
+                  onPress={() => {
+                    // Skipping is reversible (Un-skip below) and keeps every
+                    // unbought item — it only releases the store assignment,
+                    // so those items come back as unassigned needs. Spelling
+                    // that out here is what stops the later "choose a store"
+                    // screen reading as though the trip restarted or broke.
+                    // Confirm-only: the dispatch below is byte-identical to
+                    // the one this Pressable used to fire directly.
+                    Alert.alert(
+                      `Skip ${pendingStore?.name ?? 'this store'}?`,
+                      'Unbought items from this store will stay on your shopping list and become unassigned. You can choose another store for them later.',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Skip store',
+                          style: 'destructive',
+                          onPress: () => dispatch({ type: 'SKIP_STORE', storeId: stop.storeId, now: Date.now() }),
+                        },
+                      ],
+                    );
+                  }}
                   style={nsStyles.skipStoreBtn}
                 >
                   <Text style={nsStyles.skipStoreText}>Skip {pendingStore?.name ?? 'this store'}</Text>
