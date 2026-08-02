@@ -6,6 +6,23 @@ export function normalizeStoreText(value?: string | null) {
   return value?.trim().toLowerCase().replace(/\s+/g, ' ') ?? '';
 }
 
+/**
+ * Name/address comparison key. Adds punctuation-insensitivity on top of
+ * normalizeStoreText, so "2904 Prince William Pkwy, Woodbridge, VA" and
+ * "2904 Prince William Pkwy Woodbridge VA" — or "Sam's Club" and "Sams Club" —
+ * are recognised as the same place. Providers and hand-entry disagree on commas,
+ * periods and apostrophes constantly.
+ *
+ * Deliberately NOT used for placeId: provider ids are opaque and may rely on
+ * punctuation to stay distinct, so those still compare with normalizeStoreText.
+ */
+export function normalizeStoreLabel(value?: string | null) {
+  return normalizeStoreText(value)
+    .replace(/[.,#'’`"\-/\\()]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function hasStoreCoords(value: Pick<StoreDuplicateInput, 'lat' | 'lng'>) {
   return typeof value.lat === 'number'
     && Number.isFinite(value.lat)
@@ -30,20 +47,60 @@ function hasStoreIdentity(value: StoreDuplicateInput) {
   return Boolean(normalizeStoreText(value.placeId) || normalizeStoreText(value.address) || hasStoreCoords(value));
 }
 
+/**
+ * Collapse stores that describe the same physical location down to one record
+ * for display, and map every collapsed id onto the record that survives.
+ *
+ * addStore already refuses a duplicate, but that check only ever sees the
+ * device's own list. Two household members (or one member on two devices, or
+ * either while offline) can each add the same store, generating two different
+ * `uid('store')` ids. mergeStores unions by id, so both survive the merge and
+ * the Stores tab renders the same shop twice. This is the render-side guard
+ * for records that already exist; nothing is deleted locally or remotely, so
+ * every `storeId` reference from items, trips and receipts keeps resolving.
+ *
+ * The oldest record wins, so the surviving card is the one the household has
+ * been assigning items to. Original list order is preserved.
+ */
+export function dedupeStoresForDisplay(stores: Store[]): {
+  stores: Store[];
+  canonicalIdFor: Map<string, string>;
+} {
+  const oldestFirst = [...stores].sort(
+    (a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0) || a.id.localeCompare(b.id),
+  );
+
+  const canonical: Store[] = [];
+  const canonicalIdFor = new Map<string, string>();
+
+  for (const store of oldestFirst) {
+    const existing = findDuplicateStore(canonical, store);
+    if (existing) {
+      canonicalIdFor.set(store.id, existing.id);
+      continue;
+    }
+    canonical.push(store);
+    canonicalIdFor.set(store.id, store.id);
+  }
+
+  const survivors = new Set(canonical.map((store) => store.id));
+  return { stores: stores.filter((store) => survivors.has(store.id)), canonicalIdFor };
+}
+
 export function findDuplicateStore(stores: Store[], input: StoreDuplicateInput) {
-  const inputName = normalizeStoreText(input.name);
+  const inputName = normalizeStoreLabel(input.name);
   const inputPlaceId = normalizeStoreText(input.placeId);
-  const inputAddress = normalizeStoreText(input.address);
+  const inputAddress = normalizeStoreLabel(input.address);
   if (!inputName) return undefined;
 
   return stores.find((store) => {
     const storePlaceId = normalizeStoreText(store.placeId);
     if (inputPlaceId && storePlaceId && inputPlaceId === storePlaceId) return true;
 
-    const storeName = normalizeStoreText(store.name);
+    const storeName = normalizeStoreLabel(store.name);
     if (inputName !== storeName) return false;
 
-    const storeAddress = normalizeStoreText(store.address);
+    const storeAddress = normalizeStoreLabel(store.address);
     if (inputAddress && storeAddress && inputAddress === storeAddress) return true;
     if (hasStoreCoords(input) && hasStoreCoords(store) && distanceMeters(input, store) <= 75) return true;
     return !hasStoreIdentity(input) && !hasStoreIdentity(store);

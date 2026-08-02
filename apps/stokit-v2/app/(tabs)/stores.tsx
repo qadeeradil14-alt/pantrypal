@@ -16,6 +16,7 @@ import { useDurableStore } from '../../store/durable-store';
 import { useTheme } from '../../hooks/useTheme';
 import { geocodeLocation } from '../../core/services/places';
 import { hasValidStoreCoordinates, storeBackfillQuery } from '../../core/services/storeCoordinates';
+import { dedupeStoresForDisplay } from '../../core/services/storeDuplicates';
 import type { Store } from '../../types';
 
 const LOGO_COLORS = ['#C0392B', '#E8913E', '#D8A24A', '#3D7A53', '#2E6DA4', '#6C5CE7', '#444'];
@@ -111,12 +112,20 @@ export default function StoresScreen() {
   // Live open/closed status — fetched fresh from Google on every tab focus, never persisted
   const [liveStatus, setLiveStatus] = useState<Record<string, boolean | undefined>>({});
 
+  // Records that reached this device already duplicated (see dedupeStoresForDisplay)
+  // are collapsed for rendering only — `stores` itself is untouched, so every
+  // storeId held by an item, trip or receipt still resolves.
+  const { stores: visibleStores, canonicalIdFor } = useMemo(
+    () => dedupeStoresForDisplay(stores),
+    [stores],
+  );
+
   useFocusEffect(
     useCallback(() => {
       const googleKey = process.env.EXPO_PUBLIC_GOOGLE_API_KEY;
       if (!googleKey) return;
 
-      stores.forEach((store) => {
+      visibleStores.forEach((store) => {
         if (!store.placeId) return;
         const params = new URLSearchParams({
           place_id: store.placeId,
@@ -135,7 +144,7 @@ export default function StoresScreen() {
           })
           .catch(() => {});
       });
-    }, [stores])
+    }, [visibleStores])
   );
 
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -152,8 +161,10 @@ export default function StoresScreen() {
     }, [fixLocationRequest, fixLocationStoreId, router, stores]),
   );
 
+  // Count against the surviving card, so items still pointing at a collapsed
+  // duplicate are reported on the store the user can actually see.
   const countFor = (storeId: string) =>
-    items.filter((i) => i.storeId === storeId).length;
+    items.filter((i) => i.storeId && canonicalIdFor.get(i.storeId) === storeId).length;
 
   const openDirections = async (name: string, lat: number, lng: number) => {
     const latLng = `${lat},${lng}`;
@@ -249,7 +260,7 @@ export default function StoresScreen() {
     );
   };
 
-  if (stores.length === 0) {
+  if (visibleStores.length === 0) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background }}>
         <Screen>
@@ -279,7 +290,7 @@ export default function StoresScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.overviewLabel}>YOUR STORES</Text>
             <Text style={styles.overviewTitle}>
-              {stores.length} saved location{stores.length === 1 ? '' : 's'}
+              {visibleStores.length} saved location{visibleStores.length === 1 ? '' : 's'}
             </Text>
             <Text style={styles.overviewMeta}>
               {items.filter((item) => item.storeId).length} assigned item{items.filter((item) => item.storeId).length === 1 ? '' : 's'}
@@ -288,10 +299,10 @@ export default function StoresScreen() {
         </Card>
         <View style={styles.listHeader}>
           <Text style={styles.listTitle}>Saved stores</Text>
-          <Text style={styles.listCount}>{stores.length}</Text>
+          <Text style={styles.listCount}>{visibleStores.length}</Text>
         </View>
         <View style={{ gap: spacing.md }}>
-          {stores.map((store) => (
+          {visibleStores.map((store) => (
           <Card key={store.id} style={styles.cardContainer}>
             <View style={styles.cardPressable}>
               <View style={styles.storeHeader}>

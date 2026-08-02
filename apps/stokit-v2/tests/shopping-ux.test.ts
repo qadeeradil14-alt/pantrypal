@@ -101,6 +101,29 @@ test('trip receipt total reserves a visible line for the amount', () => {
   assert.match(source, /totalValue: \{[^}]*minHeight: 56/);
 });
 
+test('trip receipt store breakdown has no image indicator or dash placeholder column', () => {
+  const source = readFileSync(join(process.cwd(), 'components/receipts/TripDetailSheet.tsx'), 'utf8');
+
+  // The green image-outline glyph was a passive "a photo exists" marker — not
+  // tappable, and it sat next to an em-dash placeholder that consumed width
+  // long item names needed.
+  assert.doesNotMatch(source, /image-outline/, 'the image indicator is gone');
+  assert.doesNotMatch(source, /styles\.receiptAmount/, 'and its wrapper style with it');
+  assert.doesNotMatch(source, /receiptAmount: \{/, 'the style definition is removed too');
+  assert.doesNotMatch(source, /itemPriceMuted/, 'the dash placeholder column is gone');
+  assert.doesNotMatch(source, /: '—'/, 'no em-dash placeholders remain in the breakdown');
+
+  // Real amounts and the genuine upload affordance must survive.
+  assert.match(source, /b\.amount > 0 \? \(\s*<Text style=\{styles\.storeAmount\}>\$\{b\.amount\.toFixed\(2\)\}<\/Text>/,
+    'store totals still render when non-zero');
+  assert.match(source, /entry\.price > 0 \? \(/, 'item prices still render when non-zero');
+  assert.match(source, /Add photo/, 'the Add photo upload control is preserved');
+  assert.match(source, /pickReceiptPhoto/, 'and its handler is intact');
+
+  // itemName keeps flex:1 so it absorbs the reclaimed width.
+  assert.match(source, /itemName: \{ flex: 1/);
+});
+
 test('post-add flow uses StorePickerSheet, not IndividualAssignSheet', () => {
   const indexSource = readFileSync(join(process.cwd(), 'app/(tabs)/index.tsx'), 'utf8');
   assert.doesNotMatch(indexSource, /IndividualAssignSheet/);

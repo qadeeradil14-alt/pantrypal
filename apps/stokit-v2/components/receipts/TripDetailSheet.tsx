@@ -150,18 +150,9 @@ export function TripDetailSheet({
                   <Ionicons name="camera-outline" size={14} color={colors.primary} />
                   <Text style={styles.addPhotoText}>Add photo</Text>
                 </Pressable>
-              ) : receipt?.imageUri ? (
-                <View style={styles.receiptAmount}>
-                  <Ionicons name="image-outline" size={20} color={colors.success} />
-                  <Text style={styles.storeAmount}>
-                    {b.amount > 0 ? `$${b.amount.toFixed(2)}` : '—'}
-                  </Text>
-                </View>
-              ) : (
-                <Text style={styles.storeAmount}>
-                  {b.amount > 0 ? `$${b.amount.toFixed(2)}` : '—'}
-                </Text>
-              )}
+              ) : b.amount > 0 ? (
+                <Text style={styles.storeAmount}>${b.amount.toFixed(2)}</Text>
+              ) : null}
             </View>
 
             {!b.skipped && visibleItems.length > 0 && (
@@ -172,9 +163,7 @@ export function TripDetailSheet({
                     <Text style={styles.itemName}>{entry.itemName}</Text>
                     {entry.price > 0 ? (
                       <Text style={styles.itemPrice}>${entry.price.toFixed(2)}</Text>
-                    ) : (
-                      <Text style={styles.itemPriceMuted}>—</Text>
-                    )}
+                    ) : null}
                   </View>
                 ))}
                 {hiddenCount > 0 && (
@@ -266,7 +255,6 @@ function makeStyles(colors: AppColors) {
     storeName: { fontFamily: fonts.sansSemibold, fontSize: 15, color: colors.ink },
     storeMeta: { fontFamily: fonts.mono, fontSize: 12, color: colors.muted, marginTop: 2, fontVariant: ['tabular-nums'] },
     storeAmount: { fontFamily: fonts.monoMedium, fontSize: 16, color: colors.ink, fontVariant: ['tabular-nums'] },
-    receiptAmount: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
     addPhotoBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
     addPhotoText: { fontFamily: fonts.sansMedium, fontSize: 12, color: colors.primary },
     storeItemsList: {
@@ -283,7 +271,6 @@ function makeStyles(colors: AppColors) {
     showMoreText: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.primary },
     itemName: { flex: 1, fontFamily: fonts.sansMedium, fontSize: 15, color: colors.ink },
     itemPrice: { fontFamily: fonts.monoMedium, fontSize: 15, color: colors.ink, fontVariant: ['tabular-nums'] },
-    itemPriceMuted: { fontFamily: fonts.mono, fontSize: 15, color: colors.muted, fontVariant: ['tabular-nums'] },
     timeRow: {
       flexDirection: 'row',
       alignItems: 'center',
