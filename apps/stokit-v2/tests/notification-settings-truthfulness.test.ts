@@ -299,8 +299,8 @@ test('the settings screen wires the user-facing button to notifyTest', () => {
 // ── Part 1: repair idempotence and ownership ─────────────────────────────────
 
 test('repair reuses registerPushToken, which is an idempotent keyed upsert', () => {
-  const screen = readFileSync(join(process.cwd(), 'app/settings/store-arrival-alerts.tsx'), 'utf8');
-  assert.match(screen, /const result = await registerPushToken\(userId\)/,
+  const screen = readFileSync(join(process.cwd(), 'app/settings/push-notifications.tsx'), 'utf8');
+  assert.match(screen, /const result = await registerPushToken\(authUser\.id\)/,
     'repair must go through the one registration path');
 
   const registerBody = notifications.slice(
@@ -322,6 +322,58 @@ test('a failed registration clears the stored marker so status cannot go stale-p
   );
   assert.equal((registerBody.match(/clearStoredPushRegistration\(\)/g) ?? []).length, 3,
     'write_error, zero_rows and the catch must each clear it');
+});
+
+// ── The dedicated Push Notifications screen ──────────────────────────────────
+//
+// OTA 454 shipped with this screen untouched: the earlier tests asserted only
+// against store-arrival-alerts.tsx, so the real Settings → Push Notifications
+// screen kept rendering "Registered" straight from getMyPushDiagnostics().
+// These pin the actual screen the user opens.
+
+const pushScreenPath = 'app/settings/push-notifications.tsx';
+const pushScreen = readFileSync(join(process.cwd(), pushScreenPath), 'utf8');
+
+test('the Push Notifications screen resolves status against the remote registration', () => {
+  assert.match(pushScreen, /getPushStatus\(/, 'it must use the verifying resolver');
+  assert.match(pushScreen, /pushStatusLabel\(/, 'and render On / Off / Needs attention');
+});
+
+test('the Push Notifications screen no longer infers "Registered" from a local token', () => {
+  // Assert on the import, so a prose mention in a comment doesn't false-positive.
+  const imports = pushScreen.slice(0, pushScreen.indexOf('export default'));
+  assert.doesNotMatch(imports, /getMyPushDiagnostics/,
+    'the local-only diagnostic must not be imported into user-facing status');
+  assert.doesNotMatch(pushScreen, /tokenPresent/,
+    'a mintable token is not proof of registration');
+  assert.doesNotMatch(pushScreen, /'Registered'/,
+    'the misleading literal is gone');
+  assert.doesNotMatch(pushScreen, /Re-register this device/,
+    'renamed to Repair notifications');
+});
+
+test('the Push Notifications screen gates Repair and offers Settings when denied', () => {
+  assert.match(pushScreen, /Repair notifications/);
+  assert.match(pushScreen, /status\?\.repairable \?/, 'Repair is conditional, never always-on');
+  assert.match(pushScreen, /needsSystemSettings \?/, 'denial routes to Settings first');
+  assert.match(pushScreen, /Linking\.openSettings\(\)/);
+});
+
+test('no settings screen derives push status from a locally minted token', () => {
+  // The class of bug, not just the one instance.
+  for (const file of ['app/settings/push-notifications.tsx', 'app/settings/store-arrival-alerts.tsx']) {
+    const source = readFileSync(join(process.cwd(), file), 'utf8');
+    const statusFromToken = /tokenPresent\s*\?\s*'Registered'/.test(source);
+    assert.equal(statusFromToken, false, `${file} must not equate a local token with registration`);
+  }
+});
+
+test('push settings live on exactly one screen', () => {
+  const arrival = readFileSync(join(process.cwd(), 'app/settings/store-arrival-alerts.tsx'), 'utf8');
+  assert.doesNotMatch(arrival, /Receive household shopping alerts and shared updates/,
+    'the push primary setting must not be duplicated on the arrival screen');
+  assert.match(pushScreen, /Receive household shopping alerts and shared updates/,
+    'it belongs on the dedicated Push Notifications screen');
 });
 
 test('the diagnostics section does not claim a native registered-region count', () => {

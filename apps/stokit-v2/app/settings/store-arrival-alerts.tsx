@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Linking, Platform, Pressable, StyleSheet, Switch, Text, View, useColorScheme } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, Switch, Text, View, useColorScheme } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../../components/shared/Screen';
@@ -25,10 +25,6 @@ import {
   notifyArrival,
   notifyTest,
   registerPushToken,
-  unregisterPushToken,
-  getPushStatus,
-  readPushPreference,
-  writePushPreference,
   getNotificationLog,
   clearNotificationLog,
   getNotificationDiagnostics,
@@ -41,7 +37,6 @@ import {
 } from '../../core/services/notifications';
 import { isActivePantryItem } from '../../core/services/geofencingLogic';
 import { hasValidStoreCoordinates } from '../../core/services/storeCoordinates';
-import { pushStatusLabel, type PushStatusResult } from '../../core/services/pushStatus';
 import { resolveStoreArrivalStatus } from '../../core/services/storeArrivalStatus';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -103,57 +98,7 @@ export default function StoreArrivalAlertsScreen() {
   const [pushRegistering, setPushRegistering] = useState(false);
   const [pushRegisterStatus, setPushRegisterStatus] = useState<string | null>(null);
 
-  // Truthful push state: local permission + token checked against the row
-  // actually stored in Supabase for this user.
-  const [pushStatus, setPushStatus] = useState<PushStatusResult | null>(null);
-  const [pushPreference, setPushPreference] = useState(true);
-  const [pushBusy, setPushBusy] = useState(false);
   const [troubleshootOpen, setTroubleshootOpen] = useState(false);
-
-  const refreshPushStatus = useCallback(async () => {
-    const userId = useAuthStore.getState().user?.id ?? null;
-    const [status, preference] = await Promise.all([getPushStatus(userId), readPushPreference()]);
-    setPushStatus(status);
-    setPushPreference(preference);
-  }, []);
-
-  const togglePush = useCallback(async (next: boolean) => {
-    const userId = useAuthStore.getState().user?.id ?? null;
-    setPushBusy(true);
-    setPushRegisterStatus(null);
-    try {
-      await writePushPreference(next);
-      setPushPreference(next);
-      if (!userId) return;
-      // The toggle controls the remote registration, so turning it off genuinely
-      // stops delivery instead of only hiding a row.
-      if (next) await registerPushToken(userId);
-      else await unregisterPushToken(userId);
-    } finally {
-      setPushBusy(false);
-      await refreshPushStatus();
-    }
-  }, [refreshPushStatus]);
-
-  const repairPush = useCallback(async () => {
-    const userId = useAuthStore.getState().user?.id ?? null;
-    if (!userId) {
-      setPushRegisterStatus('Sign in to repair notifications.');
-      return;
-    }
-    setPushBusy(true);
-    setPushRegisterStatus(null);
-    try {
-      // registerPushToken is an idempotent upsert keyed on user_id, and the
-      // household_members_push_token_single_owner trigger guarantees one owner
-      // per token — repeated repairs cannot create duplicate ownership.
-      const result = await registerPushToken(userId);
-      setPushRegisterStatus(result.ok ? '✓ Notifications repaired' : `✗ ${result.reason}`);
-    } finally {
-      setPushBusy(false);
-      await refreshPushStatus();
-    }
-  }, [refreshPushStatus]);
 
   const refreshPushDiagnostics = useCallback(async () => {
     const [mine, household] = await Promise.all([
@@ -197,9 +142,8 @@ export default function StoreArrivalAlertsScreen() {
 
   useEffect(() => {
     void refreshDiagnostics();
-    void refreshPushStatus();
     void AsyncStorage.getItem(DEV_MODE_KEY).then((v) => setDevMode(v === 'true'));
-  }, [refreshDiagnostics, refreshPushStatus]);
+  }, [refreshDiagnostics]);
 
   // Fetch push diagnostics only when devMode is on — avoids an Edge Function
   // round-trip for every user on every open.
@@ -383,61 +327,8 @@ export default function StoreArrivalAlertsScreen() {
     <Screen>
       <SubScreenHeader eyebrow="Notifications" title="Store Arrival Alerts" />
 
-      {/* ── Push notifications (primary setting) ─────────────────────────── */}
-      <Card style={styles.sectionCard}>
-        <ToggleRow
-          icon="notifications-outline"
-          label="Push notifications"
-          description={pushStatus?.message ?? 'Checking…'}
-          value={pushPreference && pushStatus?.status === 'on'}
-          onValueChange={(next) => void togglePush(next)}
-          disabled={pushBusy || pushStatus?.issue === 'unsupported'}
-          dimmed={pushStatus?.issue === 'unsupported'}
-          styles={styles}
-          colors={colors}
-        />
-        <Text style={styles.pushStatusLine}>
-          {pushStatus ? pushStatusLabel(pushStatus.status) : '…'}
-        </Text>
-
-        {/* Only an action the user can actually take is offered. */}
-        {pushStatus?.needsSystemSettings ? (
-          <Pressable
-            style={({ pressed }) => [styles.testNotifButton, pressed && { opacity: 0.7 }]}
-            onPress={() => void Linking.openSettings()}
-            accessibilityRole="button"
-            accessibilityLabel="Open iOS Settings"
-          >
-            <Ionicons name="open-outline" size={16} color={colors.primary} />
-            <Text style={styles.testNotifButtonText}>Open Settings</Text>
-          </Pressable>
-        ) : pushStatus?.repairable ? (
-          <Pressable
-            style={[styles.testNotifButton, pushBusy && { opacity: 0.6 }]}
-            onPress={() => void repairPush()}
-            disabled={pushBusy}
-            accessibilityRole="button"
-            accessibilityLabel="Repair notifications"
-          >
-            <Ionicons name="build-outline" size={16} color={colors.primary} />
-            <Text style={styles.testNotifButtonText}>
-              {pushBusy ? 'Repairing…' : 'Repair notifications'}
-            </Text>
-          </Pressable>
-        ) : null}
-
-        {pushRegisterStatus ? (
-          <Text
-            style={[
-              styles.testNotifResult,
-              pushRegisterStatus.startsWith('✓') ? { color: colors.success } : { color: colors.danger },
-            ]}
-          >
-            {pushRegisterStatus}
-          </Text>
-        ) : null}
-      </Card>
-
+      {/* Push delivery is owned by Settings → Push Notifications, so it is not
+          duplicated here. This screen is only about store arrival. */}
       <Card style={styles.sectionCard}>
         <ToggleRow
           icon="location-outline"
@@ -1148,12 +1039,6 @@ function makeStyles(colors: AppColors) {
       fontSize: 12,
       marginTop: spacing.sm,
       lineHeight: 18,
-    },
-    pushStatusLine: {
-      fontFamily: fonts.sansSemibold,
-      fontSize: 13,
-      color: colors.muted,
-      marginTop: spacing.xs,
     },
     troubleshootToggle: {
       flexDirection: 'row',
