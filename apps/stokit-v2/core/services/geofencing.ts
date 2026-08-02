@@ -117,7 +117,20 @@ export interface GeofenceStoreDiagnostic {
 }
 
 export interface GeofenceDiagnostics {
+  /**
+   * Live native state: Location.hasStartedGeofencingAsync() for the Stokit task.
+   * NOT the user's setting — see storeArrivalPreferenceOn.
+   */
   storeArrivalRemindersOn: boolean;
+  /**
+   * The user's persisted intent, which must survive the engine unregistering
+   * regions for operational reasons (e.g. every assigned item was purchased, so
+   * there is temporarily nothing to watch). Without this the toggle silently
+   * flipped itself off whenever eligibility hit zero.
+   */
+  storeArrivalPreferenceOn: boolean;
+  /** Native started state captured at the end of the last registration attempt. */
+  nativeGeofencingStarted: boolean;
   foregroundPermission: PermissionStatus;
   backgroundPermission: PermissionStatus;
   notificationPermission: PermissionStatus;
@@ -180,6 +193,8 @@ export interface GeofenceDiagnostics {
 
 const emptyDiagnostics: GeofenceDiagnostics = {
   storeArrivalRemindersOn: false,
+  storeArrivalPreferenceOn: false,
+  nativeGeofencingStarted: false,
   foregroundPermission: 'unknown',
   backgroundPermission: 'unknown',
   notificationPermission: 'unknown',
@@ -383,6 +398,11 @@ export async function getGeofenceDiagnostics(
   return {
     ...current,
     storeArrivalRemindersOn: running,
+    // Native state is the truth for "is it working"; the stored preference is
+    // the truth for "did the user ask for it". They differ legitimately while
+    // nothing is eligible to monitor (see the no_stores path in startGeofencing).
+    storeArrivalPreferenceOn: current.storeArrivalPreferenceOn,
+    nativeGeofencingStarted: running,
     foregroundPermission: statusOf(foreground.status),
     backgroundPermission: statusOf(background.status),
     notificationPermission: statusOf(notifications.status),
@@ -627,7 +647,7 @@ export function defineGeofenceTask(
 export async function startGeofencing(
   stores: Store[],
   items: PantryItem[] = [],
-): Promise<'ok' | 'no_permission' | 'no_notification_permission' | 'no_stores' | 'expo_go'> {
+): Promise<'ok' | 'no_permission' | 'no_notification_permission' | 'no_stores' | 'expo_go' | 'registration_failed'> {
   if (isExpoGo()) {
     await patchDiagnostics({
       storeArrivalRemindersOn: false,
@@ -653,6 +673,22 @@ export async function startGeofencing(
     items,
   );
   if (geofenceable.length === 0) {
+    // DEFECT A FIX: this branch used to return without touching iOS, leaving the
+    // previous registration live while diagnostics reported zero monitored
+    // stores. After the last assigned item was purchased, iOS kept watching
+    // stale regions and native state silently diverged from reported state.
+    // Tear the registration down so "no stores" is true natively too. The user's
+    // preference is untouched, so the toggle stays on and the existing refresh
+    // path (refreshGeofencedStoreData, called from every item/store mutation)
+    // re-registers as soon as a store becomes eligible again.
+    let removalError: string | null = null;
+    try {
+      if (await Location.hasStartedGeofencingAsync(GEOFENCE_TASK)) {
+        await Location.stopGeofencingAsync(GEOFENCE_TASK);
+      }
+    } catch (err) {
+      removalError = err instanceof Error ? err.message : String(err);
+    }
     await patchDiagnostics({
       lastRegistrationAttemptAt: at,
       storesConsideredCount: stores.length,
@@ -664,8 +700,11 @@ export async function startGeofencing(
       registrationError: 'no_assigned_coordinate_stores',
       registrationErrorStack: null,
       monitoredStoresCount: 0,
+      nativeGeofencingStarted: false,
       stores: [],
-      lastError: 'no_assigned_coordinate_stores',
+      lastError: removalError
+        ? `removal:${removalError}`
+        : 'no_assigned_coordinate_stores',
     });
     return 'no_stores';
   }
@@ -742,8 +781,40 @@ export async function startGeofencing(
       stores: buildRegisteredStoreDiagnostics(geofenceable, items, at),
     });
     await Location.startGeofencingAsync(GEOFENCE_TASK, regions);
+
+    // DEFECT B FIX: startGeofencingAsync resolving only means iOS accepted the
+    // call, not that monitoring is live. Success used to be recorded here
+    // unconditionally, so a rejected registration still displayed as active.
+    // Ask the platform what actually happened before claiming anything.
+    const nativeStarted = await Location.hasStartedGeofencingAsync(GEOFENCE_TASK).catch(() => false);
+
+    if (!nativeStarted) {
+      await patchDiagnostics({
+        storeArrivalRemindersOn: false,
+        nativeGeofencingStarted: false,
+        foregroundPermission: statusOf(fg),
+        backgroundPermission: statusOf(bg),
+        notificationPermission: 'granted',
+        monitoredStoresCount: 0,
+        stores: [],
+        lastRegistrationAttemptAt: at,
+        storesConsideredCount: stores.length,
+        eligibleStoresCount: geofenceable.length,
+        skippedStores,
+        startGeofencingCalled: true,
+        regionsPassedCount: regions.length,
+        registrationResult: 'failed',
+        registrationError: 'native_not_started',
+        registrationErrorStack: null,
+        lastError: 'registration:native_not_started',
+      });
+      return 'registration_failed';
+    }
+
     await patchDiagnostics({
       storeArrivalRemindersOn: true,
+      storeArrivalPreferenceOn: true,
+      nativeGeofencingStarted: true,
       foregroundPermission: statusOf(fg),
       backgroundPermission: statusOf(bg),
       notificationPermission: 'granted',
@@ -785,7 +856,15 @@ export async function stopGeofencing(): Promise<void> {
   try {
     const running = await Location.hasStartedGeofencingAsync(GEOFENCE_TASK);
     if (running) await Location.stopGeofencingAsync(GEOFENCE_TASK);
-    await patchDiagnostics({ storeArrivalRemindersOn: false, monitoredStoresCount: 0 });
+    // Every caller is an explicit user action (toggle off, sign-out, account
+    // deletion, privacy reset), so the stored intent goes off with the regions.
+    await patchDiagnostics({
+      storeArrivalRemindersOn: false,
+      storeArrivalPreferenceOn: false,
+      nativeGeofencingStarted: false,
+      monitoredStoresCount: 0,
+      stores: [],
+    });
   } catch (err) {
     await patchDiagnostics({ lastError: `removal:${err instanceof Error ? err.message : String(err)}` });
   }

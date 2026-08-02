@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Platform, Pressable, StyleSheet, Switch, Text, View, useColorScheme } from 'react-native';
+import { Alert, Linking, Platform, Pressable, StyleSheet, Switch, Text, View, useColorScheme } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../../components/shared/Screen';
@@ -23,7 +23,12 @@ import {
 import { geofenceableStores } from '../../core/services/geofencingLogic';
 import {
   notifyArrival,
+  notifyTest,
   registerPushToken,
+  unregisterPushToken,
+  getPushStatus,
+  readPushPreference,
+  writePushPreference,
   getNotificationLog,
   clearNotificationLog,
   getNotificationDiagnostics,
@@ -36,6 +41,8 @@ import {
 } from '../../core/services/notifications';
 import { isActivePantryItem } from '../../core/services/geofencingLogic';
 import { hasValidStoreCoordinates } from '../../core/services/storeCoordinates';
+import { pushStatusLabel, type PushStatusResult } from '../../core/services/pushStatus';
+import { resolveStoreArrivalStatus } from '../../core/services/storeArrivalStatus';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const IOS_GEOFENCE_LIMIT = 20;
@@ -96,6 +103,58 @@ export default function StoreArrivalAlertsScreen() {
   const [pushRegistering, setPushRegistering] = useState(false);
   const [pushRegisterStatus, setPushRegisterStatus] = useState<string | null>(null);
 
+  // Truthful push state: local permission + token checked against the row
+  // actually stored in Supabase for this user.
+  const [pushStatus, setPushStatus] = useState<PushStatusResult | null>(null);
+  const [pushPreference, setPushPreference] = useState(true);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [troubleshootOpen, setTroubleshootOpen] = useState(false);
+
+  const refreshPushStatus = useCallback(async () => {
+    const userId = useAuthStore.getState().user?.id ?? null;
+    const [status, preference] = await Promise.all([getPushStatus(userId), readPushPreference()]);
+    setPushStatus(status);
+    setPushPreference(preference);
+  }, []);
+
+  const togglePush = useCallback(async (next: boolean) => {
+    const userId = useAuthStore.getState().user?.id ?? null;
+    setPushBusy(true);
+    setPushRegisterStatus(null);
+    try {
+      await writePushPreference(next);
+      setPushPreference(next);
+      if (!userId) return;
+      // The toggle controls the remote registration, so turning it off genuinely
+      // stops delivery instead of only hiding a row.
+      if (next) await registerPushToken(userId);
+      else await unregisterPushToken(userId);
+    } finally {
+      setPushBusy(false);
+      await refreshPushStatus();
+    }
+  }, [refreshPushStatus]);
+
+  const repairPush = useCallback(async () => {
+    const userId = useAuthStore.getState().user?.id ?? null;
+    if (!userId) {
+      setPushRegisterStatus('Sign in to repair notifications.');
+      return;
+    }
+    setPushBusy(true);
+    setPushRegisterStatus(null);
+    try {
+      // registerPushToken is an idempotent upsert keyed on user_id, and the
+      // household_members_push_token_single_owner trigger guarantees one owner
+      // per token — repeated repairs cannot create duplicate ownership.
+      const result = await registerPushToken(userId);
+      setPushRegisterStatus(result.ok ? '✓ Notifications repaired' : `✗ ${result.reason}`);
+    } finally {
+      setPushBusy(false);
+      await refreshPushStatus();
+    }
+  }, [refreshPushStatus]);
+
   const refreshPushDiagnostics = useCallback(async () => {
     const [mine, household] = await Promise.all([
       getMyPushDiagnostics(),
@@ -138,8 +197,9 @@ export default function StoreArrivalAlertsScreen() {
 
   useEffect(() => {
     void refreshDiagnostics();
+    void refreshPushStatus();
     void AsyncStorage.getItem(DEV_MODE_KEY).then((v) => setDevMode(v === 'true'));
-  }, [refreshDiagnostics]);
+  }, [refreshDiagnostics, refreshPushStatus]);
 
   // Fetch push diagnostics only when devMode is on — avoids an Edge Function
   // round-trip for every user on every open.
@@ -258,6 +318,25 @@ export default function StoreArrivalAlertsScreen() {
     }
   }, [stores, items, gpsStores.length, monitorableStores.length, refreshDiagnostics, openFirstMissingStoreLocation, showNoShoppingItemsAlert]);
 
+  /**
+   * Part 4: delivery check only. Uses notifyTest(), which shares no code path
+   * with the arrival notification — no storeId, no store_arrival type, no
+   * household fan-out, no geofence mutation — and works with zero eligible
+   * stores, unlike the old "Send Alert" which required one.
+   */
+  const sendTestNotification = useCallback(async () => {
+    setTestNotifLoading(true);
+    setTestNotifStatus(null);
+    try {
+      const result = await notifyTest();
+      setTestNotifStatus(result.ok ? '✓ Test notification sent' : `✗ Failed — ${result.result}`);
+    } catch (err) {
+      setTestNotifStatus(`✗ Error — ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setTestNotifLoading(false);
+    }
+  }, []);
+
   const sendArrivalNotification = useCallback(async (source: 'test' | 'manual') => {
     setTestNotifLoading(true);
     setTestNotifStatus(null);
@@ -289,21 +368,81 @@ export default function StoreArrivalAlertsScreen() {
     }
   }, [monitorableStores, items, refreshDiagnostics]);
 
+  const arrivalStatus = resolveStoreArrivalStatus({
+    preferenceEnabled: geofenceDiagnostics?.storeArrivalPreferenceOn ?? geofenceOn,
+    nativeStarted: geofencingRunningNow ?? false,
+    notificationPermission: geofenceDiagnostics?.notificationPermission ?? 'unknown',
+    backgroundPermission: geofenceDiagnostics?.backgroundPermission ?? 'unknown',
+    eligibleStoreCount: monitorableStores.length,
+    lastRegistrationResult: geofenceDiagnostics?.registrationResult ?? 'not_attempted',
+    registrationDrift: geofenceDiagnostics?.registrationOutOfDate ?? false,
+    supported: !inExpoGo,
+  });
+
   return (
     <Screen>
       <SubScreenHeader eyebrow="Notifications" title="Store Arrival Alerts" />
+
+      {/* ── Push notifications (primary setting) ─────────────────────────── */}
+      <Card style={styles.sectionCard}>
+        <ToggleRow
+          icon="notifications-outline"
+          label="Push notifications"
+          description={pushStatus?.message ?? 'Checking…'}
+          value={pushPreference && pushStatus?.status === 'on'}
+          onValueChange={(next) => void togglePush(next)}
+          disabled={pushBusy || pushStatus?.issue === 'unsupported'}
+          dimmed={pushStatus?.issue === 'unsupported'}
+          styles={styles}
+          colors={colors}
+        />
+        <Text style={styles.pushStatusLine}>
+          {pushStatus ? pushStatusLabel(pushStatus.status) : '…'}
+        </Text>
+
+        {/* Only an action the user can actually take is offered. */}
+        {pushStatus?.needsSystemSettings ? (
+          <Pressable
+            style={({ pressed }) => [styles.testNotifButton, pressed && { opacity: 0.7 }]}
+            onPress={() => void Linking.openSettings()}
+            accessibilityRole="button"
+            accessibilityLabel="Open iOS Settings"
+          >
+            <Ionicons name="open-outline" size={16} color={colors.primary} />
+            <Text style={styles.testNotifButtonText}>Open Settings</Text>
+          </Pressable>
+        ) : pushStatus?.repairable ? (
+          <Pressable
+            style={[styles.testNotifButton, pushBusy && { opacity: 0.6 }]}
+            onPress={() => void repairPush()}
+            disabled={pushBusy}
+            accessibilityRole="button"
+            accessibilityLabel="Repair notifications"
+          >
+            <Ionicons name="build-outline" size={16} color={colors.primary} />
+            <Text style={styles.testNotifButtonText}>
+              {pushBusy ? 'Repairing…' : 'Repair notifications'}
+            </Text>
+          </Pressable>
+        ) : null}
+
+        {pushRegisterStatus ? (
+          <Text
+            style={[
+              styles.testNotifResult,
+              pushRegisterStatus.startsWith('✓') ? { color: colors.success } : { color: colors.danger },
+            ]}
+          >
+            {pushRegisterStatus}
+          </Text>
+        ) : null}
+      </Card>
 
       <Card style={styles.sectionCard}>
         <ToggleRow
           icon="location-outline"
           label="Store arrival reminders"
-          description={
-            inExpoGo
-              ? 'Coming soon'
-              : gpsStores.length === 0
-              ? 'Fix a store location to enable'
-              : `Ready for ${monitorableStores.length} assigned store${monitorableStores.length === 1 ? '' : 's'}`
-          }
+          description={arrivalStatus.message}
           value={geofenceOn}
           onValueChange={toggleGeofence}
           disabled={geofenceLoading || inExpoGo}
@@ -365,20 +504,23 @@ export default function StoreArrivalAlertsScreen() {
               <Ionicons name="notifications-outline" size={19} color={colors.primary} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.testNotifHeading}>Arrival alert</Text>
-              <Text style={styles.testNotifNote}>Send a manual alert if an arrival reminder did not appear.</Text>
+              <Text style={styles.testNotifHeading}>Test notification</Text>
+              <Text style={styles.testNotifNote}>
+                Send a local test notification to verify notification delivery. This does not test
+                geofencing.
+              </Text>
             </View>
           </View>
           <Pressable
             style={[styles.testNotifButton, testNotifLoading && { opacity: 0.6 }]}
-            onPress={() => void sendArrivalNotification('manual')}
+            onPress={() => void sendTestNotification()}
             disabled={testNotifLoading}
             accessibilityRole="button"
-            accessibilityLabel="Send arrival notification"
+            accessibilityLabel="Send test notification"
           >
             <Ionicons name="notifications-outline" size={16} color={colors.primary} />
             <Text style={styles.testNotifButtonText}>
-              {testNotifLoading ? 'Sending…' : 'Send Alert'}
+              {testNotifLoading ? 'Sending…' : 'Test notification'}
             </Text>
           </Pressable>
           {testNotifStatus ? (
@@ -392,6 +534,100 @@ export default function StoreArrivalAlertsScreen() {
             </Text>
           ) : null}
         </View>
+
+        {/* ── TROUBLESHOOTING (collapsed; temporary until field testing) ── */}
+        <Pressable
+          style={({ pressed }) => [styles.troubleshootToggle, pressed && { opacity: 0.7 }]}
+          onPress={() => setTroubleshootOpen((open) => !open)}
+          accessibilityRole="button"
+          accessibilityLabel={troubleshootOpen ? 'Hide troubleshooting' : 'Show troubleshooting'}
+        >
+          <Ionicons
+            name={troubleshootOpen ? 'chevron-down' : 'chevron-forward'}
+            size={16}
+            color={colors.muted}
+          />
+          <Text style={styles.troubleshootToggleText}>Troubleshooting</Text>
+        </Pressable>
+
+        {troubleshootOpen && (
+          <View style={styles.geofenceDiagnostics}>
+            <DiagRow
+              label="Reminders enabled"
+              value={geofenceDiagnostics?.storeArrivalPreferenceOn ? 'yes' : 'no'}
+              colors={colors}
+              styles={styles}
+            />
+            <DiagRow
+              label="Notification permission"
+              value={geofenceDiagnostics?.notificationPermission ?? '…'}
+              colors={colors}
+              styles={styles}
+            />
+            <DiagRow
+              label="Background location"
+              value={geofenceDiagnostics?.backgroundPermission ?? '…'}
+              colors={colors}
+              styles={styles}
+            />
+            <DiagRow
+              label="Eligible stores"
+              value={String(monitorableStores.length)}
+              colors={colors}
+              styles={styles}
+            />
+            {/* expo-location exposes no way to enumerate iOS's monitored
+                regions, so this is what we ASKED iOS to watch — never claimed
+                as a native registered count. */}
+            <DiagRow
+              label="Regions requested"
+              value={String(geofenceDiagnostics?.regionsPassedCount ?? 0)}
+              colors={colors}
+              styles={styles}
+            />
+            <DiagRow
+              label="Native geofencing started"
+              value={geofencingRunningNow === null ? '…' : geofencingRunningNow ? 'yes' : 'no'}
+              colors={colors}
+              styles={styles}
+            />
+            <DiagRow
+              label="Registration drift"
+              value={geofenceDiagnostics?.registrationOutOfDate ? 'yes' : 'no'}
+              colors={colors}
+              styles={styles}
+            />
+            <DiagRow
+              label="Last registration"
+              value={geofenceDiagnostics?.registrationError
+                ? `${geofenceDiagnostics.registrationResult} (${geofenceDiagnostics.registrationError})`
+                : geofenceDiagnostics?.registrationResult ?? '…'}
+              colors={colors}
+              styles={styles}
+            />
+            <DiagRow
+              label="Last arrival"
+              value={geofenceDiagnostics?.lastNotificationStoreName
+                ? `${geofenceDiagnostics.lastNotificationStoreName}`
+                : 'none yet'}
+              colors={colors}
+              styles={styles}
+            />
+            <DiagRow
+              label="Last suppression"
+              value={
+                geofenceDiagnostics?.lastConfidenceResult &&
+                geofenceDiagnostics.lastConfidenceResult !== 'passed'
+                  ? geofenceDiagnostics.lastConfidenceResult
+                  : geofenceDiagnostics?.lastAmbiguityDecision === 'ambiguous'
+                  ? 'ambiguous match'
+                  : 'none'
+              }
+              colors={colors}
+              styles={styles}
+            />
+          </View>
+        )}
 
         {/* ── DIAGNOSTICS (Developer Mode only) ────────────────────────── */}
         {devMode && <View style={styles.geofenceDiagnostics}>
@@ -912,6 +1148,26 @@ function makeStyles(colors: AppColors) {
       fontSize: 12,
       marginTop: spacing.sm,
       lineHeight: 18,
+    },
+    pushStatusLine: {
+      fontFamily: fonts.sansSemibold,
+      fontSize: 13,
+      color: colors.muted,
+      marginTop: spacing.xs,
+    },
+    troubleshootToggle: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      marginTop: spacing.md,
+      paddingTop: spacing.md,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    troubleshootToggleText: {
+      fontFamily: fonts.sansMedium,
+      fontSize: 13,
+      color: colors.muted,
     },
     // ── Diagnostics ───────────────────────────────────────────────────────
     geofenceDiagnostics: {

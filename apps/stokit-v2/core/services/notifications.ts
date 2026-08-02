@@ -13,6 +13,7 @@ import { AppState, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../../lib/supabase';
 import { readFunctionError } from './functionError';
+import { resolvePushStatus, type PushStatusInput, type PushStatusResult } from './pushStatus';
 
 /**
  * Resolve the EAS projectId required by getExpoPushTokenAsync(). Auto-resolution
@@ -189,6 +190,10 @@ export async function registerPushToken(userId: string): Promise<PushRegistratio
 
     const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
     const token = tokenData.data;
+    // Record what we are about to register so a later run can tell "registered"
+    // apart from "stale". Written before the round-trip and cleared on failure,
+    // so a crash mid-write can never leave a false "registered" claim behind.
+    await writeStoredPushRegistration({ token, userId, registeredAt: Date.now() });
 
     // Write the token to EVERY household_members row for this user.
     // Previously we only wrote to the row matching profiles.household_id, which
@@ -199,13 +204,173 @@ export async function registerPushToken(userId: string): Promise<PushRegistratio
       .from('household_members')
       .update({ push_token: token }, { count: 'exact' })
       .eq('user_id', userId);
-    if (error) return { ok: false, reason: 'write_error', detail: error.message };
-    if (count === 0) return { ok: false, reason: 'zero_rows', detail: `No household_members rows found for user ${userId}` };
+    if (error) {
+      await clearStoredPushRegistration();
+      return { ok: false, reason: 'write_error', detail: error.message };
+    }
+    if (count === 0) {
+      await clearStoredPushRegistration();
+      return { ok: false, reason: 'zero_rows', detail: `No household_members rows found for user ${userId}` };
+    }
 
     return { ok: true, token };
   } catch (err) {
+    await clearStoredPushRegistration();
     return { ok: false, reason: 'token_error', detail: err instanceof Error ? err.message : String(err) };
   }
+}
+
+// ── Registration state (device-local) ─────────────────────────────────────────
+
+const PUSH_REGISTRATION_KEY = 'stokit:v2:push-registration';
+const PUSH_PREFERENCE_KEY = 'stokit:v2:push-enabled';
+
+/**
+ * The minimum needed to detect a stale registration: which token this device
+ * last registered, and for whom. Never leaves the device.
+ */
+export interface StoredPushRegistration {
+  token: string;
+  userId: string;
+  registeredAt: number;
+}
+
+export async function readStoredPushRegistration(): Promise<StoredPushRegistration | null> {
+  try {
+    const raw = await AsyncStorage.getItem(PUSH_REGISTRATION_KEY);
+    return raw ? (JSON.parse(raw) as StoredPushRegistration) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function writeStoredPushRegistration(value: StoredPushRegistration): Promise<void> {
+  try {
+    await AsyncStorage.setItem(PUSH_REGISTRATION_KEY, JSON.stringify(value));
+  } catch {
+    // Non-fatal: status degrades to "couldn't confirm", never to a false "on".
+  }
+}
+
+export async function clearStoredPushRegistration(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(PUSH_REGISTRATION_KEY);
+  } catch {
+    // Non-fatal
+  }
+}
+
+/** Device-scoped opt-in. Defaults to enabled; only an explicit toggle-off disables. */
+export async function readPushPreference(): Promise<boolean> {
+  try {
+    return (await AsyncStorage.getItem(PUSH_PREFERENCE_KEY)) !== 'false';
+  } catch {
+    return true;
+  }
+}
+
+export async function writePushPreference(enabled: boolean): Promise<void> {
+  try {
+    await AsyncStorage.setItem(PUSH_PREFERENCE_KEY, enabled ? 'true' : 'false');
+  } catch {
+    // Non-fatal
+  }
+}
+
+/**
+ * Read this user's registered token straight from the database.
+ *
+ * `remoteReadable: false` (offline, RLS, transport error) is reported
+ * separately from `token: null` (definitively not registered) so the resolver
+ * can say "couldn't confirm" instead of guessing in either direction.
+ */
+export async function readRemotePushToken(
+  userId: string,
+): Promise<{ token: string | null; remoteReadable: boolean }> {
+  try {
+    const { data, error } = await supabase
+      .from('household_members')
+      .select('push_token')
+      .eq('user_id', userId)
+      .not('push_token', 'is', null)
+      .limit(1);
+    if (error) return { token: null, remoteReadable: false };
+    const rows = (data ?? []) as Array<{ push_token: string | null }>;
+    return { token: rows[0]?.push_token ?? null, remoteReadable: true };
+  } catch {
+    return { token: null, remoteReadable: false };
+  }
+}
+
+/**
+ * Stop delivering household alerts to this device by clearing its token from
+ * every row this user owns. Idempotent — the single-owner trigger means there
+ * is at most one owner per token, so this can never orphan another user's row.
+ */
+export async function unregisterPushToken(userId: string): Promise<{ ok: boolean }> {
+  try {
+    const { error } = await supabase
+      .from('household_members')
+      .update({ push_token: null })
+      .eq('user_id', userId);
+    await clearStoredPushRegistration();
+    return { ok: !error };
+  } catch {
+    return { ok: false };
+  }
+}
+
+/**
+ * Compose the one truthful push state for this device: local permission and
+ * token, checked against the row actually stored in Supabase.
+ */
+export async function getPushStatus(userId: string | null): Promise<PushStatusResult> {
+  if (Platform.OS === 'web') {
+    return resolvePushStatus({
+      permission: 'web',
+      projectIdPresent: false,
+      localToken: null,
+      remoteToken: null,
+      remoteReadable: false,
+      preferenceEnabled: false,
+    });
+  }
+
+  const preferenceEnabled = await readPushPreference();
+
+  let permission: PushStatusInput['permission'] = 'unknown';
+  try {
+    const { status } = await Notifications.getPermissionsAsync();
+    permission = status as PushStatusInput['permission'];
+  } catch {
+    // leave 'unknown' — resolver treats it as not-yet-granted, never as granted
+  }
+
+  const projectId = resolveProjectId();
+
+  // Minting a token prompts nothing and is the only way to know the CURRENT
+  // token, which is what staleness is measured against.
+  let localToken: string | null = null;
+  if (permission === 'granted' && projectId) {
+    try {
+      localToken = (await Notifications.getExpoPushTokenAsync({ projectId })).data ?? null;
+    } catch {
+      localToken = null;
+    }
+  }
+
+  const remote = userId
+    ? await readRemotePushToken(userId)
+    : { token: null, remoteReadable: false };
+
+  return resolvePushStatus({
+    permission,
+    projectIdPresent: Boolean(projectId),
+    localToken,
+    remoteToken: remote.token,
+    remoteReadable: remote.remoteReadable,
+    preferenceEnabled,
+  });
 }
 
 // ── Push diagnostics (QA / devMode) ───────────────────────────────────────────
@@ -377,6 +542,45 @@ function buildArrivalContent(
     // banner and no sound.
     ...(Platform.OS === 'ios' ? { interruptionLevel: 'active' as const } : {}),
   };
+}
+
+/**
+ * Send one neutral local notification that proves delivery works — nothing more.
+ *
+ * The old "Send Alert" button called notifyArrival() with a real store, its
+ * storeId and its item names, producing a payload identical to a genuine
+ * arrival: tapping it deep-linked into Shopping focused on that store. It also
+ * refused to run when no store was eligible, so it could not test the one thing
+ * it existed to test.
+ *
+ * This deliberately shares no code path with the arrival notification. It
+ * carries `type: 'test'` and NO storeId, so the tap handler cannot mistake it
+ * for an arrival. It touches no geofence state and notifies nobody else.
+ */
+export async function notifyTest(): Promise<{ ok: boolean; result: string }> {
+  const hasPermission = await requestNotificationPermission();
+  if (!hasPermission) return { ok: false, result: 'failed:no_notification_permission' };
+
+  await appendNotificationLog('requested', `source=test appState=${AppState.currentState}`);
+
+  try {
+    const id = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Stokit test notification',
+        body: 'Notifications are working on this device.',
+        data: { type: 'test' },
+        sound: 'default',
+        ...(Platform.OS === 'ios' ? { interruptionLevel: 'active' as const } : {}),
+      },
+      trigger: Platform.OS === 'android' ? { channelId: 'store-arrivals' } : null,
+    });
+    await appendNotificationLog('scheduled', `test id=${id}`);
+    return { ok: true, result: `scheduled:${id}` };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await appendNotificationLog('schedule_error', message);
+    return { ok: false, result: `failed:${message}` };
+  }
 }
 
 /**
