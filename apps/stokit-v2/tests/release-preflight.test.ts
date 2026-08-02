@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
@@ -36,14 +36,37 @@ test('Maestro smoke test targets the production Stokit bundle', () => {
     join(process.cwd(), '../../.maestro/flows/smoke-core.yaml'),
     'utf8',
   );
-  assert.match(smoke, new RegExp(`^appId: ${config.expo.ios.bundleIdentifier}$`, 'm'));
+  const expectedAppId = config.expo.ios.bundleIdentifier;
+  assert.match(smoke, new RegExp(`^appId: ${expectedAppId}$`, 'm'));
   assert.match(smoke, /text: "Skip onboarding"/);
+
+  // Stale-appId sweep across every flow and subflow. ripgrep is the fast path,
+  // but it is not guaranteed to be on PATH — and when the binary is missing,
+  // spawnSync returns `stdout: undefined`, which used to throw a TypeError here
+  // and fail the whole test for an environment reason. Guard error/status/stdout
+  // and fall back to a plain Node scan so this validation always actually runs.
+  const maestroRoot = join(process.cwd(), '../../.maestro');
   const stale = spawnSync(
     'rg',
-    ['-l', '^appId: (?!com\\.hewadadil\\.pantrypal$)', '../../.maestro', '--pcre2'],
+    ['-l', `^appId: (?!${expectedAppId.replace(/\./g, '\\.')}$)`, '../../.maestro', '--pcre2'],
     { cwd: process.cwd(), encoding: 'utf8' },
   );
-  assert.equal(stale.stdout.trim(), '');
+  // rg exit codes: 0 = matches found, 1 = no matches, >1 = a real error.
+  const rgUsable =
+    !stale.error && typeof stale.stdout === 'string' && (stale.status === 0 || stale.status === 1);
+  if (rgUsable) {
+    assert.equal(stale.stdout.trim(), '', 'every .maestro flow must target the production bundle id');
+  } else {
+    const offenders = readdirSync(maestroRoot, { recursive: true, encoding: 'utf8' })
+      .filter((entry) => /\.ya?ml$/.test(entry))
+      .filter((entry) =>
+        readFileSync(join(maestroRoot, entry), 'utf8')
+          .split('\n')
+          .filter((line) => line.startsWith('appId:'))
+          .some((line) => line.trim() !== `appId: ${expectedAppId}`),
+      );
+    assert.deepEqual(offenders, [], 'every .maestro flow must target the production bundle id');
+  }
   const runner = readFileSync(join(process.cwd(), '../../scripts/maestro-test.sh'), 'utf8');
   assert.match(runner, /FLOW="\$\{1:-\.maestro\/flows\/smoke-launch\.yaml\}"/);
 });

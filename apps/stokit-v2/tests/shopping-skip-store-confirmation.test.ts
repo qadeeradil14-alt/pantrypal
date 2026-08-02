@@ -21,7 +21,6 @@
  */
 
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -126,34 +125,40 @@ test('4b. SKIP_STORE / UNSKIP_STORE reducer behaviour is unchanged', () => {
 
 // ── 5. Nothing but copy changed ──────────────────────────────────────────────
 
-test('5. no reducer, store, service or migration file is touched by this change', () => {
-  const changed = execFileSync(
-    'git',
-    ['diff', '--name-only', 'HEAD', '--', '.', '../../supabase'],
-    { cwd: process.cwd(), encoding: 'utf8' },
-  )
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    // The suite itself is untracked at review time; ignore any test file.
-    .filter((path) => !path.includes('/tests/'));
+/**
+ * The whole Skip <Pressable>, including its onPress body.
+ *
+ * This replaces an earlier `git diff --name-only HEAD` assertion. That check
+ * could only ever pass while the change sat uncommitted in the working tree,
+ * so it inverted into a permanent failure the moment the change landed. The
+ * property it was really protecting — that this is copy/wiring only, confined
+ * to this screen — is a stable fact about the source, asserted below. The
+ * "no reducer or store change" half is already covered durably by tests 4
+ * (exact pre-existing dispatch) and 4b (reducer behaviour unchanged).
+ */
+function skipControlPressable(): string {
+  const alertStart = screen.indexOf('Alert.alert(\n                      `Skip ${');
+  assert.ok(alertStart > -1, 'the Skip control must show a confirmation before skipping');
+  return screen.slice(
+    screen.lastIndexOf('<Pressable', alertStart),
+    screen.indexOf('</Pressable>', alertStart),
+  );
+}
 
-  const forbidden = changed.filter((path) =>
-    /\/(store|core)\//.test(path) || /supabase\/migrations\//.test(path),
+test('5. the confirmation is pure wiring — no new component, screen or React state', () => {
+  const control = skipControlPressable();
+  // A confirmation built as a modal or sheet would set state here and render
+  // elsewhere. This one calls Alert.alert inline from the control's own
+  // onPress, which is exactly why the change stays inside this screen.
+  assert.match(
+    control,
+    /onPress=\{\(\) => \{[\s\S]*Alert\.alert\(/,
+    'the Alert fires inline from the control’s own onPress',
   );
-  assert.deepEqual(forbidden, [], `no logic file may change; saw: ${forbidden.join(', ')}`);
-  assert.ok(
-    changed.includes('apps/stokit-v2/app/(tabs)/shopping.tsx'),
-    'the copy change lands on the shopping screen',
-  );
-  // Anything else still uncommitted must be pre-existing local noise (editor /
-  // build config), never app source.
-  const appSource = changed.filter(
-    (path) => path.startsWith('apps/stokit-v2/') && /\.(ts|tsx)$/.test(path),
-  );
-  assert.deepEqual(
-    appSource, ['apps/stokit-v2/app/(tabs)/shopping.tsx'],
-    'exactly one TypeScript source file changes',
+  assert.doesNotMatch(
+    control,
+    /useState|setShow|setConfirm|<Modal|<Sheet/,
+    'no dedicated state or component backs the confirmation',
   );
 });
 
