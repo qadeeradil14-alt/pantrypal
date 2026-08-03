@@ -496,10 +496,13 @@ export default function StoreArrivalAlertsScreen() {
               colors={colors}
               styles={styles}
             />
+            {/* Timestamped, so a stale suppression can never be mistaken for a
+                fresh one — the ambiguity that made the last field report hard
+                to interpret. */}
             <DiagRow
               label="Last arrival"
               value={geofenceDiagnostics?.lastNotificationStoreName
-                ? `${geofenceDiagnostics.lastNotificationStoreName}`
+                ? `${geofenceDiagnostics.lastNotificationStoreName} · ${formatDiagnosticTime(geofenceDiagnostics.lastArrivalAt)}`
                 : 'none yet'}
               colors={colors}
               styles={styles}
@@ -507,13 +510,20 @@ export default function StoreArrivalAlertsScreen() {
             <DiagRow
               label="Last suppression"
               value={
-                geofenceDiagnostics?.lastConfidenceResult &&
-                geofenceDiagnostics.lastConfidenceResult !== 'passed'
-                  ? geofenceDiagnostics.lastConfidenceResult
+                geofenceDiagnostics?.lastSuppressionReason
+                  ? `${geofenceDiagnostics.lastSuppressionReason} · ${formatDiagnosticTime(geofenceDiagnostics.lastSuppressionAt)}`
                   : geofenceDiagnostics?.lastAmbiguityDecision === 'ambiguous'
                   ? 'ambiguous match'
                   : 'none'
               }
+              colors={colors}
+              styles={styles}
+            />
+            <DiagRow
+              label="Arrival retries"
+              value={geofenceDiagnostics?.lastArrivalRetryCount == null
+                ? 'none yet'
+                : String(geofenceDiagnostics.lastArrivalRetryCount)}
               colors={colors}
               styles={styles}
             />

@@ -191,9 +191,11 @@ test('preference off is a resting state with no alarming copy', () => {
 const geofencing = readFileSync(join(process.cwd(), 'core/services/geofencing.ts'), 'utf8');
 
 function startGeofencingBody(): string {
-  const start = geofencing.indexOf('export async function startGeofencing(');
-  const end = geofencing.indexOf('export async function stopGeofencing(');
-  assert.ok(start > -1 && end > start, 'startGeofencing must be locatable');
+  // The registration body moved into startGeofencingInner when startGeofencing
+  // became a single-flight wrapper; slice the implementation, not the wrapper.
+  const start = geofencing.indexOf('async function startGeofencingInner(');
+  const end = geofencing.indexOf('const geofenceSingleFlight =');
+  assert.ok(start > -1 && end > start, 'startGeofencingInner must be locatable');
   return geofencing.slice(start, end);
 }
 
@@ -347,8 +349,12 @@ test('cooldown, dwell, speed and accuracy guards are unchanged', () => {
   assert.match(geofencing, /export const ARRIVAL_SPEED_THRESHOLD_MPS = 5;/, 'pass-by threshold');
   assert.match(geofencing, /export const ARRIVAL_MAX_GPS_ACCURACY_M = 60;/, 'accuracy floor');
   assert.match(geofencing, /export const ARRIVAL_RADIUS_M = 150;/, 'arrival radius');
-  assert.match(geofencing, /lastConfidenceResult: 'rejected_speed'/, 'pass-by rejection intact');
-  assert.match(geofencing, /lastConfidenceResult: 'rejected_accuracy'/, 'accuracy rejection intact');
+  // Rejection reasons are now produced by evaluateArrivalSample (behaviour
+  // covered exhaustively in geofencing.test.ts); assert they are still recorded
+  // rather than pinning a literal assignment that refactoring can move.
+  assert.match(geofencing, /lastSuppressionReason: reason/, 'suppression reason is recorded');
+  assert.match(geofencing, /lastSuppressionAt: Date\.now\(\)/, 'and timestamped');
+  assert.match(geofencing, /evaluateArrivalSample\(/, 'confidence checks still run');
   // Cooldown is still written only after a fully accepted arrival.
   assert.match(geofencing, /await writeLastArrivalAt\(decision\.storeId, Date\.now\(\)\)/);
 });

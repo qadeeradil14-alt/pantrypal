@@ -29,7 +29,7 @@ import Constants from 'expo-constants';
 import { notifyArrival, requestNotificationPermission, appendNotificationLog } from './notifications';
 import type { PantryItem, Store } from '../../types';
 import { loadDurable } from '../repositories/durableRepository';
-import { arrivalItemNames, decideStoreArrival, geofenceableStores, isActivePantryItem, storeArrivalPreferenceFromDiagnostics, type StoreCandidate } from './geofencingLogic';
+import { arrivalItemNames, createSingleFlight, decideStoreArrival, evaluateArrivalSample, geofenceableStores, isActivePantryItem, regionFingerprint, seedExitStateFromDiagnostics, shouldContinueArrivalSampling, storeArrivalPreferenceFromDiagnostics, type StoreCandidate } from './geofencingLogic';
 
 // ── Constants (match V1 values) ───────────────────────────────────────────────
 
@@ -82,11 +82,54 @@ export const ARRIVAL_SPEED_THRESHOLD_MPS = 5;
  */
 export const ARRIVAL_MAX_GPS_ACCURACY_M = 60;
 
+/**
+ * Bounded re-sampling after a speed rejection.
+ *
+ * One sample 10s after crossing a 100m boundary is taken while the car is
+ * usually still moving through the lot, and iOS fires ENTER only on a boundary
+ * crossing — so that single sample permanently decided the arrival. These give
+ * a real arrival further chances to be confirmed once the car stops, without
+ * relaxing the speed threshold or the pass-by guard.
+ *
+ * Budget rationale: the exact iOS background window for a region-monitoring
+ * callback is not verifiable from this codebase (expo-location ships no iOS
+ * sources here), so these are sized against measured behaviour rather than an
+ * assumed limit. The existing task already sleeps DWELL_CONFIRM_MS (10s), takes
+ * a GPS fix and still persists its result, evidencing ≥~12s of execution.
+ * Worst case here is 10s + 3 × 6s = 28s of sleep, plus cumulative GPS-fix time —
+ * deliberately inside the ~30s an extended background task is commonly granted.
+ *
+ * KNOWN LIMITATION: samples land at 10s, 16s, 22s and 28s after ENTER. Someone
+ * who takes longer than that to park is still moving at the final sample and is
+ * suppressed, because iOS re-fires ENTER only on a new boundary crossing. This
+ * window catches a quick park, not a slow one. Widening it requires knowing the
+ * real background execution limit, which is not verifiable from this codebase —
+ * measure it with a dev client before changing these. Tune from field evidence;
+ * do not raise without it.
+ */
+export const ARRIVAL_RETRY_MAX_ATTEMPTS = 3;
+export const ARRIVAL_RETRY_INTERVAL_MS = 6 * 1000;
+/** Total wall-clock allowed for re-sampling, measured from the first retry. */
+export const ARRIVAL_RETRY_BUDGET_MS = 20 * 1000;
+
 /** Maximum geofences iOS supports. */
 const MAX_GEOFENCES_IOS = 20;
 
 const LAST_ENTER_KEY = 'stokit:v2:geofence:last-enter';
+/**
+ * storeId -> ms timestamp of the last geofence EXIT. Persisted separately from
+ * diagnostics because the arrival decision depends on it: an EXIT recorded only
+ * in the diagnostics blob was never consulted, so nothing required the user to
+ * actually leave before the next ENTER could notify again.
+ */
+const LAST_EXIT_KEY = 'stokit:v2:geofence:last-exit';
 const DIAGNOSTICS_KEY = 'stokit:v2:geofence:diagnostics';
+/**
+ * storeId -> true once the exit gate is active for that store. Written on every
+ * accepted arrival, so an install upgrading from before the gate existed gets
+ * exactly one grandfathered arrival per store and is protected thereafter.
+ */
+const EXIT_GATE_MIGRATED_KEY = 'stokit:v2:geofence:exit-gate-migrated';
 
 type PermissionStatus = 'granted' | 'denied' | 'undetermined' | 'unknown';
 
@@ -189,6 +232,40 @@ export interface GeofenceDiagnostics {
    *   null               — no dwell confirmation attempted yet
    */
   lastConfidenceResult: 'passed' | 'rejected_speed' | 'rejected_accuracy' | null;
+  // ── Arrival timing / re-sampling ───────────────────────────────────────────
+  /** When an arrival was last ACCEPTED and notified. Undated rows made it
+   *  impossible to tell a stale suppression from a fresh one. */
+  lastArrivalAt: number | null;
+  /** When an arrival was last SUPPRESSED, with the terminal reason. */
+  lastSuppressionAt: number | null;
+  lastSuppressionReason:
+    | 'rejected_speed'
+    | 'rejected_accuracy'
+    | 'moved_away'
+    | 'ambiguous_nearby_store'
+    | 'no_exit_since_last_arrival'
+    | 'enter_rejected'
+    | 'dwell_rejected'
+    | null;
+  /** Extra location samples taken after the first speed rejection (0 = none). */
+  lastArrivalRetryCount: number | null;
+  /**
+   * Phase of the most recent ENTER attempt. Written BEFORE re-sampling begins
+   * and only ever advanced to a terminal value by the code that reaches one.
+   *
+   * If iOS suspends the task mid-loop nothing further is written, so this stays
+   * at 'sampling' — which is how a killed attempt is told apart from a genuine
+   * suppression. Without it, a fresh lastEnterAt sitting next to a stale
+   * suppression reason reads exactly like a real rejection.
+   */
+  lastArrivalPhase: 'sampling' | 'accepted' | 'suppressed' | null;
+  /**
+   * Fingerprint of the region set last handed to the native registration call.
+   * Used to skip identical re-registrations, which can make iOS re-deliver ENTER.
+   */
+  registeredRegionFingerprint: string | null;
+  /** When the current/last sampling attempt began (first post-dwell sample). */
+  lastArrivalPhaseAt: number | null;
 }
 
 const emptyDiagnostics: GeofenceDiagnostics = {
@@ -225,6 +302,13 @@ const emptyDiagnostics: GeofenceDiagnostics = {
   lastDwellAccuracy: null,
   lastDwellSpeed: null,
   lastConfidenceResult: null,
+  lastArrivalAt: null,
+  lastSuppressionAt: null,
+  lastSuppressionReason: null,
+  lastArrivalRetryCount: null,
+  lastArrivalPhase: null,
+  lastArrivalPhaseAt: null,
+  registeredRegionFingerprint: null,
 };
 
 /** storeId -> ms timestamp of the last accepted arrival. */
@@ -234,6 +318,56 @@ async function readLastArrivalAt(): Promise<Record<string, number>> {
     return raw ? JSON.parse(raw) : {};
   } catch {
     return {};
+  }
+}
+
+async function readLastExitAt(): Promise<Record<string, number>> {
+  try {
+    const raw = await AsyncStorage.getItem(LAST_EXIT_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+async function writeLastExitAt(storeId: string, at: number): Promise<void> {
+  try {
+    const record = await readLastExitAt();
+    record[storeId] = at;
+    await AsyncStorage.setItem(LAST_EXIT_KEY, JSON.stringify(record));
+  } catch {
+    // Non-fatal — a missed exit write leaves the store gated until the next
+    // exit, which fails safe (a suppressed duplicate) rather than notifying twice.
+  }
+}
+
+async function writeLastExitState(next: Record<string, number>): Promise<void> {
+  try {
+    await AsyncStorage.setItem(LAST_EXIT_KEY, JSON.stringify(next));
+  } catch {
+    // Non-fatal — the one-time grandfather still prevents an upgrade from
+    // permanently suppressing an arrival if this migration write is unavailable.
+  }
+}
+
+async function readExitGateMigrated(): Promise<Record<string, boolean>> {
+  try {
+    const raw = await AsyncStorage.getItem(EXIT_GATE_MIGRATED_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+async function markExitGateMigrated(storeId: string): Promise<void> {
+  try {
+    const record = await readExitGateMigrated();
+    if (record[storeId]) return;
+    record[storeId] = true;
+    await AsyncStorage.setItem(EXIT_GATE_MIGRATED_KEY, JSON.stringify(record));
+  } catch {
+    // Non-fatal — a missed marker write only risks one extra grandfathered
+    // arrival, never a permanently disabled gate.
   }
 }
 
@@ -475,6 +609,9 @@ export function defineGeofenceTask(
     if (!storeId) return;
     const now = Date.now();
     if (eventType === Location.GeofencingEventType.Exit) {
+      // Persisted as well as recorded in diagnostics — decideStoreArrival needs
+      // it to know a real departure happened before the next ENTER may notify.
+      await writeLastExitAt(storeId, now);
       await markStoreEvent(storeId, { lastExitAt: now });
       return;
     }
@@ -489,6 +626,17 @@ export function defineGeofenceTask(
     const items = durable?.items ?? getItems();
     const stores = durable?.stores ?? getStores();
     const lastArrivalAt = await readLastArrivalAt();
+    const persistedExitAt = await readLastExitAt();
+    // Reuse genuine exit timestamps older builds left in diagnostics, so a real
+    // departure satisfies the gate instead of consuming the one-time grandfather.
+    const lastExitAt = seedExitStateFromDiagnostics(
+      persistedExitAt,
+      (await readDiagnostics()).stores,
+    );
+    if (Object.keys(lastExitAt).length !== Object.keys(persistedExitAt).length) {
+      await writeLastExitState(lastExitAt);
+    }
+    const exitGateMigrated = await readExitGateMigrated();
 
     // Region identifier is only a wake-up signal — decideStoreArrival is the single
     // source of truth for which store (if any) wins, using a fresh GPS fix.
@@ -504,6 +652,8 @@ export function defineGeofenceTask(
         radiusMetres: ARRIVAL_RADIUS_M,
         cooldownMs: DEBOUNCE_MS,
         lastArrivalAt,
+        lastExitAt,
+        exitGateMigrated,
       });
       await patchDiagnostics({
         lastMatchedStoreId: initial.storeId ?? null,
@@ -523,7 +673,15 @@ export function defineGeofenceTask(
             `candidates=${initial.nearbyCandidates.map((c) => `${c.storeName}:${c.distanceMetres.toFixed(0)}m`).join(', ')}`,
           );
         }
-        await patchDiagnostics({ lastError: `enter_rejected:${initial.reason ?? 'unknown'}` });
+        await patchDiagnostics({
+          lastError: `enter_rejected:${initial.reason ?? 'unknown'}`,
+          lastSuppressionAt: Date.now(),
+          lastSuppressionReason: initial.reason === 'no_exit_since_last_arrival'
+            ? 'no_exit_since_last_arrival'
+            : initial.reason === 'ambiguous_nearby_store'
+              ? 'ambiguous_nearby_store'
+              : 'enter_rejected',
+        });
         return;
       }
     } catch (err) {
@@ -538,36 +696,116 @@ export function defineGeofenceTask(
     try {
       // Unlike the entry check above (which fails open on GPS error), this dwell
       // re-check fails closed — an uncertain location here aborts the arrival.
-      const confirmPos = await Location.getCurrentPositionAsync({
+      let confirmPos = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
 
-      // Arrival confidence checks — reject drive-bys before deciding store.
-      const dwellSpeed = confirmPos.coords.speed ?? -1;
-      const dwellAccuracy = confirmPos.coords.accuracy ?? 999;
-      if (dwellAccuracy > ARRIVAL_MAX_GPS_ACCURACY_M) {
+      // Arrival confidence — bounded re-sampling. A drive-by never settles below
+      // the speed threshold and leaves the radius, so pass-by rejection is
+      // unchanged; a real arrival gets further chances once the car stops.
+      const nearestDistanceM = (position: Location.LocationObject): number => {
+        const candidate = decideStoreArrival({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          stores,
+          items,
+          radiusMetres: ARRIVAL_RADIUS_M,
+          cooldownMs: DEBOUNCE_MS,
+          lastArrivalAt,
+          lastExitAt,
+          exitGateMigrated,
+        });
+        return candidate.distanceMetres ?? Number.POSITIVE_INFINITY;
+      };
+
+      let retryCount = 0;
+      let position = confirmPos;
+      const retryDeadline = Date.now() + ARRIVAL_RETRY_BUDGET_MS;
+      let outcome = evaluateArrivalSample(
+        {
+          speedMps: position.coords.speed ?? -1,
+          accuracyM: position.coords.accuracy ?? 999,
+          distanceM: nearestDistanceM(position),
+        },
+        {
+          maxAccuracyM: ARRIVAL_MAX_GPS_ACCURACY_M,
+          speedThresholdMps: ARRIVAL_SPEED_THRESHOLD_MPS,
+          arrivalRadiusM: ARRIVAL_RADIUS_M,
+          isFirstSample: true,
+          budgetExpired: false,
+        },
+      );
+
+      // Written before any retry so a task suspended mid-loop leaves 'sampling'
+      // behind rather than a stale verdict that reads like a real suppression.
+      await patchDiagnostics({
+        lastArrivalPhase: 'sampling',
+        lastArrivalPhaseAt: Date.now(),
+        lastArrivalRetryCount: 0,
+      });
+
+      while (shouldContinueArrivalSampling(outcome, retryCount, ARRIVAL_RETRY_MAX_ATTEMPTS)) {
+        await new Promise((resolve) => setTimeout(resolve, ARRIVAL_RETRY_INTERVAL_MS));
+        retryCount += 1;
+        try {
+          position = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+        } catch {
+          // A failed fix mid-retry is not terminal; the budget still bounds us.
+          continue;
+        }
+        outcome = evaluateArrivalSample(
+          {
+            speedMps: position.coords.speed ?? -1,
+            accuracyM: position.coords.accuracy ?? 999,
+            distanceM: nearestDistanceM(position),
+          },
+          {
+            maxAccuracyM: ARRIVAL_MAX_GPS_ACCURACY_M,
+            speedThresholdMps: ARRIVAL_SPEED_THRESHOLD_MPS,
+            arrivalRadiusM: ARRIVAL_RADIUS_M,
+            isFirstSample: false,
+            budgetExpired:
+              Date.now() >= retryDeadline || retryCount >= ARRIVAL_RETRY_MAX_ATTEMPTS,
+          },
+        );
+      }
+
+      const dwellSpeed = position.coords.speed ?? -1;
+      const dwellAccuracy = position.coords.accuracy ?? 999;
+
+      if (outcome.decision !== 'accept') {
+        // 'retry' can only survive the loop when the budget ran out; treat it as
+        // the speed rejection it started as.
+        const reason = outcome.decision === 'reject' ? outcome.reason : 'rejected_speed';
         await patchDiagnostics({
           lastDwellAccuracy: dwellAccuracy,
           lastDwellSpeed: dwellSpeed,
-          lastConfidenceResult: 'rejected_accuracy',
-          lastError: `confidence:gps_accuracy_${dwellAccuracy.toFixed(0)}m`,
+          lastConfidenceResult: reason === 'moved_away' ? 'rejected_speed' : reason,
+          lastSuppressionAt: Date.now(),
+          lastSuppressionReason: reason,
+          lastArrivalRetryCount: retryCount,
+          lastArrivalPhase: 'suppressed',
+          lastArrivalPhaseAt: Date.now(),
+          lastError: reason === 'rejected_accuracy'
+            ? `confidence:gps_accuracy_${dwellAccuracy.toFixed(0)}m`
+            : reason === 'moved_away'
+              ? 'confidence:moved_away'
+              : `confidence:speed_${dwellSpeed.toFixed(1)}mps`,
         });
         return;
       }
-      if (dwellSpeed >= 0 && dwellSpeed > ARRIVAL_SPEED_THRESHOLD_MPS) {
-        await patchDiagnostics({
-          lastDwellAccuracy: dwellAccuracy,
-          lastDwellSpeed: dwellSpeed,
-          lastConfidenceResult: 'rejected_speed',
-          lastError: `confidence:speed_${dwellSpeed.toFixed(1)}mps`,
-        });
-        return;
-      }
+
       await patchDiagnostics({
         lastDwellAccuracy: dwellAccuracy,
         lastDwellSpeed: dwellSpeed,
         lastConfidenceResult: 'passed',
+        lastArrivalRetryCount: retryCount,
       });
+      // Re-decide from the accepted sample so the store, cooldown and duplicate
+      // checks all reflect where the user actually stopped.
+      confirmPos = position;
 
       decision = decideStoreArrival({
         lat: confirmPos.coords.latitude,
@@ -577,6 +815,8 @@ export function defineGeofenceTask(
         radiusMetres: ARRIVAL_RADIUS_M,
         cooldownMs: DEBOUNCE_MS,
         lastArrivalAt,
+        lastExitAt,
+        exitGateMigrated,
       });
       // Update diagnostics with the dwell-confirmed decision (more accurate GPS fix).
       await patchDiagnostics({
@@ -609,6 +849,9 @@ export function defineGeofenceTask(
     // Cooldown is written only now, after the arrival is fully accepted — a failed
     // dwell re-check or a notification error above never blocks a real future arrival.
     await writeLastArrivalAt(decision.storeId, Date.now());
+    // Activates the exit gate for this store: any later ENTER now requires a
+    // real EXIT first. Also closes the one-time upgrade grandfather.
+    await markExitGateMigrated(decision.storeId);
 
     const store = stores.find((s) => s.id === decision.storeId);
     if (!store) return;
@@ -622,6 +865,9 @@ export function defineGeofenceTask(
       await patchDiagnostics({
         lastNotificationStoreId: decision.storeId,
         lastNotificationStoreName: store.name,
+        lastArrivalAt: Date.now(),
+        lastArrivalPhase: 'accepted',
+        lastArrivalPhaseAt: Date.now(),
       });
       await markStoreEvent(decision.storeId, {
         lastNotificationAt: Date.now(),
@@ -649,10 +895,10 @@ export function defineGeofenceTask(
  *
  * Returns 'ok' | 'no_permission' | 'no_notification_permission' | 'no_stores' | 'expo_go'.
  */
-export async function startGeofencing(
+async function startGeofencingInner(
   stores: Store[],
   items: PantryItem[] = [],
-): Promise<'ok' | 'no_permission' | 'no_notification_permission' | 'no_stores' | 'expo_go' | 'registration_failed'> {
+): Promise<'ok' | 'no_permission' | 'no_notification_permission' | 'no_stores' | 'expo_go' | 'registration_failed' | 'unchanged'> {
   if (isExpoGo()) {
     await patchDiagnostics({
       storeArrivalRemindersOn: false,
@@ -707,6 +953,7 @@ export async function startGeofencing(
       monitoredStoresCount: 0,
       nativeGeofencingStarted: false,
       stores: [],
+      registeredRegionFingerprint: null,
       lastError: removalError
         ? `removal:${removalError}`
         : 'no_assigned_coordinate_stores',
@@ -772,6 +1019,37 @@ export async function startGeofencing(
     return region ? [region] : [];
   });
 
+  // Skip a pointless native restart. Re-registering identical regions while the
+  // user is already inside one can make iOS re-deliver ENTER, which is the
+  // mechanism behind repeat arrival alerts. Item names/counts change constantly
+  // but are not part of the fingerprint, so they no longer churn the native set.
+  const fingerprint = regionFingerprint(regions);
+  const previous = await readDiagnostics();
+  if (
+    previous.registeredRegionFingerprint === fingerprint &&
+    (await Location.hasStartedGeofencingAsync(GEOFENCE_TASK).catch(() => false))
+  ) {
+    await patchDiagnostics({
+      storeArrivalRemindersOn: true,
+      storeArrivalPreferenceOn: true,
+      nativeGeofencingStarted: true,
+      foregroundPermission: statusOf(fg),
+      backgroundPermission: statusOf(bg),
+      notificationPermission: 'granted',
+      monitoredStoresCount: geofenceable.length,
+      stores: buildRegisteredStoreDiagnostics(geofenceable, items, at),
+      storesConsideredCount: stores.length,
+      eligibleStoresCount: geofenceable.length,
+      skippedStores,
+      regionsPassedCount: regions.length,
+      registrationResult: 'success',
+      registrationError: null,
+      registrationErrorStack: null,
+      lastError: null,
+    });
+    return 'unchanged';
+  }
+
   try {
     await patchDiagnostics({
       lastRegistrationAttemptAt: at,
@@ -834,6 +1112,7 @@ export async function startGeofencing(
       registrationResult: 'success',
       registrationError: null,
       registrationErrorStack: null,
+      registeredRegionFingerprint: fingerprint,
       lastError: null,
     });
   } catch (err) {
@@ -856,6 +1135,25 @@ export async function startGeofencing(
   return 'ok';
 }
 
+const geofenceSingleFlight = createSingleFlight<
+  'ok' | 'no_permission' | 'no_notification_permission' | 'no_stores' | 'expo_go' | 'registration_failed' | 'unchanged'
+>();
+
+/**
+ * Start geofencing, coalescing concurrent callers.
+ *
+ * Refreshes fire from 13 independent mutation paths plus sync and the settings
+ * toggle; overlapping runs could interleave stop/start cycles and leave
+ * diagnostics describing a superseded registration. Concurrent callers await the
+ * run already in progress. The guard clears on success and failure alike.
+ */
+export function startGeofencing(
+  stores: Store[],
+  items: PantryItem[] = [],
+) {
+  return geofenceSingleFlight(() => startGeofencingInner(stores, items));
+}
+
 /** Stop background geofencing and remove all regions. */
 export async function stopGeofencing(): Promise<void> {
   try {
@@ -869,6 +1167,8 @@ export async function stopGeofencing(): Promise<void> {
       nativeGeofencingStarted: false,
       monitoredStoresCount: 0,
       stores: [],
+      // Cleared so re-enabling always performs a real registration.
+      registeredRegionFingerprint: null,
     });
   } catch (err) {
     await patchDiagnostics({ lastError: `removal:${err instanceof Error ? err.message : String(err)}` });
