@@ -10,6 +10,29 @@ export function isActivePantryItem(item: PantryItem): boolean {
   return item.storeId != null && (item.status === 'low' || item.status === 'expiring');
 }
 
+/**
+ * The user's persisted intent to receive arrival reminders, read from stored
+ * geofence diagnostics.
+ *
+ * `storeArrivalPreferenceOn` was introduced in OTA 454. Installs that enabled
+ * reminders before then only ever persisted `storeArrivalRemindersOn`, so a
+ * strict read of the new field alone would report "off" for them and they would
+ * never auto-heal from the OTA 454 teardown trap. The legacy field is therefore
+ * accepted as equivalent consent.
+ *
+ * Turning the feature off writes false to BOTH fields (see stopGeofencing), so
+ * an explicit opt-out is still honoured.
+ *
+ * Lives here rather than in geofencing.ts so it stays free of native imports
+ * and is directly unit-testable.
+ */
+export function storeArrivalPreferenceFromDiagnostics(diagnostics: {
+  storeArrivalPreferenceOn?: boolean;
+  storeArrivalRemindersOn?: boolean;
+}): boolean {
+  return Boolean(diagnostics.storeArrivalPreferenceOn || diagnostics.storeArrivalRemindersOn);
+}
+
 export function geofenceableStores(
   stores: Store[],
   limit: number,

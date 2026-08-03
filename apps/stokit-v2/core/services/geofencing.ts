@@ -29,7 +29,7 @@ import Constants from 'expo-constants';
 import { notifyArrival, requestNotificationPermission, appendNotificationLog } from './notifications';
 import type { PantryItem, Store } from '../../types';
 import { loadDurable } from '../repositories/durableRepository';
-import { arrivalItemNames, decideStoreArrival, geofenceableStores, isActivePantryItem, type StoreCandidate } from './geofencingLogic';
+import { arrivalItemNames, decideStoreArrival, geofenceableStores, isActivePantryItem, storeArrivalPreferenceFromDiagnostics, type StoreCandidate } from './geofencingLogic';
 
 // ── Constants (match V1 values) ───────────────────────────────────────────────
 
@@ -416,6 +416,11 @@ export async function getGeofenceDiagnostics(
     lastError: running && registrationSucceeded ? null : current.lastError,
     updatedAt: Date.now(),
   };
+}
+
+/** Whether the user has asked for arrival reminders, regardless of native state. */
+export async function isStoreArrivalPreferenceOn(): Promise<boolean> {
+  return storeArrivalPreferenceFromDiagnostics(await readDiagnostics());
 }
 
 async function markStoreEvent(storeId: string, patch: Partial<GeofenceStoreDiagnostic>): Promise<void> {

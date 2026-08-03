@@ -17,6 +17,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { resolvePushStatus, pushStatusLabel, type PushStatusInput } from '../core/services/pushStatus';
 import { resolveStoreArrivalStatus } from '../core/services/storeArrivalStatus';
+import { storeArrivalPreferenceFromDiagnostics } from '../core/services/geofencingLogic';
 
 const base: PushStatusInput = {
   permission: 'granted',
@@ -221,14 +222,32 @@ test('DEFECT A: the user preference survives an operational teardown', () => {
     'unregistering because nothing is eligible must not switch the user setting off');
 });
 
+/**
+ * REVERSED. The original version of this test asserted that
+ * refreshGeofencedStoreData gates on isGeofencingRunning() — and described that
+ * as proof the feature re-registers. It is the opposite: that guard is what made
+ * OTA 454's zero-eligibility teardown a one-way trap, because once the engine
+ * unregistered its regions the guard was false forever and no later mutation
+ * could restart monitoring. A real device stopped delivering arrival reminders.
+ * The assertion now demands the guard be gone.
+ */
+test('DEFECT A: refresh is gated on the user preference, never on native running state', () => {
+  const sync = readFileSync(join(process.cwd(), 'core/services/syncEngine.ts'), 'utf8');
+  const refreshBody = sync.slice(sync.indexOf('export async function refreshGeofencedStoreData'));
+
+  assert.doesNotMatch(refreshBody, /if \(await isGeofencingRunning\(\)\)/,
+    'gating refresh on native running state re-creates the one-way trap');
+  assert.match(refreshBody, /if \(await isStoreArrivalPreferenceOn\(\)\)/,
+    'refresh must gate on persisted user intent so a stopped engine can restart');
+  assert.match(refreshBody, /startGeofencing\(stores, items\)/,
+    'and must still go through the one registration path');
+});
+
 test('DEFECT A: eligibility returning re-registers via the existing refresh path', () => {
   const durable = readFileSync(join(process.cwd(), 'store/durable-store.ts'), 'utf8');
   const calls = durable.match(/refreshGeofencedStoreData\(\)/g) ?? [];
   assert.ok(calls.length >= 10,
     `item/store mutations must keep re-registering; found ${calls.length} refresh call sites`);
-  const sync = readFileSync(join(process.cwd(), 'core/services/syncEngine.ts'), 'utf8');
-  assert.match(sync, /isGeofencingRunning\(\)/,
-    'refresh only restarts when the feature is actually running');
 });
 
 test('DEFECT B: success is only claimed after the native started check passes', () => {
@@ -250,6 +269,95 @@ test('DEFECT B: a false native started state reports a truthful failure', () => 
   const failureBlock = body.slice(body.indexOf('if (!nativeStarted)'), body.indexOf("return 'registration_failed'"));
   assert.match(failureBlock, /monitoredStoresCount: 0/,
     'and must not report monitored stores while nothing is registered');
+});
+
+// ── Auto-healing the OTA 454 trap ────────────────────────────────────────────
+
+test('preference on + native stopped still counts as ON, so refresh restarts', () => {
+  // The exact trapped state: the user asked for reminders, OTA 454 tore the
+  // regions down when nothing was eligible, native is stopped.
+  assert.equal(
+    storeArrivalPreferenceFromDiagnostics({
+      storeArrivalPreferenceOn: true,
+      storeArrivalRemindersOn: false,
+    }),
+    true,
+    'a stopped engine must not read as "user turned it off"',
+  );
+});
+
+test('a device trapped before OTA 454 also auto-heals via the legacy field', () => {
+  // storeArrivalPreferenceOn did not exist before OTA 454, so installs that
+  // enabled reminders earlier only ever persisted storeArrivalRemindersOn.
+  // Reading the new field alone would strand them off forever.
+  assert.equal(
+    storeArrivalPreferenceFromDiagnostics({
+      storeArrivalPreferenceOn: false,
+      storeArrivalRemindersOn: true,
+    }),
+    true,
+    'legacy installs must still be recognised as opted in',
+  );
+});
+
+test('an explicit opt-out is respected — no restart', () => {
+  // stopGeofencing() writes false to BOTH fields, which is what "off" means.
+  assert.equal(
+    storeArrivalPreferenceFromDiagnostics({
+      storeArrivalPreferenceOn: false,
+      storeArrivalRemindersOn: false,
+    }),
+    false,
+  );
+});
+
+test('manual toggle off clears both preference fields', () => {
+  const stopBody = geofencing.slice(
+    geofencing.indexOf('export async function stopGeofencing('),
+    geofencing.indexOf('export async function isGeofencingRunning('),
+  );
+  assert.match(stopBody, /storeArrivalPreferenceOn: false/);
+  assert.match(stopBody, /storeArrivalRemindersOn: false/);
+  assert.match(stopBody, /stopGeofencingAsync\(GEOFENCE_TASK\)/);
+});
+
+test('manual toggle on still registers through the unguarded settings path', () => {
+  const screen = readFileSync(join(process.cwd(), 'app/settings/store-arrival-alerts.tsx'), 'utf8');
+  assert.match(screen, /await startGeofencing\(stores, items\)/,
+    'the toggle calls startGeofencing directly, with no running-state guard');
+});
+
+test('the zero-eligibility teardown is retained', () => {
+  const body = startGeofencingBody();
+  const noStoresBranch = body.slice(
+    body.indexOf('if (geofenceable.length === 0)'),
+    body.indexOf("return 'no_stores';"),
+  );
+  assert.match(noStoresBranch, /stopGeofencingAsync\(GEOFENCE_TASK\)/,
+    'Option B keeps the teardown; only the refresh gate changed');
+  assert.doesNotMatch(noStoresBranch, /storeArrivalPreferenceOn/,
+    'and it must still leave the user preference alone');
+});
+
+// ── Arrival decision guards must be untouched by this fix ────────────────────
+
+test('cooldown, dwell, speed and accuracy guards are unchanged', () => {
+  assert.match(geofencing, /export const DEBOUNCE_MS = 3 \* 60 \* 1000;/, 'cooldown window');
+  assert.match(geofencing, /export const DWELL_CONFIRM_MS = 10 \* 1000;/, 'dwell confirmation');
+  assert.match(geofencing, /export const ARRIVAL_SPEED_THRESHOLD_MPS = 5;/, 'pass-by threshold');
+  assert.match(geofencing, /export const ARRIVAL_MAX_GPS_ACCURACY_M = 60;/, 'accuracy floor');
+  assert.match(geofencing, /export const ARRIVAL_RADIUS_M = 150;/, 'arrival radius');
+  assert.match(geofencing, /lastConfidenceResult: 'rejected_speed'/, 'pass-by rejection intact');
+  assert.match(geofencing, /lastConfidenceResult: 'rejected_accuracy'/, 'accuracy rejection intact');
+  // Cooldown is still written only after a fully accepted arrival.
+  assert.match(geofencing, /await writeLastArrivalAt\(decision\.storeId, Date\.now\(\)\)/);
+});
+
+test('the local arrival notification path is unchanged and never fans out', () => {
+  assert.match(geofencing, /await notifyArrival\(store\.name, activeItemCount, 'geofence'/,
+    'arrival still fires the local notification');
+  assert.doesNotMatch(geofencing, /sendHouseholdShoppingAlert|functions\.invoke/,
+    'the geofence task must not notify other household members');
 });
 
 // ── Part 4: neutral test notification ────────────────────────────────────────

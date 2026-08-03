@@ -649,9 +649,23 @@ export function stopSyncEngine(): void {
   resetSyncWatermark();
 }
 
+/**
+ * Re-register geofences after an item/store mutation.
+ *
+ * Gated on the user's persisted PREFERENCE, not on whether iOS is currently
+ * monitoring. Gating on isGeofencingRunning() made OTA 454's zero-eligibility
+ * teardown a one-way trap: once the engine unregistered its regions (because
+ * every assigned item had been bought), this guard was false forever, so no
+ * later mutation could ever restart monitoring and arrival reminders went
+ * silently dead until the user manually toggled the setting off and on.
+ *
+ * Reading the preference instead means a device in that state re-registers on
+ * the next relevant mutation, while an explicit opt-out is still respected —
+ * stopGeofencing() clears the preference.
+ */
 export async function refreshGeofencedStoreData(): Promise<void> {
-  const { isGeofencingRunning, startGeofencing } = await import('./geofencing');
-  if (await isGeofencingRunning()) {
+  const { isStoreArrivalPreferenceOn, startGeofencing } = await import('./geofencing');
+  if (await isStoreArrivalPreferenceOn()) {
     const { stores, items } = (await durableStore()).getState();
     await startGeofencing(stores, items);
   }
