@@ -97,12 +97,12 @@ test('trip commit writes history, receipt identities, tombstone, and null sessio
   const source = readFileSync(join(process.cwd(), 'store/durable-store.ts'), 'utf8');
   const start = source.lastIndexOf('commitTrip: (trip, receipts) => {');
   const commit = source.slice(start, source.indexOf('removeTrip:', start));
-  const stateWrite = commit.slice(commit.indexOf('set((s) => ({'), commit.indexOf('}));') + 4);
+  const stateWrite = commit.slice(commit.indexOf('set((s) => {'), commit.indexOf('// Log activity'));
   assert.match(stateWrite, /trips:/);
   assert.match(stateWrite, /receipts:/);
   assert.match(stateWrite, /activeSession: null/);
   assert.match(stateWrite, /closedTripIds:/);
-  assert.equal((stateWrite.match(/set\(/g) ?? []).length, 1);
+  assert.equal((stateWrite.match(/set\(\(s\) =>/g) ?? []).length, 1);
 });
 
 test('peer reconnect cannot restore a stale active session', () => {

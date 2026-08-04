@@ -47,6 +47,12 @@ export interface PantryItem {
    * legacy fallback.
    */
   statusUpdatedAt?: number;
+  /** Causal version for shopping status/store transitions. */
+  statusRevision?: number;
+  /** Trip that terminally stocked this item at the current revision. */
+  statusClosedTripId?: string;
+  /** Terminal trip observed before a later intentional status transition. */
+  statusBasedOnClosedTripId?: string;
 }
 
 export interface Store {
@@ -101,6 +107,12 @@ export interface ShoppingStoreAssignment {
   storeId: string;
   active: boolean;
   updatedAt: number;
+  /** Causal version; terminal deactivation wins a same-revision stale activation. */
+  revision?: number;
+  /** Trip that terminally consumed this assignment at the current revision. */
+  closedTripId?: string;
+  /** Terminal trip observed before a later intentional reactivation. */
+  basedOnClosedTripId?: string;
 }
 
 export type ShoppingEntryDraft = Omit<

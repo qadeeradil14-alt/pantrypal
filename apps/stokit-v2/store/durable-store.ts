@@ -31,6 +31,7 @@ import {
   assignShoppingItemToStore,
   deactivateShoppingItemStore,
   deactivateShoppingItemStores,
+  finalizeShoppingItemStore,
   mergeShoppingStoreAssignments,
 } from '../core/services/shoppingStoreAssignments';
 import { isAlreadyPurchasedThisTrip } from '../core/services/shoppingDuplicateGuard';
@@ -113,6 +114,17 @@ function logShoppingAssignmentMutation(
  */
 interface ShoppingAssignmentOptions {
   allowRepurchase?: boolean;
+}
+
+function nextShoppingStatusRevision(
+  item: PantryItem,
+  statusClosedTripId?: string,
+): Pick<PantryItem, 'statusRevision' | 'statusClosedTripId' | 'statusBasedOnClosedTripId'> {
+  return {
+    statusRevision: (item.statusRevision ?? 0) + 1,
+    statusClosedTripId,
+    statusBasedOnClosedTripId: item.statusClosedTripId ?? item.statusBasedOnClosedTripId,
+  };
 }
 
 interface DurableStore extends DurableState {
@@ -388,7 +400,10 @@ export const useDurableStore = create<DurableStore>((set, get) => {
           ...existing,
           ...meaningfulPatch,
           updatedAt: nextTimestamp(existing.updatedAt),
-          ...(touchesStatus ? { statusUpdatedAt: nextTimestamp(existing.statusUpdatedAt) } : {}),
+          ...(touchesStatus ? {
+            statusUpdatedAt: nextTimestamp(existing.statusUpdatedAt),
+            ...nextShoppingStatusRevision(existing),
+          } : {}),
         };
         set((s) => ({
           items: consolidatePantryItems(s.items.map((item) => item.id === existing.id ? updated : item)),
@@ -423,6 +438,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         createdAt,
         updatedAt: createdAt,
         statusUpdatedAt: createdAt,
+        statusRevision: 1,
       };
       set((s) => ({
         items: [item, ...s.items],
@@ -461,7 +477,10 @@ export const useDurableStore = create<DurableStore>((set, get) => {
                 ...it,
                 ...meaningfulPatch,
                 updatedAt: nextTimestamp(it.updatedAt),
-                ...(touchesStatus ? { statusUpdatedAt: nextTimestamp(it.statusUpdatedAt) } : {}),
+                ...(touchesStatus ? {
+                  statusUpdatedAt: nextTimestamp(it.statusUpdatedAt),
+                  ...nextShoppingStatusRevision(it),
+                } : {}),
               }
             : it
         ),
@@ -487,7 +506,13 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       set((s) => ({
         items: s.items.map((it) =>
           it.id === id
-            ? { ...it, status, updatedAt: nextTimestamp(it.updatedAt), statusUpdatedAt: nextTimestamp(it.statusUpdatedAt) }
+            ? {
+                ...it,
+                status,
+                updatedAt: nextTimestamp(it.updatedAt),
+                statusUpdatedAt: nextTimestamp(it.statusUpdatedAt),
+                ...nextShoppingStatusRevision(it),
+              }
             : it
         ),
       }));
@@ -529,6 +554,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
                 storeId: remainingStoreByItem.get(item.id) ?? null,
                 updatedAt: nextTimestamp(item.updatedAt),
                 statusUpdatedAt: nextTimestamp(item.statusUpdatedAt),
+                ...nextShoppingStatusRevision(item),
               }
             : item
         ),
@@ -584,6 +610,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
                 storeId: nextStoreId,
                 updatedAt: nextTimestamp(candidate.updatedAt),
                 statusUpdatedAt: nextTimestamp(candidate.statusUpdatedAt),
+                ...nextShoppingStatusRevision(candidate),
               }
             : candidate
         ),
@@ -625,7 +652,13 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       set((s) => ({
         items: s.items.map((item) =>
           idSet.has(item.id) && mayAssignMap.get(item.id)
-            ? { ...item, storeId, updatedAt: nextTimestamp(item.updatedAt), statusUpdatedAt: nextTimestamp(item.statusUpdatedAt) }
+            ? {
+                ...item,
+                storeId,
+                updatedAt: nextTimestamp(item.updatedAt),
+                statusUpdatedAt: nextTimestamp(item.statusUpdatedAt),
+                ...nextShoppingStatusRevision(item),
+              }
             : item
         ),
         shoppingStoreAssignments: [...idSet].reduce(
@@ -698,6 +731,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
                 storeId: nextStoreId,
                 updatedAt: nextTimestamp(candidate.updatedAt),
                 statusUpdatedAt: nextTimestamp(candidate.statusUpdatedAt),
+                ...nextShoppingStatusRevision(candidate),
               }
             : candidate
         ),
@@ -735,6 +769,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
                 storeId: null,
                 updatedAt: nextTimestamp(item.updatedAt),
                 statusUpdatedAt: nextTimestamp(item.statusUpdatedAt),
+                ...nextShoppingStatusRevision(item),
               }
             : item
         ),
@@ -847,7 +882,13 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         // Unassign items pointing at the removed store; never delete the items.
         items: s.items.map((it) =>
           it.storeId === id
-            ? { ...it, storeId: null, updatedAt: nextTimestamp(it.updatedAt), statusUpdatedAt: nextTimestamp(it.statusUpdatedAt) }
+            ? {
+                ...it,
+                storeId: null,
+                updatedAt: nextTimestamp(it.updatedAt),
+                statusUpdatedAt: nextTimestamp(it.statusUpdatedAt),
+                ...nextShoppingStatusRevision(it),
+              }
             : it
         ),
       }));
@@ -857,18 +898,57 @@ export const useDurableStore = create<DurableStore>((set, get) => {
 
     commitTrip: (trip, receipts) => {
       const receiptIds = new Set(receipts.map((receipt) => receipt.id));
-      set((s) => ({
-        trips: [trip, ...s.trips.filter((candidate) => candidate.id !== trip.id)],
-        receipts: [...receipts, ...s.receipts.filter((receipt) => !receiptIds.has(receipt.id))],
-        activeSession: null,
-        closedTripIds: mergeTombstones(s.closedTripIds, [{
-          id: trip.id,
-          deletedAt: nextTimestamp(Math.max(
+      set((s) => {
+        const purchasedPairs = new Map(
+          trip.purchasedItems.map((entry) => [`${entry.itemId}:${entry.storeId}`, entry]),
+        );
+        const finalizedAssignments = [...purchasedPairs.values()].reduce(
+          (current, entry) => finalizeShoppingItemStore(
+            current,
+            entry.itemId,
+            entry.storeId,
+            trip.id,
             trip.completedAt,
-            s.closedTripIds?.find((entry) => entry.id === trip.id)?.deletedAt ?? 0,
-          )),
-        }]),
-      }));
+          ),
+          s.shoppingStoreAssignments ?? [],
+        );
+        const purchasedItemIds = new Set(trip.purchasedItems.map((entry) => entry.itemId));
+        const remainingStoreByItem = new Map<string, string>();
+        for (const assignment of finalizedAssignments) {
+          if (assignment.active && purchasedItemIds.has(assignment.pantryItemId)) {
+            remainingStoreByItem.set(assignment.pantryItemId, assignment.storeId);
+          }
+        }
+        return {
+          trips: [trip, ...s.trips.filter((candidate) => candidate.id !== trip.id)],
+          receipts: [...receipts, ...s.receipts.filter((receipt) => !receiptIds.has(receipt.id))],
+          items: s.items.map((item) => {
+            if (!purchasedItemIds.has(item.id) || remainingStoreByItem.has(item.id)) return item;
+            if (
+              item.status === 'stocked' &&
+              item.storeId == null &&
+              item.statusClosedTripId === trip.id
+            ) return item;
+            return {
+              ...item,
+              status: 'stocked' as const,
+              storeId: null,
+              updatedAt: nextTimestamp(item.updatedAt, trip.completedAt),
+              statusUpdatedAt: nextTimestamp(item.statusUpdatedAt, trip.completedAt),
+              ...nextShoppingStatusRevision(item, trip.id),
+            };
+          }),
+          shoppingStoreAssignments: finalizedAssignments,
+          activeSession: null,
+          closedTripIds: mergeTombstones(s.closedTripIds, [{
+            id: trip.id,
+            deletedAt: nextTimestamp(Math.max(
+              trip.completedAt,
+              s.closedTripIds?.find((entry) => entry.id === trip.id)?.deletedAt ?? 0,
+            )),
+          }]),
+        };
+      });
       // Log activity for receipts + trip.
       const stores = get().stores;
       receipts

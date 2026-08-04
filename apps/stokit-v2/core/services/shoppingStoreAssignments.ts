@@ -27,6 +27,8 @@ export function assignShoppingItemToStore(
     storeId,
     active: true,
     updatedAt: nextTimestamp(existing?.updatedAt, at),
+    revision: (existing?.revision ?? 0) + 1,
+    basedOnClosedTripId: existing?.closedTripId ?? existing?.basedOnClosedTripId,
   };
   return [
     ...(assignments ?? []).filter((assignment) => assignment.id !== id),
@@ -63,6 +65,8 @@ export function deactivateShoppingItemStore(
       ...assignment,
       active: false,
       updatedAt: nextTimestamp(assignment.updatedAt, at),
+      revision: (assignment.revision ?? 0) + 1,
+      closedTripId: undefined,
     };
   });
   return changed ? next : assignments ?? [];
@@ -83,9 +87,37 @@ export function deactivateShoppingItemStores(
       ...assignment,
       active: false,
       updatedAt: nextTimestamp(assignment.updatedAt, at),
+      revision: (assignment.revision ?? 0) + 1,
+      closedTripId: undefined,
     };
   });
   return changed ? next : assignments ?? [];
+}
+
+export function finalizeShoppingItemStore(
+  assignments: ShoppingStoreAssignment[] | undefined,
+  pantryItemId: string,
+  storeId: string,
+  tripId: string,
+  at = Date.now(),
+): ShoppingStoreAssignment[] {
+  const id = shoppingStoreAssignmentId(pantryItemId, storeId);
+  const existing = (assignments ?? []).find((assignment) => assignment.id === id);
+  if (existing && !existing.active && existing.closedTripId === tripId) return assignments ?? [];
+  const finalized: ShoppingStoreAssignment = {
+    id,
+    pantryItemId,
+    storeId,
+    active: false,
+    updatedAt: nextTimestamp(existing?.updatedAt, at),
+    revision: (existing?.revision ?? 0) + 1,
+    closedTripId: tripId,
+    basedOnClosedTripId: existing?.closedTripId ?? existing?.basedOnClosedTripId,
+  };
+  return [
+    ...(assignments ?? []).filter((assignment) => assignment.id !== id),
+    finalized,
+  ];
 }
 
 export function shoppingEntryDraftsFromAssignments(
@@ -113,10 +145,22 @@ export function mergeShoppingStoreAssignments(
   const byId = new Map<string, ShoppingStoreAssignment>();
   for (const assignment of [...(remote ?? []), ...(local ?? [])]) {
     const existing = byId.get(assignment.id);
+    const existingRevision = existing?.revision;
+    const incomingRevision = assignment.revision;
+    const hasRevision = existingRevision !== undefined || incomingRevision !== undefined;
+    const terminalConflict = existing && Boolean(existing.closedTripId) !== Boolean(assignment.closedTripId);
+    const incomingWinsTerminalConflict = terminalConflict && (
+      assignment.closedTripId
+        ? existing.basedOnClosedTripId !== assignment.closedTripId
+        : assignment.basedOnClosedTripId === existing.closedTripId
+    );
     if (
       !existing ||
-      assignment.updatedAt > existing.updatedAt ||
-      (assignment.updatedAt === existing.updatedAt && assignment.active && !existing.active)
+      (terminalConflict && incomingWinsTerminalConflict) ||
+      (!terminalConflict && hasRevision && (incomingRevision ?? 0) > (existingRevision ?? 0)) ||
+      (!terminalConflict && hasRevision && (incomingRevision ?? 0) === (existingRevision ?? 0) && !assignment.active && existing.active) ||
+      (!terminalConflict && !hasRevision && assignment.updatedAt > existing.updatedAt) ||
+      (!terminalConflict && !hasRevision && assignment.updatedAt === existing.updatedAt && assignment.active && !existing.active)
     ) {
       byId.set(assignment.id, assignment);
     }

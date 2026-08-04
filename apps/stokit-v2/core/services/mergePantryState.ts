@@ -55,14 +55,53 @@ export function mergeTombstones(
 function resolveStatusFields(
   existing: PantryItem,
   incoming: PantryItem,
-): Pick<PantryItem, 'status' | 'storeId' | 'statusUpdatedAt'> {
+): Pick<PantryItem, 'status' | 'storeId' | 'statusUpdatedAt' | 'statusRevision' | 'statusClosedTripId' | 'statusBasedOnClosedTripId'> {
+  const existingRevision = existing.statusRevision;
+  const incomingRevision = incoming.statusRevision;
+  if (Boolean(existing.statusClosedTripId) !== Boolean(incoming.statusClosedTripId)) {
+    const terminal = incoming.statusClosedTripId ? incoming : existing;
+    const nonTerminal = incoming.statusClosedTripId ? existing : incoming;
+    const winner = nonTerminal.statusBasedOnClosedTripId === terminal.statusClosedTripId
+      ? nonTerminal
+      : terminal;
+    return {
+      status: winner.status,
+      storeId: winner.storeId,
+      statusUpdatedAt: winner.statusUpdatedAt,
+      statusRevision: winner.statusRevision,
+      statusClosedTripId: winner.statusClosedTripId,
+      statusBasedOnClosedTripId: winner.statusBasedOnClosedTripId,
+    };
+  }
+  if (existingRevision !== undefined || incomingRevision !== undefined) {
+    const a = existingRevision ?? 0;
+    const b = incomingRevision ?? 0;
+    if (a !== b) {
+      const winner = b > a ? incoming : existing;
+      return {
+        status: winner.status,
+        storeId: winner.storeId,
+        statusUpdatedAt: winner.statusUpdatedAt,
+        statusRevision: winner.statusRevision,
+        statusClosedTripId: winner.statusClosedTripId,
+        statusBasedOnClosedTripId: winner.statusBasedOnClosedTripId,
+      };
+    }
+  }
   const existingAt = existing.statusUpdatedAt;
   const incomingAt = incoming.statusUpdatedAt;
 
   if (existingAt === undefined && incomingAt === undefined) {
     const incomingWins = (incoming.updatedAt ?? 0) > (existing.updatedAt ?? 0);
     const winner = incomingWins ? incoming : existing;
-    return { status: winner.status, storeId: winner.storeId, statusUpdatedAt: undefined };
+    return {
+      status: winner.status,
+      storeId: winner.storeId,
+      statusUpdatedAt: undefined,
+      statusRevision: winner.statusRevision,
+      statusClosedTripId: winner.statusClosedTripId,
+      statusBasedOnClosedTripId: winner.statusBasedOnClosedTripId,
+    };
   }
 
   const a = existingAt ?? -Infinity;
@@ -72,10 +111,24 @@ function resolveStatusFields(
     // regular updatedAt comparison, same tie-break as the rest of the item.
     const incomingWins = (incoming.updatedAt ?? 0) > (existing.updatedAt ?? 0);
     const winner = incomingWins ? incoming : existing;
-    return { status: winner.status, storeId: winner.storeId, statusUpdatedAt: winner.statusUpdatedAt };
+    return {
+      status: winner.status,
+      storeId: winner.storeId,
+      statusUpdatedAt: winner.statusUpdatedAt,
+      statusRevision: winner.statusRevision,
+      statusClosedTripId: winner.statusClosedTripId,
+      statusBasedOnClosedTripId: winner.statusBasedOnClosedTripId,
+    };
   }
   const winner = b > a ? incoming : existing;
-  return { status: winner.status, storeId: winner.storeId, statusUpdatedAt: winner.statusUpdatedAt };
+  return {
+    status: winner.status,
+    storeId: winner.storeId,
+    statusUpdatedAt: winner.statusUpdatedAt,
+    statusRevision: winner.statusRevision,
+    statusClosedTripId: winner.statusClosedTripId,
+    statusBasedOnClosedTripId: winner.statusBasedOnClosedTripId,
+  };
 }
 
 /**
