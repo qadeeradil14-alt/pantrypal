@@ -29,7 +29,8 @@ import Constants from 'expo-constants';
 import { notifyArrival, requestNotificationPermission, appendNotificationLog } from './notifications';
 import type { PantryItem, Store } from '../../types';
 import { loadDurable } from '../repositories/durableRepository';
-import { arrivalItemNames, createSingleFlight, decideStoreArrival, evaluateArrivalSample, geofenceableStores, isActivePantryItem, regionFingerprint, seedExitStateFromDiagnostics, shouldContinueArrivalSampling, storeArrivalPreferenceFromDiagnostics, type StoreCandidate } from './geofencingLogic';
+import { arrivalItemNames, createSingleFlight, decideStoreArrival, evaluateArrivalSample, geofenceableStores, haversineMetres, isActivePantryItem, regionFingerprint, resolveInitialArmingState, seedExitStateFromDiagnostics, shouldContinueArrivalSampling, storeArrivalPreferenceFromDiagnostics, type StoreArmingState, type StoreCandidate } from './geofencingLogic';
+import { withTimeout } from './withTimeout';
 
 // ── Constants (match V1 values) ───────────────────────────────────────────────
 
@@ -130,6 +131,15 @@ const DIAGNOSTICS_KEY = 'stokit:v2:geofence:diagnostics';
  * exactly one grandfathered arrival per store and is protected thereafter.
  */
 const EXIT_GATE_MIGRATED_KEY = 'stokit:v2:geofence:exit-gate-migrated';
+/**
+ * storeId -> StoreArmingState. Protects the class of premature arrival the
+ * exit gate cannot: a store that has never produced an arrival. Determined
+ * once when a store first becomes eligible/registered, then flipped from
+ * 'awaiting_outside' to 'armed' only by a real geofence EXIT.
+ */
+const ARMING_STATE_KEY = 'stokit:v2:geofence:arming-state';
+/** Bound on the one-time initial-position check so registration never hangs. */
+const ARMING_CHECK_TIMEOUT_MS = 5_000;
 
 type PermissionStatus = 'granted' | 'denied' | 'undetermined' | 'unknown';
 
@@ -157,6 +167,15 @@ export interface GeofenceStoreDiagnostic {
    * accepted arrival. null = no cooldown active.
    */
   cooldownEndsAt: number | null;
+  /**
+   * Premature-first-arrival guard. null = never evaluated (store not yet
+   * registered). 'awaiting_outside' means this store cannot notify until a
+   * real EXIT is observed; 'armed' means a normal ENTER may notify (subject to
+   * every other check).
+   */
+  armingState: StoreArmingState | null;
+  armedAt: number | null;
+  awaitingOutsideSince: number | null;
 }
 
 export interface GeofenceDiagnostics {
@@ -244,6 +263,7 @@ export interface GeofenceDiagnostics {
     | 'moved_away'
     | 'ambiguous_nearby_store'
     | 'no_exit_since_last_arrival'
+    | 'not_armed_until_exit'
     | 'enter_rejected'
     | 'dwell_rejected'
     | null;
@@ -371,6 +391,33 @@ async function markExitGateMigrated(storeId: string): Promise<void> {
   }
 }
 
+async function readArmingState(): Promise<Record<string, StoreArmingState>> {
+  try {
+    const raw = await AsyncStorage.getItem(ARMING_STATE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Set a store's arming state, unless it is already 'armed' — armed is
+ * terminal for a store's monitoring lifetime (until it's removed and
+ * re-added), so a slow initial-position check that resolves after a real EXIT
+ * has already armed the store must never regress it back to awaiting.
+ */
+async function writeArmingState(storeId: string, state: StoreArmingState): Promise<void> {
+  try {
+    const record = await readArmingState();
+    if (record[storeId] === 'armed') return;
+    record[storeId] = state;
+    await AsyncStorage.setItem(ARMING_STATE_KEY, JSON.stringify(record));
+  } catch {
+    // Non-fatal — the in-memory diagnostics write below still reflects intent;
+    // worst case a future read falls back to the fail-safe default.
+  }
+}
+
 async function writeLastArrivalAt(storeId: string, at: number): Promise<void> {
   try {
     const record = await readLastArrivalAt();
@@ -439,6 +486,9 @@ function buildStoreDiagnostic(
     lastNotificationResult: previous?.lastNotificationResult ?? null,
     lastNotificationAppState: previous?.lastNotificationAppState ?? null,
     cooldownEndsAt,
+    armingState: previous?.armingState ?? null,
+    armedAt: previous?.armedAt ?? null,
+    awaitingOutsideSince: previous?.awaitingOutsideSince ?? null,
   };
 }
 
@@ -612,7 +662,10 @@ export function defineGeofenceTask(
       // Persisted as well as recorded in diagnostics — decideStoreArrival needs
       // it to know a real departure happened before the next ENTER may notify.
       await writeLastExitAt(storeId, now);
-      await markStoreEvent(storeId, { lastExitAt: now });
+      // A confirmed departure is the ONLY thing that arms a store still
+      // awaiting_outside (STEP 2, rule 2). No notification fires on Exit.
+      await writeArmingState(storeId, 'armed');
+      await markStoreEvent(storeId, { lastExitAt: now, armingState: 'armed', armedAt: now });
       return;
     }
     if (eventType !== Location.GeofencingEventType.Enter) return;
@@ -637,6 +690,7 @@ export function defineGeofenceTask(
       await writeLastExitState(lastExitAt);
     }
     const exitGateMigrated = await readExitGateMigrated();
+    const armingState = await readArmingState();
 
     // Region identifier is only a wake-up signal — decideStoreArrival is the single
     // source of truth for which store (if any) wins, using a fresh GPS fix.
@@ -654,6 +708,7 @@ export function defineGeofenceTask(
         lastArrivalAt,
         lastExitAt,
         exitGateMigrated,
+        armingState,
       });
       await patchDiagnostics({
         lastMatchedStoreId: initial.storeId ?? null,
@@ -678,9 +733,11 @@ export function defineGeofenceTask(
           lastSuppressionAt: Date.now(),
           lastSuppressionReason: initial.reason === 'no_exit_since_last_arrival'
             ? 'no_exit_since_last_arrival'
-            : initial.reason === 'ambiguous_nearby_store'
-              ? 'ambiguous_nearby_store'
-              : 'enter_rejected',
+            : initial.reason === 'not_armed_until_exit'
+              ? 'not_armed_until_exit'
+              : initial.reason === 'ambiguous_nearby_store'
+                ? 'ambiguous_nearby_store'
+                : 'enter_rejected',
         });
         return;
       }
@@ -714,6 +771,7 @@ export function defineGeofenceTask(
           lastArrivalAt,
           lastExitAt,
           exitGateMigrated,
+          armingState,
         });
         return candidate.distanceMetres ?? Number.POSITIVE_INFINITY;
       };
@@ -817,6 +875,7 @@ export function defineGeofenceTask(
         lastArrivalAt,
         lastExitAt,
         exitGateMigrated,
+        armingState,
       });
       // Update diagnostics with the dwell-confirmed decision (more accurate GPS fix).
       await patchDiagnostics({
@@ -1115,6 +1174,47 @@ async function startGeofencingInner(
       registeredRegionFingerprint: fingerprint,
       lastError: null,
     });
+
+    // Premature-first-arrival guard (STEP 2/3): determine each newly-registered
+    // store's initial arming state. buildRegisteredStoreDiagnostics above always
+    // passes previous=undefined, so it just reset every store's armingState to
+    // null in the write above — this runs after it specifically so these
+    // per-store results are not clobbered by that blanket reset.
+    const priorArrivals = await readLastArrivalAt();
+    const priorArming = await readArmingState();
+    const needsDetermination = geofenceable.filter(
+      (store) => priorArming[store.id] === undefined,
+    );
+    if (needsDetermination.length > 0) {
+      // One shared fix is enough — every candidate is compared against the
+      // same current position. A failed/slow fix fails ALL of them safe to
+      // awaiting_outside, per STEP 3's "unavailable or inaccurate" case.
+      const armingPos = await withTimeout(
+        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+        ARMING_CHECK_TIMEOUT_MS,
+      ).catch(() => null);
+      for (const store of needsDetermination) {
+        const armedAt = Date.now();
+        // A store that has already produced a real arrival — e.g. it was
+        // eligible before this guard shipped — is by definition not "newly
+        // monitored"; the exit gate already governs it. Arm immediately rather
+        // than spending a location check or risking a spurious awaiting_outside
+        // on a store the user has legitimately visited before (STEP 2, rule 5).
+        if (priorArrivals[store.id]) {
+          await writeArmingState(store.id, 'armed');
+          await markStoreEvent(store.id, { armingState: 'armed', armedAt });
+          continue;
+        }
+        const distance = armingPos && Number.isFinite(store.lat) && Number.isFinite(store.lng)
+          ? haversineMetres(armingPos.coords.latitude, armingPos.coords.longitude, store.lat!, store.lng!)
+          : null;
+        const resolved: StoreArmingState = resolveInitialArmingState(distance, ARRIVAL_RADIUS_M);
+        await writeArmingState(store.id, resolved);
+        await markStoreEvent(store.id, resolved === 'armed'
+          ? { armingState: 'armed', armedAt }
+          : { armingState: 'awaiting_outside', awaitingOutsideSince: armedAt });
+      }
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await patchDiagnostics({

@@ -163,6 +163,25 @@ export function seedExitStateFromDiagnostics(
   return seeded;
 }
 
+/**
+ * Decide a newly-eligible store's initial arming state from the best available
+ * location evidence.
+ *
+ * Fails safe by design: anything other than a confident "clearly outside"
+ * reading defaults to `awaiting_outside`, which costs at most one missed first
+ * notification (recovered the moment a real EXIT is observed) — never a false
+ * "arrived" alert. `distanceMetres === null` covers both "no fix obtained" and
+ * "the fix timed out", so a slow or failed location call degrades to the same
+ * safe outcome rather than hanging the caller or guessing.
+ */
+export function resolveInitialArmingState(
+  distanceMetres: number | null,
+  radiusMetres: number,
+): StoreArmingState {
+  if (distanceMetres === null || !Number.isFinite(distanceMetres)) return 'awaiting_outside';
+  return distanceMetres > radiusMetres ? 'armed' : 'awaiting_outside';
+}
+
 // ── Native re-registration control ──────────────────────────────────────────
 
 /** The native-relevant shape of one monitored region. */
@@ -317,7 +336,11 @@ export type ArrivalRejectionReason =
   | 'out_of_radius'
   | 'cooldown'
   | 'ambiguous_nearby_store'
-  | 'no_exit_since_last_arrival';
+  | 'no_exit_since_last_arrival'
+  | 'not_armed_until_exit';
+
+/** Per-store arming state — the premature-first-arrival guard. */
+export type StoreArmingState = 'armed' | 'awaiting_outside';
 
 /** A single candidate store with its computed distance. */
 export interface StoreCandidate {
@@ -370,6 +393,16 @@ export interface ArrivalDecisionInput {
    * written on acceptance, so the gate applies to every arrival after it.
    */
   exitGateMigrated?: Record<string, boolean>;
+  /**
+   * storeId -> arming state. A store absent from this map has no recorded
+   * state; a store armed at 100% of call sites is what protects a brand-new
+   * store's first ENTER — otherwise lastArrivalAt === 0 skips the exit gate
+   * entirely and a store the user was already standing inside notifies on the
+   * very first evaluation. Field evidence: a 7-Eleven directly across the
+   * street from the user's home notified the moment it was added, before any
+   * drive happened.
+   */
+  armingState?: Record<string, StoreArmingState>;
   now?: number;
 }
 
@@ -385,7 +418,7 @@ export interface ArrivalDecisionInput {
  * rather than risking a wrong store notification (the Sam's Club / Walmart bug).
  */
 export function decideStoreArrival(input: ArrivalDecisionInput): ArrivalDecision {
-  const { lat, lng, stores, items, radiusMetres, cooldownMs, lastArrivalAt, lastExitAt, exitGateMigrated, now = Date.now() } = input;
+  const { lat, lng, stores, items, radiusMetres, cooldownMs, lastArrivalAt, lastExitAt, exitGateMigrated, armingState, now = Date.now() } = input;
 
   const assignedStoreIds = new Set(
     items.filter(isActivePantryItem).map((item) => item.storeId as string),
@@ -441,6 +474,29 @@ export function decideStoreArrival(input: ArrivalDecisionInput): ArrivalDecision
         ambiguous: true,
       };
     }
+  }
+
+  // Arming gate — checked first because it protects a class of store the exit
+  // gate cannot see. The exit gate only activates once lastArrival > 0, so a
+  // store that has NEVER produced an arrival sails straight through it. If the
+  // user was already standing inside that store's radius the moment it became
+  // eligible (a store across the street from home, or newly assigned an item
+  // while the user happened to be nearby), the very first evaluation notifies
+  // with zero drive having happened. A store defaults to 'awaiting_outside'
+  // until either an initial location check proves the user was clearly outside,
+  // or a real EXIT event is observed — see resolveInitialArmingState and the
+  // task's Exit branch in geofencing.ts.
+  const arming = armingState?.[nearest.storeId];
+  if (arming === 'awaiting_outside') {
+    return {
+      accepted: false,
+      reason: 'not_armed_until_exit',
+      storeId: nearest.storeId,
+      storeName: nearest.storeName,
+      distanceMetres: nearest.distanceMetres,
+      nearbyCandidates: candidates,
+      ambiguous: false,
+    };
   }
 
   // Exit gate — the primary duplicate guard.

@@ -10,6 +10,7 @@ import {
   evaluateArrivalSample,
   geofenceableStores,
   regionFingerprint,
+  resolveInitialArmingState,
   seedExitStateFromDiagnostics,
   shouldContinueArrivalSampling,
   haversineMetres,
@@ -1494,4 +1495,199 @@ test('the task persists the marker on every accepted arrival', () => {
     'the marker is written alongside the accepted arrival');
   assert.match(service, /seedExitStateFromDiagnostics\(/,
     'legacy exit evidence must be recovered before deciding');
+});
+
+// ── Premature-first-arrival guard (arming gate) ─────────────────────────────
+//
+// Field defect: a 7-Eleven directly across the street from the user's home
+// notified the instant it was added and an item assigned — before any drive
+// happened. Root cause: the exit gate only activates once lastArrivalAt > 0,
+// so a store that has NEVER produced an arrival skips it entirely. There was
+// no check anywhere for "was the user ever outside this store's region."
+
+// ── resolveInitialArmingState: pure, fails safe ─────────────────────────────
+
+test('ARMING: clearly outside the radius arms immediately', () => {
+  assert.equal(resolveInitialArmingState(500, 150), 'armed');
+});
+
+test('ARMING: inside the radius fails safe to awaiting_outside', () => {
+  assert.equal(resolveInitialArmingState(40, 150), 'awaiting_outside');
+});
+
+test('ARMING: exactly at the radius boundary is NOT "clearly outside"', () => {
+  // A store across the street may sit right at the boundary; ties must not arm.
+  assert.equal(resolveInitialArmingState(150, 150), 'awaiting_outside');
+});
+
+test('ARMING: no fix, a failed fix, and a timed-out fix all fail safe identically', () => {
+  assert.equal(resolveInitialArmingState(null, 150), 'awaiting_outside');
+  assert.equal(resolveInitialArmingState(Number.NaN, 150), 'awaiting_outside');
+  assert.equal(resolveInitialArmingState(Number.POSITIVE_INFINITY, 150), 'awaiting_outside');
+});
+
+// ── The arming gate inside decideStoreArrival ───────────────────────────────
+
+function armingGateDecision(overrides: {
+  lastArrivalAt?: Record<string, number>;
+  armingState?: Record<string, 'armed' | 'awaiting_outside'>;
+  now?: number;
+}) {
+  return decideStoreArrival({
+    lat: NYC_NEAR.lat,
+    lng: NYC_NEAR.lng,
+    stores: [ARRIVAL_STORE],
+    items: ARRIVAL_ITEMS,
+    radiusMetres: 150,
+    cooldownMs: 60_000,
+    lastArrivalAt: overrides.lastArrivalAt ?? {},
+    lastExitAt: {},
+    exitGateMigrated: {},
+    armingState: overrides.armingState,
+    now: overrides.now ?? 1_700_000_000_000,
+  });
+}
+
+test('ARMING: a store explicitly awaiting_outside is suppressed, never notifies', () => {
+  const decision = armingGateDecision({ armingState: { walmart: 'awaiting_outside' } });
+  assert.equal(decision.accepted, false);
+  assert.equal(decision.reason, 'not_armed_until_exit');
+});
+
+test('ARMING: a store explicitly armed proceeds to the normal checks', () => {
+  const decision = armingGateDecision({ armingState: { walmart: 'armed' } });
+  assert.equal(decision.accepted, true);
+});
+
+test('ARMING: no arming entry at all does not regress pre-existing behaviour', () => {
+  // Every prior exit-gate/cooldown/migration test omits armingState entirely;
+  // the gate must be a no-op when the map or the entry is absent so none of
+  // that coverage silently changed meaning.
+  const decision = armingGateDecision({ armingState: undefined });
+  assert.equal(decision.accepted, true);
+});
+
+test('ARMING: the gate is per-store', () => {
+  const decision = armingGateDecision({ armingState: { someOtherStore: 'awaiting_outside' } });
+  assert.equal(decision.accepted, true, 'another store’s awaiting state must not block this one');
+});
+
+test('ARMING: does not bypass the exit gate once armed', () => {
+  // Arming only ever grants a store its first opportunity; once armed, an
+  // already-visited store is still governed by the exit-before-repeat rule.
+  const now = 1_700_000_000_000;
+  const decision = decideStoreArrival({
+    lat: NYC_NEAR.lat,
+    lng: NYC_NEAR.lng,
+    stores: [ARRIVAL_STORE],
+    items: ARRIVAL_ITEMS,
+    radiusMetres: 150,
+    cooldownMs: 60_000,
+    lastArrivalAt: { walmart: now - 60 * 60 * 1000 },
+    lastExitAt: {},
+    exitGateMigrated: { walmart: true },
+    armingState: { walmart: 'armed' },
+    now,
+  });
+  assert.equal(decision.accepted, false);
+  assert.equal(decision.reason, 'no_exit_since_last_arrival');
+});
+
+test('ARMING: takes priority over an unrelated ambiguous match — the awaiting store never notifies either way', () => {
+  // Two eligible stores within the ambiguity margin; the nearer one is still
+  // awaiting_outside. Whichever check runs "first" in effect, the result must
+  // never be accepted.
+  const near = store('seven-eleven', NYC.lat, NYC.lng);
+  const alsoNear = store('other-shop', NYC.lat + 0.0001, NYC.lng);
+  const decision = decideStoreArrival({
+    lat: NYC_NEAR.lat,
+    lng: NYC_NEAR.lng,
+    stores: [near, alsoNear],
+    items: [item('seven-eleven', 'low'), item('other-shop', 'low')],
+    radiusMetres: 150,
+    cooldownMs: 60_000,
+    lastArrivalAt: {},
+    lastExitAt: {},
+    exitGateMigrated: {},
+    armingState: { 'seven-eleven': 'awaiting_outside' },
+    now: 1_700_000_000_000,
+  });
+  assert.equal(decision.accepted, false);
+});
+
+// ── Registration-time wiring (STEP 2/3) ─────────────────────────────────────
+
+test('ARMING: a newly-registered store gets a bounded, best-effort location check', () => {
+  const service = geofencingSource;
+  assert.match(service, /const armingPos = await withTimeout\(/,
+    'the initial-outside check must be time-bounded, never a hanging call');
+  assert.match(service, /ARMING_CHECK_TIMEOUT_MS/);
+  assert.match(service, /\.catch\(\(\) => null\)/,
+    'a failed/timed-out fix must resolve to null, not throw into the caller');
+  assert.match(service, /resolveInitialArmingState\(distance, ARRIVAL_RADIUS_M\)/);
+});
+
+test('ARMING: only stores lacking an existing entry are evaluated', () => {
+  const service = geofencingSource;
+  assert.match(service, /priorArming\[store\.id\] === undefined/,
+    'a store that already has an arming verdict must not be re-evaluated');
+});
+
+test('ARMING: a store with prior arrival history is armed immediately, no location check spent', () => {
+  const service = geofencingSource;
+  const block = service.slice(
+    service.indexOf('const needsDetermination = geofenceable.filter'),
+    service.indexOf('    }\n  } catch (err) {'),
+  );
+  assert.match(block, /if \(priorArrivals\[store\.id\]\)/,
+    'existing stores that have already arrived must skip straight to armed');
+  const priorArrivalBranch = block.slice(
+    block.indexOf('if (priorArrivals[store.id])'),
+    block.indexOf('continue;'),
+  );
+  assert.match(priorArrivalBranch, /writeArmingState\(store\.id, 'armed'\)/);
+});
+
+test('ARMING: EXIT is the only path that arms an awaiting_outside store, and never notifies', () => {
+  const service = geofencingSource;
+  const exitBranch = service.slice(
+    service.indexOf('if (eventType === Location.GeofencingEventType.Exit)'),
+    service.indexOf('if (eventType !== Location.GeofencingEventType.Enter)'),
+  );
+  assert.match(exitBranch, /await writeArmingState\(storeId, 'armed'\)/);
+  assert.match(exitBranch, /armingState: 'armed'/);
+  assert.doesNotMatch(exitBranch, /notifyArrival|scheduleNotificationAsync/,
+    'a confirmed exit must never itself trigger a notification');
+});
+
+test('ARMING: writeArmingState never regresses an already-armed store', () => {
+  const service = geofencingSource;
+  const fn = service.slice(
+    service.indexOf('async function writeArmingState'),
+    service.indexOf('async function writeLastArrivalAt'),
+  );
+  assert.match(fn, /if \(record\[storeId\] === 'armed'\) return;/,
+    'armed must be terminal — a slow initial check resolving after a real EXIT must not undo it');
+});
+
+test('ARMING: every decideStoreArrival call site in the task receives armingState', () => {
+  const service = geofencingSource;
+  const decisionCalls = service.match(/decideStoreArrival\(\{/g) ?? [];
+  const armingPasses = service.match(/\n\s*armingState,\n/g) ?? [];
+  assert.equal(armingPasses.length, decisionCalls.length,
+    'every call site must be wired, or the guard is inconsistently applied');
+});
+
+test('ARMING: the new suppression reason is exposed in diagnostics, distinctly from the exit gate', () => {
+  const service = geofencingSource;
+  assert.match(service, /\| 'not_armed_until_exit'/);
+  assert.match(service, /initial\.reason === 'not_armed_until_exit'/,
+    'must be reported with its own reason, not folded into a generic rejection');
+});
+
+test('ARMING: per-store diagnostics expose armingState, armedAt and awaitingOutsideSince', () => {
+  const service = geofencingSource;
+  assert.match(service, /armingState: StoreArmingState \| null;/);
+  assert.match(service, /armedAt: number \| null;/);
+  assert.match(service, /awaitingOutsideSince: number \| null;/);
 });
