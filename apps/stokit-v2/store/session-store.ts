@@ -143,7 +143,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       });
       return;
     }
-    const next = reduce(prev, event);
+    let next = reduce(prev, event);
     if (next === prev) {
       syncDiag('shopping_occurrence_reduce', {
         sessionId: prev.tripId,
@@ -191,21 +191,37 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     if (event.type === 'REMOVE_ENTRY') {
       const removedEntry = prev.entries.find((entry) => entry.entryId === event.entryId);
       const durableItem = durable.items.find((item) => item.id === removedEntry?.pantryItemId);
-      if (removedEntry && !capabilities.canChangePickedState) {
-        if (removedEntry.entryId === removedEntry.pantryItemId) {
-          durable.deleteItem(removedEntry.pantryItemId);
-        } else {
-          durable.tombstoneShoppingOccurrence(removedEntry.entryId);
+      if (removedEntry) {
+        const siblingEntries = !capabilities.canChangePickedState &&
+          removedEntry.entryId === removedEntry.pantryItemId
+          ? next.entries.filter(
+              (entry) => entry.pantryItemId === removedEntry.pantryItemId && !entry.picked,
+            )
+          : [];
+        if (siblingEntries.length) {
+          const removedAt = event.now ?? Date.now();
+          const siblingIds = siblingEntries.map((entry) => entry.entryId);
+          next = {
+            ...next,
+            entries: next.entries.filter((entry) => !siblingIds.includes(entry.entryId)),
+            removedEntryIds: [...new Set([...next.removedEntryIds, ...siblingIds])],
+            removedAt: {
+              ...(next.removedAt ?? {}),
+              ...Object.fromEntries(siblingIds.map((entryId) => [entryId, removedAt])),
+            },
+          };
         }
-      }
-      if (
-        removedEntry &&
-        durableItem &&
-        (durableItem.status === 'low' || durableItem.status === 'expiring') &&
-        durableItem.storeId === removedEntry.storeId
-      ) {
-        durable.updateItem(removedEntry.pantryItemId, {
-          storeId: newestRemainingOccurrenceStoreId(next.entries, removedEntry.pantryItemId),
+        const updatesLegacyStore = durableItem &&
+          (durableItem.status === 'low' || durableItem.status === 'expiring') &&
+          durableItem.storeId === removedEntry.storeId;
+        durable.removeShoppingEntryAtomically({
+          nextSession: next,
+          removedEntry,
+          persistDeletion: !capabilities.canChangePickedState,
+          tombstoneEntryIds: [removedEntry.entryId, ...siblingEntries.map((entry) => entry.entryId)],
+          ...(updatesLegacyStore ? {
+            legacyStoreId: newestRemainingOccurrenceStoreId(next.entries, removedEntry.pantryItemId),
+          } : {}),
         });
       }
     }
@@ -282,6 +298,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       durable.closeTrip(prev.tripId);
     }
 
-    durable.setActiveSession(next.status === 'idle' || next.status === 'trip_summary' ? null : next, event.type);
+    if (event.type !== 'REMOVE_ENTRY') {
+      durable.setActiveSession(next.status === 'idle' || next.status === 'trip_summary' ? null : next, event.type);
+    }
   },
 }));

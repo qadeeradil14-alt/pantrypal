@@ -47,6 +47,7 @@ import {
   clearDurable,
 } from '../core/repositories/durableRepository';
 import {
+  cancelPendingHouseholdPushes,
   clearCloudState,
   pushLocalState,
   refreshGeofencedStoreData,
@@ -66,8 +67,11 @@ import {
 import { isDuplicatePriceEntry, isValidPrice } from '../core/services/priceHistory';
 import { refreshWidgets } from '../core/services/widgets';
 import { findDuplicateStore } from '../core/services/storeDuplicates';
-import { createLatestSnapshotQueue } from '../core/services/latestSnapshotQueue';
 import { shoppingCapabilities } from '../core/services/shoppingAccess';
+import {
+  commitAtomicShoppingRemoval,
+  type AtomicShoppingRemovalInput,
+} from '../core/services/shoppingAtomicRemoval';
 import { changedFields, hasChangedFields } from '../core/services/changedFields';
 import { useHouseholdStore } from './household-store';
 import {
@@ -149,6 +153,7 @@ interface DurableStore extends DurableState {
   resetShoppingList: () => void;
   deleteItem: (id: string) => void;
   tombstoneShoppingOccurrence: (entryId: string) => void;
+  removeShoppingEntryAtomically: (input: AtomicShoppingRemovalInput) => void;
 
   // Stores
   addStore: (input: {
@@ -287,10 +292,6 @@ export const useDurableStore = create<DurableStore>((set, get) => {
 
   // is swallowed by the repository so the in-memory state stays authoritative.
   let persistQueue = Promise.resolve();
-  const snapshotPushQueue = createLatestSnapshotQueue(async ({ snap, epoch }: { snap: DurableState; epoch: number }) => {
-    if (epoch !== persistEpoch) return;
-    await pushLocalState(snap);
-  }, 400);
   let persistEpoch = 0;
   let lastSnapshotAt = 0;
   const persist = () => {
@@ -313,7 +314,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         if (epoch !== persistEpoch) return;
         await saveDurable(snap);
         if (epoch !== persistEpoch) return;
-        void snapshotPushQueue.enqueue({ snap, epoch }).catch((err) => {
+        void pushLocalState(snap).catch((err) => {
           if (__DEV__) console.warn('[durable-store] snapshot push failed', err);
         });
       })
@@ -831,6 +832,24 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       persist();
     },
 
+    removeShoppingEntryAtomically: ({
+      nextSession,
+      removedEntry,
+      persistDeletion,
+      tombstoneEntryIds,
+      legacyStoreId,
+    }) => {
+      commitAtomicShoppingRemoval(
+        (update) => set(update),
+        persist,
+        { nextSession, removedEntry, persistDeletion, tombstoneEntryIds, legacyStoreId },
+        now(),
+      );
+      if (persistDeletion || legacyStoreId !== undefined) {
+        void refreshGeofencedStoreData();
+      }
+    },
+
     addStore: (input) => {
       if (!hasValidStoreCoordinates(input.lat, input.lng)) {
         throw new Error('Stores require valid latitude and longitude before they can be saved.');
@@ -1121,7 +1140,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     resetAll: async () => {
       persistEpoch += 1;
       await persistQueue;
-      await snapshotPushQueue.whenIdle();
+      cancelPendingHouseholdPushes();
       await clearCloudState();
       await clearDurable();
       set({ ...emptyDurableState, prefs: { ...defaultPrefs }, hydrated: true });
@@ -1131,7 +1150,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     resetLocalOnly: async () => {
       persistEpoch += 1;
       await persistQueue;
-      await snapshotPushQueue.whenIdle();
+      cancelPendingHouseholdPushes();
       await clearDurable();
       set({ ...emptyDurableState, prefs: { ...defaultPrefs }, hydrated: true });
       void refreshWidgets([]);
@@ -1233,7 +1252,13 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       void import('./session-store').then(({ useSessionStore }) => {
         useSessionStore.getState().applyRemoteSession(normalized.activeSession);
       });
-      if (!(await saveDurable(snapshot(get())))) {
+      const serverSnapshot = snapshot(get());
+      let saveResult = false;
+      persistQueue = persistQueue.then(async () => {
+        saveResult = await saveDurable(serverSnapshot);
+      });
+      await persistQueue;
+      if (!saveResult) {
         throw new Error('failed to persist authoritative server snapshot');
       }
       void refreshWidgets(get().items);

@@ -337,20 +337,37 @@ function tombstones(entries: DurableState['deletedItems']): DurableState['delete
   return byId(entries);
 }
 
-function syncSignature(state: DurableState): string {
+function canonicalizeObjectKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalizeObjectKeys);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nested]) => [key, canonicalizeObjectKeys(nested)]),
+  );
+}
+
+export function durableStateSemanticFingerprint(state: DurableState): string {
   const items = byId(state.items);
+  const semanticReceipts = byId(state.receipts).map(({ imageUri, ...receipt }) => ({
+    ...receipt,
+    ...(!receipt.imagePath && imageUri?.startsWith('file://') ? { pendingLocalImageUri: imageUri } : {}),
+  }));
   const activeSession = state.activeSession ? {
     ...state.activeSession,
     entries: [...state.activeSession.entries].sort((a, b) => a.entryId.localeCompare(b.entryId)),
     removedEntryIds: [...(state.activeSession.removedEntryIds ?? [])].sort(),
     skippedStoreIds: [...state.activeSession.skippedStoreIds].sort(),
-    receipts: byId(state.activeSession.receipts),
+    receipts: byId(state.activeSession.receipts).map(({ imageUri, ...receipt }) => ({
+      ...receipt,
+      ...(!receipt.imagePath && imageUri?.startsWith('file://') ? { pendingLocalImageUri: imageUri } : {}),
+    })),
   } : null;
-  return JSON.stringify({
+  return JSON.stringify(canonicalizeObjectKeys({
     items,
     stores: byId(state.stores),
     priceHistory: byId(state.priceHistory),
-    receipts: byId(state.receipts),
+    receipts: semanticReceipts,
     trips: byId(state.trips),
     activity: byId(state.activity),
     prefs: state.prefs,
@@ -364,9 +381,9 @@ function syncSignature(state: DurableState): string {
     deletedTrips: tombstones(state.deletedTrips),
     deletedReceipts: tombstones(state.deletedReceipts),
     closedTripIds: tombstones(state.closedTripIds),
-  });
+  }));
 }
 
 export function hasLocalSyncContribution(remote: DurableState, local: DurableState): boolean {
-  return syncSignature(mergeDurableSnapshotForPush(remote, local)) !== syncSignature(remote);
+  return durableStateSemanticFingerprint(mergeDurableSnapshotForPush(remote, local)) !== durableStateSemanticFingerprint(remote);
 }

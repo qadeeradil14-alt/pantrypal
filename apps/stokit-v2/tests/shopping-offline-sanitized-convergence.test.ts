@@ -267,19 +267,23 @@ const durableStoreSource = fs.readFileSync(
 );
 
 test('CAS update returns the trigger-sanitized state', () => {
-  const pushSource = syncSource.slice(
-    syncSource.indexOf('export async function pushLocalState'),
-    syncSource.indexOf('export async function pullFromSupabase'),
+  const attemptSource = syncSource.slice(
+    syncSource.indexOf('async function performHouseholdPushAttempt'),
+    syncSource.indexOf('function preserveLocalReceiptUris'),
   );
   assert.match(
-    pushSource,
+    attemptSource,
     /\.update\(\{ state: encodeShoppingState\(snapshot\), updated_at: writeAt \}\)[\s\S]*?\.select\('state, updated_at'\)/,
   );
 });
 
 test('successful push installs returned server state before marking its echo', () => {
-  const installIndex = syncSource.indexOf('replaceWithServerSnapshot');
-  const markIndex = syncSource.indexOf('markPushed', syncSource.indexOf('export async function pushLocalState'));
+  const installSource = syncSource.slice(
+    syncSource.indexOf('async function installSuccessfulPush'),
+    syncSource.indexOf('const householdPushCoordinator'),
+  );
+  const installIndex = installSource.indexOf('replaceWithServerSnapshot');
+  const markIndex = installSource.indexOf('markPushed');
   assert.ok(installIndex > 0);
   assert.ok(markIndex > installIndex);
 });

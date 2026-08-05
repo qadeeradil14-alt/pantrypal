@@ -306,11 +306,13 @@ test('inventory and price-history writes use pantryItemId, not entryId', () => {
 
 test('member removal tombstones the occurrence without deleting its canonical pantry item', () => {
   const durable = readFileSync(join(process.cwd(), 'store/durable-store.ts'), 'utf8');
+  const atomicRemoval = readFileSync(join(process.cwd(), 'core/services/shoppingAtomicRemoval.ts'), 'utf8');
   const sessionStore = readFileSync(join(process.cwd(), 'store/session-store.ts'), 'utf8');
 
-  assert.match(durable, /tombstoneShoppingOccurrence: \(entryId: string\) => void/);
-  assert.match(sessionStore, /durable\.tombstoneShoppingOccurrence\(removedEntry\.entryId\)/);
-  assert.match(sessionStore, /removedEntry\.entryId === removedEntry\.pantryItemId/);
+  assert.match(durable, /removeShoppingEntryAtomically:/);
+  assert.match(atomicRemoval, /deletesPantryItem = persistDeletion && removedEntry\.entryId === removedEntry\.pantryItemId/);
+  assert.match(sessionStore, /durable\.removeShoppingEntryAtomically\(/);
+  assert.match(sessionStore, /persistDeletion: !capabilities\.canChangePickedState/);
 });
 
 test('occurrence diagnostics are gated and include reducer and merge identity decisions', () => {

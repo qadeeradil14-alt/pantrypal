@@ -12,10 +12,18 @@ import { createDebouncedPullScheduler, createRealtimeFallbackScheduler } from '.
 import { syncDiag, syncDiagEnabled } from './syncDiag'; // DIAG: temporary — remove after OTA 389 investigation
 import { withTimeout } from './withTimeout';
 import {
+  durableStateSemanticFingerprint,
   hasLocalSyncContribution,
   mergeDurableSnapshotForPush,
   reconcileServerSnapshotAfterPush,
 } from './mergeDurableSnapshot';
+import {
+  classifySupabasePushError,
+  createHouseholdPushCoordinator,
+  PushRequestTimeoutError,
+  type PushAttemptOutcome,
+  withPushAbort,
+} from './householdPushCoordinator';
 
 const CLOUD_TABLE = 'household_snapshots';
 const RECEIPT_BUCKET = 'receipts';
@@ -70,35 +78,6 @@ const realtimeFallbackScheduler = createRealtimeFallbackScheduler(
   () => realtimePullScheduler.schedule(),
   5_000,
 );
-
-// Persistent offline flush. When a push fails (typically no connectivity) the
-// engine keeps retrying on a capped exponential backoff instead of giving up
-// after a single deferred attempt. This is what carries edits made while
-// offline to other devices the moment connectivity returns — without needing a
-// fresh mutation or an app foreground. Cleared on the first successful push.
-let pendingFlushTimer: ReturnType<typeof setTimeout> | null = null;
-let pendingFlushDelayMs = 0;
-const FLUSH_MAX_DELAY_MS = 30_000;
-
-function scheduleOfflineFlush(): void {
-  if (pendingFlushTimer) return;
-  pendingFlushDelayMs = pendingFlushDelayMs > 0 ? Math.min(pendingFlushDelayMs * 2, FLUSH_MAX_DELAY_MS) : 2_000;
-  pendingFlushTimer = setTimeout(() => {
-    pendingFlushTimer = null;
-    void (async () => {
-      const store = await durableStore();
-      await pushLocalState(durableSnapshot(store.getState()), { isDeferredRetry: true });
-    })();
-  }, pendingFlushDelayMs);
-}
-
-function clearOfflineFlush(): void {
-  if (pendingFlushTimer) {
-    clearTimeout(pendingFlushTimer);
-    pendingFlushTimer = null;
-  }
-  pendingFlushDelayMs = 0;
-}
 
 function activeSessionStats(state: DurableState): { itemCount: number; pickedCount: number; sessionId: string } {
   const entries = state.activeSession?.entries ?? [];
@@ -245,189 +224,215 @@ async function uploadReceipt(householdId: string, receipt: Receipt): Promise<Rec
   return receipt;
 }
 
-export async function pushLocalState(state: DurableState, options?: { isDeferredRetry?: boolean }): Promise<void> {
+function permanentFailure(error: unknown): PushAttemptOutcome {
+  return { type: 'permanent-error', error };
+}
+
+function resultFailure(
+  result: { error: unknown; status?: number },
+): PushAttemptOutcome {
+  return classifySupabasePushError(result.error, result.status) === 'network'
+    ? { type: 'network-failure', error: result.error }
+    : permanentFailure(result.error);
+}
+
+async function performHouseholdPushAttempt(
+  id: string,
+  submitted: DurableState,
+  signal: AbortSignal,
+  generation: number,
+): Promise<PushAttemptOutcome> {
+  try {
+    const receipts = await Promise.all(submitted.receipts.map((receipt) => uploadReceipt(id, receipt)));
+    const cloudReceipts = receipts.map((receipt) =>
+      !receipt.imagePath && receipt.imageUri?.startsWith('file://')
+        ? { ...receipt, imageUri: null }
+        : receipt);
+    const localSnapshot = {
+      ...submitted,
+      receipts: cloudReceipts,
+    };
+    const currentResult = await withPushAbort(signal, (requestSignal) =>
+      supabase.from(CLOUD_TABLE)
+        .select('state, updated_at')
+        .eq('household_id', id)
+        .abortSignal(requestSignal)
+        .maybeSingle());
+    if (currentResult.error) return resultFailure(currentResult);
+
+    if (!currentResult.data?.state) {
+      const writeAt = Math.max(Date.now(), localSnapshot.updatedAt + 1);
+      const snapshot = { ...localSnapshot, updatedAt: writeAt };
+      const insertResult = await withPushAbort(signal, (requestSignal) =>
+        supabase.from(CLOUD_TABLE)
+          .insert({ household_id: id, state: encodeShoppingState(snapshot), updated_at: writeAt })
+          .select('state, updated_at')
+          .abortSignal(requestSignal)
+          .maybeSingle());
+      if (insertResult.error?.code === '23505') return { type: 'conflict' };
+      if (insertResult.error) return resultFailure(insertResult);
+      if (!insertResult.data?.state) return { type: 'conflict' };
+      const storedUpdatedAt = Number(insertResult.data.updated_at ?? writeAt);
+      return {
+        type: 'success',
+        serverState: {
+          ...decodeShoppingState(insertResult.data.state as DurableState),
+          updatedAt: storedUpdatedAt,
+        },
+        updatedAt: storedUpdatedAt,
+      };
+    }
+
+    const decodedRemote = decodeShoppingState(currentResult.data.state as DurableState);
+    const remoteUpdatedAt = Number(currentResult.data.updated_at ?? decodedRemote.updatedAt ?? 0);
+    const remote = { ...decodedRemote, updatedAt: remoteUpdatedAt };
+    const merged = mergeDurableSnapshotForPush(remote, localSnapshot);
+    if (durableStateSemanticFingerprint(merged) === durableStateSemanticFingerprint(remote)) {
+      return { type: 'success', serverState: remote, updatedAt: remoteUpdatedAt };
+    }
+    const writeAt = Math.max(Date.now(), remoteUpdatedAt + 1, merged.updatedAt + 1);
+    const snapshot = { ...merged, updatedAt: writeAt };
+    const diagLocalMemberId = syncDiagEnabled() ? await localMemberIdForDiag() : null;
+    syncDiag('rls_push_attempt', {
+      householdId: id,
+      localMemberId: diagLocalMemberId,
+      generation,
+      tripId: snapshot.activeSession?.tripId ?? null,
+      sessionStatus: snapshot.activeSession?.status ?? null,
+      shopperId: snapshot.activeSession?.shopperId ?? null,
+      isLocalTheShopper: diagLocalMemberId != null
+        && snapshot.activeSession?.shopperId === diagLocalMemberId,
+      casExpectedUpdatedAt: remoteUpdatedAt,
+      writeAt,
+      outgoing: diagEntryShapes(snapshot.activeSession?.entries),
+      remote: diagEntryShapes(remote.activeSession?.entries),
+      remoteSessionStatus: remote.activeSession?.status ?? null,
+    });
+    const updateResult = await withPushAbort(signal, (requestSignal) =>
+      supabase.from(CLOUD_TABLE)
+        .update({ state: encodeShoppingState(snapshot), updated_at: writeAt })
+        .eq('household_id', id)
+        .eq('updated_at', remoteUpdatedAt)
+        .select('state, updated_at')
+        .abortSignal(requestSignal)
+        .maybeSingle());
+    const diagCode = updateResult.error?.code ?? null;
+    syncDiag('rls_push_result', {
+      generation,
+      httpStatus: (updateResult as { status?: number }).status ?? null,
+      rowsReturned: updateResult.data ? 1 : 0,
+      errorCode: diagCode,
+      errorMessage: updateResult.error?.message ?? null,
+      errorDetails: updateResult.error?.details ?? null,
+      errorHint: updateResult.error?.hint ?? null,
+      classification: diagCode === '42501'
+        ? 'RLS_REJECTED'
+        : updateResult.error
+          ? 'OTHER_ERROR'
+          : updateResult.data
+            ? 'SUCCESS'
+            : 'CAS_CONFLICT',
+    });
+    if (updateResult.error) return resultFailure(updateResult);
+    if (!updateResult.data?.state) return { type: 'conflict' };
+    const storedUpdatedAt = Number(updateResult.data.updated_at ?? writeAt);
+    return {
+      type: 'success',
+      serverState: {
+        ...decodeShoppingState(updateResult.data.state as DurableState),
+        updatedAt: storedUpdatedAt,
+      },
+      updatedAt: storedUpdatedAt,
+    };
+  } catch (error) {
+    return {
+      type: 'network-failure',
+      error,
+      ...(error instanceof PushRequestTimeoutError
+        ? { transportSettled: error.transportSettled }
+        : {}),
+    };
+  }
+}
+
+function preserveLocalReceiptUris(state: DurableState, local: DurableState): DurableState {
+  const localById = new Map(local.receipts.map((receipt) => [receipt.id, receipt]));
+  return {
+    ...state,
+    receipts: state.receipts.map((receipt) => {
+      const localReceipt = localById.get(receipt.id);
+      return receipt.imagePath && localReceipt?.imageUri?.startsWith('file://')
+        ? { ...receipt, imageUri: localReceipt.imageUri }
+        : receipt;
+    }),
+  };
+}
+
+async function installSuccessfulPush(
+  _householdId: string,
+  submitted: DurableState,
+  serverState: DurableState,
+  storedUpdatedAt: number,
+): Promise<{ acknowledgedState: DurableState; latestState: DurableState }> {
+  const store = await durableStore();
+  const latestLocal = durableSnapshot(store.getState());
+  const acknowledgedState = preserveLocalReceiptUris(
+    reconcileServerSnapshotAfterPush(serverState, submitted, submitted).state,
+    submitted,
+  );
+  const installedSnapshot = preserveLocalReceiptUris(
+    reconcileServerSnapshotAfterPush(serverState, submitted, latestLocal).state,
+    latestLocal,
+  );
+  await store.getState().replaceWithServerSnapshot(installedSnapshot);
+  markPushed(storedUpdatedAt);
+  const { itemCount, pickedCount, sessionId } = activeSessionStats(installedSnapshot);
+  if (__DEV__) console.log(`[Shopping Sync] active_session_snapshot_written version/updatedAt=${storedUpdatedAt} itemCount=${itemCount} pickedCount=${pickedCount} sessionId=${sessionId}`);
+  return {
+    acknowledgedState,
+    latestState: durableSnapshot(store.getState()),
+  };
+}
+
+const householdPushCoordinator = createHouseholdPushCoordinator({
+  readLatestSnapshot: async () => {
+    const store = await durableStore();
+    return durableSnapshot(store.getState());
+  },
+  attempt: performHouseholdPushAttempt,
+  installSuccess: installSuccessfulPush,
+  onPermanentError: (_id, error) => {
+    syncDiag('push_err', { classification: 'permanent', error: error instanceof Error ? error.message : String(error) });
+    if (__DEV__) console.warn('[Sync Engine] Permanent snapshot push failure.', error);
+  },
+});
+
+export async function pushLocalState(state: DurableState): Promise<void> {
   const id = await householdId();
   if (!id) return;
-
   if (!initialHouseholdSyncComplete.has(id)) {
     await pullFromSupabase({ forceServerHydration: true });
     if (!initialHouseholdSyncComplete.has(id)) return;
   }
-
-  try {
-    const store = await durableStore();
-    const currentLocal = durableSnapshot(store.getState());
-    const consistentState = currentLocal.updatedAt > state.updatedAt
-      ? currentLocal
-      : durableSnapshot(state);
-    if (isEmptySharedSnapshot(consistentState)) {
-      if (__DEV__) console.warn('[Sync Engine] empty_snapshot_push_blocked');
-      clearOfflineFlush();
-      return;
-    }
-    const receipts = await Promise.all(consistentState.receipts.map((receipt) => uploadReceipt(id, receipt)));
-    const cloudReceipts = receipts.map((receipt) =>
-      !receipt.imagePath && receipt.imageUri?.startsWith('file://')
-        ? { ...receipt, imageUri: null }
-        : receipt,
-    );
-    const localSnapshot = { ...consistentState, receipts: cloudReceipts };
-
-    // DIAG(RLS): TEMPORARY — resolved once, outside the retry loop, so the
-    // push path's timing is unchanged. Remove with the rls_* call sites.
-    const diagLocalMemberId = syncDiagEnabled() ? await localMemberIdForDiag() : null;
-
-    let error: { message: string } | null = null;
-    let snapshot = localSnapshot;
-    let storedSnapshot: DurableState | null = null;
-    let storedUpdatedAt = 0;
-    for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
-      const currentResult = await supabase.from(CLOUD_TABLE).select('state, updated_at').eq('household_id', id).maybeSingle();
-      if (currentResult.error) {
-        error = currentResult.error;
-      } else if (!currentResult.data?.state) {
-        const writeAt = Math.max(Date.now(), localSnapshot.updatedAt + 1);
-        snapshot = { ...localSnapshot, updatedAt: writeAt };
-        const insertResult = await supabase.from(CLOUD_TABLE)
-          .insert({
-            household_id: id,
-            state: encodeShoppingState(snapshot),
-            updated_at: writeAt,
-          })
-          .select('state, updated_at')
-          .maybeSingle();
-        error = insertResult.error;
-        if (!error && insertResult.data?.state) {
-          storedUpdatedAt = Number(insertResult.data.updated_at ?? writeAt);
-          storedSnapshot = {
-            ...decodeShoppingState(insertResult.data.state as DurableState),
-            updatedAt: storedUpdatedAt,
-          };
-          break;
-        }
-        if (!error) error = { message: 'insert succeeded without returned snapshot state' };
-      } else {
-        const remote = decodeShoppingState(currentResult.data.state as DurableState);
-        const remoteUpdatedAt = Number(currentResult.data.updated_at ?? remote.updatedAt ?? 0);
-        const merged = mergeDurableSnapshotForPush(remote, localSnapshot);
-        const writeAt = Math.max(Date.now(), remoteUpdatedAt + 1, merged.updatedAt + 1);
-        snapshot = { ...merged, updatedAt: writeAt };
-        // DIAG(RLS): TEMPORARY — collaborator-write investigation (OTA 419).
-        // Logging only; no control flow below is altered. Delete this whole
-        // block, the two syncDiag calls after the update, the rls_remote_verify
-        // block, and diagEntryShapes/localMemberIdForDiag when done.
-        syncDiag('rls_push_attempt', {
-          householdId: id,
-          localMemberId: diagLocalMemberId,
-          tripId: snapshot.activeSession?.tripId ?? null,
-          sessionStatus: snapshot.activeSession?.status ?? null,
-          shopperId: snapshot.activeSession?.shopperId ?? null,
-          isLocalTheShopper: diagLocalMemberId != null
-            && snapshot.activeSession?.shopperId === diagLocalMemberId,
-          casExpectedUpdatedAt: remoteUpdatedAt,
-          writeAt,
-          outgoing: diagEntryShapes(snapshot.activeSession?.entries),
-          remote: diagEntryShapes(remote.activeSession?.entries),
-          remoteSessionStatus: remote.activeSession?.status ?? null,
-        });
-        const updateResult = await supabase.from(CLOUD_TABLE)
-          .update({ state: encodeShoppingState(snapshot), updated_at: writeAt })
-          .eq('household_id', id)
-          .eq('updated_at', remoteUpdatedAt)
-          .select('state, updated_at')
-          .maybeSingle();
-        // DIAG(RLS): TEMPORARY — see note above.
-        const diagCode = updateResult.error?.code ?? null;
-        syncDiag('rls_push_result', {
-          attempt,
-          httpStatus: (updateResult as { status?: number }).status ?? null,
-          rowsReturned: updateResult.data ? 1 : 0,
-          errorCode: diagCode,
-          errorMessage: updateResult.error?.message ?? null,
-          errorDetails: updateResult.error?.details ?? null,
-          errorHint: updateResult.error?.hint ?? null,
-          classification: diagCode === '42501'
-            ? 'RLS_REJECTED'
-            : updateResult.error
-              ? 'OTHER_ERROR'
-              : updateResult.data
-                ? 'SUCCESS'
-                : 'CAS_CONFLICT',
-        });
-        error = updateResult.error;
-        if (!error && updateResult.data?.state) {
-          storedUpdatedAt = Number(updateResult.data.updated_at ?? writeAt);
-          storedSnapshot = {
-            ...decodeShoppingState(updateResult.data.state as DurableState),
-            updatedAt: storedUpdatedAt,
-          };
-          break;
-        }
-        if (!error) error = { message: 'snapshot changed during merge' };
-      }
-      if (__DEV__) console.warn(`[Sync Engine] Snapshot push attempt ${attempt} failed:`, error.message);
-      if (attempt < RETRY_ATTEMPTS) await retryDelay(attempt);
-    }
-
-    if (error || !storedSnapshot) {
-      const failure = error ?? { message: 'push succeeded without returned snapshot state' };
-      syncDiag('push_err', { snapshotUpdatedAt: snapshot.updatedAt, error: failure.message }); // DIAG
-      // Keep retrying on backoff until connectivity returns — do not give up.
-      scheduleOfflineFlush();
-      return;
-    }
-    clearOfflineFlush();
-    // DIAG(RLS): TEMPORARY — re-read the row we just wrote so a capture can
-    // distinguish "write accepted and persisted" from "write accepted but the
-    // item is later removed/ignored". Gated on syncDiagEnabled() so devices
-    // without the diag flag issue no extra request at all.
-    if (syncDiagEnabled()) {
-      try {
-        const verify = await supabase.from(CLOUD_TABLE)
-          .select('state, updated_at').eq('household_id', id).maybeSingle();
-        const verifyState = verify.data?.state as DurableState | undefined;
-        syncDiag('rls_remote_verify', {
-          householdId: id,
-          fetchError: verify.error?.message ?? null,
-          remoteUpdatedAt: verify.data?.updated_at ?? null,
-          matchesWhatWeWrote: Number(verify.data?.updated_at ?? -1) === snapshot.updatedAt,
-          remoteSessionStatus: verifyState?.activeSession?.status ?? null,
-          remoteTripId: verifyState?.activeSession?.tripId ?? null,
-          remote: diagEntryShapes(verifyState?.activeSession?.entries),
-          remoteItemIds: (verifyState?.items ?? []).map((pantryItem) => pantryItem.id),
-        });
-      } catch {
-        // Diagnostics must never affect the push outcome.
-      }
-    }
-    const latestLocal = durableSnapshot(store.getState());
-    const reconciled = reconcileServerSnapshotAfterPush(
-      storedSnapshot,
-      consistentState,
-      latestLocal,
-    );
-    const uploadedById = new Map(receipts.map((receipt) => [receipt.id, receipt]));
-    const latestReceiptsById = new Map(latestLocal.receipts.map((receipt) => [receipt.id, receipt]));
-    const installedSnapshot = {
-      ...reconciled.state,
-      receipts: reconciled.state.receipts.map((receipt) => {
-        const uploaded = uploadedById.get(receipt.id);
-        const latestReceipt = latestReceiptsById.get(receipt.id);
-        return uploaded?.imagePath && latestReceipt?.imageUri === uploaded.imageUri
-          ? { ...receipt, imageUri: uploaded.imageUri, imagePath: uploaded.imagePath }
-          : receipt;
-      }),
-    };
-    await store.getState().replaceWithServerSnapshot(installedSnapshot);
-    markPushed(storedUpdatedAt);
-    const { itemCount, pickedCount, sessionId } = activeSessionStats(installedSnapshot);
-    if (__DEV__) console.log(`[Shopping Sync] active_session_snapshot_written version/updatedAt=${storedUpdatedAt} itemCount=${itemCount} pickedCount=${pickedCount} sessionId=${sessionId}`);
-  } catch (err) {
-    if (__DEV__) console.warn('[Sync Engine] Offline or push failed.', err);
-    // Receipt upload or upsert threw (e.g. offline mid-request) — keep retrying
-    // on backoff so pending edits still reach other devices on reconnect.
-    scheduleOfflineFlush();
+  const store = await durableStore();
+  const currentLocal = durableSnapshot(store.getState());
+  const consistentState = currentLocal.updatedAt > state.updatedAt
+    ? currentLocal
+    : durableSnapshot(state);
+  if (isEmptySharedSnapshot(consistentState)) {
+    if (__DEV__) console.warn('[Sync Engine] empty_snapshot_push_blocked');
+    return;
   }
+  await householdPushCoordinator.enqueue(id, consistentState);
+}
+
+export async function wakePendingHouseholdPush(): Promise<void> {
+  const id = await householdId();
+  if (id) await householdPushCoordinator.wake(id);
+}
+
+export function cancelPendingHouseholdPushes(): void {
+  householdPushCoordinator.reset();
 }
 
 export async function pullFromSupabase(options?: { forceServerHydration?: boolean }): Promise<boolean> {
@@ -457,6 +462,7 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
     const local = store.getState();
     if (local.items.length || local.stores.length || local.receipts.length || local.trips.length) {
       await pushLocalState({ ...durableSnapshot(local), updatedAt: Date.now() });
+      await householdPushCoordinator.wake(id);
       return true;
     }
 
@@ -465,7 +471,10 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
       supabase.from('pantry_stores').select('*').eq('household_id', id),
       supabase.from('pantry_receipts').select('*').eq('household_id', id),
     ]);
-    if (!items?.length && !stores?.length && !receipts?.length) return true;
+    if (!items?.length && !stores?.length && !receipts?.length) {
+      await householdPushCoordinator.wake(id);
+      return true;
+    }
 
     const migrated: DurableState = {
       ...local,
@@ -510,6 +519,7 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
     };
     store.getState().applyRemotePatch(migrated);
     await pushLocalState(migrated);
+    await householdPushCoordinator.wake(id);
     return true;
   }
 
@@ -566,6 +576,7 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
       if (__DEV__) console.log(`[Shopping Sync] stale_remote_reconcile_push localUpdatedAt=${localUpdatedAt} remoteUpdatedAt=${remoteUpdatedAt}`);
       await pushLocalState(mergedLocal);
     }
+    await householdPushCoordinator.wake(id);
     return true;
   }
 
@@ -610,6 +621,7 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
     if (!isSelfEcho(remoteUpdatedAt) && (mergedLocal.updatedAt > remoteUpdatedAt || hasLocalSyncContribution(reconciledRemote, mergedLocal))) {
       await pushLocalState(mergedLocal);
     }
+    await householdPushCoordinator.wake(id);
     return true;
   }
   syncDiag('pull_path', { path: 'full_apply', remoteUpdatedAt, localUpdatedAt: current.updatedAt }); // DIAG
@@ -619,6 +631,7 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
   if (!isSelfEcho(remoteUpdatedAt)) {
     markRemoteApplied(remoteUpdatedAt);
   }
+  await householdPushCoordinator.wake(id);
   return true;
 }
 
@@ -681,6 +694,7 @@ export async function startSyncEngine(): Promise<void> {
 }
 
 export function stopSyncEngine(): void {
+  householdPushCoordinator.reset();
   realtimeFallbackScheduler.stop();
   realtimePullScheduler.cancel();
   if (syncChannel) void supabase.removeChannel(syncChannel);
