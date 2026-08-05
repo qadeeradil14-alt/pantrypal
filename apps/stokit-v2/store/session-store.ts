@@ -30,6 +30,7 @@ import {
   sameActiveShoppingSession,
 } from '../core/services/shoppingSessionHydration';
 import { newestRemainingOccurrenceStoreId } from '../core/services/shoppingOccurrence';
+import { unpurchasedTripEntries } from '../core/services/shoppingStoreAssignments';
 
 const SESSION_KEY = 'stokit:v2:active-session';
 
@@ -240,25 +241,13 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
     // Commit to durable state exactly once when trip_summary is reached.
     if (next.status === 'trip_summary' && prev.status !== 'trip_summary' && next.completedTrip) {
-      durable.commitTrip(next.completedTrip, next.receipts);
-      const pickedEntries = next.entries.filter((entry) => entry.picked);
-      durable.clearShoppingEntries(pickedEntries);
-
-      // Release every (item, store) pairing this trip never bought, keyed off
-      // the trip's own entries rather than item.storeId. Nulling item.storeId
-      // alone left the assignment ledger active, and activeShoppingStoreIds
-      // prefers the ledger — so the store (a skipped one especially) rebuilt
-      // its "ready to shop" plan the moment the trip closed. Items picked up
-      // somewhere on this trip are already handled by clearShoppingEntries
-      // above and are skipped here.
-      const pickedItemIds = new Set(pickedEntries.map((entry) => entry.pantryItemId));
-      next.entries
-        .filter(
-          (entry) =>
-            !pickedItemIds.has(entry.pantryItemId) &&
-            entry.pantryItemId !== '__quick_scan__',
-        )
+      // Release unpurchased occurrences by exact (item, store) pair before the
+      // durable commit decides whether a purchased item has another active
+      // store need. Buying an item at Safeway must not preserve an unbought
+      // Costco occurrence merely because both entries share one pantryItemId.
+      unpurchasedTripEntries(next.entries, next.completedTrip.purchasedItems)
         .forEach((entry) => durable.releaseStoreAssignment(entry.pantryItemId, entry.storeId));
+      durable.commitTrip(next.completedTrip, next.receipts);
     }
 
     set({ session: next });

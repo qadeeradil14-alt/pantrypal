@@ -48,6 +48,7 @@ import {
   assignShoppingItemToStore,
   deactivateShoppingItemStore,
   shoppingEntryDraftsFromAssignments,
+  unpurchasedTripEntries,
 } from '../core/services/shoppingStoreAssignments';
 import { foldRemoteActiveSession } from '../core/services/shoppingEntrySync';
 import { resolveDuplicateState } from '../core/services/shoppingDuplicateGuard';
@@ -102,13 +103,11 @@ function releaseStoreAssignment(w: World, pantryItemId: string, storeId: string)
 /** session-store.ts trip_summary commit block, post-fix. */
 function tripSummaryCleanup(w: World, next: ShoppingSession): World {
   const picked = next.entries.filter((e) => e.picked);
-  let out = clearShoppingEntries(w, picked.map((e) => ({ pantryItemId: e.pantryItemId, storeId: e.storeId })));
-  const pickedItemIds = new Set(picked.map((e) => e.pantryItemId));
-  for (const e of next.entries) {
-    if (pickedItemIds.has(e.pantryItemId) || e.pantryItemId === '__quick_scan__') continue;
+  let out = w;
+  for (const e of unpurchasedTripEntries(next.entries, next.completedTrip?.purchasedItems ?? [])) {
     out = releaseStoreAssignment(out, e.pantryItemId, e.storeId);
   }
-  return out;
+  return clearShoppingEntries(out, picked.map((e) => ({ pantryItemId: e.pantryItemId, storeId: e.storeId })));
 }
 
 /** session-store.ts store_summary block (per-stop, unchanged by this fix). */
@@ -456,6 +455,10 @@ test('session-store releases unbought trip entries instead of only nulling item.
   assert.match(block, /durable\.releaseStoreAssignment\(entry\.pantryItemId, entry\.storeId\)/);
   assert.doesNotMatch(block, /updateItem\(item\.id, \{ storeId: null \}\)/,
     'the ledger-blind storeId-only write must not come back');
-  assert.match(block, /!pickedItemIds\.has\(entry\.pantryItemId\)/,
-    'items bought somewhere on the trip stay with clearShoppingEntries');
+  assert.match(block, /unpurchasedTripEntries\(next\.entries, next\.completedTrip\.purchasedItems\)/,
+    'cleanup must compare exact purchased item-store pairs');
+  assert.doesNotMatch(block, /pickedItemIds/,
+    'an item bought at one store must not shield its unpurchased sibling-store occurrence');
+  assert.ok(block.indexOf('releaseStoreAssignment') < block.indexOf('commitTrip'),
+    'unbought pairs must be released before commitTrip decides whether the item remains needed');
 });

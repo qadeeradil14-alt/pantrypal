@@ -1,13 +1,35 @@
 import type {
   PantryItem,
+  ShoppingEntry,
   ShoppingEntryDraft,
   ShoppingStoreAssignment,
+  TripPurchasedItem,
 } from '../../types';
 import { nextTimestamp } from './id';
 
 export interface ShoppingAssignmentCausalContext {
   shoppingEpoch: number;
   activeTripId: string | null;
+}
+
+function shoppingItemStorePair(itemId: string, storeId: string): string {
+  return `${itemId}\u0000${storeId}`;
+}
+
+export function unpurchasedTripEntries<
+  T extends Pick<ShoppingEntry, 'pantryItemId' | 'storeId'>,
+>(
+  entries: readonly T[],
+  purchasedItems: readonly Pick<TripPurchasedItem, 'itemId' | 'storeId'>[],
+): T[] {
+  const purchasedPairs = new Set(
+    purchasedItems.map((item) => shoppingItemStorePair(item.itemId, item.storeId)),
+  );
+  return entries.filter(
+    (entry) =>
+      entry.pantryItemId !== '__quick_scan__' &&
+      !purchasedPairs.has(shoppingItemStorePair(entry.pantryItemId, entry.storeId)),
+  );
 }
 
 export function shoppingStoreAssignmentId(
