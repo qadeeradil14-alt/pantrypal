@@ -79,6 +79,7 @@ import {
   nextShoppingStatusRevision,
   normalizeShoppingEpoch,
   observeActiveTripAssignments,
+  releaseUnpurchasedCompletedTripAssignments,
   sanitizeShoppingAssignments,
   shoppingCausalContext,
 } from '../core/services/shoppingEpoch';
@@ -940,6 +941,11 @@ export const useDurableStore = create<DurableStore>((set, get) => {
           trip,
           shoppingEpoch,
         );
+        const releasedAssignments = releaseUnpurchasedCompletedTripAssignments(
+          causallyFilteredAssignments,
+          trip,
+          shoppingEpoch,
+        );
         const finalizedAssignments = [...purchasedPairs.values()].reduce(
           (current, entry) => finalizeShoppingItemStore(
             current,
@@ -949,12 +955,23 @@ export const useDurableStore = create<DurableStore>((set, get) => {
             trip.completedAt,
             { shoppingEpoch, activeTripId: trip.id },
           ),
-          causallyFilteredAssignments,
+          releasedAssignments,
         );
         const purchasedItemIds = new Set(trip.purchasedItems.map((entry) => entry.itemId));
+        const releasedItemIds = new Set(
+          causallyFilteredAssignments
+            .filter((assignment) => {
+              const released = releasedAssignments.find((candidate) => candidate.id === assignment.id);
+              return assignment.active && released && !released.active;
+            })
+            .map((assignment) => assignment.pantryItemId),
+        );
         const remainingStoreByItem = new Map<string, string>();
         for (const assignment of finalizedAssignments) {
-          if (assignment.active && purchasedItemIds.has(assignment.pantryItemId)) {
+          if (
+            assignment.active &&
+            (purchasedItemIds.has(assignment.pantryItemId) || releasedItemIds.has(assignment.pantryItemId))
+          ) {
             remainingStoreByItem.set(assignment.pantryItemId, assignment.storeId);
           }
         }
@@ -962,7 +979,19 @@ export const useDurableStore = create<DurableStore>((set, get) => {
           trips: [trip, ...s.trips.filter((candidate) => candidate.id !== trip.id)],
           receipts: [...receipts, ...s.receipts.filter((receipt) => !receiptIds.has(receipt.id))],
           items: s.items.map((item) => {
-            if (!purchasedItemIds.has(item.id) || remainingStoreByItem.has(item.id)) return item;
+            if (!purchasedItemIds.has(item.id)) {
+              if (!releasedItemIds.has(item.id)) return item;
+              const nextStoreId = remainingStoreByItem.get(item.id) ?? null;
+              if (item.storeId === nextStoreId) return item;
+              return {
+                ...item,
+                storeId: nextStoreId,
+                updatedAt: nextTimestamp(item.updatedAt, trip.completedAt),
+                statusUpdatedAt: nextTimestamp(item.statusUpdatedAt, trip.completedAt),
+                ...nextShoppingStatusRevision(item, s),
+              };
+            }
+            if (remainingStoreByItem.has(item.id)) return item;
             if (
               item.status === 'stocked' &&
               item.storeId == null &&

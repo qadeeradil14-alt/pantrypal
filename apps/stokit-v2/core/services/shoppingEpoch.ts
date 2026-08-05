@@ -146,3 +146,31 @@ export function invalidateUnobservedPurchasedAssignments(
     };
   });
 }
+
+export function releaseUnpurchasedCompletedTripAssignments(
+  assignments: ShoppingStoreAssignment[] | undefined,
+  trip: Trip,
+  shoppingEpoch: number,
+): ShoppingStoreAssignment[] {
+  const visitedStoreIds = new Set(trip.storeIdsVisited);
+  const purchasedPairs = new Set(
+    trip.purchasedItems.map((entry) => `${entry.itemId}\u0000${entry.storeId}`),
+  );
+  return (assignments ?? []).map((assignment) => {
+    const pair = `${assignment.pantryItemId}\u0000${assignment.storeId}`;
+    if (
+      !assignment.active ||
+      assignment.assignmentBasedOnActiveTripId !== trip.id ||
+      assignment.assignmentBasedOnShoppingEpoch !== shoppingEpoch ||
+      !visitedStoreIds.has(assignment.storeId) ||
+      purchasedPairs.has(pair)
+    ) return assignment;
+    return {
+      ...assignment,
+      active: false,
+      updatedAt: nextTimestamp(assignment.updatedAt, trip.completedAt),
+      revision: (assignment.revision ?? 0) + 1,
+      closedTripId: undefined,
+    };
+  });
+}
