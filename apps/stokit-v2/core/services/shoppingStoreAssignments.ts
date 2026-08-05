@@ -166,22 +166,37 @@ export function mergeShoppingStoreAssignments(
   const byId = new Map<string, ShoppingStoreAssignment>();
   for (const assignment of [...(remote ?? []), ...(local ?? [])]) {
     const existing = byId.get(assignment.id);
+    if (existing && Boolean(existing.closedTripId) !== Boolean(assignment.closedTripId)) {
+      const terminal = assignment.closedTripId ? assignment : existing;
+      const nonTerminal = assignment.closedTripId ? existing : assignment;
+      const acceptsCausalSuccessor =
+        nonTerminal.basedOnClosedTripId === terminal.closedTripId;
+      if (acceptsCausalSuccessor) {
+        const terminalRevision = terminal.revision ?? 0;
+        const successorRevision = nonTerminal.revision ?? 0;
+        byId.set(assignment.id,
+          nonTerminal.revision !== undefined &&
+          terminal.revision !== undefined &&
+          successorRevision <= terminalRevision
+          ? {
+              ...nonTerminal,
+              revision: Math.max(successorRevision, terminalRevision) + 1,
+            }
+          : nonTerminal);
+      } else {
+        byId.set(assignment.id, terminal);
+      }
+      continue;
+    }
     const existingRevision = existing?.revision;
     const incomingRevision = assignment.revision;
     const hasRevision = existingRevision !== undefined || incomingRevision !== undefined;
-    const terminalConflict = existing && Boolean(existing.closedTripId) !== Boolean(assignment.closedTripId);
-    const incomingWinsTerminalConflict = terminalConflict && (
-      assignment.closedTripId
-        ? existing.basedOnClosedTripId !== assignment.closedTripId
-        : assignment.basedOnClosedTripId === existing.closedTripId
-    );
     if (
       !existing ||
-      (terminalConflict && incomingWinsTerminalConflict) ||
-      (!terminalConflict && hasRevision && (incomingRevision ?? 0) > (existingRevision ?? 0)) ||
-      (!terminalConflict && hasRevision && (incomingRevision ?? 0) === (existingRevision ?? 0) && !assignment.active && existing.active) ||
-      (!terminalConflict && !hasRevision && assignment.updatedAt > existing.updatedAt) ||
-      (!terminalConflict && !hasRevision && assignment.updatedAt === existing.updatedAt && assignment.active && !existing.active)
+      (hasRevision && (incomingRevision ?? 0) > (existingRevision ?? 0)) ||
+      (hasRevision && (incomingRevision ?? 0) === (existingRevision ?? 0) && !assignment.active && existing.active) ||
+      (!hasRevision && assignment.updatedAt > existing.updatedAt) ||
+      (!hasRevision && assignment.updatedAt === existing.updatedAt && assignment.active && !existing.active)
     ) {
       byId.set(assignment.id, assignment);
     }

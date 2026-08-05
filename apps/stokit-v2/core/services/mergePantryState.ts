@@ -61,14 +61,21 @@ function resolveStatusFields(
   if (Boolean(existing.statusClosedTripId) !== Boolean(incoming.statusClosedTripId)) {
     const terminal = incoming.statusClosedTripId ? incoming : existing;
     const nonTerminal = incoming.statusClosedTripId ? existing : incoming;
-    const winner = nonTerminal.statusBasedOnClosedTripId === terminal.statusClosedTripId
-      ? nonTerminal
-      : terminal;
+    const acceptsCausalSuccessor =
+      nonTerminal.statusBasedOnClosedTripId === terminal.statusClosedTripId;
+    const winner = acceptsCausalSuccessor ? nonTerminal : terminal;
+    const terminalRevision = terminal.statusRevision ?? 0;
+    const successorRevision = nonTerminal.statusRevision ?? 0;
     return {
       status: winner.status,
       storeId: winner.storeId,
       statusUpdatedAt: winner.statusUpdatedAt,
-      statusRevision: winner.statusRevision,
+      statusRevision: acceptsCausalSuccessor &&
+        nonTerminal.statusRevision !== undefined &&
+        terminal.statusRevision !== undefined &&
+        successorRevision <= terminalRevision
+        ? Math.max(successorRevision, terminalRevision) + 1
+        : winner.statusRevision,
       statusClosedTripId: winner.statusClosedTripId,
       statusBasedOnClosedTripId: winner.statusBasedOnClosedTripId,
     };

@@ -42,6 +42,7 @@ import {
   defaultPrefs,
   emptyDurableState,
   loadDurable,
+  normalizeDurableState,
   saveDurable,
   clearDurable,
 } from '../core/repositories/durableRepository';
@@ -190,6 +191,7 @@ interface DurableStore extends DurableState {
   
   // Sync Engine support: updates local state from remote WITHOUT pushing back
   applyRemotePatch: (patch: Partial<DurableState>) => void;
+  replaceWithServerSnapshot: (state: DurableState) => Promise<void>;
 }
 
 // Applies the same gating policy as session-store.ts's applyRemoteSession, so
@@ -1216,6 +1218,19 @@ export const useDurableStore = create<DurableStore>((set, get) => {
       // Save to disk (AsyncStorage) so we have it offline, but do NOT call persist()
       // because persist() triggers the syncEngine push loop.
       void saveDurable(snapshot(get()));
+      void refreshWidgets(get().items);
+    },
+
+    replaceWithServerSnapshot: async (serverState) => {
+      const normalized = normalizeDurableState(serverState);
+      const hydrated = get().hydrated;
+      set({ ...normalized, hydrated });
+      void import('./session-store').then(({ useSessionStore }) => {
+        useSessionStore.getState().applyRemoteSession(normalized.activeSession);
+      });
+      if (!(await saveDurable(snapshot(get())))) {
+        throw new Error('failed to persist authoritative server snapshot');
+      }
       void refreshWidgets(get().items);
     },
   };

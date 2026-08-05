@@ -148,6 +148,179 @@ export function mergeDurableSnapshotForPush(remote: DurableState, local: Durable
   };
 }
 
+type IdentifiedRecord = { id: string };
+
+function sameValue(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function replayChangedObjectFields<T extends object>(
+  server: T,
+  submitted: T,
+  latest: T,
+): { value: T; changed: boolean } {
+  if (sameValue(submitted, latest)) return { value: server, changed: false };
+  const value = { ...server } as T;
+  const keys = new Set([
+    ...Object.keys(submitted),
+    ...Object.keys(latest),
+  ]) as Set<keyof T>;
+  for (const key of keys) {
+    if (sameValue(submitted[key], latest[key])) continue;
+    if (Object.prototype.hasOwnProperty.call(latest, key)) value[key] = latest[key];
+    else delete value[key];
+  }
+  return { value, changed: true };
+}
+
+function replayChangedRecords<T extends IdentifiedRecord>(
+  server: T[] | undefined,
+  submitted: T[] | undefined,
+  latest: T[] | undefined,
+): { value: T[]; changed: boolean } {
+  const serverRecords = server ?? [];
+  const submittedRecords = submitted ?? [];
+  const latestRecords = latest ?? [];
+  const submittedById = new Map(submittedRecords.map((record) => [record.id, record]));
+  const latestById = new Map(latestRecords.map((record) => [record.id, record]));
+  const changedIds = new Set<string>();
+  for (const id of new Set([...submittedById.keys(), ...latestById.keys()])) {
+    if (!sameValue(submittedById.get(id), latestById.get(id))) changedIds.add(id);
+  }
+  if (!changedIds.size) return { value: serverRecords, changed: false };
+
+  const serverIds = new Set(serverRecords.map((record) => record.id));
+  const value = serverRecords.flatMap((serverRecord) => {
+    if (!changedIds.has(serverRecord.id)) return [serverRecord];
+    const latestRecord = latestById.get(serverRecord.id);
+    if (!latestRecord) return [];
+    const submittedRecord = submittedById.get(serverRecord.id);
+    return [submittedRecord
+      ? replayChangedObjectFields(serverRecord, submittedRecord, latestRecord).value
+      : latestRecord];
+  });
+  for (const latestRecord of latestRecords) {
+    if (changedIds.has(latestRecord.id) && !serverIds.has(latestRecord.id)) {
+      value.push(latestRecord);
+    }
+  }
+  return { value, changed: true };
+}
+
+export function reconcileServerSnapshotAfterPush(
+  serverStored: DurableState,
+  submittedLocal: DurableState,
+  latestLocal: DurableState,
+): { state: DurableState; hasPostSubmissionChanges: boolean } {
+  const items = replayChangedRecords(serverStored.items, submittedLocal.items, latestLocal.items);
+  const stores = replayChangedRecords(serverStored.stores, submittedLocal.stores, latestLocal.stores);
+  const priceHistory = replayChangedRecords(
+    serverStored.priceHistory,
+    submittedLocal.priceHistory,
+    latestLocal.priceHistory,
+  );
+  const receipts = replayChangedRecords(
+    serverStored.receipts,
+    submittedLocal.receipts,
+    latestLocal.receipts,
+  );
+  const trips = replayChangedRecords(serverStored.trips, submittedLocal.trips, latestLocal.trips);
+  const activity = replayChangedRecords(
+    serverStored.activity,
+    submittedLocal.activity,
+    latestLocal.activity,
+  );
+  const assignments = replayChangedRecords(
+    serverStored.shoppingStoreAssignments,
+    submittedLocal.shoppingStoreAssignments,
+    latestLocal.shoppingStoreAssignments,
+  );
+  const deletedItems = replayChangedRecords(
+    serverStored.deletedItems,
+    submittedLocal.deletedItems,
+    latestLocal.deletedItems,
+  );
+  const deletedStores = replayChangedRecords(
+    serverStored.deletedStores,
+    submittedLocal.deletedStores,
+    latestLocal.deletedStores,
+  );
+  const deletedTrips = replayChangedRecords(
+    serverStored.deletedTrips,
+    submittedLocal.deletedTrips,
+    latestLocal.deletedTrips,
+  );
+  const deletedReceipts = replayChangedRecords(
+    serverStored.deletedReceipts,
+    submittedLocal.deletedReceipts,
+    latestLocal.deletedReceipts,
+  );
+  const closedTripIds = replayChangedRecords(
+    serverStored.closedTripIds,
+    submittedLocal.closedTripIds,
+    latestLocal.closedTripIds,
+  );
+  const prefs = replayChangedObjectFields(
+    serverStored.prefs,
+    submittedLocal.prefs,
+    latestLocal.prefs,
+  );
+  const prefsUpdatedAt = replayChangedObjectFields(
+    serverStored.prefsUpdatedAt ?? {},
+    submittedLocal.prefsUpdatedAt ?? {},
+    latestLocal.prefsUpdatedAt ?? {},
+  );
+  const activeSessionChanged = !sameValue(submittedLocal.activeSession, latestLocal.activeSession);
+  const shoppingEpochChanged = submittedLocal.shoppingEpoch !== latestLocal.shoppingEpoch;
+  const activeTripIdChanged = submittedLocal.activeTripId !== latestLocal.activeTripId;
+  const hasPostSubmissionChanges = [
+    items,
+    stores,
+    priceHistory,
+    receipts,
+    trips,
+    activity,
+    assignments,
+    deletedItems,
+    deletedStores,
+    deletedTrips,
+    deletedReceipts,
+    closedTripIds,
+    prefs,
+    prefsUpdatedAt,
+  ].some((entry) => entry.changed) ||
+    activeSessionChanged ||
+    shoppingEpochChanged ||
+    activeTripIdChanged;
+
+  return {
+    state: {
+      ...serverStored,
+      items: items.value,
+      stores: stores.value,
+      priceHistory: priceHistory.value,
+      receipts: receipts.value,
+      trips: trips.value,
+      activity: activity.value,
+      prefs: prefs.value,
+      activeSession: activeSessionChanged ? latestLocal.activeSession : serverStored.activeSession,
+      shoppingEpoch: shoppingEpochChanged ? latestLocal.shoppingEpoch : serverStored.shoppingEpoch,
+      activeTripId: activeTripIdChanged ? latestLocal.activeTripId : serverStored.activeTripId,
+      shoppingStoreAssignments: assignments.value,
+      deletedItems: deletedItems.value,
+      deletedStores: deletedStores.value,
+      deletedTrips: deletedTrips.value,
+      deletedReceipts: deletedReceipts.value,
+      closedTripIds: closedTripIds.value,
+      prefsUpdatedAt: prefsUpdatedAt.value,
+      updatedAt: hasPostSubmissionChanges
+        ? Math.max(serverStored.updatedAt, latestLocal.updatedAt)
+        : serverStored.updatedAt,
+    },
+    hasPostSubmissionChanges,
+  };
+}
+
 function byId<T extends { id: string }>(records: T[] | undefined): T[] {
   return [...(records ?? [])].sort((a, b) => a.id.localeCompare(b.id));
 }

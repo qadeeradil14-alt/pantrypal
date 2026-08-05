@@ -43,7 +43,7 @@ export const emptyDurableState: DurableState = {
 };
 
 /** Merge a partial/unknown parsed blob into a complete, valid DurableState. */
-function normalize(parsed: unknown): DurableState {
+export function normalizeDurableState(parsed: unknown): DurableState {
   if (!parsed || typeof parsed !== 'object') return { ...emptyDurableState };
   const p = parsed as Partial<DurableState>;
   const activeSession = p.activeSession ? decodeShoppingSession(p.activeSession) : null;
@@ -82,7 +82,7 @@ export async function loadDurable(): Promise<DurableState | null> {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEY);
     if (raw == null) return null;
-    return normalize(JSON.parse(raw));
+    return normalizeDurableState(JSON.parse(raw));
   } catch (err) {
     // Corrupt / unreadable storage must never wipe the user's data. We return
     // null so the caller keeps whatever it already has in memory.

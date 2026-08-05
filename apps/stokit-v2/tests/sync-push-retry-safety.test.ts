@@ -66,8 +66,11 @@ test('[Issue 3 → reconnect flush] a failed push keeps retrying on capped backo
     'the retry delay must grow with a hard cap so it never becomes a tight loop');
   assert.ok(syncSrc.includes('durableSnapshot(store.getState())'),
     'the retry must re-read fresh current state, not resend the stale captured snapshot');
-  assert.ok(/clearOfflineFlush\(\);\s*\n\s*markPushed/.test(syncSrc),
-    'a successful push must stop the retry loop');
+  const clearIndex = syncSrc.indexOf('clearOfflineFlush();', syncSrc.indexOf('export async function pushLocalState'));
+  const installIndex = syncSrc.indexOf('replaceWithServerSnapshot', clearIndex);
+  const markIndex = syncSrc.indexOf('markPushed', installIndex);
+  assert.ok(clearIndex > 0 && installIndex > clearIndex && markIndex > installIndex,
+    'a successful push must stop the retry loop, durably install server state, then mark its echo');
 });
 
 test('[Issue 3] retried snapshot and upload writes remain idempotent', () => {

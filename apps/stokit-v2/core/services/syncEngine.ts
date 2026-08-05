@@ -11,7 +11,11 @@ import {
 import { createDebouncedPullScheduler, createRealtimeFallbackScheduler } from './realtimePullScheduler';
 import { syncDiag, syncDiagEnabled } from './syncDiag'; // DIAG: temporary — remove after OTA 389 investigation
 import { withTimeout } from './withTimeout';
-import { hasLocalSyncContribution, mergeDurableSnapshotForPush } from './mergeDurableSnapshot';
+import {
+  hasLocalSyncContribution,
+  mergeDurableSnapshotForPush,
+  reconcileServerSnapshotAfterPush,
+} from './mergeDurableSnapshot';
 
 const CLOUD_TABLE = 'household_snapshots';
 const RECEIPT_BUCKET = 'receipts';
@@ -271,6 +275,8 @@ export async function pushLocalState(state: DurableState, options?: { isDeferred
 
     let error: { message: string } | null = null;
     let snapshot = localSnapshot;
+    let storedSnapshot: DurableState | null = null;
+    let storedUpdatedAt = 0;
     for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
       const currentResult = await supabase.from(CLOUD_TABLE).select('state, updated_at').eq('household_id', id).maybeSingle();
       if (currentResult.error) {
@@ -278,13 +284,24 @@ export async function pushLocalState(state: DurableState, options?: { isDeferred
       } else if (!currentResult.data?.state) {
         const writeAt = Math.max(Date.now(), localSnapshot.updatedAt + 1);
         snapshot = { ...localSnapshot, updatedAt: writeAt };
-        const insertResult = await supabase.from(CLOUD_TABLE).insert({
-          household_id: id,
-          state: encodeShoppingState(snapshot),
-          updated_at: writeAt,
-        });
+        const insertResult = await supabase.from(CLOUD_TABLE)
+          .insert({
+            household_id: id,
+            state: encodeShoppingState(snapshot),
+            updated_at: writeAt,
+          })
+          .select('state, updated_at')
+          .maybeSingle();
         error = insertResult.error;
-        if (!error) break;
+        if (!error && insertResult.data?.state) {
+          storedUpdatedAt = Number(insertResult.data.updated_at ?? writeAt);
+          storedSnapshot = {
+            ...decodeShoppingState(insertResult.data.state as DurableState),
+            updatedAt: storedUpdatedAt,
+          };
+          break;
+        }
+        if (!error) error = { message: 'insert succeeded without returned snapshot state' };
       } else {
         const remote = decodeShoppingState(currentResult.data.state as DurableState);
         const remoteUpdatedAt = Number(currentResult.data.updated_at ?? remote.updatedAt ?? 0);
@@ -313,7 +330,7 @@ export async function pushLocalState(state: DurableState, options?: { isDeferred
           .update({ state: encodeShoppingState(snapshot), updated_at: writeAt })
           .eq('household_id', id)
           .eq('updated_at', remoteUpdatedAt)
-          .select('updated_at')
+          .select('state, updated_at')
           .maybeSingle();
         // DIAG(RLS): TEMPORARY — see note above.
         const diagCode = updateResult.error?.code ?? null;
@@ -334,21 +351,28 @@ export async function pushLocalState(state: DurableState, options?: { isDeferred
                 : 'CAS_CONFLICT',
         });
         error = updateResult.error;
-        if (!error && updateResult.data) break;
+        if (!error && updateResult.data?.state) {
+          storedUpdatedAt = Number(updateResult.data.updated_at ?? writeAt);
+          storedSnapshot = {
+            ...decodeShoppingState(updateResult.data.state as DurableState),
+            updatedAt: storedUpdatedAt,
+          };
+          break;
+        }
         if (!error) error = { message: 'snapshot changed during merge' };
       }
       if (__DEV__) console.warn(`[Sync Engine] Snapshot push attempt ${attempt} failed:`, error.message);
       if (attempt < RETRY_ATTEMPTS) await retryDelay(attempt);
     }
 
-    if (error) {
-      syncDiag('push_err', { snapshotUpdatedAt: snapshot.updatedAt, error: error.message }); // DIAG
+    if (error || !storedSnapshot) {
+      const failure = error ?? { message: 'push succeeded without returned snapshot state' };
+      syncDiag('push_err', { snapshotUpdatedAt: snapshot.updatedAt, error: failure.message }); // DIAG
       // Keep retrying on backoff until connectivity returns — do not give up.
       scheduleOfflineFlush();
       return;
     }
     clearOfflineFlush();
-    markPushed(snapshot.updatedAt);
     // DIAG(RLS): TEMPORARY — re-read the row we just wrote so a capture can
     // distinguish "write accepted and persisted" from "write accepted but the
     // item is later removed/ignored". Gated on syncDiagEnabled() so devices
@@ -372,25 +396,28 @@ export async function pushLocalState(state: DurableState, options?: { isDeferred
         // Diagnostics must never affect the push outcome.
       }
     }
-    const { itemCount, pickedCount, sessionId } = activeSessionStats(snapshot);
-    if (__DEV__) console.log(`[Shopping Sync] active_session_snapshot_written version/updatedAt=${snapshot.updatedAt} itemCount=${itemCount} pickedCount=${pickedCount} sessionId=${sessionId}`);
     const latestLocal = durableSnapshot(store.getState());
-    const postPushLocal = latestLocal.updatedAt > consistentState.updatedAt
-      ? { ...latestLocal, updatedAt: snapshot.updatedAt + 1 }
-      : latestLocal;
-    const reconciledSnapshot = mergeDurableSnapshotForPush(snapshot, postPushLocal);
-    store.getState().applyRemotePatch({
-      ...reconciledSnapshot,
-      updatedAt: Math.max(store.getState().updatedAt, reconciledSnapshot.updatedAt),
-    });
+    const reconciled = reconcileServerSnapshotAfterPush(
+      storedSnapshot,
+      consistentState,
+      latestLocal,
+    );
     const uploadedById = new Map(receipts.map((receipt) => [receipt.id, receipt]));
-    const currentReceipts = store.getState().receipts.map((receipt) => {
-      const uploaded = uploadedById.get(receipt.id);
-      return uploaded?.imagePath && uploaded.imageUri === receipt.imageUri
-        ? { ...receipt, imagePath: uploaded.imagePath }
-        : receipt;
-    });
-    store.getState().applyRemotePatch({ receipts: currentReceipts });
+    const latestReceiptsById = new Map(latestLocal.receipts.map((receipt) => [receipt.id, receipt]));
+    const installedSnapshot = {
+      ...reconciled.state,
+      receipts: reconciled.state.receipts.map((receipt) => {
+        const uploaded = uploadedById.get(receipt.id);
+        const latestReceipt = latestReceiptsById.get(receipt.id);
+        return uploaded?.imagePath && latestReceipt?.imageUri === uploaded.imageUri
+          ? { ...receipt, imageUri: uploaded.imageUri, imagePath: uploaded.imagePath }
+          : receipt;
+      }),
+    };
+    await store.getState().replaceWithServerSnapshot(installedSnapshot);
+    markPushed(storedUpdatedAt);
+    const { itemCount, pickedCount, sessionId } = activeSessionStats(installedSnapshot);
+    if (__DEV__) console.log(`[Shopping Sync] active_session_snapshot_written version/updatedAt=${storedUpdatedAt} itemCount=${itemCount} pickedCount=${pickedCount} sessionId=${sessionId}`);
   } catch (err) {
     if (__DEV__) console.warn('[Sync Engine] Offline or push failed.', err);
     // Receipt upload or upsert threw (e.g. offline mid-request) — keep retrying

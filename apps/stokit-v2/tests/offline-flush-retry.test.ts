@@ -29,8 +29,10 @@ test('a capped exponential backoff flush exists', () => {
 });
 
 test('push failure schedules a retry; success clears it', () => {
-  // Both the returned-error path and the thrown-error (catch) path must retry.
   const scheduleCalls = src.match(/scheduleOfflineFlush\(\);/g) ?? [];
   assert.ok(scheduleCalls.length >= 2, `expected >=2 scheduleOfflineFlush() calls, found ${scheduleCalls.length}`);
-  assert.match(src, /clearOfflineFlush\(\);\s*\n\s*markPushed\(snapshot\.updatedAt\);/);
+  const clearIndex = src.indexOf('clearOfflineFlush();', src.indexOf('export async function pushLocalState'));
+  const installIndex = src.indexOf('replaceWithServerSnapshot', clearIndex);
+  const markIndex = src.indexOf('markPushed', installIndex);
+  assert.ok(clearIndex > 0 && installIndex > clearIndex && markIndex > installIndex);
 });
