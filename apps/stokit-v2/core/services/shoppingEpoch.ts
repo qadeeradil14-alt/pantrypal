@@ -26,6 +26,28 @@ export function shoppingCausalContext(
   };
 }
 
+export function nextShoppingStatusRevision(
+  item: PantryItem,
+  state: Pick<DurableState, 'trips' | 'shoppingStoreAssignments'>,
+  statusClosedTripId?: string,
+): Pick<PantryItem, 'statusRevision' | 'statusClosedTripId' | 'statusBasedOnClosedTripId'> {
+  const latestPurchasedTrip = [...(state.trips ?? [])]
+    .filter((trip) => trip.purchasedItems.some((entry) => entry.itemId === item.id))
+    .sort((a, b) => b.completedAt - a.completedAt)[0];
+  const latestClosedAssignment = [...(state.shoppingStoreAssignments ?? [])]
+    .filter((assignment) => assignment.pantryItemId === item.id && assignment.closedTripId)
+    .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  return {
+    statusRevision: (item.statusRevision ?? 0) + 1,
+    statusClosedTripId,
+    statusBasedOnClosedTripId:
+      item.statusClosedTripId
+      ?? latestPurchasedTrip?.id
+      ?? item.statusBasedOnClosedTripId
+      ?? latestClosedAssignment?.closedTripId,
+  };
+}
+
 export function observeActiveTripAssignments(
   assignments: ShoppingStoreAssignment[] | undefined,
   session: SharedShoppingSession,

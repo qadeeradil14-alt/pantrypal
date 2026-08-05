@@ -71,6 +71,7 @@ import { changedFields, hasChangedFields } from '../core/services/changedFields'
 import { useHouseholdStore } from './household-store';
 import {
   invalidateUnobservedPurchasedAssignments,
+  nextShoppingStatusRevision,
   normalizeShoppingEpoch,
   observeActiveTripAssignments,
   sanitizeShoppingAssignments,
@@ -121,17 +122,6 @@ function logShoppingAssignmentMutation(
  */
 interface ShoppingAssignmentOptions {
   allowRepurchase?: boolean;
-}
-
-function nextShoppingStatusRevision(
-  item: PantryItem,
-  statusClosedTripId?: string,
-): Pick<PantryItem, 'statusRevision' | 'statusClosedTripId' | 'statusBasedOnClosedTripId'> {
-  return {
-    statusRevision: (item.statusRevision ?? 0) + 1,
-    statusClosedTripId,
-    statusBasedOnClosedTripId: item.statusClosedTripId ?? item.statusBasedOnClosedTripId,
-  };
 }
 
 interface DurableStore extends DurableState {
@@ -411,7 +401,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
           updatedAt: nextTimestamp(existing.updatedAt),
           ...(touchesStatus ? {
             statusUpdatedAt: nextTimestamp(existing.statusUpdatedAt),
-            ...nextShoppingStatusRevision(existing),
+            ...nextShoppingStatusRevision(existing, get()),
           } : {}),
         };
         set((s) => ({
@@ -491,7 +481,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
                 updatedAt: nextTimestamp(it.updatedAt),
                 ...(touchesStatus ? {
                   statusUpdatedAt: nextTimestamp(it.statusUpdatedAt),
-                  ...nextShoppingStatusRevision(it),
+                  ...nextShoppingStatusRevision(it, s),
                 } : {}),
               }
             : it
@@ -523,7 +513,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
                 status,
                 updatedAt: nextTimestamp(it.updatedAt),
                 statusUpdatedAt: nextTimestamp(it.statusUpdatedAt),
-                ...nextShoppingStatusRevision(it),
+                ...nextShoppingStatusRevision(it, s),
               }
             : it
         ),
@@ -566,7 +556,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
                 storeId: remainingStoreByItem.get(item.id) ?? null,
                 updatedAt: nextTimestamp(item.updatedAt),
                 statusUpdatedAt: nextTimestamp(item.statusUpdatedAt),
-                ...nextShoppingStatusRevision(item),
+                ...nextShoppingStatusRevision(item, s),
               }
             : item
         ),
@@ -622,7 +612,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
                 storeId: nextStoreId,
                 updatedAt: nextTimestamp(candidate.updatedAt),
                 statusUpdatedAt: nextTimestamp(candidate.statusUpdatedAt),
-                ...nextShoppingStatusRevision(candidate),
+                ...nextShoppingStatusRevision(candidate, s),
               }
             : candidate
         ),
@@ -669,7 +659,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
                 storeId,
                 updatedAt: nextTimestamp(item.updatedAt),
                 statusUpdatedAt: nextTimestamp(item.statusUpdatedAt),
-                ...nextShoppingStatusRevision(item),
+                ...nextShoppingStatusRevision(item, s),
               }
             : item
         ),
@@ -747,7 +737,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
                 storeId: nextStoreId,
                 updatedAt: nextTimestamp(candidate.updatedAt),
                 statusUpdatedAt: nextTimestamp(candidate.statusUpdatedAt),
-                ...nextShoppingStatusRevision(candidate),
+                ...nextShoppingStatusRevision(candidate, s),
               }
             : candidate
         ),
@@ -785,7 +775,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
                 storeId: null,
                 updatedAt: nextTimestamp(item.updatedAt),
                 statusUpdatedAt: nextTimestamp(item.statusUpdatedAt),
-                ...nextShoppingStatusRevision(item),
+                ...nextShoppingStatusRevision(item, s),
               }
             : item
         ),
@@ -903,7 +893,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
                 storeId: null,
                 updatedAt: nextTimestamp(it.updatedAt),
                 statusUpdatedAt: nextTimestamp(it.statusUpdatedAt),
-                ...nextShoppingStatusRevision(it),
+                ...nextShoppingStatusRevision(it, s),
               }
             : it
         ),
@@ -958,7 +948,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
               storeId: null,
               updatedAt: nextTimestamp(item.updatedAt, trip.completedAt),
               statusUpdatedAt: nextTimestamp(item.statusUpdatedAt, trip.completedAt),
-              ...nextShoppingStatusRevision(item, trip.id),
+              ...nextShoppingStatusRevision(item, s, trip.id),
             };
           }),
           shoppingStoreAssignments: finalizedAssignments,

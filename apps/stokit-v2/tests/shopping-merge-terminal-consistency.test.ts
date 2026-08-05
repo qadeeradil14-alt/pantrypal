@@ -21,9 +21,9 @@ import type {
 // assignment, or `low` with its matching assignment stuck inactive.
 //
 // Reproduced case: Device A completes a trip that closes item "apple".
-// Device B, offline and unaware of that trip, marks apple "low" again via
-// the ordinary UI (no future-re-add causal stamp) and bulk-assigns it to a
-// store. Both devices reconnect. Every merge must land on ONE consistent
+// Device B replays an unstamped "low" item with no observed completed-trip
+// history and bulk-assigns it to a store. Both devices reconnect. Every merge
+// must land on ONE consistent
 // decision for apple: either fully closed (stocked, no active assignment)
 // or fully reopened (low, active assignment) — never a mix.
 
@@ -88,10 +88,9 @@ function deviceAClosedApple(): DurableState {
 /**
  * Device B: it HAD synced trip-a's closure before going offline (its own
  * local copy of the Walmart assignment already carries closedTripId
- * 'trip-a', same as device A's). While offline, the user marks apple low
- * again via the ordinary UI (setItemStatus — no statusBasedOnClosedTripId
- * stamp; only a dedicated future-re-add flow sets that) and bulk-assigns it
- * to Walmart via assignShoppingItemToStore, whose carry-forward
+ * 'trip-a', same as device A's), but its item mutation carries no causal
+ * marker or completed-trip history. It bulk-assigns apple to Walmart via
+ * assignShoppingItemToStore, whose carry-forward
  * (`basedOnClosedTripId: existing?.closedTripId ?? existing?.basedOnClosedTripId`)
  * automatically stamps the new assignment with 'trip-a' — for free, with no
  * re-add ceremony — purely because that's what its OWN prior local copy of
