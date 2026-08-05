@@ -188,3 +188,72 @@ export function mergeShoppingStoreAssignments(
   }
   return [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
 }
+
+/**
+ * Final consistency pass after both the item merge and the assignment merge
+ * have run. mergePantryItems (resolveStatusFields) and
+ * mergeShoppingStoreAssignments each resolve their own "is this terminal"
+ * conflict independently — the item merge keys off
+ * item.statusClosedTripId/statusBasedOnClosedTripId, the assignment merge
+ * keys off assignment.closedTripId/basedOnClosedTripId — and can disagree
+ * about the very same real-world event (e.g. an offline device re-marking a
+ * just-closed item "low" and bulk-assigning it to a store: the item merge
+ * can reject the re-add while the assignment merge accepts it, since a
+ * fresh assignment automatically inherits a matching-looking
+ * basedOnClosedTripId stamp with no re-add ceremony required). The result
+ * is an impossible split state: item stocked with an active assignment, or
+ * item low with its matching assignment stuck inactive.
+ *
+ * The already-merged item is the single source of truth here — its
+ * terminal-conflict resolution is the one this app has extensively tested
+ * (OTA 459/460's completed-shopping-plan and stale-replay protections).
+ * This reconciles every assignment against it, in both directions, without
+ * touching the per-field revision/timestamp resolution above.
+ */
+export function reconcileAssignmentsWithItemTerminalState(
+  assignments: ShoppingStoreAssignment[],
+  items: PantryItem[],
+  at = Date.now(),
+): ShoppingStoreAssignment[] {
+  const itemsById = new Map(items.map((item) => [item.id, item]));
+  return assignments.map((assignment) => {
+    const item = itemsById.get(assignment.pantryItemId);
+    if (!item) return assignment;
+
+    if (item.statusClosedTripId && assignment.active) {
+      // The item merge decided this item is closed. An active assignment
+      // for it is exactly the impossible state this pass exists to
+      // prevent — deactivate it and stamp it consistently with the item.
+      return {
+        ...assignment,
+        active: false,
+        updatedAt: nextTimestamp(assignment.updatedAt, at),
+        revision: (assignment.revision ?? 0) + 1,
+        closedTripId: item.statusClosedTripId,
+      };
+    }
+
+    if (
+      !item.statusClosedTripId &&
+      !assignment.active &&
+      assignment.closedTripId &&
+      (item.status === 'low' || item.status === 'expiring') &&
+      item.storeId === assignment.storeId
+    ) {
+      // The mirror image: the item merge decided this item legitimately
+      // needs shopping again at exactly this store, but the assignment
+      // merge kept the closed record for that same (item, store) pair.
+      // Reactivate only this specific pair — never assignments the item's
+      // own resolved storeId doesn't point to.
+      return {
+        ...assignment,
+        active: true,
+        updatedAt: nextTimestamp(assignment.updatedAt, at),
+        revision: (assignment.revision ?? 0) + 1,
+        closedTripId: undefined,
+      };
+    }
+
+    return assignment;
+  });
+}

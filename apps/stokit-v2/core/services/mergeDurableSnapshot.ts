@@ -10,7 +10,7 @@ import {
 } from './mergeDurableCollections';
 import { canFoldActiveSessions, foldRemoteActiveSession, reconcileShoppingSession } from './shoppingEntrySync';
 import { isCompletedShoppingSession } from './shoppingSessionSyncPolicy';
-import { mergeShoppingStoreAssignments } from './shoppingStoreAssignments';
+import { mergeShoppingStoreAssignments, reconcileAssignmentsWithItemTerminalState } from './shoppingStoreAssignments';
 import { normalizeShoppingEpoch, sanitizeShoppingAssignments } from './shoppingEpoch';
 
 function restoreObservedActiveTripItemState(
@@ -113,9 +113,12 @@ export function mergeDurableSnapshotForPush(remote: DurableState, local: Durable
     mergedActiveSession,
   );
   const mergedAssignments = sanitizeShoppingAssignments(
-    mergeShoppingStoreAssignments(
-      remote.shoppingStoreAssignments,
-      local.shoppingStoreAssignments,
+    reconcileAssignmentsWithItemTerminalState(
+      mergeShoppingStoreAssignments(
+        remote.shoppingStoreAssignments,
+        local.shoppingStoreAssignments,
+      ),
+      mergedItems,
     ),
     mergedItems,
     shoppingEpoch,
