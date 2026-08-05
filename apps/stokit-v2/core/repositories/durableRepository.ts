@@ -10,6 +10,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { DurableState, HouseholdPrefs } from '../../types';
 import { decodeShoppingSession } from '../services/shoppingEntrySync';
+import { normalizeShoppingEpoch, observeActiveTripAssignments } from '../services/shoppingEpoch';
 
 const STORAGE_KEY = 'stokit.v2.durable.v1';
 
@@ -29,6 +30,8 @@ export const emptyDurableState: DurableState = {
   activity: [],
   prefs: defaultPrefs,
   activeSession: null,
+  shoppingEpoch: 0,
+  activeTripId: null,
   shoppingStoreAssignments: [],
   updatedAt: 0,
   deletedItems: [],
@@ -43,6 +46,13 @@ export const emptyDurableState: DurableState = {
 function normalize(parsed: unknown): DurableState {
   if (!parsed || typeof parsed !== 'object') return { ...emptyDurableState };
   const p = parsed as Partial<DurableState>;
+  const activeSession = p.activeSession ? decodeShoppingSession(p.activeSession) : null;
+  const storedEpoch = normalizeShoppingEpoch(p.shoppingEpoch);
+  const shoppingEpoch = activeSession && storedEpoch === 0 ? 1 : storedEpoch;
+  const activeTripId = activeSession?.tripId ?? null;
+  const assignments = Array.isArray(p.shoppingStoreAssignments)
+    ? p.shoppingStoreAssignments
+    : [];
   return {
     items: Array.isArray(p.items) ? p.items : [],
     stores: Array.isArray(p.stores) ? p.stores : [],
@@ -51,10 +61,12 @@ function normalize(parsed: unknown): DurableState {
     trips: Array.isArray(p.trips) ? p.trips : [],
     activity: Array.isArray(p.activity) ? p.activity : [],
     prefs: { ...defaultPrefs, ...(p.prefs ?? {}) },
-    activeSession: p.activeSession ? decodeShoppingSession(p.activeSession) : null,
-    shoppingStoreAssignments: Array.isArray(p.shoppingStoreAssignments)
-      ? p.shoppingStoreAssignments
-      : [],
+    activeSession,
+    shoppingEpoch,
+    activeTripId,
+    shoppingStoreAssignments: activeSession
+      ? observeActiveTripAssignments(assignments, activeSession, shoppingEpoch)
+      : assignments,
     updatedAt: typeof p.updatedAt === 'number' ? p.updatedAt : 0,
     deletedItems: Array.isArray(p.deletedItems) ? p.deletedItems : [],
     deletedStores: Array.isArray(p.deletedStores) ? p.deletedStores : [],

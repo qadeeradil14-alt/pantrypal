@@ -11,6 +11,34 @@ import {
 import { canFoldActiveSessions, foldRemoteActiveSession, reconcileShoppingSession } from './shoppingEntrySync';
 import { isCompletedShoppingSession } from './shoppingSessionSyncPolicy';
 import { mergeShoppingStoreAssignments } from './shoppingStoreAssignments';
+import { normalizeShoppingEpoch, sanitizeShoppingAssignments } from './shoppingEpoch';
+
+function restoreObservedActiveTripItemState(
+  mergedItems: DurableState['items'],
+  observedState: DurableState | null,
+  activeSession: SharedShoppingSession | null,
+): DurableState['items'] {
+  if (!observedState || !activeSession) return mergedItems;
+  const activeItemIds = new Set(
+    activeSession.entries
+      .filter((entry) => entry.pantryItemId !== '__quick_scan__')
+      .map((entry) => entry.pantryItemId),
+  );
+  const observedById = new Map(observedState.items.map((item) => [item.id, item]));
+  return mergedItems.map((item) => {
+    const observed = observedById.get(item.id);
+    if (!activeItemIds.has(item.id) || !observed) return item;
+    return {
+      ...item,
+      status: observed.status,
+      storeId: observed.storeId,
+      statusUpdatedAt: observed.statusUpdatedAt,
+      statusRevision: observed.statusRevision,
+      statusClosedTripId: observed.statusClosedTripId,
+      statusBasedOnClosedTripId: observed.statusBasedOnClosedTripId,
+    };
+  });
+}
 
 function mergeActiveSession(
   remote: SharedShoppingSession | null,
@@ -55,12 +83,45 @@ export function mergeDurableSnapshotForPush(remote: DurableState, local: Durable
   const mergedStoreTombstones = mergeTombstones(remote.deletedStores, local.deletedStores);
   const mergedTripTombstones = mergeTombstones(remote.deletedTrips, local.deletedTrips);
   const mergedReceiptTombstones = mergeTombstones(remote.deletedReceipts, local.deletedReceipts);
-  const mergedItems = mergePantryItems(remote.items, local.items, mergedTombstones);
+  const initiallyMergedItems = mergePantryItems(remote.items, local.items, mergedTombstones);
   const mergedTrips = mergeTrips(remote.trips, local.trips, mergedTripTombstones);
   const mergedReceipts = mergeReceipts(remote.receipts, local.receipts, mergedReceiptTombstones);
   const knownTrips = mergedTrips;
   const mergedClosedTripIds = mergeTombstones(remote.closedTripIds, local.closedTripIds);
   const mergedPrefs = mergePrefs(remote, local, preferLocal);
+  const mergedActiveSession = mergeActiveSession(
+    remote.activeSession, local.activeSession, initiallyMergedItems, knownTrips,
+    preferLocal, mergedClosedTripIds,
+  );
+  const shoppingEpoch = Math.max(
+    normalizeShoppingEpoch(remote.shoppingEpoch),
+    normalizeShoppingEpoch(local.shoppingEpoch),
+  );
+  const activeTripId = mergedActiveSession?.tripId ?? null;
+  const remoteObservedActiveTrip = Boolean(activeTripId) &&
+    normalizeShoppingEpoch(remote.shoppingEpoch) === shoppingEpoch &&
+    remote.activeTripId === activeTripId;
+  const localObservedActiveTrip = Boolean(activeTripId) &&
+    normalizeShoppingEpoch(local.shoppingEpoch) === shoppingEpoch &&
+    local.activeTripId === activeTripId;
+  const singlyObservedState = remoteObservedActiveTrip === localObservedActiveTrip
+    ? null
+    : remoteObservedActiveTrip ? remote : local;
+  const mergedItems = restoreObservedActiveTripItemState(
+    initiallyMergedItems,
+    singlyObservedState,
+    mergedActiveSession,
+  );
+  const mergedAssignments = sanitizeShoppingAssignments(
+    mergeShoppingStoreAssignments(
+      remote.shoppingStoreAssignments,
+      local.shoppingStoreAssignments,
+    ),
+    mergedItems,
+    shoppingEpoch,
+    activeTripId,
+    mergedActiveSession,
+  );
 
   return {
     ...preferred,
@@ -71,14 +132,10 @@ export function mergeDurableSnapshotForPush(remote: DurableState, local: Durable
     trips: mergedTrips,
     activity: mergeActivity(remote.activity, local.activity),
     ...mergedPrefs,
-    activeSession: mergeActiveSession(
-      remote.activeSession, local.activeSession, mergedItems, knownTrips,
-      preferLocal, mergedClosedTripIds,
-    ),
-    shoppingStoreAssignments: mergeShoppingStoreAssignments(
-      remote.shoppingStoreAssignments,
-      local.shoppingStoreAssignments,
-    ),
+    activeSession: mergedActiveSession,
+    shoppingEpoch,
+    activeTripId,
+    shoppingStoreAssignments: mergedAssignments,
     updatedAt: Math.max(remote.updatedAt, local.updatedAt),
     deletedItems: mergedTombstones,
     deletedStores: mergedStoreTombstones,
@@ -115,6 +172,8 @@ function syncSignature(state: DurableState): string {
     prefs: state.prefs,
     prefsUpdatedAt: state.prefsUpdatedAt ?? {},
     activeSession,
+    shoppingEpoch: normalizeShoppingEpoch(state.shoppingEpoch),
+    activeTripId: state.activeTripId ?? null,
     shoppingStoreAssignments: byId(state.shoppingStoreAssignments),
     deletedItems: tombstones(state.deletedItems),
     deletedStores: tombstones(state.deletedStores),

@@ -130,6 +130,8 @@ function durableSnapshot(state: DurableState): DurableState {
     activeSession: state.activeSession
       ? reconcileShoppingSession(state.activeSession, state.items)
       : null,
+    shoppingEpoch: state.shoppingEpoch ?? 0,
+    activeTripId: state.activeTripId ?? null,
     shoppingStoreAssignments: state.shoppingStoreAssignments ?? [],
     updatedAt: state.updatedAt,
     deletedItems: state.deletedItems ?? [],

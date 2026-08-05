@@ -69,6 +69,13 @@ import { createLatestSnapshotQueue } from '../core/services/latestSnapshotQueue'
 import { shoppingCapabilities } from '../core/services/shoppingAccess';
 import { changedFields, hasChangedFields } from '../core/services/changedFields';
 import { useHouseholdStore } from './household-store';
+import {
+  invalidateUnobservedPurchasedAssignments,
+  normalizeShoppingEpoch,
+  observeActiveTripAssignments,
+  sanitizeShoppingAssignments,
+  shoppingCausalContext,
+} from '../core/services/shoppingEpoch';
 
 let persistedDurableState = false;
 
@@ -220,6 +227,8 @@ function snapshot(s: DurableState): DurableState {
     activity: s.activity,
     prefs: s.prefs,
     activeSession: s.activeSession ?? null,
+    shoppingEpoch: normalizeShoppingEpoch(s.shoppingEpoch),
+    activeTripId: s.activeTripId ?? null,
     shoppingStoreAssignments: s.shoppingStoreAssignments ?? [],
     updatedAt: s.updatedAt,
     deletedItems: s.deletedItems ?? [],
@@ -412,6 +421,8 @@ export const useDurableStore = create<DurableStore>((set, get) => {
                 s.shoppingStoreAssignments,
                 existing.id,
                 input.storeId!,
+                Date.now(),
+                shoppingCausalContext(s),
               )
             : s.shoppingStoreAssignments,
         }));
@@ -448,6 +459,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
               item.id,
               input.storeId,
               createdAt,
+              shoppingCausalContext(s),
             )
           : s.shoppingStoreAssignments,
       }));
@@ -670,6 +682,8 @@ export const useDurableStore = create<DurableStore>((set, get) => {
                     assignments,
                     item.id,
                     storeId,
+                    Date.now(),
+                    shoppingCausalContext(s),
                   ),
                   item.id,
                   storeId,
@@ -707,6 +721,8 @@ export const useDurableStore = create<DurableStore>((set, get) => {
                   get().shoppingStoreAssignments,
                   item.id,
                   storeId,
+                  Date.now(),
+                  shoppingCausalContext(get()),
                 ),
                 item.id,
                 storeId,
@@ -902,6 +918,12 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         const purchasedPairs = new Map(
           trip.purchasedItems.map((entry) => [`${entry.itemId}:${entry.storeId}`, entry]),
         );
+        const shoppingEpoch = normalizeShoppingEpoch(s.shoppingEpoch);
+        const causallyFilteredAssignments = invalidateUnobservedPurchasedAssignments(
+          s.shoppingStoreAssignments,
+          trip,
+          shoppingEpoch,
+        );
         const finalizedAssignments = [...purchasedPairs.values()].reduce(
           (current, entry) => finalizeShoppingItemStore(
             current,
@@ -909,8 +931,9 @@ export const useDurableStore = create<DurableStore>((set, get) => {
             entry.storeId,
             trip.id,
             trip.completedAt,
+            { shoppingEpoch, activeTripId: trip.id },
           ),
-          s.shoppingStoreAssignments ?? [],
+          causallyFilteredAssignments,
         );
         const purchasedItemIds = new Set(trip.purchasedItems.map((entry) => entry.itemId));
         const remainingStoreByItem = new Map<string, string>();
@@ -940,6 +963,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
           }),
           shoppingStoreAssignments: finalizedAssignments,
           activeSession: null,
+          activeTripId: null,
           closedTripIds: mergeTombstones(s.closedTripIds, [{
             id: trip.id,
             deletedAt: nextTimestamp(Math.max(
@@ -1041,7 +1065,25 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     },
 
     setActiveSession: (session, eventType) => {
-      set({ activeSession: session });
+      set((s) => {
+        if (!session) return { activeSession: null, activeTripId: null };
+        const currentEpoch = normalizeShoppingEpoch(s.shoppingEpoch);
+        const startsNewTrip = eventType === 'START_TRIP' && s.activeTripId !== session.tripId;
+        const adoptsLegacyTrip = !s.activeTripId && currentEpoch === 0;
+        const shoppingEpoch = startsNewTrip || adoptsLegacyTrip
+          ? currentEpoch + 1
+          : currentEpoch;
+        return {
+          activeSession: session,
+          shoppingEpoch,
+          activeTripId: session.tripId,
+          shoppingStoreAssignments: observeActiveTripAssignments(
+            s.shoppingStoreAssignments,
+            session,
+            shoppingEpoch,
+          ),
+        };
+      });
       const itemCount = session?.entries.length ?? 0;
       const pickedCount = session?.entries.filter((entry) => entry.picked).length ?? 0;
       const sessionId = session?.tripId ?? 'none';
@@ -1119,6 +1161,13 @@ export const useDurableStore = create<DurableStore>((set, get) => {
           ? consolidatePantryItems(mergePantryItems(s.items, patch.items, mergedTombstones))
           : s.items;
         const incoming = { ...s, ...patch } as DurableState;
+        const shoppingEpoch = Math.max(
+          normalizeShoppingEpoch(s.shoppingEpoch),
+          normalizeShoppingEpoch(patch.shoppingEpoch),
+        );
+        const activeSession = 'activeSession' in patch
+          ? gatedActiveSession ?? null
+          : s.activeSession ?? null;
         const mergedPrefs = patch.prefs || patch.prefsUpdatedAt
           ? mergePrefs(s, incoming, (patch.updatedAt ?? s.updatedAt) > s.updatedAt)
           : { prefs: s.prefs, prefsUpdatedAt: s.prefsUpdatedAt };
@@ -1144,15 +1193,23 @@ export const useDurableStore = create<DurableStore>((set, get) => {
             ? mergeActivity(s.activity, patch.activity)
             : s.activity,
           ...mergedPrefs,
-          shoppingStoreAssignments: patch.shoppingStoreAssignments
-            ? mergeShoppingStoreAssignments(
+          shoppingStoreAssignments: sanitizeShoppingAssignments(
+            patch.shoppingStoreAssignments
+              ? mergeShoppingStoreAssignments(
                 s.shoppingStoreAssignments,
                 patch.shoppingStoreAssignments,
               )
-            : s.shoppingStoreAssignments ?? [],
+              : s.shoppingStoreAssignments ?? [],
+            mergedItems,
+            shoppingEpoch,
+            activeSession?.tripId ?? null,
+            activeSession,
+          ),
           // Gated: never write an unvalidated remote session — same policy as
           // session-store.ts's applyRemoteSession (clear guard + same-trip merge).
           activeSession: 'activeSession' in patch ? gatedActiveSession ?? null : s.activeSession ?? null,
+          shoppingEpoch,
+          activeTripId: activeSession?.tripId ?? null,
           deletedItems: mergedTombstones,
           deletedStores: mergedStoreTombstones,
           deletedTrips: mergedTripTombstones,

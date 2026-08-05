@@ -113,6 +113,10 @@ export interface ShoppingStoreAssignment {
   closedTripId?: string;
   /** Terminal trip observed before a later intentional reactivation. */
   basedOnClosedTripId?: string;
+  /** Household shopping epoch observed by the writer. */
+  assignmentBasedOnShoppingEpoch?: number;
+  /** Active trip observed by the writer, absent for an observed idle state. */
+  assignmentBasedOnActiveTripId?: string;
 }
 
 export type ShoppingEntryDraft = Omit<
@@ -314,6 +318,10 @@ export interface DurableState {
   activity: ActivityEvent[];
   prefs: HouseholdPrefs;
   activeSession: SharedShoppingSession | null;
+  /** Monotonic household-wide causal version incremented when a trip starts. */
+  shoppingEpoch?: number;
+  /** Trip owning the current shopping epoch, or null after it closes. */
+  activeTripId?: string | null;
   /** Multi-store shopping requests kept separately from PantryItem.storeId. */
   shoppingStoreAssignments?: ShoppingStoreAssignment[];
   updatedAt: number;

@@ -313,3 +313,336 @@ select pg_temp.assert_true(
    where household_id = '33333333-3333-3333-3333-333333333333'),
   'legacy completed insert is backfilled before persistence'
 );
+
+insert into public.household_snapshots (household_id, state, updated_at)
+values (
+  '44444444-4444-4444-4444-444444444444',
+  '{
+    "items":[
+      {"id":"cod","name":"Cod","status":"low","storeId":"store_washington","updatedAt":100,"statusUpdatedAt":100,"statusRevision":1},
+      {"id":"coffee","name":"Coffee","status":"stocked","storeId":null,"quantity":1,"updatedAt":100,"statusUpdatedAt":100,"statusRevision":1}
+    ],
+    "shoppingStoreAssignments":[
+      {"id":"shopping-store:cod:store_washington","pantryItemId":"cod","storeId":"store_washington","active":true,"updatedAt":100,"revision":1}
+    ],
+    "activeSession":{"status":"shopping_store","tripId":"trip-active","startedAt":100,"storeQueue":["store_washington"],"currentIndex":0,"skippedStoreIds":[],"entries":[{"entryId":"cod","pantryItemId":"cod","name":"Cod","quantity":1,"unit":"unit","storeId":"store_washington","picked":false}],"receipts":[],"completedTrip":null},
+    "trips":[],"receipts":[],"closedTripIds":[]
+  }'::jsonb,
+  100
+);
+
+select pg_temp.assert_true(
+  (select state ->> 'shoppingEpoch' = '1'
+          and state ->> 'activeTripId' = 'trip-active'
+          and state #>> '{shoppingStoreAssignments,0,assignmentBasedOnShoppingEpoch}' = '1'
+          and state #>> '{shoppingStoreAssignments,0,assignmentBasedOnActiveTripId}' = 'trip-active'
+   from public.household_snapshots
+   where household_id = '44444444-4444-4444-4444-444444444444'),
+  'trip start establishes and stamps the household shopping epoch'
+);
+
+set role app_member;
+update public.household_snapshots
+set state = jsonb_set(
+  jsonb_set(
+    state,
+    '{items}',
+    '[
+      {"id":"cod","name":"Cod","status":"low","storeId":"store_walmart","updatedAt":200,"statusUpdatedAt":200,"statusRevision":2},
+      {"id":"coffee","name":"Coffee","status":"stocked","storeId":null,"quantity":2,"updatedAt":200,"statusUpdatedAt":100,"statusRevision":1}
+    ]'::jsonb
+  ),
+  '{shoppingStoreAssignments}',
+  (state -> 'shoppingStoreAssignments') || '[{"id":"shopping-store:cod:store_walmart","pantryItemId":"cod","storeId":"store_walmart","active":true,"updatedAt":200,"revision":1}]'::jsonb
+), updated_at = 200
+where household_id = '44444444-4444-4444-4444-444444444444';
+reset role;
+
+select pg_temp.assert_true(
+  (select not coalesce((assignment ->> 'active')::boolean, false)
+   from public.household_snapshots s,
+        jsonb_array_elements(s.state -> 'shoppingStoreAssignments') assignment
+   where s.household_id = '44444444-4444-4444-4444-444444444444'
+     and assignment ->> 'storeId' = 'store_walmart'),
+  'member stale assignment is sanitized while the trip is active'
+);
+select pg_temp.assert_true(
+  (select state #>> '{items,1,quantity}' = '2'
+   from public.household_snapshots
+   where household_id = '44444444-4444-4444-4444-444444444444'),
+  'unrelated member pantry edit remains valid'
+);
+
+set role app_owner;
+update public.household_snapshots
+set state = jsonb_set(
+  jsonb_set(
+    jsonb_set(
+      jsonb_set(
+        state,
+        '{activeSession}',
+        'null'::jsonb
+      ),
+      '{trips}',
+      '[{"id":"trip-active","startedAt":100,"completedAt":300,"purchasedItems":[{"itemId":"cod","storeId":"store_washington"}]}]'::jsonb
+    ),
+    '{receipts}',
+    '[{"id":"receipt-active","tripId":"trip-active","amount":10}]'::jsonb
+  ),
+  '{closedTripIds}',
+  '[{"id":"trip-active","deletedAt":300}]'::jsonb
+), updated_at = 300
+where household_id = '44444444-4444-4444-4444-444444444444';
+reset role;
+
+select pg_temp.assert_true(
+  (select state ->> 'shoppingEpoch' = '1'
+          and state ->> 'activeTripId' is null
+          and state #>> '{items,0,status}' = 'stocked'
+          and state #>> '{items,0,storeId}' is null
+          and state #>> '{items,0,statusClosedTripId}' = 'trip-active'
+          and state -> 'receipts' = '[{"id":"receipt-active","tripId":"trip-active","amount":10}]'::jsonb
+   from public.household_snapshots
+   where household_id = '44444444-4444-4444-4444-444444444444'),
+  'owner completion invalidates stale conflicts without changing receipt history'
+);
+
+set role service_role;
+update public.household_snapshots
+set state = jsonb_set(
+  jsonb_set(state, '{items,0,status}', '"low"'::jsonb),
+  '{shoppingStoreAssignments}',
+  (select jsonb_agg(
+    case when assignment ->> 'storeId' = 'store_walmart'
+      then (assignment - 'assignmentBasedOnShoppingEpoch' - 'assignmentBasedOnActiveTripId') || '{"active":true,"revision":999,"updatedAt":999}'::jsonb
+      else assignment end
+  ) from jsonb_array_elements(state -> 'shoppingStoreAssignments') assignment)
+), updated_at = 999
+where household_id = '44444444-4444-4444-4444-444444444444';
+reset role;
+
+select pg_temp.assert_true(
+  (select state #>> '{items,0,status}' = 'stocked'
+          and not coalesce((assignment ->> 'active')::boolean, false)
+   from public.household_snapshots s,
+        jsonb_array_elements(s.state -> 'shoppingStoreAssignments') assignment
+   where s.household_id = '44444444-4444-4444-4444-444444444444'
+     and assignment ->> 'storeId' = 'store_walmart'),
+  'service-role legacy write cannot bypass completion or epoch protection'
+);
+
+update public.household_snapshots
+set state = jsonb_set(
+  jsonb_set(
+    state,
+    '{items,0}',
+    ((state #> '{items,0}') - 'statusClosedTripId') || '{"status":"low","storeId":"store_walmart","statusRevision":4,"statusBasedOnClosedTripId":"trip-active","statusUpdatedAt":1000,"updatedAt":1000}'::jsonb
+  ),
+  '{shoppingStoreAssignments}',
+  (select jsonb_agg(
+    case when assignment ->> 'storeId' = 'store_walmart'
+      then assignment || '{"active":true,"revision":1000,"updatedAt":1000,"assignmentBasedOnShoppingEpoch":1}'::jsonb
+      else assignment end
+  ) from jsonb_array_elements(state -> 'shoppingStoreAssignments') assignment)
+), updated_at = 1000
+where household_id = '44444444-4444-4444-4444-444444444444';
+
+select pg_temp.assert_true(
+  (select state #>> '{items,0,status}' = 'low'
+          and coalesce((assignment ->> 'active')::boolean, false)
+          and assignment ->> 'assignmentBasedOnShoppingEpoch' = '1'
+   from public.household_snapshots s,
+        jsonb_array_elements(s.state -> 'shoppingStoreAssignments') assignment
+   where s.household_id = '44444444-4444-4444-4444-444444444444'
+     and assignment ->> 'storeId' = 'store_walmart'),
+  'causal future re-add after observing completion is allowed'
+);
+
+select pg_temp.assert_true(
+  not has_function_privilege('authenticated', 'private.enforce_shopping_epoch_state(jsonb,jsonb)', 'EXECUTE')
+  and not has_function_privilege('service_role', 'private.enforce_shopping_epoch_state(jsonb,jsonb)', 'EXECUTE'),
+  'shopping epoch helper is not client-callable'
+);
+select pg_temp.assert_true(
+  (select state #>> '{items,0,statusClosedTripId}' = 'trip-lamb'
+   from public.household_snapshots
+   where household_id = '22222222-2222-2222-2222-222222222222'),
+  'shopping epoch writes remain isolated to the target household'
+);
+
+-- ── Stale closed-trip replay: household with a fully-closed trip, where
+-- OLD.state has no active session/activeTripId (the resurrection window).
+-- A stale device that never received the completion replays its own
+-- pre-completion local state: the same tripId in activeSession, the same
+-- assignment reactivated, an unrelated item edited in the same payload.
+
+insert into public.household_snapshots (household_id, state, updated_at)
+values (
+  '55555555-5555-5555-5555-555555555555',
+  '{
+    "items":[
+      {"id":"salmon","name":"Salmon","status":"stocked","storeId":null,"updatedAt":300,"statusUpdatedAt":300,"statusRevision":2,"statusClosedTripId":"trip-salmon"},
+      {"id":"other","name":"Other","status":"stocked","storeId":null,"quantity":1,"updatedAt":300,"statusUpdatedAt":300}
+    ],
+    "shoppingStoreAssignments":[
+      {"id":"a-salmon","pantryItemId":"salmon","storeId":"store_washington","active":false,"closedTripId":"trip-salmon","updatedAt":300,"revision":2}
+    ],
+    "trips":[{"id":"trip-salmon","startedAt":100,"completedAt":300,"purchasedItems":[{"itemId":"salmon","storeId":"store_washington"}]}],
+    "receipts":[{"id":"receipt-salmon","tripId":"trip-salmon","amount":18.5}],
+    "closedTripIds":[{"id":"trip-salmon","deletedAt":300}],
+    "shoppingEpoch":"1","activeTripId":null
+  }'::jsonb,
+  300
+);
+
+-- stale replay from owner: reactivates the closed assignment, reopens the
+-- item, resurrects activeSession for the closed trip, and edits an
+-- unrelated item in the same payload.
+set role app_owner;
+update public.household_snapshots
+set state = '{
+  "activeSession":{"status":"shopping_store","tripId":"trip-salmon","entries":[{"entryId":"e-salmon","pantryItemId":"salmon","name":"Salmon","storeId":"store_washington","quantity":1,"unit":"lb","picked":false}]},
+  "items":[
+    {"id":"salmon","name":"Salmon","status":"low","storeId":"store_washington","updatedAt":999,"statusUpdatedAt":999},
+    {"id":"other","name":"Other","status":"stocked","storeId":null,"quantity":7,"updatedAt":999,"statusUpdatedAt":999}
+  ],
+  "shoppingStoreAssignments":[{"id":"a-salmon","pantryItemId":"salmon","storeId":"store_washington","active":true,"updatedAt":999,"revision":999}],
+  "trips":[],"receipts":[],"closedTripIds":[]
+}'::jsonb, updated_at = 999
+where household_id = '55555555-5555-5555-5555-555555555555';
+reset role;
+
+select pg_temp.assert_true(
+  (select state->>'activeTripId' is null and jsonb_typeof(state->'activeSession') is distinct from 'object'
+   from public.household_snapshots where household_id = '55555555-5555-5555-5555-555555555555'),
+  'stale replay from owner: cannot resurrect activeSession/activeTripId for a closed trip'
+);
+select pg_temp.assert_true(
+  (select state->>'shoppingEpoch' = '1'
+   from public.household_snapshots where household_id = '55555555-5555-5555-5555-555555555555'),
+  'stale replay from owner: does not change shoppingEpoch'
+);
+select pg_temp.assert_true(
+  (select item->>'status' = 'stocked' and item->>'statusClosedTripId' = 'trip-salmon'
+   from public.household_snapshots s, jsonb_array_elements(s.state->'items') item
+   where s.household_id = '55555555-5555-5555-5555-555555555555' and item->>'id' = 'salmon'),
+  'stale replay from owner: preserves the item completion marker'
+);
+select pg_temp.assert_true(
+  (select not coalesce((assignment->>'active')::boolean, false) and assignment->>'closedTripId' = 'trip-salmon'
+   from public.household_snapshots s, jsonb_array_elements(s.state->'shoppingStoreAssignments') assignment
+   where s.household_id = '55555555-5555-5555-5555-555555555555' and assignment->>'id' = 'a-salmon'),
+  'stale replay from owner: reactivated assignment is discarded, closed record restored'
+);
+select pg_temp.assert_true(
+  (select item->>'quantity' = '7'
+   from public.household_snapshots s, jsonb_array_elements(s.state->'items') item
+   where s.household_id = '55555555-5555-5555-5555-555555555555' and item->>'id' = 'other'),
+  'stale replay from owner: unrelated edit in the same payload still survives'
+);
+select pg_temp.assert_true(
+  (select state -> 'receipts' = '[{"id":"receipt-salmon","tripId":"trip-salmon","amount":18.5}]'::jsonb
+   from public.household_snapshots where household_id = '55555555-5555-5555-5555-555555555555'),
+  'stale replay from owner: receipt/history preserved'
+);
+
+-- repeated replay of the exact same stale payload is idempotent
+set role app_owner;
+update public.household_snapshots
+set state = '{
+  "activeSession":{"status":"shopping_store","tripId":"trip-salmon","entries":[{"entryId":"e-salmon","pantryItemId":"salmon","name":"Salmon","storeId":"store_washington","quantity":1,"unit":"lb","picked":false}]},
+  "items":[
+    {"id":"salmon","name":"Salmon","status":"low","storeId":"store_washington","updatedAt":999,"statusUpdatedAt":999},
+    {"id":"other","name":"Other","status":"stocked","storeId":null,"quantity":7,"updatedAt":999,"statusUpdatedAt":999}
+  ],
+  "shoppingStoreAssignments":[{"id":"a-salmon","pantryItemId":"salmon","storeId":"store_washington","active":true,"updatedAt":999,"revision":999}],
+  "trips":[],"receipts":[],"closedTripIds":[]
+}'::jsonb, updated_at = 1000
+where household_id = '55555555-5555-5555-5555-555555555555';
+reset role;
+
+select pg_temp.assert_true(
+  (select state->>'activeTripId' is null
+     and state->>'shoppingEpoch' = '1'
+     and (select not coalesce((assignment->>'active')::boolean, false)
+          from jsonb_array_elements(state->'shoppingStoreAssignments') assignment
+          where assignment->>'id' = 'a-salmon')
+   from public.household_snapshots where household_id = '55555555-5555-5555-5555-555555555555'),
+  'repeated stale replay is idempotent'
+);
+
+-- stale replay from member
+set role app_member;
+update public.household_snapshots
+set state = '{
+  "activeSession":{"status":"shopping_store","tripId":"trip-salmon","entries":[{"entryId":"e-salmon","pantryItemId":"salmon","name":"Salmon","storeId":"store_washington","quantity":1,"unit":"lb","picked":false}]},
+  "items":[{"id":"salmon","name":"Salmon","status":"low","storeId":"store_washington","updatedAt":1100,"statusUpdatedAt":1100}],
+  "shoppingStoreAssignments":[{"id":"a-salmon","pantryItemId":"salmon","storeId":"store_washington","active":true,"updatedAt":1100,"revision":1100}],
+  "trips":[],"receipts":[],"closedTripIds":[]
+}'::jsonb, updated_at = 1100
+where household_id = '55555555-5555-5555-5555-555555555555';
+reset role;
+
+select pg_temp.assert_true(
+  (select state->>'activeTripId' is null and state->>'shoppingEpoch' = '1'
+   from public.household_snapshots where household_id = '55555555-5555-5555-5555-555555555555'),
+  'stale replay from member is rejected the same way as owner'
+);
+select pg_temp.assert_true(
+  (select not coalesce((assignment->>'active')::boolean, false)
+   from public.household_snapshots s, jsonb_array_elements(s.state->'shoppingStoreAssignments') assignment
+   where s.household_id = '55555555-5555-5555-5555-555555555555' and assignment->>'id' = 'a-salmon'),
+  'stale replay from member: assignment stays discarded'
+);
+
+-- stale replay through the service-role path (legacy device / background sync)
+set role service_role;
+update public.household_snapshots
+set state = '{
+  "activeSession":{"status":"shopping_store","tripId":"trip-salmon","entries":[{"entryId":"e-salmon","pantryItemId":"salmon","name":"Salmon","storeId":"store_washington","quantity":1,"unit":"lb","picked":false}]},
+  "items":[{"id":"salmon","name":"Salmon","status":"low","storeId":"store_washington","updatedAt":1200,"statusUpdatedAt":1200}],
+  "shoppingStoreAssignments":[{"id":"a-salmon","pantryItemId":"salmon","storeId":"store_washington","active":true,"updatedAt":1200,"revision":1200}],
+  "trips":[],"receipts":[],"closedTripIds":[]
+}'::jsonb, updated_at = 1200
+where household_id = '55555555-5555-5555-5555-555555555555';
+reset role;
+
+select pg_temp.assert_true(
+  (select state->>'activeTripId' is null and state->>'shoppingEpoch' = '1'
+   from public.household_snapshots where household_id = '55555555-5555-5555-5555-555555555555'),
+  'stale replay through service-role path is rejected the same way'
+);
+select pg_temp.assert_true(
+  (select not coalesce((assignment->>'active')::boolean, false)
+   from public.household_snapshots s, jsonb_array_elements(s.state->'shoppingStoreAssignments') assignment
+   where s.household_id = '55555555-5555-5555-5555-555555555555' and assignment->>'id' = 'a-salmon'),
+  'stale replay through service-role path: assignment stays discarded'
+);
+
+-- genuinely new future trip id (never seen before) still starts normally
+set role app_owner;
+update public.household_snapshots
+set state = jsonb_set(
+  jsonb_set(
+    state,
+    '{activeSession}',
+    '{"status":"shopping_store","tripId":"trip-salmon-2","entries":[{"entryId":"e-salmon2","pantryItemId":"salmon","name":"Salmon","storeId":"store_washington","quantity":1,"unit":"lb","picked":false}]}'::jsonb
+  ),
+  '{shoppingStoreAssignments}',
+  (state -> 'shoppingStoreAssignments') || '[{"id":"a-salmon-2","pantryItemId":"salmon","storeId":"store_washington","active":true,"updatedAt":1300,"revision":1}]'::jsonb
+), updated_at = 1300
+where household_id = '55555555-5555-5555-5555-555555555555';
+reset role;
+
+select pg_temp.assert_true(
+  (select state->>'activeTripId' = 'trip-salmon-2' and state->>'shoppingEpoch' = '2'
+   from public.household_snapshots where household_id = '55555555-5555-5555-5555-555555555555'),
+  'a genuinely new, never-closed trip id still starts normally and increments the epoch'
+);
+select pg_temp.assert_true(
+  (select coalesce((assignment->>'active')::boolean, false)
+     and assignment->>'assignmentBasedOnShoppingEpoch' = '2'
+   from public.household_snapshots s, jsonb_array_elements(s.state->'shoppingStoreAssignments') assignment
+   where s.household_id = '55555555-5555-5555-5555-555555555555' and assignment->>'id' = 'a-salmon-2'),
+  'the new trip''s assignment is stamped with the new epoch, not blocked'
+);

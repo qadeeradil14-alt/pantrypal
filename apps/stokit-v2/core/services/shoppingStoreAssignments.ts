@@ -5,6 +5,11 @@ import type {
 } from '../../types';
 import { nextTimestamp } from './id';
 
+export interface ShoppingAssignmentCausalContext {
+  shoppingEpoch: number;
+  activeTripId: string | null;
+}
+
 export function shoppingStoreAssignmentId(
   pantryItemId: string,
   storeId: string,
@@ -17,10 +22,17 @@ export function assignShoppingItemToStore(
   pantryItemId: string,
   storeId: string,
   at = Date.now(),
+  causalContext?: ShoppingAssignmentCausalContext,
 ): ShoppingStoreAssignment[] {
   const id = shoppingStoreAssignmentId(pantryItemId, storeId);
   const existing = (assignments ?? []).find((assignment) => assignment.id === id);
-  if (existing?.active) return assignments ?? [];
+  if (
+    existing?.active &&
+    (!causalContext || (
+      existing.assignmentBasedOnShoppingEpoch === causalContext.shoppingEpoch &&
+      existing.assignmentBasedOnActiveTripId === (causalContext.activeTripId ?? undefined)
+    ))
+  ) return assignments ?? [];
   const updated: ShoppingStoreAssignment = {
     id,
     pantryItemId,
@@ -29,6 +41,10 @@ export function assignShoppingItemToStore(
     updatedAt: nextTimestamp(existing?.updatedAt, at),
     revision: (existing?.revision ?? 0) + 1,
     basedOnClosedTripId: existing?.closedTripId ?? existing?.basedOnClosedTripId,
+    ...(causalContext ? {
+      assignmentBasedOnShoppingEpoch: causalContext.shoppingEpoch,
+      assignmentBasedOnActiveTripId: causalContext.activeTripId ?? undefined,
+    } : {}),
   };
   return [
     ...(assignments ?? []).filter((assignment) => assignment.id !== id),
@@ -100,6 +116,7 @@ export function finalizeShoppingItemStore(
   storeId: string,
   tripId: string,
   at = Date.now(),
+  causalContext?: ShoppingAssignmentCausalContext,
 ): ShoppingStoreAssignment[] {
   const id = shoppingStoreAssignmentId(pantryItemId, storeId);
   const existing = (assignments ?? []).find((assignment) => assignment.id === id);
@@ -113,6 +130,10 @@ export function finalizeShoppingItemStore(
     revision: (existing?.revision ?? 0) + 1,
     closedTripId: tripId,
     basedOnClosedTripId: existing?.closedTripId ?? existing?.basedOnClosedTripId,
+    assignmentBasedOnShoppingEpoch:
+      causalContext?.shoppingEpoch ?? existing?.assignmentBasedOnShoppingEpoch,
+    assignmentBasedOnActiveTripId:
+      causalContext?.activeTripId ?? existing?.assignmentBasedOnActiveTripId,
   };
   return [
     ...(assignments ?? []).filter((assignment) => assignment.id !== id),
