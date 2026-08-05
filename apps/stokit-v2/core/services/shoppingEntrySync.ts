@@ -563,9 +563,18 @@ export function shoppingEntryEventForItem(
     decoded.storeQueue,
     decoded.currentIndex,
   );
+  const completedStopIds = new Set(decoded.completedStopIds ?? []);
+  // The fallback exists for an occurrence queued at a stop other than the
+  // current one (e.g. a not-yet-visited later stop). It must never resolve
+  // to an already-picked entry from a completed stop — that entry has
+  // already been finalized (receipt logged, item marked stocked) and
+  // removing it here would silently drop it from FINISH_TRIP's
+  // purchasedItems while its receipt stays behind.
   const occurrence = decoded.entries.find(
     (entry) => entry.pantryItemId === pantryItemId && entry.stopId === currentStopId,
-  ) ?? decoded.entries.find((entry) => entry.pantryItemId === pantryItemId);
+  ) ?? decoded.entries.find(
+    (entry) => entry.pantryItemId === pantryItemId && !completedStopIds.has(entry.stopId),
+  );
   return occurrence
     ? { type: 'REMOVE_ENTRY', entryId: occurrence.entryId, now: Date.now() }
     : null;

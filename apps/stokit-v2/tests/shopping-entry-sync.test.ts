@@ -241,6 +241,115 @@ test('local delete or non-shopping status removes the active entry', () => {
   }
 });
 
+// ── Multi-stop fallback: a completed stop's picked entry must never be the
+// fallback match. Regression coverage for the bug fixed alongside OTA 461 —
+// an already-picked, already-receipted entry from an earlier stop was
+// silently removed by an unrelated edit fired while shopping continued at a
+// later stop, dropping the item from FINISH_TRIP's purchasedItems even
+// though its receipt had already been logged.
+
+function multiStopSession(overrides: Partial<ShoppingSession> = {}): ShoppingSession {
+  return {
+    ...initialSession,
+    status: 'shopping_store',
+    tripId: 'trip-1',
+    startedAt: 1,
+    storeQueue: ['store1', 'store2', 'store3'],
+    currentIndex: 1,
+    entries: [],
+    completedStopIds: [],
+    ...overrides,
+  };
+}
+
+test('fallback never selects an already-picked entry from a completed stop', () => {
+  const completedEntry = entry({
+    entryId: 'banana@store1',
+    storeId: 'store1',
+    stopId: 'stop:trip-1:store1:1',
+    picked: true,
+    pickedAt: 10,
+  });
+  const session = multiStopSession({
+    entries: [completedEntry],
+    completedStopIds: ['stop:trip-1:store1:1'],
+  });
+
+  for (const candidateItem of [
+    null,
+    item({ status: 'stocked', storeId: null }),
+    item({ status: 'low', storeId: null }), // not a shopping item (no store); no entry at the current stop either
+  ]) {
+    const event = shoppingEntryEventForItem(session, candidateItem, 'banana');
+    assert.equal(event, null, 'a completed stop\'s picked entry must never be removed by the fallback');
+  }
+});
+
+test('current active stop legitimate removal still works', () => {
+  const currentStopEntry = entry({
+    entryId: 'banana@store2',
+    storeId: 'store2',
+    stopId: 'stop:trip-1:store2:1',
+    picked: false,
+  });
+  const session = multiStopSession({
+    entries: [currentStopEntry],
+    completedStopIds: [],
+  });
+
+  const event = shoppingEntryEventForItem(session, item({ status: 'stocked' }), 'banana');
+  const { now, ...rest } = event as { now?: number } & Record<string, unknown>;
+  assert.equal(typeof now, 'number');
+  assert.deepEqual(rest, { type: 'REMOVE_ENTRY', entryId: 'banana@store2' });
+});
+
+test('unpicked entry at a future, not-yet-completed stop can still be removed', () => {
+  const futureEntry = entry({
+    entryId: 'banana@store3',
+    storeId: 'store3',
+    stopId: 'stop:trip-1:store3:1',
+    picked: false,
+  });
+  const session = multiStopSession({
+    currentIndex: 0,
+    entries: [futureEntry],
+    completedStopIds: [],
+  });
+
+  const event = shoppingEntryEventForItem(session, item({ status: 'stocked' }), 'banana');
+  const { now, ...rest } = event as { now?: number } & Record<string, unknown>;
+  assert.equal(typeof now, 'number');
+  assert.deepEqual(rest, { type: 'REMOVE_ENTRY', entryId: 'banana@store3' },
+    'the fallback must still remove entries at pending, not-yet-completed stops');
+});
+
+test('a completed picked entry survives every kind of unrelated item update', () => {
+  const completedEntry = entry({
+    entryId: 'banana@store1',
+    storeId: 'store1',
+    stopId: 'stop:trip-1:store1:1',
+    picked: true,
+    pickedAt: 10,
+  });
+  const session = multiStopSession({
+    entries: [completedEntry],
+    completedStopIds: ['stop:trip-1:store1:1'],
+  });
+
+  const statusUpdate = item({ status: 'stocked', storeId: null });
+  const storeAssignmentChange = item({ status: 'stocked', storeId: 'store2' });
+  const quantityEdit = item({ status: 'stocked', storeId: null, quantity: 9 });
+  const syncRefresh = item({ status: 'expiring', storeId: null }); // sync touched the item but it still has no store assigned
+
+  for (const candidateItem of [statusUpdate, storeAssignmentChange, quantityEdit, syncRefresh]) {
+    assert.equal(
+      shoppingEntryEventForItem(session, candidateItem, 'banana'),
+      null,
+      `unrelated update must not disturb the completed entry: ${JSON.stringify(candidateItem)}`,
+    );
+  }
+});
+
 test('active ADD_ENTRY creates a sibling occurrence instead of moving the old one', () => {
   const next = reduce(active([entry({ picked: true, pickedAt: 10 })]), {
     type: 'ADD_ENTRY',
