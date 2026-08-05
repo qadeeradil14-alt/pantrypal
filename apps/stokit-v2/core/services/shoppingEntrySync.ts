@@ -3,6 +3,7 @@ import type {
   PantryItem,
   SharedShoppingSession,
   ShoppingEntry,
+  ShoppingStoreAssignment,
 } from '../../types';
 import { syncDiag } from './syncDiag'; // DIAG: temporary — remove after OTA 389 investigation
 import {
@@ -74,8 +75,28 @@ export function encodeShoppingSession<T extends SharedShoppingSession>(session: 
   return { ...rest, entries, removedItemIds } as unknown as T;
 }
 
-function isShoppingItem(item: PantryItem): boolean {
-  return (item.status === 'low' || item.status === 'expiring') && Boolean(item.storeId);
+function activeAssignmentStoreIds(
+  item: PantryItem,
+  assignments: ShoppingStoreAssignment[] | undefined,
+): string[] {
+  const itemAssignments = (assignments ?? []).filter(
+    (assignment) => assignment.pantryItemId === item.id,
+  );
+  if (itemAssignments.length > 0) {
+    return itemAssignments
+      .filter((assignment) => assignment.active)
+      .map((assignment) => assignment.storeId);
+  }
+  return item.storeId ? [item.storeId] : [];
+}
+
+function isShoppingItemAtStore(
+  item: PantryItem,
+  storeId: string,
+  assignments: ShoppingStoreAssignment[] | undefined,
+): boolean {
+  return (item.status === 'low' || item.status === 'expiring')
+    && activeAssignmentStoreIds(item, assignments).includes(storeId);
 }
 
 function canonicalizeCompletionShape(entry: ShoppingEntry): ShoppingEntry {
@@ -460,6 +481,7 @@ function mergeStoreQueues(preferred: string[], other: string[]): string[] {
 export function reconcileShoppingSession<T extends SharedShoppingSession>(
   session: T,
   items: PantryItem[],
+  assignments?: ShoppingStoreAssignment[],
 ): T {
   if (session.status !== 'shopping_store') return session;
   const decoded = decodeShoppingSession(session);
@@ -474,10 +496,17 @@ export function reconcileShoppingSession<T extends SharedShoppingSession>(
         stopIdForStoreOccurrence(decoded.tripId, decoded.storeQueue, index) === entry.stopId,
     );
     const occurrenceIsActiveOrPending = stopIndex < 0 || stopIndex >= decoded.currentIndex;
-    if (!item || (!isShoppingItem(item) && occurrenceIsActiveOrPending)) {
+    const shoppingAtEntryStore = item
+      ? isShoppingItemAtStore(item, entry.storeId, assignments)
+      : false;
+    if (
+      !entry.picked
+      && (!item || (!shoppingAtEntryStore && occurrenceIsActiveOrPending))
+    ) {
       changed = true;
       return [];
     }
+    if (!item) return [canonicalizeCompletionShape(entry)];
     if (!occurrenceIsActiveOrPending) {
       const completed = canonicalizeCompletionShape(entry);
       if (Object.keys(completed).length !== Object.keys(entry).length) changed = true;
@@ -503,41 +532,43 @@ export function reconcileShoppingSession<T extends SharedShoppingSession>(
   });
   const storeQueue = [...decoded.storeQueue];
   for (const item of items) {
-    if (!isShoppingItem(item)) continue;
-    // Shares entryStopPlacement with the reducer and the shopping screen so all
-    // three agree on when a store may be queued. null means the stop is already
-    // completed — previously this was approximated by "an entry for this
-    // item+store exists", which missed the case where that entry had been
-    // cleared, letting a finished store reappear as a phantom occurrence.
-    const placement = entryStopPlacement(
-      { ...decoded, storeQueue, entries },
-      item.storeId!,
-      item.id,
-    );
-    if (!placement) continue;
-    const { stopId } = placement;
-    if (placement.storeQueue.length !== storeQueue.length) {
-      storeQueue.push(item.storeId!);
+    if (item.status !== 'low' && item.status !== 'expiring') continue;
+    for (const storeId of activeAssignmentStoreIds(item, assignments)) {
+      // Shares entryStopPlacement with the reducer and the shopping screen so all
+      // three agree on when a store may be queued. null means the stop is already
+      // completed — previously this was approximated by "an entry for this
+      // item+store exists", which missed the case where that entry had been
+      // cleared, letting a finished store reappear as a phantom occurrence.
+      const placement = entryStopPlacement(
+        { ...decoded, storeQueue, entries },
+        storeId,
+        item.id,
+      );
+      if (!placement) continue;
+      const { stopId } = placement;
+      if (placement.storeQueue.length !== storeQueue.length) {
+        storeQueue.push(storeId);
+        changed = true;
+      }
+      if (entries.some(
+        (entry) => entry.pantryItemId === item.id && entry.stopId === stopId,
+      )) continue;
+      const entryId = removedEntryIds.has(item.id)
+        ? item.id
+        : occurrenceId(decoded.tripId, stopId, item.id);
+      if (removedEntryIds.has(entryId)) continue;
+      entries.push({
+        entryId,
+        pantryItemId: item.id,
+        stopId,
+        name: item.name,
+        quantity: item.quantity,
+        unit: item.unit,
+        storeId,
+        picked: false,
+      });
       changed = true;
     }
-    if (entries.some(
-      (entry) => entry.pantryItemId === item.id && entry.stopId === stopId,
-    )) continue;
-    const entryId = removedEntryIds.has(item.id)
-      ? item.id
-      : occurrenceId(decoded.tripId, stopId, item.id);
-    if (removedEntryIds.has(entryId)) continue;
-    entries.push({
-      entryId,
-      pantryItemId: item.id,
-      stopId,
-      name: item.name,
-      quantity: item.quantity,
-      unit: item.unit,
-      storeId: item.storeId!,
-      picked: false,
-    });
-    changed = true;
   }
   return changed || decoded !== session
     ? { ...decoded, entries, storeQueue } as T
@@ -548,16 +579,29 @@ export function shoppingEntryEventForItem(
   session: SharedShoppingSession | null,
   item: PantryItem | null,
   pantryItemId: string,
+  assignments?: ShoppingStoreAssignment[],
 ): ShoppingEvent | null {
   if (!session || session.status !== 'shopping_store') return null;
-  if (item && isShoppingItem(item)) {
+  const decoded = decodeShoppingSession(session);
+  const currentStoreId = decoded.storeQueue[decoded.currentIndex];
+  const activeStoreIds = item ? activeAssignmentStoreIds(item, assignments) : [];
+  const assignmentStoreId = activeStoreIds.includes(currentStoreId)
+    ? currentStoreId
+    : activeStoreIds.find((storeId) => decoded.entries.some(
+        (entry) => entry.pantryItemId === pantryItemId && entry.storeId === storeId,
+      ))
+      ?? activeStoreIds[0];
+  if (
+    item
+    && (item.status === 'low' || item.status === 'expiring')
+    && assignmentStoreId
+  ) {
     return {
       type: 'ADD_ENTRY',
       now: Date.now(),
-      entry: entryDraft(item.id, item.name, item.quantity, item.unit, item.storeId!),
+      entry: entryDraft(item.id, item.name, item.quantity, item.unit, assignmentStoreId),
     };
   }
-  const decoded = decodeShoppingSession(session);
   const currentStopId = stopIdForStoreOccurrence(
     decoded.tripId,
     decoded.storeQueue,
@@ -571,9 +615,15 @@ export function shoppingEntryEventForItem(
   // removing it here would silently drop it from FINISH_TRIP's
   // purchasedItems while its receipt stays behind.
   const occurrence = decoded.entries.find(
-    (entry) => entry.pantryItemId === pantryItemId && entry.stopId === currentStopId,
+    (entry) =>
+      entry.pantryItemId === pantryItemId
+      && entry.stopId === currentStopId
+      && !entry.picked,
   ) ?? decoded.entries.find(
-    (entry) => entry.pantryItemId === pantryItemId && !completedStopIds.has(entry.stopId),
+    (entry) =>
+      entry.pantryItemId === pantryItemId
+      && !completedStopIds.has(entry.stopId)
+      && !entry.picked,
   );
   return occurrence
     ? { type: 'REMOVE_ENTRY', entryId: occurrence.entryId, now: Date.now() }

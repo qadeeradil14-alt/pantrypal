@@ -132,7 +132,11 @@ function durableSnapshot(state: DurableState): DurableState {
     activity: state.activity,
     prefs: state.prefs,
     activeSession: state.activeSession
-      ? reconcileShoppingSession(state.activeSession, state.items)
+      ? reconcileShoppingSession(
+          state.activeSession,
+          state.items,
+          state.shoppingStoreAssignments,
+        )
       : null,
     shoppingEpoch: state.shoppingEpoch ?? 0,
     activeTripId: state.activeTripId ?? null,
@@ -542,7 +546,11 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
         ...folded,
         ...(hasActiveSession ? {
           activeSession: folded.activeSession
-            ? reconcileShoppingSession(folded.activeSession, folded.items)
+            ? reconcileShoppingSession(
+                folded.activeSession,
+                folded.items,
+                folded.shoppingStoreAssignments,
+              )
             : null,
         } : { activeSession: store.getState().activeSession }),
         updatedAt: store.getState().updatedAt,
@@ -570,7 +578,11 @@ export async function pullFromSupabase(options?: { forceServerHydration?: boolea
   const reconciledRemote: DurableState = {
     ...signedRemote,
     activeSession: signedRemote.activeSession
-      ? reconcileShoppingSession(signedRemote.activeSession, signedRemote.items)
+      ? reconcileShoppingSession(
+          signedRemote.activeSession,
+          signedRemote.items,
+          signedRemote.shoppingStoreAssignments,
+        )
       : null,
   };
   // Local state may have advanced while signed URLs were being fetched (a

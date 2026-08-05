@@ -1,4 +1,9 @@
-import type { DurableState, SharedShoppingSession, Trip } from '../../types';
+import type {
+  DurableState,
+  SharedShoppingSession,
+  ShoppingStoreAssignment,
+  Trip,
+} from '../../types';
 import { mergePantryItems, mergeTombstones } from './mergePantryState';
 import {
   mergeActivity,
@@ -44,6 +49,7 @@ function mergeActiveSession(
   remote: SharedShoppingSession | null,
   local: SharedShoppingSession | null,
   mergedItems: DurableState['items'],
+  mergedAssignments: ShoppingStoreAssignment[],
   knownTrips: Trip[],
   preferLocal: boolean,
   closedTripIds: { id: string }[],
@@ -73,7 +79,7 @@ function mergeActiveSession(
     ...folded,
     receipts: mergeReceipts(other.receipts, preferred.receipts, []),
     completedTrip: preferred.completedTrip ?? other.completedTrip,
-  }, mergedItems);
+  }, mergedItems, mergedAssignments);
 }
 
 export function mergeDurableSnapshotForPush(remote: DurableState, local: DurableState): DurableState {
@@ -84,13 +90,18 @@ export function mergeDurableSnapshotForPush(remote: DurableState, local: Durable
   const mergedTripTombstones = mergeTombstones(remote.deletedTrips, local.deletedTrips);
   const mergedReceiptTombstones = mergeTombstones(remote.deletedReceipts, local.deletedReceipts);
   const initiallyMergedItems = mergePantryItems(remote.items, local.items, mergedTombstones);
+  const initiallyMergedAssignments = mergeShoppingStoreAssignments(
+    remote.shoppingStoreAssignments,
+    local.shoppingStoreAssignments,
+  );
   const mergedTrips = mergeTrips(remote.trips, local.trips, mergedTripTombstones);
   const mergedReceipts = mergeReceipts(remote.receipts, local.receipts, mergedReceiptTombstones);
   const knownTrips = mergedTrips;
   const mergedClosedTripIds = mergeTombstones(remote.closedTripIds, local.closedTripIds);
   const mergedPrefs = mergePrefs(remote, local, preferLocal);
   const mergedActiveSession = mergeActiveSession(
-    remote.activeSession, local.activeSession, initiallyMergedItems, knownTrips,
+    remote.activeSession, local.activeSession, initiallyMergedItems, initiallyMergedAssignments,
+    knownTrips,
     preferLocal, mergedClosedTripIds,
   );
   const shoppingEpoch = Math.max(
@@ -114,10 +125,7 @@ export function mergeDurableSnapshotForPush(remote: DurableState, local: Durable
   );
   const mergedAssignments = sanitizeShoppingAssignments(
     reconcileAssignmentsWithItemTerminalState(
-      mergeShoppingStoreAssignments(
-        remote.shoppingStoreAssignments,
-        local.shoppingStoreAssignments,
-      ),
+      initiallyMergedAssignments,
       mergedItems,
     ),
     mergedItems,

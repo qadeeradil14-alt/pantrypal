@@ -321,7 +321,12 @@ export const useDurableStore = create<DurableStore>((set, get) => {
   };
 
   const syncShoppingItem = (item: PantryItem | null, itemId: string) => {
-    const event = shoppingEntryEventForItem(get().activeSession, item, itemId);
+    const event = shoppingEntryEventForItem(
+      get().activeSession,
+      item,
+      itemId,
+      get().shoppingStoreAssignments,
+    );
     if (!event) return;
     void import('./session-store').then(({ useSessionStore }) => {
       useSessionStore.getState().dispatch(event);

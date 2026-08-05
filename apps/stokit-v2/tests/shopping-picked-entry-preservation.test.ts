@@ -1,0 +1,317 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import test from 'node:test';
+
+import {
+  currentStoreId,
+  initialSession,
+  reduce,
+  type ShoppingSession,
+} from '../core/shopping-machine';
+import {
+  foldRemoteActiveSession,
+  reconcileShoppingSession,
+  shoppingEntryEventForItem,
+} from '../core/services/shoppingEntrySync';
+import {
+  assignShoppingItemToStore,
+  finalizeShoppingItemStore,
+  shoppingEntryDraftsFromAssignments,
+  unpurchasedTripEntries,
+} from '../core/services/shoppingStoreAssignments';
+import { homeShoppingItems } from '../core/services/homeShoppingItems';
+import type {
+  PantryItem,
+  Receipt,
+  ShoppingStoreAssignment,
+  Trip,
+} from '../types';
+
+const TRIP_ID = 't_1785936901169';
+const COSTCO = 'store_ms5fnii2_z';
+const SAFEWAY = 'store_ms5fna93_x';
+const PRODUCTION_ITEMS = [
+  ['item_ms6lyh96_1h', 'Garlic', COSTCO, null],
+  ['item_ms6lyh9c_1k', 'Potato', COSTCO, null],
+  ['item_ms6lyh9g_1n', 'Carrot', COSTCO, null],
+  ['item_ms6lyh9m_1q', 'Spinach', COSTCO, null],
+  ['item_ms63huzs_1', 'Chicken', SAFEWAY, null],
+  ['item_msewrv30_1', 'Ground beef', SAFEWAY, null],
+  ['item_ms63iwo2_1', 'Salmon', SAFEWAY, COSTCO],
+] as const;
+
+function pantryItem(
+  id: string,
+  name: string,
+  storeId: string | null,
+  status: PantryItem['status'] = 'low',
+): PantryItem {
+  return {
+    id,
+    name,
+    quantity: 1,
+    unit: 'unit',
+    status,
+    storageLocation: 'pantry',
+    storeId,
+    expiryDate: null,
+    createdAt: 1,
+    updatedAt: 1,
+    statusUpdatedAt: 1,
+    statusRevision: 1,
+  };
+}
+
+function productionWorld(): {
+  items: PantryItem[];
+  assignments: ShoppingStoreAssignment[];
+} {
+  const items = PRODUCTION_ITEMS.map(([id, name, , storeId]) => pantryItem(id, name, storeId));
+  let assignments: ShoppingStoreAssignment[] = [];
+  for (const [id, , storeId] of PRODUCTION_ITEMS) {
+    assignments = assignShoppingItemToStore(
+      assignments,
+      id,
+      storeId,
+      10 + assignments.length,
+      { shoppingEpoch: 8, activeTripId: TRIP_ID },
+    );
+  }
+  return { items, assignments };
+}
+
+function startProductionTrip(items: PantryItem[], assignments: ShoppingStoreAssignment[]): ShoppingSession {
+  return reduce(initialSession, {
+    type: 'START_TRIP',
+    now: 1785936901169,
+    shopperId: 'owner',
+    entries: shoppingEntryDraftsFromAssignments(items, assignments),
+  });
+}
+
+function pickCurrentStore(session: ShoppingSession, now: number): ShoppingSession {
+  let next = session;
+  const storeId = currentStoreId(next);
+  for (const entry of next.entries.filter((candidate) => candidate.storeId === storeId)) {
+    next = reduce(next, { type: 'SET_PICK', entryId: entry.entryId, picked: true, now: now++ });
+  }
+  return next;
+}
+
+function applyItemUpdates(
+  session: ShoppingSession,
+  items: PantryItem[],
+  assignments: ShoppingStoreAssignment[],
+): ShoppingSession {
+  let next = session;
+  for (const item of items) {
+    const event = shoppingEntryEventForItem(next, item, item.id, assignments);
+    if (event) next = reduce(next, event);
+  }
+  return next;
+}
+
+function finishStore(session: ShoppingSession, amount: number, now: number): ShoppingSession {
+  const receiptPrompt = reduce(session, { type: 'FINISH_STORE', now });
+  return reduce(receiptPrompt, { type: 'SAVE_RECEIPT', amount, status: 'logged', now: now + 1 });
+}
+
+function completeProductionTrip(applyUpdates: boolean): ShoppingSession {
+  const { items, assignments } = productionWorld();
+  let session = startProductionTrip(items, assignments);
+  session = pickCurrentStore(session, 1785936947813);
+  if (applyUpdates) session = applyItemUpdates(session, items, assignments);
+  session = finishStore(session, 147, 1785936987504);
+  session = reduce(session, { type: 'CHOOSE_NEXT_STORE', storeId: SAFEWAY });
+  session = pickCurrentStore(session, 1785937018391);
+  if (applyUpdates) session = applyItemUpdates(session, items, assignments);
+  session = finishStore(session, 74.74, 1785937043108);
+  return reduce(session, { type: 'FINISH_TRIP', now: 1785937046294 });
+}
+
+function finalizedAssignments(
+  assignments: ShoppingStoreAssignment[],
+  trip: Trip,
+): ShoppingStoreAssignment[] {
+  let next = assignments;
+  for (const purchased of trip.purchasedItems) {
+    next = finalizeShoppingItemStore(
+      next,
+      purchased.itemId,
+      purchased.storeId,
+      trip.id,
+      trip.completedAt,
+      { shoppingEpoch: 8, activeTripId: trip.id },
+    );
+  }
+  return next;
+}
+
+test('exact seven-item production regression preserves every picked purchase after item updates', () => {
+  const completed = completeProductionTrip(true);
+  assert.equal(completed.status, 'trip_summary');
+  assert.deepEqual(
+    completed.completedTrip?.purchasedItems.map(({ itemId }) => itemId).sort(),
+    PRODUCTION_ITEMS.map(([id]) => id).sort(),
+  );
+});
+
+test('picked entry survives the event generated by updateItem when storeId is null but assignment is active', () => {
+  const { items, assignments } = productionWorld();
+  let session = startProductionTrip(items, assignments);
+  const garlic = session.entries.find((entry) => entry.pantryItemId === 'item_ms6lyh96_1h')!;
+  session = reduce(session, { type: 'SET_PICK', entryId: garlic.entryId, picked: true, now: 2 });
+
+  const event = shoppingEntryEventForItem(session, items[0], items[0].id, assignments);
+  const after = event ? reduce(session, event) : session;
+
+  assert.equal(after.entries.find((entry) => entry.entryId === garlic.entryId)?.picked, true);
+  assert.equal(after.removedEntryIds.includes(garlic.entryId), false);
+});
+
+test('picked current and pending entries survive reconciliation with null legacy storeId', () => {
+  const { items, assignments } = productionWorld();
+  let session = startProductionTrip(items, assignments);
+  for (const entry of session.entries) {
+    session = reduce(session, { type: 'SET_PICK', entryId: entry.entryId, picked: true, now: 2 });
+  }
+
+  const reconciled = reconcileShoppingSession(session, items, assignments);
+  assert.equal(reconciled.entries.length, PRODUCTION_ITEMS.length);
+  assert.ok(reconciled.entries.every((entry) => entry.picked));
+});
+
+test('picked entries at a completed stop survive reconciliation', () => {
+  const { items, assignments } = productionWorld();
+  let session = startProductionTrip(items, assignments);
+  session = finishStore(pickCurrentStore(session, 2), 1, 3);
+  session = reduce(session, { type: 'CHOOSE_NEXT_STORE', storeId: SAFEWAY });
+
+  const reconciled = reconcileShoppingSession(session, items, assignments);
+  const costcoEntries = reconciled.entries.filter((entry) => entry.storeId === COSTCO);
+  assert.equal(costcoEntries.length, 4);
+  assert.ok(costcoEntries.every((entry) => entry.picked));
+});
+
+test('active assignment ledger supplies shopping identity when item.storeId is null', () => {
+  const { items, assignments } = productionWorld();
+  const session = startProductionTrip(items, assignments);
+  const event = shoppingEntryEventForItem(session, items[0], items[0].id, assignments);
+
+  assert.equal(event?.type, 'ADD_ENTRY');
+  assert.equal(event?.type === 'ADD_ENTRY' ? event.entry.storeId : null, COSTCO);
+});
+
+test('active assignment ledger wins over a sibling PantryItem.storeId', () => {
+  const { items, assignments } = productionWorld();
+  let session = startProductionTrip(items, assignments);
+  session = finishStore(pickCurrentStore(session, 2), 1, 3);
+  session = reduce(session, { type: 'CHOOSE_NEXT_STORE', storeId: SAFEWAY });
+  const salmon = items.find((item) => item.name === 'Salmon')!;
+  const event = shoppingEntryEventForItem(session, salmon, salmon.id, assignments);
+
+  assert.equal(event?.type, 'ADD_ENTRY');
+  assert.equal(event?.type === 'ADD_ENTRY' ? event.entry.storeId : null, SAFEWAY);
+});
+
+test('trip contains all seven purchased items after both stores complete', () => {
+  const trip = completeProductionTrip(true).completedTrip!;
+  assert.equal(trip.itemsBought, 7);
+  assert.equal(trip.purchasedItems.length, 7);
+  assert.equal(trip.itemsRemaining, 0);
+});
+
+test('pair cleanup finalizes every assignment from the seven-item trip', () => {
+  const { assignments } = productionWorld();
+  const session = completeProductionTrip(true);
+  const trip = session.completedTrip!;
+  assert.deepEqual(unpurchasedTripEntries(session.entries, trip.purchasedItems), []);
+  assert.ok(finalizedAssignments(assignments, trip).every((assignment) => !assignment.active));
+});
+
+test('Home exposes neither Costco nor Safeway after all seven assignments finalize', () => {
+  const { items, assignments } = productionWorld();
+  const trip = completeProductionTrip(true).completedTrip!;
+  const stocked = items.map((item) => ({
+    ...item,
+    status: 'stocked' as const,
+    storeId: null,
+    statusClosedTripId: trip.id,
+  }));
+  assert.deepEqual(homeShoppingItems(stocked, finalizedAssignments(assignments, trip), []), []);
+});
+
+test('offline merge preserves all picked entries in both directions', () => {
+  const { items, assignments } = productionWorld();
+  let offline = startProductionTrip(items, assignments);
+  for (const entry of offline.entries) {
+    offline = reduce(offline, { type: 'SET_PICK', entryId: entry.entryId, picked: true, now: 10 });
+  }
+  const stale = startProductionTrip(items, assignments);
+
+  for (const merged of [
+    foldRemoteActiveSession(stale, offline),
+    foldRemoteActiveSession(offline, stale),
+  ]) {
+    const reconciled = reconcileShoppingSession(merged, items, assignments);
+    assert.equal(reconciled.entries.filter((entry) => entry.picked).length, 7);
+  }
+});
+
+test('serialized restart preserves the completed trip, receipts, and inactive assignments', () => {
+  const { assignments } = productionWorld();
+  const completed = completeProductionTrip(true);
+  const state = JSON.parse(JSON.stringify({
+    trip: completed.completedTrip,
+    receipts: completed.receipts,
+    assignments: finalizedAssignments(assignments, completed.completedTrip!),
+  }));
+
+  assert.equal(state.trip.purchasedItems.length, 7);
+  assert.equal(state.receipts.length, 2);
+  assert.ok(state.assignments.every((assignment: ShoppingStoreAssignment) => !assignment.active));
+});
+
+test('explicit deletion of an unpicked entry still emits REMOVE_ENTRY and removes it', () => {
+  const item = pantryItem('unpicked', 'Unpicked', null, 'stocked');
+  const entry = {
+    pantryItemId: item.id,
+    name: item.name,
+    quantity: 1,
+    unit: 'unit' as const,
+    storeId: COSTCO,
+    picked: false,
+  };
+  let session = reduce(initialSession, { type: 'START_TRIP', entries: [entry], now: 1 });
+  const event = shoppingEntryEventForItem(session, item, item.id, []);
+  assert.equal(event?.type, 'REMOVE_ENTRY');
+  if (event) session = reduce(session, event);
+  assert.equal(session.entries.length, 0);
+});
+
+test('receipt and trip history remain byte-identical to the no-update baseline', () => {
+  const baseline = completeProductionTrip(false);
+  const protectedRun = completeProductionTrip(true);
+  const receiptShape = (receipts: Receipt[]) => receipts.map(({ id, tripId, storeId, amount, status }) => ({
+    id, tripId, storeId, amount, status,
+  }));
+  assert.deepEqual(receiptShape(protectedRun.receipts), receiptShape(baseline.receipts));
+  assert.deepEqual(protectedRun.completedTrip, baseline.completedTrip);
+});
+
+test('updateItem passes the assignment ledger into shoppingEntryEventForItem', () => {
+  const source = readFileSync(join(process.cwd(), 'store/durable-store.ts'), 'utf8');
+  const syncBlock = source.slice(source.indexOf('const syncShoppingItem ='), source.indexOf('const currentShoppingAccess'));
+  assert.match(
+    syncBlock,
+    /shoppingEntryEventForItem\(\s*get\(\)\.activeSession,\s*item,\s*itemId,\s*get\(\)\.shoppingStoreAssignments,?\s*\)/,
+  );
+});
+
+test('sync reconciliation passes assignment ledgers on push and pull paths', () => {
+  const source = readFileSync(join(process.cwd(), 'core/services/syncEngine.ts'), 'utf8');
+  assert.match(source, /reconcileShoppingSession\(\s*state\.activeSession,\s*state\.items,\s*state\.shoppingStoreAssignments,?\s*\)/);
+  assert.match(source, /reconcileShoppingSession\(\s*folded\.activeSession,\s*folded\.items,\s*folded\.shoppingStoreAssignments,?\s*\)/);
+  assert.match(source, /reconcileShoppingSession\(\s*signedRemote\.activeSession,\s*signedRemote\.items,\s*signedRemote\.shoppingStoreAssignments,?\s*\)/);
+});
