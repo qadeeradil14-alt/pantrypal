@@ -87,7 +87,15 @@ test('remote entry metadata wins over stale local metadata while completion rema
   });
 });
 
-test('a newer version of one occurrence wins metadata and completion state in both merge directions', () => {
+test('a newer version of one occurrence wins metadata and completion state in both merge directions (cross-stop: OTA 429 contract)', () => {
+  // These two copies share an entryId but NOT a stopId (default stopId is
+  // derived from storeId by the `entry()` helper, and storeId differs here).
+  // entryId alone cannot prove they are the same stop occurrence — this is
+  // the legacy bare-pantryItemId / cross-store-re-add shape OTA 429 targeted
+  // (fixing an RLS 42501 rejection when an old occurrence's completion state
+  // reattached to a newer cloud entry). The newer-addedAt copy still owns
+  // completion state wholesale here; only the same-stop case (below) resolves
+  // picked/outOfStock independently via resolveTimedFlag.
   const purchasedAtFirstStore = entry({
     storeId: 'sams',
     picked: true,
@@ -111,7 +119,7 @@ test('a newer version of one occurrence wins metadata and completion state in bo
   }
 });
 
-test('a newer version of one occurrence clears stale out-of-stock state in both merge directions', () => {
+test('a newer version of one occurrence clears stale out-of-stock state in both merge directions (cross-stop: OTA 429 contract)', () => {
   const unavailableAtFirstStore = entry({
     storeId: 'sams',
     picked: false,
@@ -132,6 +140,61 @@ test('a newer version of one occurrence clears stale out-of-stock state in both 
     assert.equal(merged[0].storeId, 'target');
     assert.equal(Boolean(merged[0].outOfStock), false);
     assert.equal('outOfStockAt' in merged[0], false);
+  }
+});
+
+test('a stamped completion flag survives an unstamped re-add when entryId AND stopId match (modern same-stop occurrence)', () => {
+  // Same stopId this time: the modern occurrenceId() case where entryId
+  // provably identifies one stop occurrence, so resolveTimedFlag decides
+  // completion state independently of which side wins structurally.
+  const pickedFirst = entry({
+    storeId: 'sams',
+    stopId: 'stop:trip-1:sams:1',
+    picked: true,
+    pickedAt: 110,
+    addedAt: 100,
+  });
+  const readdedSameStop = entry({
+    storeId: 'sams',
+    stopId: 'stop:trip-1:sams:1',
+    picked: false,
+    addedAt: 200,
+  });
+
+  for (const merged of [
+    mergeShoppingEntries([pickedFirst], [readdedSameStop], []),
+    mergeShoppingEntries([readdedSameStop], [pickedFirst], []),
+  ]) {
+    assert.equal(merged[0].stopId, 'stop:trip-1:sams:1');
+    assert.equal(merged[0].addedAt, 200);
+    assert.equal(merged[0].picked, true, 'a stamped pick must not be erased by a same-stop unstamped re-add');
+    assert.equal(merged[0].pickedAt, 110);
+  }
+});
+
+test('outOfStock survives an unstamped re-add when entryId AND stopId match (modern same-stop occurrence)', () => {
+  const unavailableFirst = entry({
+    storeId: 'sams',
+    stopId: 'stop:trip-1:sams:1',
+    picked: false,
+    outOfStock: true,
+    outOfStockAt: 110,
+    addedAt: 100,
+  });
+  const readdedSameStop = entry({
+    storeId: 'sams',
+    stopId: 'stop:trip-1:sams:1',
+    picked: false,
+    addedAt: 200,
+  });
+
+  for (const merged of [
+    mergeShoppingEntries([unavailableFirst], [readdedSameStop], []),
+    mergeShoppingEntries([readdedSameStop], [unavailableFirst], []),
+  ]) {
+    assert.equal(merged[0].stopId, 'stop:trip-1:sams:1');
+    assert.equal(Boolean(merged[0].outOfStock), true, 'a stamped outOfStock must not be erased by a same-stop unstamped re-add');
+    assert.equal(merged[0].outOfStockAt, 110);
   }
 });
 

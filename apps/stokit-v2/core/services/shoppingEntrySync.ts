@@ -154,24 +154,90 @@ export function mergeShoppingEntries(
     }
     const existingAddedAt = existing.addedAt ?? -Infinity;
     const incomingAddedAt = entry.addedAt ?? -Infinity;
-    // entryId is the occurrence boundary. addedAt only versions two copies of
-    // that same occurrence; it must never decide whether sibling occurrences
-    // are the same row.
-    if (existingAddedAt !== incomingAddedAt) {
+    const differingStopId = existing.stopId !== entry.stopId;
+    const differingAddedAt = existingAddedAt !== incomingAddedAt;
+    // entryId is the modern occurrence boundary (occurrenceId() keys it by
+    // tripId+stopId+pantryItemId), so two copies sharing an entryId AND a
+    // stopId are provably the same stop occurrence — addedAt only versions
+    // their STRUCTURAL fields (name/quantity/unit/storeId/stopId/addedAt),
+    // never completion flags. A later re-add (newer addedAt, picked=false) is
+    // not a newer statement about whether the item was picked, so
+    // picked/outOfStock always go through resolveTimedFlag below.
+    //
+    // Same entryId with a DIFFERING stopId and a STRICTLY newer addedAt is
+    // only reachable for legacy bare-pantryItemId entries (pre-OTA-429
+    // sessions) and the machine.ts ADD_ENTRY cross-store re-add path, where
+    // entryId does not encode the stop. There, entryId alone cannot prove
+    // "same occurrence", so OTA 429's original contract still applies: the
+    // newer-addedAt copy is a genuinely new occurrence and owns its own
+    // completion state wholesale. This comparison is order-independent — the
+    // strictly-larger addedAt wins regardless of which side is "local" — so
+    // both merge directions agree.
+    if (differingStopId && differingAddedAt) {
       const winner = existingAddedAt > incomingAddedAt ? existing : entry;
-      byId.set(
-        entry.entryId,
-        canonicalizeCompletionShape(winner),
-      );
+      byId.set(entry.entryId, canonicalizeCompletionShape(winner));
       syncDiag('shopping_occurrence_merge', {
         decision: 'merge_same_occurrence',
-        reason: 'newer_added_at',
+        reason: 'newer_added_at_cross_stop',
         entryId: winner.entryId,
         pantryItemId: winner.pantryItemId,
         stopId: winner.stopId,
         storeId: winner.storeId,
       });
       continue;
+    }
+    // Two remaining cases share this tail:
+    //  - same stopId (any addedAt): the modern occurrence-scoped case.
+    //  - differing stopId with EQUAL or BOTH-MISSING addedAt: OTA 429's
+    //    signal (a strictly newer addedAt marking a genuinely new occurrence)
+    //    is absent, so there is no basis to let one side's completion state
+    //    overwrite the other's. Falling through to resolveTimedFlag below
+    //    keeps this order-independent instead of picking a winner by
+    //    argument position (the prior `? existing : entry` on a `>` tie
+    //    always favored `entry`, which flips identity between the two merge
+    //    directions and could drop a stamped pick).
+    //
+    // Structural-field choice must also be order-independent. addedAt still
+    // decides it when it differs. On a same-stop tie, keep the historical
+    // spread order (entry, i.e. remote, wins) so identical-addedAt same-stop
+    // merges stay byte-for-byte unchanged. On a cross-stop tie (equal or
+    // both-missing addedAt, no OTA-429 signal to arbitrate), "entry wins" is
+    // NOT order-independent — swapping which side is called local vs remote
+    // flips the winner — so fall back to a stable, argument-order-blind
+    // comparator (the entries' own stopId strings) instead.
+    const structuralWinner = differingAddedAt
+      ? (existingAddedAt > incomingAddedAt ? existing : entry)
+      : differingStopId
+        ? (existing.stopId <= entry.stopId ? existing : entry)
+        : entry;
+    const structuralLoser = structuralWinner === existing ? entry : existing;
+    if (differingAddedAt) {
+      syncDiag('shopping_occurrence_merge', {
+        decision: 'merge_same_occurrence',
+        reason: 'newer_added_at',
+        entryId: structuralWinner.entryId,
+        pantryItemId: structuralWinner.pantryItemId,
+        stopId: structuralWinner.stopId,
+        storeId: structuralWinner.storeId,
+      });
+    } else if (differingStopId) {
+      syncDiag('shopping_occurrence_merge', {
+        decision: 'merge_same_occurrence',
+        reason: 'equal_added_at_cross_stop',
+        entryId: structuralWinner.entryId,
+        pantryItemId: structuralWinner.pantryItemId,
+        stopId: structuralWinner.stopId,
+        storeId: structuralWinner.storeId,
+      });
+    } else {
+      syncDiag('shopping_occurrence_merge', {
+        decision: 'merge_same_occurrence',
+        reason: 'same_entry_id',
+        entryId: structuralWinner.entryId,
+        pantryItemId: structuralWinner.pantryItemId,
+        stopId: structuralWinner.stopId,
+        storeId: structuralWinner.storeId,
+      });
     }
     const picked = resolveTimedFlag(existing.picked, existing.pickedAt, entry.picked, entry.pickedAt);
     const outOfStock = resolveTimedFlag(
@@ -199,9 +265,12 @@ export function mergeShoppingEntries(
     // A false value without a timestamp was injected by the old merge and is
     // not meaningful state. Remove it so existing OTA 419 sessions self-heal.
     const hasOutOfStock = outOfStock.value || outOfStock.at !== undefined;
+    // Structural fields come from structuralWinner only (addedAt decides
+    // this); completion flags come from resolveTimedFlag above, independent
+    // of which side won structurally.
     const mergedEntry: ShoppingEntry = {
-      ...existing,
-      ...entry,
+      ...structuralLoser,
+      ...structuralWinner,
       picked: picked.value,
       ...(hasOutOfStock ? { outOfStock: outOfStock.value } : {}),
       // Only attach a timestamp when one exists, so legacy entries keep their
@@ -211,14 +280,6 @@ export function mergeShoppingEntries(
     };
     if (!hasOutOfStock) delete mergedEntry.outOfStock;
     byId.set(entry.entryId, mergedEntry);
-    syncDiag('shopping_occurrence_merge', {
-      decision: 'merge_same_occurrence',
-      reason: 'same_entry_id',
-      entryId: mergedEntry.entryId,
-      pantryItemId: mergedEntry.pantryItemId,
-      stopId: mergedEntry.stopId,
-      storeId: mergedEntry.storeId,
-    });
   }
   return Array.from(byId.values())
     .filter((entry) => !removedEntryIds.includes(entry.entryId))
