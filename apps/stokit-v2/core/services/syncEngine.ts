@@ -427,6 +427,10 @@ export async function pushLocalState(state: DurableState): Promise<void> {
 }
 
 export async function wakePendingHouseholdPush(): Promise<void> {
+  // Fire any debounced local mutation immediately — an explicit wake must not
+  // wait out the trailing debounce window before it even reaches the
+  // coordinator's dirty/pending state.
+  (await durableStore()).getState().flushPendingPush();
   const id = await householdId();
   if (id) await householdPushCoordinator.wake(id);
 }
