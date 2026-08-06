@@ -169,9 +169,22 @@ export function createHouseholdPushCoordinator(dependencies: CoordinatorDependen
   ) => {
     state.phase = phase;
     if (transportBarrier) {
-      state.transportBarrier = transportBarrier;
-      void transportBarrier.then(() => {
-        if (state.transportBarrier === transportBarrier) state.transportBarrier = null;
+      // The barrier is the ABANDONED request's transport promise, which only
+      // settles when the underlying fetch does. A hung socket — exactly what a
+      // PUSH_TIMEOUT_MS timeout implies — leaves it pending forever, and both
+      // places that consult it block indefinitely: startDrain() returns early
+      // while a barrier exists, and resume() awaits it. That stranded dirty
+      // state permanently, with no enqueue, wake, realtime, or foreground
+      // event able to restart the drain.
+      //
+      // Bound the wait. Overlap safety was never the barrier's job: a late
+      // transport is rejected server-side by CAS on updated_at and discarded
+      // client-side by the generation guards in runDrain. The barrier only
+      // avoids a wasted attempt, so capping it costs nothing.
+      const boundedBarrier = Promise.race([transportBarrier, delay(PUSH_TIMEOUT_MS)]);
+      state.transportBarrier = boundedBarrier;
+      void boundedBarrier.then(() => {
+        if (state.transportBarrier === boundedBarrier) state.transportBarrier = null;
       });
     }
     if (state.retryTimer) clearTimer(state.retryTimer);

@@ -683,3 +683,337 @@ test('deterministic two-device stress preserves 19 alternating tombstones and co
   await Promise.all([a.whenSettled('household'), b.whenSettled('household')]);
   assert.equal(patchCount, patchesAtConvergence);
 });
+
+// ── Bounded transport barrier (OTA 467 stranded-push defect) ─────────────────
+//
+// A hung fetch leaves transportSettled pending forever. startDrain() returns
+// early while a barrier exists and resume() awaits it, so an unbounded barrier
+// permanently stranded dirty state — local mutations stayed durable but never
+// reached the server (reproduced on real devices: iPhone local updatedAt ran
+// 18+ minutes ahead of the server snapshot while a trip was active).
+
+/** A coordinator whose first attempt times out against a transport that never settles. */
+function hungTransportCoordinator(options: {
+  onAttempt?: (attempt: number) => void;
+  latest?: () => DurableState;
+} = {}) {
+  const timers: Array<() => void> = [];
+  const delays: number[] = [];
+  let attempts = 0;
+  const installs: number[] = [];
+  const neverSettles = new Promise<void>(() => {});
+  const fallback = state(1);
+  const coordinator = createHouseholdPushCoordinator({
+    readLatestSnapshot: async () => options.latest?.() ?? fallback,
+    attempt: async (_householdId, snapshot) => {
+      attempts += 1;
+      options.onAttempt?.(attempts);
+      if (attempts === 1) {
+        return {
+          type: 'network-failure',
+          error: new Error('push timed out'),
+          transportSettled: neverSettles,
+        } as const;
+      }
+      return { type: 'success', serverState: snapshot, updatedAt: snapshot.updatedAt } as const;
+    },
+    installSuccess: async (_householdId, _submitted, serverState) => {
+      installs.push(serverState.updatedAt);
+      return { acknowledgedState: serverState, latestState: serverState };
+    },
+    delay: async (ms) => { delays.push(ms); },
+    setTimer: (callback) => {
+      timers.push(callback);
+      return timers.length as unknown as ReturnType<typeof setTimeout>;
+    },
+  });
+  return {
+    coordinator,
+    timers,
+    delays,
+    installs,
+    attemptCount: () => attempts,
+  };
+}
+
+test('a never-settling transport no longer strands the drain — the barrier expires after PUSH_TIMEOUT_MS', async () => {
+  const h = hungTransportCoordinator();
+  await h.coordinator.enqueue('household', state(1));
+  await settle();
+
+  assert.equal(h.attemptCount(), 1, 'first attempt ran and timed out');
+  assert.equal(h.coordinator.inspect('household').phase, 'offline-backoff');
+  assert.ok(h.coordinator.inspect('household').dirty, 'dirty state is retained');
+  // The bounded barrier is armed with exactly PUSH_TIMEOUT_MS.
+  assert.ok(h.delays.includes(PUSH_TIMEOUT_MS), 'barrier wait is bounded by PUSH_TIMEOUT_MS');
+
+  h.timers[0]();
+  await settle();
+  await h.coordinator.whenSettled('household');
+
+  assert.equal(h.attemptCount(), 2, 'drain resumed despite the transport never settling');
+  assert.equal(h.coordinator.inspect('household').phase, 'idle');
+  assert.equal(h.coordinator.inspect('household').dirty, false);
+  assert.equal(h.coordinator.inspect('household').pendingSnapshot, null);
+});
+
+test('wake() during the barrier resumes draining once the bound expires', async () => {
+  const h = hungTransportCoordinator();
+  await h.coordinator.enqueue('household', state(1));
+  await settle();
+  assert.equal(h.attemptCount(), 1);
+
+  // wake() arrives while the retry timer has not fired. Before the fix the
+  // armed barrier made startDrain() a permanent no-op; now the barrier is
+  // bounded, so wake() reaches the drain and the push converges.
+  await h.coordinator.wake('household');
+  await settle();
+  await h.coordinator.whenSettled('household');
+
+  assert.equal(h.attemptCount(), 2, 'wake resumed the drain after the barrier cleared');
+  assert.equal(h.coordinator.inspect('household').dirty, false, 'dirty work was pushed, not discarded');
+  assert.equal(h.coordinator.inspect('household').phase, 'idle', 'no barrier survives recovery');
+  assert.equal(h.installs.length, 1, 'the resumed push installed exactly once');
+});
+
+test('enqueue() during the barrier preserves dirty/pending state and later drains it', async () => {
+  let latest = state(1);
+  const h = hungTransportCoordinator({ latest: () => latest });
+  await h.coordinator.enqueue('household', latest);
+  await settle();
+  assert.equal(h.attemptCount(), 1);
+
+  // A second local mutation arrives while backing off.
+  latest = state(2, ['ground-beef', 'milk']);
+  await h.coordinator.enqueue('household', latest);
+  await settle();
+  const during = h.coordinator.inspect('household');
+  assert.ok(during.dirty, 'enqueue during backoff keeps dirty set');
+  assert.ok(during.pendingSnapshot, 'enqueue during backoff keeps the pending snapshot');
+  assert.equal(during.phase, 'offline-backoff', 'backoff phase preserved, no extra in-flight push');
+
+  h.timers[0]();
+  await settle();
+  await h.coordinator.whenSettled('household');
+  assert.equal(h.attemptCount(), 2);
+  assert.equal(h.coordinator.inspect('household').dirty, false);
+  assert.equal(h.coordinator.inspect('household').pendingSnapshot, null);
+});
+
+test('a late transport completion after barrier expiry cannot install stale state', async () => {
+  const timers: Array<() => void> = [];
+  const installed: number[] = [];
+  let attempts = 0;
+  let releaseHungTransport: (() => void) | null = null;
+  const hung = new Promise<void>((resolve) => { releaseHungTransport = resolve; });
+  const latest = state(5);
+  const coordinator = createHouseholdPushCoordinator({
+    readLatestSnapshot: async () => latest,
+    attempt: async (_householdId, snapshot) => {
+      attempts += 1;
+      if (attempts === 1) {
+        return { type: 'network-failure', error: new Error('timed out'), transportSettled: hung } as const;
+      }
+      return { type: 'success', serverState: snapshot, updatedAt: snapshot.updatedAt } as const;
+    },
+    installSuccess: async (_householdId, _submitted, serverState) => {
+      installed.push(serverState.updatedAt);
+      return { acknowledgedState: serverState, latestState: serverState };
+    },
+    delay: async () => {},
+    setTimer: (callback) => {
+      timers.push(callback);
+      return timers.length as unknown as ReturnType<typeof setTimeout>;
+    },
+  });
+
+  await coordinator.enqueue('household', latest);
+  await settle();
+  timers[0]();
+  await settle();
+  await coordinator.whenSettled('household');
+  const installsAfterRecovery = installed.length;
+  assert.equal(attempts, 2);
+  assert.equal(installsAfterRecovery, 1, 'only the successful retry installed');
+
+  // The abandoned transport finally lands, long after the barrier expired.
+  releaseHungTransport!();
+  await settle();
+  await settle();
+  assert.equal(installed.length, installsAfterRecovery, 'late completion installs nothing');
+  assert.equal(coordinator.inspect('household').phase, 'idle');
+});
+
+test('bounded barrier never permits overlapping installs or in-flight writes', async () => {
+  const timers: Array<() => void> = [];
+  let inFlight = 0;
+  let maxInFlight = 0;
+  let installsInFlight = 0;
+  let maxInstallsInFlight = 0;
+  let attempts = 0;
+  const neverSettles = new Promise<void>(() => {});
+  const latest = state(1);
+  const coordinator = createHouseholdPushCoordinator({
+    readLatestSnapshot: async () => latest,
+    attempt: async (_householdId, snapshot) => {
+      attempts += 1;
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await Promise.resolve();
+      inFlight -= 1;
+      if (attempts === 1) {
+        return { type: 'network-failure', error: new Error('timed out'), transportSettled: neverSettles } as const;
+      }
+      return { type: 'success', serverState: snapshot, updatedAt: snapshot.updatedAt } as const;
+    },
+    installSuccess: async (_householdId, _submitted, serverState) => {
+      installsInFlight += 1;
+      maxInstallsInFlight = Math.max(maxInstallsInFlight, installsInFlight);
+      await Promise.resolve();
+      installsInFlight -= 1;
+      return { acknowledgedState: serverState, latestState: serverState };
+    },
+    delay: async () => {},
+    setTimer: (callback) => {
+      timers.push(callback);
+      return timers.length as unknown as ReturnType<typeof setTimeout>;
+    },
+  });
+
+  await coordinator.enqueue('household', latest);
+  await settle();
+  // Hammer the coordinator from every wake path while the barrier is armed.
+  await Promise.all([
+    coordinator.wake('household'),
+    coordinator.enqueue('household', latest),
+    coordinator.wake('household'),
+  ]);
+  timers.forEach((fire) => fire());
+  await settle();
+  await coordinator.whenSettled('household');
+
+  assert.equal(maxInFlight, 1, 'one push per household at a time');
+  assert.equal(maxInstallsInFlight, 1, 'installs never overlap');
+});
+
+test('restart after a stranded barrier recovers the dirty durable work', async () => {
+  const deletedAt = Date.now();
+  const persisted = state(9, ['ground-beef'], [{ id: 'grapes', deletedAt }]);
+  let uploaded: ItemTombstone[] = [];
+  const restarted = createHouseholdPushCoordinator({
+    readLatestSnapshot: async () => persisted,
+    attempt: async (_householdId, snapshot) => {
+      uploaded = snapshot.deletedItems ?? [];
+      return { type: 'success', serverState: snapshot, updatedAt: snapshot.updatedAt };
+    },
+    installSuccess: async (_householdId, _submitted, serverState) => ({
+      acknowledgedState: serverState,
+      latestState: serverState,
+    }),
+  });
+
+  await restarted.enqueue('household', persisted);
+  await restarted.whenSettled('household');
+  assert.deepEqual(uploaded, [{ id: 'grapes', deletedAt }], 'a fresh coordinator re-pushes stranded work');
+  assert.equal(restarted.inspect('household').phase, 'idle');
+});
+
+test('rapid-delete 5-vs-8 replay converges after a hung push', async () => {
+  // Field repro: 8 low items on both devices; the iPhone removes 3 during an
+  // active trip; its push hangs; the server stays 3 revisions behind.
+  const ALL = ['apple', 'banana', 'orange', 'lemon', 'lime', 'grapes', 'strawberry', 'blueberry'];
+  const REMOVED = ['grapes', 'strawberry', 'blueberry'];
+  const remaining = ALL.filter((id) => !REMOVED.includes(id));
+  const deletedAt = 1786030608672;
+
+  let server = state(1786030393196, ALL);
+  const local = state(
+    1786030608673,
+    remaining,
+    REMOVED.map((id) => ({ id, deletedAt })),
+  );
+
+  const timers: Array<() => void> = [];
+  let attempts = 0;
+  const neverSettles = new Promise<void>(() => {});
+  const coordinator = createHouseholdPushCoordinator({
+    readLatestSnapshot: async () => local,
+    attempt: async (_householdId, snapshot) => {
+      attempts += 1;
+      if (attempts === 1) {
+        return { type: 'network-failure', error: new Error('push timed out'), transportSettled: neverSettles } as const;
+      }
+      server = snapshot;
+      return { type: 'success', serverState: snapshot, updatedAt: snapshot.updatedAt } as const;
+    },
+    installSuccess: async (_householdId, _submitted, serverState) => ({
+      acknowledgedState: serverState,
+      latestState: serverState,
+    }),
+    delay: async () => {},
+    setTimer: (callback) => {
+      timers.push(callback);
+      return timers.length as unknown as ReturnType<typeof setTimeout>;
+    },
+  });
+
+  await coordinator.enqueue('household', local);
+  await settle();
+  assert.equal(server.items.length, 8, 'server is still stale while the transport hangs');
+  assert.ok(coordinator.inspect('household').dirty, 'the 3 removals are retained, not lost');
+
+  timers[0]();
+  await settle();
+  await coordinator.whenSettled('household');
+
+  assert.equal(attempts, 2);
+  assert.equal(server.items.length, 5, 'server converged to 5 items');
+  assert.deepEqual(
+    (server.deletedItems ?? []).map((t) => t.id).sort(),
+    [...REMOVED].sort(),
+    'all three tombstones reached the server',
+  );
+  assert.equal(coordinator.inspect('household').dirty, false);
+});
+
+test('a generation mismatch during resume() cannot strand dirty state', async () => {
+  const timers: Array<() => void> = [];
+  let attempts = 0;
+  const neverSettles = new Promise<void>(() => {});
+  const latest = state(1);
+  const coordinator = createHouseholdPushCoordinator({
+    readLatestSnapshot: async () => latest,
+    attempt: async (_householdId, snapshot) => {
+      attempts += 1;
+      if (attempts === 1) {
+        return { type: 'network-failure', error: new Error('timed out'), transportSettled: neverSettles } as const;
+      }
+      return { type: 'success', serverState: snapshot, updatedAt: snapshot.updatedAt } as const;
+    },
+    installSuccess: async (_householdId, _submitted, serverState) => ({
+      acknowledgedState: serverState,
+      latestState: serverState,
+    }),
+    delay: async () => {},
+    setTimer: (callback) => {
+      timers.push(callback);
+      return timers.length as unknown as ReturnType<typeof setTimeout>;
+    },
+  });
+
+  await coordinator.enqueue('household', latest);
+  await settle();
+  const strandedGeneration = coordinator.inspect('household').generation;
+
+  // resume() bails on a generation mismatch. Whatever happens, dirty work must
+  // still be recoverable by a later wake — never silently abandoned.
+  timers[0]();
+  await settle();
+  await coordinator.wake('household');
+  await coordinator.whenSettled('household');
+
+  const after = coordinator.inspect('household');
+  assert.ok(after.generation >= strandedGeneration);
+  assert.equal(after.dirty, false, 'dirty state was drained, not stranded');
+  assert.equal(after.phase, 'idle', 'no barrier survives recovery');
+});
