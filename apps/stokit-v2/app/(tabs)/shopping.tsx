@@ -1019,6 +1019,13 @@ function ShoppingActive({
   }, [priceHistory, entries, storeId]);
 
   const progressAnim = useRef(new Animated.Value(0)).current;
+  // Per-row Swipeable refs, keyed by entryId. onSwipeableWillOpen fires once
+  // the gesture crosses the open threshold — the row is already visually
+  // revealing its delete panel by then. For a picked entry, REMOVE_ENTRY is
+  // now a guarded no-op (OTA 472), so the row never unmounts to carry the
+  // open Swipeable away with it; without an explicit close() here it was
+  // left stuck open, showing nothing but the red trash panel.
+  const swipeableRefs = useRef<Map<string, Swipeable | null>>(new Map()).current;
   useEffect(() => {
     Animated.spring(progressAnim, {
       toValue: entries.length ? picked / entries.length : 0,
@@ -1078,6 +1085,7 @@ function ShoppingActive({
           <View key={e.entryId}>
                 {idx > 0 && <View style={styles.rowDivider} />}
                 <Swipeable
+                  ref={(instance) => { swipeableRefs.set(e.entryId, instance); }}
                   renderRightActions={() => (
                     <View style={styles.shoppingSwipeActionRight}>
                       <Ionicons name="trash-outline" size={24} color="#FFF" />
@@ -1085,6 +1093,11 @@ function ShoppingActive({
                   )}
                   onSwipeableWillOpen={() => {
                     if (!canEditActiveItems) return;
+                    if (e.picked) {
+                      swipeableRefs.get(e.entryId)?.close();
+                      Alert.alert('Uncheck to delete', `Uncheck ${e.name} before removing it from the list.`);
+                      return;
+                    }
                     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                     dispatch({ type: 'REMOVE_ENTRY', entryId: e.entryId, now: Date.now() });
                   }}

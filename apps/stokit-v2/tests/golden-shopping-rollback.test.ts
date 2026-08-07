@@ -15,5 +15,10 @@ test('active shopper removes a trip entry while collaborators use durable tombst
   const source = readFileSync(join(process.cwd(), 'app/(tabs)/shopping.tsx'), 'utf8');
 
   assert.match(source, /import Swipeable from 'react-native-gesture-handler\/Swipeable'/);
-  assert.match(source, /onSwipeableWillOpen=\{\(\) => \{\s*\n\s*if \(!canEditActiveItems\) return;\s*\n\s*void Haptics\.impactAsync\(Haptics\.ImpactFeedbackStyle\.Medium\);\s*\n\s*dispatch\(\{ type: 'REMOVE_ENTRY', entryId: e\.entryId, now: Date\.now\(\) \}\);/);
+  // A picked entry must be excluded — and the row closed rather than left
+  // open — BEFORE the permission-gated delete dispatch below (see
+  // tests/shopping-swipe-delete-picked-guard.test.ts for the dedicated
+  // regression on that guard).
+  assert.match(source, /onSwipeableWillOpen=\{\(\) => \{\s*\n\s*if \(!canEditActiveItems\) return;\s*\n\s*if \(e\.picked\) \{/);
+  assert.match(source, /if \(!canEditActiveItems\) return;\s*\n\s*if \(e\.picked\) \{[\s\S]*?\n\s*void Haptics\.impactAsync\(Haptics\.ImpactFeedbackStyle\.Medium\);\s*\n\s*dispatch\(\{ type: 'REMOVE_ENTRY', entryId: e\.entryId, now: Date\.now\(\) \}\);/);
 });
