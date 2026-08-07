@@ -146,7 +146,7 @@
       "fallbackToCacheTimeout": 10000,
       "checkAutomatically": "ON_LOAD",
       "requestHeaders": {
-        "expo-channel-name": "production"
+        "expo-channel-name": "preview"
       }
     },
     "runtimeVersion": "stokit-v2-1.0.0"
