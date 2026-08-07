@@ -284,7 +284,18 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       // durable commit decides whether a purchased item has another active
       // store need. Buying an item at Safeway must not preserve an unbought
       // Costco occurrence merely because both entries share one pantryItemId.
+      // Exception: an entry added mid-trip (addedAt after the trip started)
+      // was never "carried into" this trip as an existing need the shopper
+      // declined — it's a fresh ask the shopper simply didn't get to. Releasing
+      // its store assignment here would strip the store the moment it's added,
+      // surfacing it as Low + Unassigned despite never having been skipped.
+      const tripStartedAt = next.startedAt;
       unpurchasedTripEntries(next.entries, next.completedTrip.purchasedItems)
+        .filter((entry) => !(
+          entry.addedAt !== undefined &&
+          tripStartedAt !== null &&
+          entry.addedAt > tripStartedAt
+        ))
         .forEach((entry) => durable.releaseStoreAssignment(entry.pantryItemId, entry.storeId));
       durable.commitTrip(next.completedTrip, next.receipts);
     }

@@ -100,11 +100,13 @@ function releaseStoreAssignment(w: World, pantryItemId: string, storeId: string)
   };
 }
 
-/** session-store.ts trip_summary commit block, post-fix. */
+/** session-store.ts trip_summary commit block, post-fix (incl. late-add carve-out). */
 function tripSummaryCleanup(w: World, next: ShoppingSession): World {
   const picked = next.entries.filter((e) => e.picked);
   let out = w;
+  const tripStartedAt = next.startedAt;
   for (const e of unpurchasedTripEntries(next.entries, next.completedTrip?.purchasedItems ?? [])) {
+    if (e.addedAt !== undefined && tripStartedAt !== null && e.addedAt > tripStartedAt) continue;
     out = releaseStoreAssignment(out, e.pantryItemId, e.storeId);
   }
   return clearShoppingEntries(out, picked.map((e) => ({ pantryItemId: e.pantryItemId, storeId: e.storeId })));
@@ -363,6 +365,72 @@ test('12b. mid-trip, two still-open stores for the same item are both untouched'
   assert.deepEqual(activeShoppingStoreIds(milk, world.assignments).sort(), [A, B].sort());
 });
 
+// ── 14-15. Late-added (mid-trip) unpicked items keep their store ─────────────
+
+test('14. an item added mid-trip and left unchecked keeps its store assignment after FINISH_TRIP', () => {
+  let world: World = { items: [mk('apple', 'Apple', A)], assignments: [] };
+  world = { ...world, assignments: assignShoppingItemToStore(world.assignments, 'apple', A, tick()) };
+  let session = reduce(initialSession, {
+    type: 'START_TRIP', now: tick(), shopperId: 'owner',
+    entries: shoppingEntryDraftsFromAssignments(world.items, world.assignments),
+  });
+  // Shopper browses categories at store A and adds Bread — never checked off.
+  world = {
+    ...world,
+    items: [...world.items, mk('bread', 'Bread', A)],
+    assignments: assignShoppingItemToStore(world.assignments, 'bread', A, tick()),
+  };
+  session = reduce(session, {
+    type: 'ADD_ENTRY', now: tick(),
+    entry: { pantryItemId: 'bread', name: 'Bread', quantity: 1, unit: 'unit', storeId: A, picked: false },
+  });
+  // Only Apple gets picked and bought; Bread stays unchecked the whole trip.
+  session = reduce(session, { type: 'TOGGLE_PICK', entryId: session.entries.find((e) => e.pantryItemId === 'apple')!.entryId, now: tick() });
+  session = reduce(session, { type: 'FINISH_STORE', now: tick() });
+  session = reduce(session, { type: 'SAVE_RECEIPT', now: tick(), amount: 5, status: 'logged' });
+  world = stopCleanup(world, session);
+  session = reduce(session, { type: 'FINISH_TRIP', now: tick() });
+  world = tripSummaryCleanup(world, session);
+
+  const bread = world.items.find((i) => i.id === 'bread')!;
+  assert.equal(bread.storeId, A, 'THE FIX: a late add is not treated as a deliberate skip — its store survives');
+  assert.deepEqual(activeShoppingStoreIds(bread, world.assignments), [A]);
+  assert.equal(bread.status, 'low');
+});
+
+test('15. an item added mid-trip and picked purchases normally, same as any other entry', () => {
+  let world: World = { items: [mk('apple', 'Apple', A)], assignments: [] };
+  world = { ...world, assignments: assignShoppingItemToStore(world.assignments, 'apple', A, tick()) };
+  let session = reduce(initialSession, {
+    type: 'START_TRIP', now: tick(), shopperId: 'owner',
+    entries: shoppingEntryDraftsFromAssignments(world.items, world.assignments),
+  });
+  world = {
+    ...world,
+    items: [...world.items, mk('bread', 'Bread', A)],
+    assignments: assignShoppingItemToStore(world.assignments, 'bread', A, tick()),
+  };
+  session = reduce(session, {
+    type: 'ADD_ENTRY', now: tick(),
+    entry: { pantryItemId: 'bread', name: 'Bread', quantity: 1, unit: 'unit', storeId: A, picked: false },
+  });
+  for (const e of session.entries.filter((e) => e.storeId === A)) {
+    session = reduce(session, { type: 'TOGGLE_PICK', entryId: e.entryId, now: tick() });
+  }
+  session = reduce(session, { type: 'FINISH_STORE', now: tick() });
+  session = reduce(session, { type: 'SAVE_RECEIPT', now: tick(), amount: 9, status: 'logged' });
+  world = stopCleanup(world, session);
+  session = reduce(session, { type: 'FINISH_TRIP', now: tick() });
+  const completedTrip = session.completedTrip!;
+  world = tripSummaryCleanup(world, session);
+
+  assert.ok(completedTrip.purchasedItems.some((p) => p.itemId === 'bread' && p.storeId === A),
+    'late-added item that was picked counts as purchased like any other');
+  const bread = world.items.find((i) => i.id === 'bread')!;
+  assert.equal(bread.status, 'stocked');
+  assert.equal(bread.storeId, null, 'purchased items still lose their store like normal — this fix only protects unpicked late adds');
+});
+
 // ── 13. Cross-device convergence ─────────────────────────────────────────────
 
 test('13. owner and member devices converge on the same post-trip state', () => {
@@ -461,4 +529,6 @@ test('session-store releases unbought trip entries instead of only nulling item.
     'an item bought at one store must not shield its unpurchased sibling-store occurrence');
   assert.ok(block.indexOf('releaseStoreAssignment') < block.indexOf('commitTrip'),
     'unbought pairs must be released before commitTrip decides whether the item remains needed');
+  assert.match(block, /entry\.addedAt > tripStartedAt/,
+    'a mid-trip late add must be excluded from the release, not treated as a deliberate skip');
 });
