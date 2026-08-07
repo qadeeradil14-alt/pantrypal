@@ -293,3 +293,45 @@ test('merge removes meaningless outOfStock false keys without timestamps', () =>
 
   assert.equal('outOfStock' in merged[0], false);
 });
+
+// ── Eligibility-lag regression ────────────────────────────────────────────
+// A remote session entry must not be pruned by reconcile solely because this
+// device's own copy of the pantry item hasn't (yet) caught up to shopping
+// eligibility — only a genuine local transition that postdates the entry may
+// prune it.
+
+test('a merged-in remote entry survives reconcile when the local item has no tracked status transition yet', () => {
+  const reconciled = reconcileShoppingSession(
+    active([entry({ addedAt: 500 })]),
+    [item({ status: 'stocked', storeId: null })], // never explicitly transitioned locally
+  );
+
+  assert.equal(reconciled.entries.length, 1, 'entry must survive — no evidence of a genuine local restock');
+});
+
+test('a merged-in remote entry survives reconcile when the local ineligibility predates the entry', () => {
+  const reconciled = reconcileShoppingSession(
+    active([entry({ addedAt: 1000 })]),
+    [item({ status: 'stocked', storeId: null, statusUpdatedAt: 200 })], // stocked before this entry existed
+  );
+
+  assert.equal(reconciled.entries.length, 1, 'a stale local transition from before the entry existed must not prune it');
+});
+
+test('a genuine local restock after the entry existed still prunes it', () => {
+  const reconciled = reconcileShoppingSession(
+    active([entry({ addedAt: 100 })]),
+    [item({ status: 'stocked', storeId: null, statusUpdatedAt: 500 })], // restocked after the entry was added
+  );
+
+  assert.equal(reconciled.entries.length, 0, 'a real local restock that postdates the entry must still prune it');
+});
+
+test('legacy entries without addedAt keep the original always-prune-when-ineligible behavior', () => {
+  const reconciled = reconcileShoppingSession(
+    active([entry({ addedAt: undefined })]),
+    [item({ status: 'stocked', storeId: null })],
+  );
+
+  assert.equal(reconciled.entries.length, 0, 'no addedAt to order against — legacy semantics are unchanged');
+});

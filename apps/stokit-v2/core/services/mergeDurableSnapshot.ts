@@ -55,7 +55,11 @@ export function mergeDurableSnapshotForPush(remote: DurableState, local: Durable
   const mergedStoreTombstones = mergeTombstones(remote.deletedStores, local.deletedStores);
   const mergedTripTombstones = mergeTombstones(remote.deletedTrips, local.deletedTrips);
   const mergedReceiptTombstones = mergeTombstones(remote.deletedReceipts, local.deletedReceipts);
-  const mergedItems = mergePantryItems(remote.items, local.items, mergedTombstones);
+  // mergePantryItems is (local, remote, tombstones) — local first, so its
+  // documented "local keeps its order, remote-only items append" contract
+  // and its tie-break-on-equal-updatedAt (first-seen wins) both resolve the
+  // way the rest of this merge assumes.
+  const mergedItems = mergePantryItems(local.items, remote.items, mergedTombstones);
   const mergedTrips = mergeTrips(remote.trips, local.trips, mergedTripTombstones);
   const mergedReceipts = mergeReceipts(remote.receipts, local.receipts, mergedReceiptTombstones);
   const knownTrips = mergedTrips;

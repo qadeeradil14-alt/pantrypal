@@ -474,9 +474,26 @@ export function reconcileShoppingSession<T extends SharedShoppingSession>(
         stopIdForStoreOccurrence(decoded.tripId, decoded.storeQueue, index) === entry.stopId,
     );
     const occurrenceIsActiveOrPending = stopIndex < 0 || stopIndex >= decoded.currentIndex;
-    if (!item || (!isShoppingItem(item) && occurrenceIsActiveOrPending)) {
+    if (!item) {
       changed = true;
       return [];
+    }
+    if (!isShoppingItem(item) && occurrenceIsActiveOrPending) {
+      // Only prune for ineligibility when this device has positive evidence
+      // the item became ineligible AFTER this entry was added — a genuine
+      // local restock/removal. A merged-in entry from a remote session whose
+      // owning item hasn't caught up to shopping-eligibility on this device
+      // yet (no statusUpdatedAt, or one that predates the entry) must survive
+      // reconcile instead of being silently dropped every fold cycle. Legacy
+      // entries with no addedAt keep the original always-prune behavior,
+      // since there's nothing to order the transition against.
+      const genuineLocalTransition = entry.addedAt === undefined
+        ? true
+        : item.statusUpdatedAt !== undefined && item.statusUpdatedAt >= entry.addedAt;
+      if (genuineLocalTransition) {
+        changed = true;
+        return [];
+      }
     }
     if (!occurrenceIsActiveOrPending) {
       const completed = canonicalizeCompletionShape(entry);

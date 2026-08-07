@@ -9,12 +9,24 @@ import test from 'node:test';
 
 const durable = readFileSync(join(process.cwd(), 'store/durable-store.ts'), 'utf8');
 const engine = readFileSync(join(process.cwd(), 'core/services/syncEngine.ts'), 'utf8');
+const mergeDurableSnapshot = readFileSync(join(process.cwd(), 'core/services/mergeDurableSnapshot.ts'), 'utf8');
 
 test('applyRemotePatch merges items per-item instead of overwriting with the remote array', () => {
   assert.match(durable, /import \{ mergePantryItems, mergeTombstones \} from '\.\.\/core\/services\/mergePantryState'/);
   assert.match(durable, /mergePantryItems\(s\.items, patch\.items, mergedTombstones\)/);
   // The old lossy overwrite must be gone.
   assert.doesNotMatch(durable, /items:\s*patch\.items\s*\?\s*consolidatePantryItems\(patch\.items\)\s*:/);
+});
+
+test('mergeDurableSnapshotForPush calls mergePantryItems with (local, remote, ...), matching its (local, remote, tombstones) signature', () => {
+  // mergePantryItems is documented and parameter-named (local, remote,
+  // tombstones): local keeps its list order and wins exact-updatedAt ties.
+  // mergeDurableSnapshotForPush's own params are (remote, local) — passing
+  // them straight through in that order silently inverted both the
+  // documented ordering guarantee and the tie-break, on top of mislabeling
+  // every item_merge SyncDiag entry. Lock in the corrected call order.
+  assert.match(mergeDurableSnapshot, /mergePantryItems\(local\.items, remote\.items, mergedTombstones\)/);
+  assert.doesNotMatch(mergeDurableSnapshot, /mergePantryItems\(remote\.items, local\.items,/);
 });
 
 test('deleteItem records a tombstone so deletions sync instead of resurrecting', () => {
