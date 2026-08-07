@@ -18,7 +18,10 @@
  * `setSyncDiagIdentity(` / `syncDiagEnabled(` / `dumpSyncDiag(` call site
  * (grep -rn "syncDiag\|SyncDiag" apps/stokit-v2).
  */
-const ENABLED = typeof __DEV__ !== 'undefined' && __DEV__;
+// Off by default in release builds. EXPO_PUBLIC_SYNC_DIAG=true (set per EAS
+// environment, e.g. only on "preview" for a QA session) opts a specific
+// build in without touching production's default-off behavior.
+const ENABLED = (typeof __DEV__ !== 'undefined' && __DEV__) || process.env.EXPO_PUBLIC_SYNC_DIAG === 'true';
 
 // Optional runtime household allowlist. Empty => no household restriction (every
 // device on this OTA logs). Set to a household id (via the EAS production env at
