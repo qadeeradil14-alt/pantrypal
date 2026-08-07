@@ -240,25 +240,45 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
     // Commit to durable state exactly once when trip_summary is reached.
     if (next.status === 'trip_summary' && prev.status !== 'trip_summary' && next.completedTrip) {
-      durable.commitTrip(next.completedTrip, next.receipts);
       const pickedEntries = next.entries.filter((entry) => entry.picked);
+      const pickedItemIds = new Set(pickedEntries.map((entry) => entry.pantryItemId));
+      // Every (item, store) pairing this trip never bought, keyed off the
+      // trip's own entries rather than item.storeId — see releaseStoreAssignment
+      // below for why that distinction matters for the ledger.
+      const releasedEntries = next.entries.filter(
+        (entry) =>
+          !pickedItemIds.has(entry.pantryItemId) &&
+          entry.pantryItemId !== '__quick_scan__',
+      );
+
+      // Durably record both sides of this trip's item/store pairings (bought
+      // and released) on the Trip itself, not just in the ledger/activeSession.
+      // The ledger release below is correct but transient duplicate protection
+      // (isAlreadyPurchasedThisTrip) only reads activeSession, which goes null
+      // moments later — leaving nothing to stop a delayed write from silently
+      // reactivating the exact pairing that was just released. Trip history
+      // survives that and gives post-close protection something to consult.
+      durable.commitTrip(
+        {
+          ...next.completedTrip,
+          releasedItems: releasedEntries.map((entry) => ({
+            itemId: entry.pantryItemId,
+            name: entry.name,
+            storeId: entry.storeId,
+            price: 0,
+          })),
+        },
+        next.receipts,
+      );
       durable.clearShoppingEntries(pickedEntries);
 
-      // Release every (item, store) pairing this trip never bought, keyed off
-      // the trip's own entries rather than item.storeId. Nulling item.storeId
-      // alone left the assignment ledger active, and activeShoppingStoreIds
-      // prefers the ledger — so the store (a skipped one especially) rebuilt
-      // its "ready to shop" plan the moment the trip closed. Items picked up
-      // somewhere on this trip are already handled by clearShoppingEntries
-      // above and are skipped here.
-      const pickedItemIds = new Set(pickedEntries.map((entry) => entry.pantryItemId));
-      next.entries
-        .filter(
-          (entry) =>
-            !pickedItemIds.has(entry.pantryItemId) &&
-            entry.pantryItemId !== '__quick_scan__',
-        )
-        .forEach((entry) => durable.releaseStoreAssignment(entry.pantryItemId, entry.storeId));
+      // Release every (item, store) pairing this trip never bought. Nulling
+      // item.storeId alone left the assignment ledger active, and
+      // activeShoppingStoreIds prefers the ledger — so the store (a skipped
+      // one especially) rebuilt its "ready to shop" plan the moment the trip
+      // closed. Items picked up somewhere on this trip are already handled by
+      // clearShoppingEntries above and are skipped here.
+      releasedEntries.forEach((entry) => durable.releaseStoreAssignment(entry.pantryItemId, entry.storeId));
     }
 
     set({ session: next });

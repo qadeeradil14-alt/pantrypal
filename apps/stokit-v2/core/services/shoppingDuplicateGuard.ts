@@ -16,7 +16,7 @@
  * history is not a duplicate; only re-adding within the same trip is.
  */
 
-import type { SharedShoppingSession, ShoppingEntry } from '../../types';
+import type { SharedShoppingSession, ShoppingEntry, Trip, TripPurchasedItem } from '../../types';
 import { normalizeItemName } from './pantryItems';
 
 /**
@@ -177,6 +177,52 @@ export function isAlreadyPurchasedThisTrip(
   storeId: string,
 ): boolean {
   return resolveDuplicateState(session, pantryItemId, name, storeId) !== 'clear';
+}
+
+function matchesTripPairing(
+  pantryItemId: string,
+  name: string,
+  storeId: string,
+  candidate: TripPurchasedItem,
+): boolean {
+  if (candidate.storeId !== storeId) return false;
+  return shoppingDuplicateKey(candidate.itemId, candidate.name, storeId)
+    === shoppingDuplicateKey(pantryItemId, name, storeId);
+}
+
+/**
+ * Post-close counterpart to isAlreadyPurchasedThisTrip.
+ *
+ * activeSession goes null (or moves on to the next trip) moments after a
+ * trip closes, so the session-based checks above lose all visibility into
+ * what that trip just did the instant it's needed most — right when
+ * releaseStoreAssignment has deactivated the ledger entry but the item is
+ * still shopping-eligible, so a delayed write (a queued local action or a
+ * stale device's merge) can reactivate that exact assignment.
+ *
+ * Answers the same question from the one place that still remembers after
+ * close: the most-recently-completed Trip record, which durably holds both
+ * what was bought (`purchasedItems`) and what was released unbought
+ * (`releasedItems`). Deliberately scoped to only the single most recent
+ * trip — protection self-expires the moment the user starts and finishes
+ * another one, so a genuine future need is never blocked forever.
+ */
+export function protectedByMostRecentClosedTrip(
+  trips: Trip[] | undefined,
+  pantryItemId: string,
+  name: string,
+  storeId: string,
+): boolean {
+  if (!trips || trips.length === 0) return false;
+  const mostRecent = trips.reduce<Trip | null>(
+    (latest, trip) => (!latest || trip.completedAt > latest.completedAt ? trip : latest),
+    null,
+  );
+  if (!mostRecent) return false;
+  return (
+    mostRecent.purchasedItems.some((candidate) => matchesTripPairing(pantryItemId, name, storeId, candidate))
+    || (mostRecent.releasedItems ?? []).some((candidate) => matchesTripPairing(pantryItemId, name, storeId, candidate))
+  );
 }
 
 /** "Milk was already bought at Lidl." */

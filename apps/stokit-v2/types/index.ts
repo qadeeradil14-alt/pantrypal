@@ -169,6 +169,15 @@ export interface Trip {
   breakdown: TripStoreBreakdown[];
   /** Every item the user checked off as picked during this trip, regardless of whether a price was logged. */
   purchasedItems: TripPurchasedItem[];
+  /**
+   * Item/store pairings this trip had queued but never bought — the same
+   * pairings releaseStoreAssignment deactivates in the ledger at trip close.
+   * Kept here (durable, survives activeSession going null) so post-trip
+   * duplicate protection can still ask "was this pairing already handled by
+   * the trip that just closed" once the session itself is gone. Optional:
+   * absent on trips recorded before this field existed.
+   */
+  releasedItems?: TripPurchasedItem[];
   startedAt: number;
   completedAt: number;
   /** Trip duration in milliseconds. */

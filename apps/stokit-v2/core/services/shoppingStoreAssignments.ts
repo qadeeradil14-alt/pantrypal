@@ -116,7 +116,11 @@ export function mergeShoppingStoreAssignments(
     if (
       !existing ||
       assignment.updatedAt > existing.updatedAt ||
-      (assignment.updatedAt === existing.updatedAt && assignment.active && !existing.active)
+      // On an exact-timestamp tie, a deactivation always wins over an active
+      // record, regardless of which side (remote/local) is being compared
+      // against which — a stale device racing an equal-timestamp write can
+      // never resurrect an assignment the other side just released.
+      (assignment.updatedAt === existing.updatedAt && !assignment.active && existing.active)
     ) {
       byId.set(assignment.id, assignment);
     }

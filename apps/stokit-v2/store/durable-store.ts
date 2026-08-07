@@ -33,7 +33,7 @@ import {
   deactivateShoppingItemStores,
   mergeShoppingStoreAssignments,
 } from '../core/services/shoppingStoreAssignments';
-import { isAlreadyPurchasedThisTrip } from '../core/services/shoppingDuplicateGuard';
+import { isAlreadyPurchasedThisTrip, protectedByMostRecentClosedTrip } from '../core/services/shoppingDuplicateGuard';
 import { hasCompletedStopForStore } from '../core/shopping-machine';
 export type { StorageLocation as StorageLocationImport };
 import { uid, now, nextTimestamp } from '../core/services/id';
@@ -245,7 +245,8 @@ function snapshot(s: DurableState): DurableState {
 export const useDurableStore = create<DurableStore>((set, get) => {
   /**
    * Refuses to re-activate a store assignment for something already bought at
-   * that store on the running trip, unless the caller explicitly opted in.
+   * (or released unbought from) that store on the running trip, unless the
+   * caller explicitly opted in.
    *
    * assignShoppingItemToStore flips a deactivated assignment back to active
    * with no history awareness, so an accidental re-add silently resurrected a
@@ -253,6 +254,12 @@ export const useDurableStore = create<DurableStore>((set, get) => {
    * from ANY path — the UI asks first and passes allowRepurchase for a
    * deliberate "Add again". Planning data only: it never reopens the stop
    * itself, which stays governed by entryStopPlacement (OTA 442).
+   *
+   * isAlreadyPurchasedThisTrip only sees activeSession, which goes null the
+   * moment the trip that did the purchasing/releasing closes — so it alone
+   * only protects while a trip is running. protectedByMostRecentClosedTrip
+   * covers the window right after close, reading the same pairing durably
+   * off the most recently completed Trip instead.
    */
   const canAssignToStore = (
     pantryItemId: string,
@@ -261,7 +268,8 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     allowRepurchase?: boolean,
   ): boolean =>
     Boolean(allowRepurchase)
-    || !isAlreadyPurchasedThisTrip(get().activeSession, pantryItemId, name, storeId);
+    || (!isAlreadyPurchasedThisTrip(get().activeSession, pantryItemId, name, storeId)
+      && !protectedByMostRecentClosedTrip(get().trips, pantryItemId, name, storeId));
 
   /**
    * When reassigning an item to a new store mid-trip, retire any OTHER active
