@@ -45,6 +45,7 @@ import {
   clearDurable,
 } from '../core/repositories/durableRepository';
 import {
+  cancelPendingHouseholdPushes,
   clearCloudState,
   pushLocalState,
   refreshGeofencedStoreData,
@@ -64,7 +65,6 @@ import {
 import { isDuplicatePriceEntry, isValidPrice } from '../core/services/priceHistory';
 import { refreshWidgets } from '../core/services/widgets';
 import { findDuplicateStore } from '../core/services/storeDuplicates';
-import { createLatestSnapshotQueue } from '../core/services/latestSnapshotQueue';
 import { shoppingCapabilities } from '../core/services/shoppingAccess';
 import { changedFields, hasChangedFields } from '../core/services/changedFields';
 import { useHouseholdStore } from './household-store';
@@ -119,6 +119,29 @@ interface DurableStore extends DurableState {
   hydrated: boolean;
 
   hydrate: () => Promise<void>;
+  /**
+   * Force any debounced network push to fire immediately with a fresh
+   * snapshot. Local persistence (saveDurable) is never debounced — this only
+   * short-circuits the trailing wait before pushLocalState is called. Safe
+   * to call when nothing is pending (no-op).
+   *
+   * SYNCHRONOUS — only correct when called somewhere already known to be
+   * after the mutation's own persist() has finished its async saveDurable
+   * and armed the debounce timer (e.g. an unrelated later event like
+   * app-background or an explicit wake, which cannot run until prior
+   * microtasks — including that arming — have settled). Calling this
+   * immediately after your OWN persist() is a race: the timer isn't armed
+   * yet, so this sees nothing and no-ops. Use flushPendingPushAsync for that.
+   */
+  flushPendingPush: () => void;
+  /**
+   * Async counterpart of flushPendingPush: awaits the in-flight persistQueue
+   * (so saveDurable has completed and the debounce timer — if this mutation
+   * differed from the last pushed state — is actually armed) before flushing
+   * it. Use this right after persist() at a call site where the flush is
+   * needed immediately (trip/store completion, receipt completion, sign-out).
+   */
+  flushPendingPushAsync: () => Promise<void>;
 
   // Pantry
   addItem: (input: {
@@ -274,12 +297,59 @@ export const useDurableStore = create<DurableStore>((set, get) => {
 
   // is swallowed by the repository so the in-memory state stays authoritative.
   let persistQueue = Promise.resolve();
-  const snapshotPushQueue = createLatestSnapshotQueue(async ({ snap, epoch }: { snap: DurableState; epoch: number }) => {
-    if (epoch !== persistEpoch) return;
-    await pushLocalState(snap);
-  }, 400);
   let persistEpoch = 0;
   let lastSnapshotAt = 0;
+
+  // ── Debounced network push ──────────────────────────────────────────────
+  // saveDurable() below is never debounced — every mutation is durable
+  // immediately. Only pushLocalState (the network enqueue) is coalesced: a
+  // rapid burst of taps used to enqueue one full household snapshot per tap,
+  // each a round trip of the whole durable state. Trailing-debounce it so a
+  // burst produces one push shortly after it settles, capped so a sustained
+  // stream of edits still ships at least once a second.
+  const PUSH_DEBOUNCE_MS = 300;
+  const PUSH_DEBOUNCE_CAP_MS = 1_000;
+  let pushDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let pushDebounceFirstArmedAt = 0;
+
+  const runDebouncedPush = (epoch: number) => {
+    pushDebounceTimer = null;
+    pushDebounceFirstArmedAt = 0;
+    if (epoch !== persistEpoch) return;
+    // Read fresh at fire time — never the snapshot captured when the timer
+    // was (re)armed, which could be several taps stale by now.
+    void pushLocalState(snapshot(get())).catch((err) => {
+      if (__DEV__) console.warn('[durable-store] snapshot push failed', err);
+    });
+  };
+
+  const scheduleDebouncedPush = (epoch: number) => {
+    const nowMs = Date.now();
+    if (pushDebounceTimer === null) pushDebounceFirstArmedAt = nowMs;
+    else clearTimeout(pushDebounceTimer);
+    const elapsedSinceArm = nowMs - pushDebounceFirstArmedAt;
+    const waitMs = Math.min(PUSH_DEBOUNCE_MS, Math.max(0, PUSH_DEBOUNCE_CAP_MS - elapsedSinceArm));
+    pushDebounceTimer = setTimeout(() => runDebouncedPush(epoch), waitMs);
+  };
+
+  const flushPendingPush = () => {
+    if (pushDebounceTimer === null) return;
+    clearTimeout(pushDebounceTimer);
+    runDebouncedPush(persistEpoch);
+  };
+
+  // Await the CURRENT persistQueue reference now, synchronously, before any
+  // other code can run and reassign the `persistQueue` variable out from
+  // under us. persist() reassigns it synchronously (before any await), so a
+  // caller that invokes persist() and then immediately calls this function —
+  // with no intervening await — is guaranteed to be awaiting that persist()
+  // call's own chain: saveDurable() finishes, then scheduleDebouncedPush()
+  // arms the timer this then flushes. No polling, no fixed delay.
+  const flushPendingPushAsync = async (): Promise<void> => {
+    await persistQueue;
+    flushPendingPush();
+  };
+
   const persist = () => {
     // Monotonic snapshot version. It must never regress below the version this
     // device last published OR last applied from a peer — both of which live in
@@ -300,9 +370,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         if (epoch !== persistEpoch) return;
         await saveDurable(snap);
         if (epoch !== persistEpoch) return;
-        void snapshotPushQueue.enqueue({ snap, epoch }).catch((err) => {
-          if (__DEV__) console.warn('[durable-store] snapshot push failed', err);
-        });
+        scheduleDebouncedPush(epoch);
       })
       .catch((err) => { if (__DEV__) console.warn('[durable-store] persist failed', err); });
   };
@@ -343,6 +411,9 @@ export const useDurableStore = create<DurableStore>((set, get) => {
   return {
     ...emptyDurableState,
     hydrated: false,
+
+    flushPendingPush,
+    flushPendingPushAsync,
 
     hydrate: async () => {
       const loaded = await loadDurable();
@@ -888,6 +959,11 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         { tripId: trip.id }
       );
       persist();
+      // Trip/store completion (and any receipts committed with it) must not
+      // sit behind the debounce — the shopper expects this to sync now.
+      // Async: persist()'s own saveDurable + timer-arming hasn't happened
+      // yet at this point in the call stack — the sync flush would no-op.
+      void flushPendingPushAsync();
     },
 
     removeTrip: (tripId, receiptIds) => {
@@ -927,6 +1003,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
         closedTripIds: mergeTombstones(s.closedTripIds, [{ id: tripId, deletedAt: now() }]),
       }));
       persist();
+      void flushPendingPushAsync();
     },
 
     updateReceipt: (receiptId, patch) => {
@@ -1002,7 +1079,7 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     resetAll: async () => {
       persistEpoch += 1;
       await persistQueue;
-      await snapshotPushQueue.whenIdle();
+      cancelPendingHouseholdPushes();
       await clearCloudState();
       await clearDurable();
       set({ ...emptyDurableState, prefs: { ...defaultPrefs }, hydrated: true });
@@ -1010,9 +1087,14 @@ export const useDurableStore = create<DurableStore>((set, get) => {
     },
 
     resetLocalOnly: async () => {
+      // Await the flush BEFORE bumping persistEpoch — runDebouncedPush's own
+      // epoch guard would otherwise discard it as stale the instant epoch
+      // changes, and the still-armed timer (from a persist() whose
+      // saveDurable finished only just before sign-out) would never fire.
+      await flushPendingPushAsync();
       persistEpoch += 1;
       await persistQueue;
-      await snapshotPushQueue.whenIdle();
+      cancelPendingHouseholdPushes();
       await clearDurable();
       set({ ...emptyDurableState, prefs: { ...defaultPrefs }, hydrated: true });
       void refreshWidgets([]);

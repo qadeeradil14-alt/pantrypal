@@ -237,6 +237,12 @@ export default function RootLayout() {
   useEffect(() => {
     if (!user) return;
     const sub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'background' || nextState === 'inactive') {
+        // A debounced push must not be silently dropped by the OS suspending
+        // the app before the trailing wait elapses.
+        useDurableStore.getState().flushPendingPush();
+        return;
+      }
       if (nextState === 'active') {
         void (async () => {
           // Re-check auth state first — if the user confirmed their email on

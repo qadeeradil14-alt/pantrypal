@@ -104,7 +104,10 @@ test('a newer unrelated item snapshot cannot suppress a valid active trip', () =
 
 test('snapshot writes use compare-and-set instead of unconditional upsert', () => {
   const source = readFileSync(join(process.cwd(), 'core/services/syncEngine.ts'), 'utf8');
-  const push = source.slice(source.indexOf('export async function pushLocalState'), source.indexOf('export async function pullFromSupabase'));
+  // The CAS write now lives in performHouseholdPushAttempt (the household
+  // push coordinator's single-attempt worker); pushLocalState itself only
+  // enqueues onto the coordinator.
+  const push = source.slice(source.indexOf('async function performHouseholdPushAttempt'), source.indexOf('export async function pullFromSupabase'));
 
   assert.match(push, /mergeDurableSnapshotForPush\(remote, localSnapshot\)/);
   assert.match(push, /\.eq\('updated_at', remoteUpdatedAt\)/);

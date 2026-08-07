@@ -27,11 +27,12 @@ import path from 'node:path';
 
 const syncPath = path.join(__dirname, '../core/services/syncEngine.ts');
 const syncSrc = fs.readFileSync(syncPath, 'utf-8');
+const coordinatorSrc = fs.readFileSync(path.join(__dirname, '../core/services/householdPushCoordinator.ts'), 'utf-8');
 
 test('[Issue 3] snapshot push retries on failure instead of silently giving up once', () => {
-  assert.ok(/RETRY_ATTEMPTS\s*=\s*3/.test(syncSrc), 'a bounded retry count must be defined');
-  assert.ok(syncSrc.includes('for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++)'),
-    'pushLocalState must retry the upsert, not fail after a single attempt');
+  assert.ok(/CAS_ATTEMPTS = 6/.test(coordinatorSrc), 'a bounded conflict retry count must be defined');
+  assert.ok(coordinatorSrc.includes('for (let attempt = 1; attempt <= CAS_ATTEMPTS; attempt += 1)'),
+    'the household coordinator must retry CAS contention');
 });
 
 test('[Issue 3] receipt storage upload retries on failure instead of silently giving up once', () => {
@@ -58,16 +59,18 @@ test('[Issue 3 → reconnect flush] a failed push keeps retrying on capped backo
   // safe: a single timer (no stacking), capped exponential backoff (≤30s, so
   // no tight spin), re-reading fresh state, and cleared on the first success.
   // See offline-flush-retry.test.ts for the reconnect-recovery gate.
-  assert.ok(/function scheduleOfflineFlush\(\): void/.test(syncSrc),
-    'push failures must schedule a persistent backoff flush');
-  assert.ok(syncSrc.includes('if (pendingFlushTimer) return;'),
-    'only one flush timer may be pending at a time (no stacked/tight loop)');
-  assert.ok(/Math\.min\(pendingFlushDelayMs \* 2, FLUSH_MAX_DELAY_MS\)/.test(syncSrc),
+  assert.ok(coordinatorSrc.includes("outcome.type === 'network-failure'"),
+    'network failures must schedule a persistent backoff flush');
+  assert.ok(coordinatorSrc.includes('if (state.retryTimer) clearTimer(state.retryTimer);'),
+    'only one retry timer may be pending per household');
+  assert.ok(/Math\.min\(state\.offlineDelayMs \* 2, OFFLINE_MAX_DELAY_MS\)/.test(coordinatorSrc),
     'the retry delay must grow with a hard cap so it never becomes a tight loop');
-  assert.ok(syncSrc.includes('durableSnapshot(store.getState())'),
+  assert.ok(coordinatorSrc.includes('readLatestSnapshot(householdId)'),
     'the retry must re-read fresh current state, not resend the stale captured snapshot');
-  assert.ok(/clearOfflineFlush\(\);\s*\n\s*markPushed/.test(syncSrc),
-    'a successful push must stop the retry loop');
+  const installIndex = syncSrc.indexOf('applyRemotePatch');
+  const markIndex = syncSrc.indexOf('markPushed', installIndex);
+  assert.ok(installIndex > 0 && markIndex > installIndex,
+    'a successful push must durably install server state, then mark its echo');
 });
 
 test('[Issue 3] retried snapshot and upload writes remain idempotent', () => {

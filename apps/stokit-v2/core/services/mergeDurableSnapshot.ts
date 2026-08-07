@@ -96,7 +96,7 @@ function tombstones(entries: DurableState['deletedItems']): DurableState['delete
   return byId(entries);
 }
 
-function syncSignature(state: DurableState): string {
+export function durableStateSemanticFingerprint(state: DurableState): string {
   const items = byId(state.items);
   const activeSession = state.activeSession ? {
     ...state.activeSession,
@@ -125,5 +125,5 @@ function syncSignature(state: DurableState): string {
 }
 
 export function hasLocalSyncContribution(remote: DurableState, local: DurableState): boolean {
-  return syncSignature(mergeDurableSnapshotForPush(remote, local)) !== syncSignature(remote);
+  return durableStateSemanticFingerprint(mergeDurableSnapshotForPush(remote, local)) !== durableStateSemanticFingerprint(remote);
 }
