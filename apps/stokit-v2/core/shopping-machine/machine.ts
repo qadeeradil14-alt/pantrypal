@@ -591,7 +591,15 @@ export function reduce(
 
     case 'REMOVE_ENTRY': {
       if (session.status !== 'shopping_store') return session;
-      if (!session.entries.some((e) => e.entryId === event.entryId)) return session;
+      const target = session.entries.find((e) => e.entryId === event.entryId);
+      if (!target) return session;
+      // A picked entry represents a completed purchase. Silently dropping it
+      // here (e.g. as a sibling-occurrence cleanup) removed it from
+      // buildTrip's purchasedItems, which then let the completed-trip
+      // assignment-release logic (OTA 468) treat it as unpurchased — the
+      // item resurfaced Low + unassigned in "Choose store" despite having
+      // been bought. Removal must go through an explicit unpick first.
+      if (target.picked) return session;
       const entries = session.entries.filter((e) => e.entryId !== event.entryId);
       const removedEntryIds = session.removedEntryIds.includes(event.entryId)
         ? session.removedEntryIds

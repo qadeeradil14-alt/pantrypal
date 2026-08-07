@@ -191,23 +191,46 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     if (event.type === 'REMOVE_ENTRY') {
       const removedEntry = prev.entries.find((entry) => entry.entryId === event.entryId);
       const durableItem = durable.items.find((item) => item.id === removedEntry?.pantryItemId);
-      if (removedEntry) {
+      // Mirrors the reducer's own guard (REMOVE_ENTRY no-ops on a picked
+      // entry): this block calls the atomic-removal durable action directly,
+      // so without this check it would still tombstone/null-out a picked
+      // purchase even though `next` (the reducer's output) never dropped it.
+      // Exception: a legacy bare-entryId occurrence being permanently
+      // deleted from the pantry (entryId === pantryItemId, restricted
+      // capability) must still go through — deleting the item outright is a
+      // stronger, deliberate action than merely unlisting it from the trip.
+      // This mirrors atomicShoppingRemovalPatch's own deletesPantryItem
+      // condition exactly. The separate deleteItem action (durable-store.ts)
+      // is unrelated and unaffected either way.
+      const isFullPantryItemDeletion = !capabilities.canChangePickedState &&
+        !!removedEntry && removedEntry.entryId === removedEntry.pantryItemId;
+      if (removedEntry && (!removedEntry.picked || isFullPantryItemDeletion)) {
         const siblingEntries = !capabilities.canChangePickedState &&
           removedEntry.entryId === removedEntry.pantryItemId
           ? next.entries.filter(
               (entry) => entry.pantryItemId === removedEntry.pantryItemId && !entry.picked,
             )
           : [];
-        if (siblingEntries.length) {
+        // The reducer no-ops REMOVE_ENTRY on a picked entry, so `next` still
+        // contains it here. For a genuine full pantry-item deletion, the
+        // item itself is about to be deleted below — a picked session entry
+        // that then points at a deleted item would surface as a phantom
+        // purchasedItem at FINISH_TRIP with no backing pantry item. Strip it
+        // the same way the (already-unpicked) sibling entries are stripped.
+        // An unpicked removedEntry was already dropped by the reducer, so
+        // this only ever adds work for the picked case.
+        const idsToStrip = isFullPantryItemDeletion && removedEntry.picked
+          ? [...siblingEntries.map((entry) => entry.entryId), removedEntry.entryId]
+          : siblingEntries.map((entry) => entry.entryId);
+        if (idsToStrip.length) {
           const removedAt = event.now ?? Date.now();
-          const siblingIds = siblingEntries.map((entry) => entry.entryId);
           next = {
             ...next,
-            entries: next.entries.filter((entry) => !siblingIds.includes(entry.entryId)),
-            removedEntryIds: [...new Set([...next.removedEntryIds, ...siblingIds])],
+            entries: next.entries.filter((entry) => !idsToStrip.includes(entry.entryId)),
+            removedEntryIds: [...new Set([...next.removedEntryIds, ...idsToStrip])],
             removedAt: {
               ...(next.removedAt ?? {}),
-              ...Object.fromEntries(siblingIds.map((entryId) => [entryId, removedAt])),
+              ...Object.fromEntries(idsToStrip.map((entryId) => [entryId, removedAt])),
             },
           };
         }
