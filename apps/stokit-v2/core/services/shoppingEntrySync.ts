@@ -282,7 +282,13 @@ export function mergeShoppingEntries(
     byId.set(entry.entryId, mergedEntry);
   }
   return Array.from(byId.values())
-    .filter((entry) => !removedEntryIds.includes(entry.entryId))
+    // A picked entry is completion evidence and must never be deleted solely
+    // because a peer contributed this entryId to removedEntryIds — that peer
+    // may be a stale snapshot taken before the pick happened. `entry.picked`
+    // here is the ALREADY-MERGED flag (resolveTimedFlag ran above), so a
+    // legitimate later unpick (newer pickedAt=false) still resolves to
+    // picked:false and the tombstone still applies normally.
+    .filter((entry) => entry.picked || !removedEntryIds.includes(entry.entryId))
     .sort((a, b) => a.entryId.localeCompare(b.entryId));
 }
 /**

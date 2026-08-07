@@ -37,11 +37,14 @@ test('a legitimate later unpick with a newer pickedAt still wins', () => {
   assert.equal(merged[0].pickedAt, 900);
 });
 
-test('tombstone/removal still wins over any addedAt or flag state', () => {
+test('tombstone/removal wins over an unpicked entry, but a picked entry survives a stale peer tombstone', () => {
+  // Track A fix: a tombstone contributed by a stale peer must never delete a
+  // locally picked entry — the peer may not have observed the pick yet.
   const local = [entry({ addedAt: 100, picked: true, pickedAt: 500 })];
   const remote = [entry({ addedAt: 200, picked: false })];
   const merged = mergeShoppingEntries(local, remote, ['occ:1']);
-  assert.equal(merged.length, 0);
+  assert.equal(merged.length, 1, 'a picked entry is completion evidence and survives the tombstone');
+  assert.equal(merged[0].picked, true);
 });
 
 test('outOfStock resolves independently of picked across an addedAt asymmetry', () => {
@@ -124,9 +127,14 @@ test('cross-stop, STRICTLY DIFFERING addedAt: OTA 429 wholesale-winner behavior 
   assert.deepEqual(fwd, rev, 'strictly-differing addedAt cross-stop is already order-independent');
 });
 
-test('cross-stop, EQUAL addedAt: a tombstoned entryId is still dropped', () => {
+test('cross-stop, EQUAL addedAt: a tombstoned entryId is dropped only when unpicked', () => {
   const local = entry({ stopId: 'stop:1', addedAt: 100, picked: true, pickedAt: 500 });
   const remote = entry({ stopId: 'stop:2', addedAt: 100, picked: false });
   const merged = mergeShoppingEntries([local], [remote], ['occ:1']);
-  assert.equal(merged.length, 0, 'tombstone wins regardless of the cross-stop tie-break path');
+  assert.equal(merged.length, 1, 'a picked entry survives the tombstone regardless of the cross-stop tie-break path');
+  assert.equal(merged[0].picked, true);
+
+  const unpickedLocal = entry({ stopId: 'stop:1', addedAt: 100, picked: false });
+  const unpickedMerged = mergeShoppingEntries([unpickedLocal], [remote], ['occ:1']);
+  assert.equal(unpickedMerged.length, 0, 'an unpicked entry is still dropped by the tombstone');
 });
