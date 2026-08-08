@@ -241,13 +241,18 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     // Commit to durable state exactly once when trip_summary is reached.
     if (next.status === 'trip_summary' && prev.status !== 'trip_summary' && next.completedTrip) {
       const pickedEntries = next.entries.filter((entry) => entry.picked);
-      const pickedItemIds = new Set(pickedEntries.map((entry) => entry.pantryItemId));
-      // Every (item, store) pairing this trip never bought, keyed off the
-      // trip's own entries rather than item.storeId — see releaseStoreAssignment
-      // below for why that distinction matters for the ledger.
+      // Every (item, store) pairing this trip never bought, keyed off each
+      // entry's OWN picked state — not pantryItemId membership in
+      // pickedEntries. The same item can have a separate entry per store
+      // within one trip (e.g. picked at Store A, still pending at Store B);
+      // classifying by item alone wrongly swept the still-pending Store B
+      // entry into "picked" and left its assignment permanently active,
+      // since neither clearShoppingEntries (below) nor this release ever
+      // reaches it — and it never lands in Trip.releasedItems either, so
+      // post-trip protection has nothing to consult for that pairing.
       const releasedEntries = next.entries.filter(
         (entry) =>
-          !pickedItemIds.has(entry.pantryItemId) &&
+          !entry.picked &&
           entry.pantryItemId !== '__quick_scan__',
       );
 

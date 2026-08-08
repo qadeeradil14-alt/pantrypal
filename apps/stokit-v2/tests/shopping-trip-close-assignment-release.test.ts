@@ -99,16 +99,31 @@ function releaseStoreAssignment(w: World, pantryItemId: string, storeId: string)
   };
 }
 
-/** session-store.ts trip_summary commit block, post-fix. */
+/**
+ * session-store.ts trip_summary commit block, post OTA-453 fix.
+ *
+ * Classifies each entry by its OWN `picked` state, not by whether its
+ * pantryItemId appears anywhere in the picked set. The same item can carry a
+ * separate entry per store within one trip (picked at Store A, still pending
+ * at Store B) — item-level classification wrongly swept the pending Store B
+ * entry into "picked" and left its assignment permanently active, since
+ * neither clearShoppingEntries nor releaseStoreAssignment ever reached it.
+ */
 function tripSummaryCleanup(w: World, next: ShoppingSession): World {
   const picked = next.entries.filter((e) => e.picked);
+  const released = next.entries.filter((e) => !e.picked && e.pantryItemId !== '__quick_scan__');
   let out = clearShoppingEntries(w, picked.map((e) => ({ pantryItemId: e.pantryItemId, storeId: e.storeId })));
-  const pickedItemIds = new Set(picked.map((e) => e.pantryItemId));
-  for (const e of next.entries) {
-    if (pickedItemIds.has(e.pantryItemId) || e.pantryItemId === '__quick_scan__') continue;
+  for (const e of released) {
     out = releaseStoreAssignment(out, e.pantryItemId, e.storeId);
   }
   return out;
+}
+
+/** The Trip.releasedItems this same commit block now records, post-fix. */
+function tripReleasedItems(next: ShoppingSession) {
+  return next.entries
+    .filter((e) => !e.picked && e.pantryItemId !== '__quick_scan__')
+    .map((e) => ({ itemId: e.pantryItemId, name: e.name, storeId: e.storeId, price: 0 }));
 }
 
 /** session-store.ts store_summary block (per-stop, unchanged by this fix). */
@@ -456,6 +471,147 @@ test('session-store releases unbought trip entries instead of only nulling item.
   assert.match(block, /durable\.releaseStoreAssignment\(entry\.pantryItemId, entry\.storeId\)/);
   assert.doesNotMatch(block, /updateItem\(item\.id, \{ storeId: null \}\)/,
     'the ledger-blind storeId-only write must not come back');
-  assert.match(block, /!pickedItemIds\.has\(entry\.pantryItemId\)/,
-    'items bought somewhere on the trip stay with clearShoppingEntries');
+  assert.match(block, /!entry\.picked/,
+    'each entry must be classified by its OWN picked state');
+  assert.doesNotMatch(block, /pickedItemIds\.has\(entry\.pantryItemId\)/,
+    'item-level membership must not decide which entries get released — the same ' +
+    'item can have a separate, still-pending entry at a different store in the same trip');
+});
+
+// ── 18-25. OTA 453: same item, two stores, one trip — per-entry classification ──
+//
+// Two-device SyncDiag proof (owner + member logs, trip t_1786226031075):
+// eggs-equivalent items picked at Store A stayed correctly cleared, but a
+// SEPARATE, still-pending entry for the same pantryItemId at Store B
+// (store_msgkppgg_1z) was excluded from release because its item was already
+// in pickedItemIds from the Store A entry. B's assignment stayed active
+// through clearShoppingEntries's before/after (verified byte-identical for
+// that record) and was never recorded in Trip.releasedItems, so
+// protectedByMostRecentClosedTrip had nothing to consult either. The member
+// device's later full_apply then carried that stale active B assignment
+// over from the owner. Fixed by classifying each entry by its own `picked`
+// flag instead of pantryItemId membership.
+
+/** Eggs needed at both A and B; picked at A, left pending at B; trip closes. */
+function runSameItemTwoStoresScenario() {
+  let world: World = { items: [mk('eggs', 'Eggs', A)], assignments: [] };
+  world = { ...world, assignments: assignShoppingItemToStore(world.assignments, 'eggs', A, tick()) };
+  world = { ...world, assignments: assignShoppingItemToStore(world.assignments, 'eggs', B, tick()) };
+
+  let session = reduce(initialSession, {
+    type: 'START_TRIP', now: tick(), shopperId: 'owner',
+    entries: shoppingEntryDraftsFromAssignments(world.items, world.assignments),
+  });
+
+  ({ session, world } = completeStop(session, world, A, 5)); // eggs picked + bought at A
+  session = reduce(session, { type: 'CHOOSE_NEXT_STORE', storeId: B });
+  // At B, eggs is NOT picked — the shopper skips buying it there this trip.
+  session = reduce(session, { type: 'FINISH_STORE', now: tick() });
+  session = reduce(session, { type: 'SKIP_RECEIPT', now: tick() });
+  world = stopCleanup(world, session); // no-op: nothing picked at B's stop
+
+  session = reduce(session, { type: 'FINISH_TRIP', now: tick() });
+  const releasedItems = tripReleasedItems(session);
+  world = tripSummaryCleanup(world, session);
+  session = reduce(session, { type: 'END_TRIP' });
+
+  return { session, world, releasedItems };
+}
+
+test('18. same item at Store A (picked) and Store B (unpicked) in one trip: B assignment is deactivated', () => {
+  const { world } = runSameItemTwoStoresScenario();
+  const eggs = world.items.find((i) => i.id === 'eggs')!;
+  assert.deepEqual(
+    activeShoppingStoreIds(eggs, world.assignments), [],
+    'THE FIX: the still-pending B entry is no longer wrongly excluded from release',
+  );
+});
+
+test('19. the B pairing is recorded in Trip.releasedItems', () => {
+  const { releasedItems } = runSameItemTwoStoresScenario();
+  assert.deepEqual(
+    releasedItems.map((r) => ({ itemId: r.itemId, storeId: r.storeId })),
+    [{ itemId: 'eggs', storeId: B }],
+    'B must be recorded so protectedByMostRecentClosedTrip has something to consult',
+  );
+});
+
+test('20. the A pairing (picked) is NOT recorded in Trip.releasedItems', () => {
+  const { releasedItems } = runSameItemTwoStoresScenario();
+  assert.ok(
+    !releasedItems.some((r) => r.storeId === A),
+    'a store where the item was actually bought must not appear as released',
+  );
+});
+
+test('21. the A pairing (picked) stays deactivated — bought, not reopened', () => {
+  const { world } = runSameItemTwoStoresScenario();
+  // Status/storeId bookkeeping around a same-item-two-stores close is a
+  // separate, pre-existing concern (out of scope — this fix only changes
+  // WHICH entries get released, not clearShoppingEntries' own status logic).
+  // What must hold is that A's own assignment record — the one this fix
+  // must never touch — stays exactly as clearShoppingEntries left it: bought.
+  const eggsAtA = world.assignments.find((a) => a.pantryItemId === 'eggs' && a.storeId === A);
+  assert.equal(eggsAtA?.active, false, 'A remains treated as purchased — the trip did buy it');
+  assert.equal(world.items.find((i) => i.id === 'eggs')!.storeId, null);
+});
+
+test('22. no ghost plan is rebuilt for either store after this trip closes', () => {
+  const { world } = runSameItemTwoStoresScenario();
+  assert.deepEqual(shoppingEntryDraftsFromAssignments(world.items, world.assignments), []);
+});
+
+test('23. single-store picked case is unchanged (regression guard)', () => {
+  let world: World = { items: [mk('milk', 'Milk', A)], assignments: [] };
+  world = { ...world, assignments: assignShoppingItemToStore(world.assignments, 'milk', A, tick()) };
+  let session = reduce(initialSession, {
+    type: 'START_TRIP', now: tick(), shopperId: 'owner',
+    entries: shoppingEntryDraftsFromAssignments(world.items, world.assignments),
+  });
+  ({ session, world } = completeStop(session, world, A, 4));
+  session = reduce(session, { type: 'FINISH_TRIP', now: tick() });
+  const releasedItems = tripReleasedItems(session);
+  world = tripSummaryCleanup(world, session);
+
+  const milk = world.items.find((i) => i.id === 'milk')!;
+  assert.equal(milk.status, 'stocked');
+  assert.deepEqual(activeShoppingStoreIds(milk, world.assignments), []);
+  assert.deepEqual(releasedItems, [], 'a fully-picked single-store trip releases nothing');
+});
+
+test('24. single-store unpicked case is unchanged (regression guard)', () => {
+  let world: World = { items: [mk('bread', 'Bread', A)], assignments: [] };
+  world = { ...world, assignments: assignShoppingItemToStore(world.assignments, 'bread', A, tick()) };
+  let session = reduce(initialSession, {
+    type: 'START_TRIP', now: tick(), shopperId: 'owner',
+    entries: shoppingEntryDraftsFromAssignments(world.items, world.assignments),
+  });
+  session = reduce(session, { type: 'FINISH_STORE', now: tick() });
+  session = reduce(session, { type: 'SKIP_RECEIPT', now: tick() });
+  session = reduce(session, { type: 'FINISH_TRIP', now: tick() });
+  const releasedItems = tripReleasedItems(session);
+  world = tripSummaryCleanup(world, session);
+
+  const bread = world.items.find((i) => i.id === 'bread')!;
+  assert.equal(bread.status, 'low', 'never bought, so it must NOT be marked stocked');
+  assert.deepEqual(activeShoppingStoreIds(bread, world.assignments), []);
+  assert.deepEqual(
+    releasedItems.map((r) => ({ itemId: r.itemId, storeId: r.storeId })),
+    [{ itemId: 'bread', storeId: A }],
+  );
+});
+
+test('25. two-device replay of the exact SyncDiag scenario: Store B is inactive on both devices post-close', () => {
+  const owner = runSameItemTwoStoresScenario();
+  const member = runSameItemTwoStoresScenario();
+  for (const { world } of [owner, member]) {
+    const eggs = world.items.find((i) => i.id === 'eggs')!;
+    assert.deepEqual(activeShoppingStoreIds(eggs, world.assignments), [],
+      'Store B must never be active post-close on either replica');
+  }
+  assert.deepEqual(
+    owner.world.assignments.filter((a) => a.active).map((a) => a.id),
+    member.world.assignments.filter((a) => a.active).map((a) => a.id),
+    'owner and member converge on the same (empty) active-assignment set',
+  );
 });
