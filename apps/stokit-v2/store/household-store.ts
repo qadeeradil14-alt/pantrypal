@@ -12,8 +12,13 @@ import {
 import type { HouseholdIdentity, HouseholdMember } from '../types';
 import { createAvatarSignedUrl } from '../core/services/profileAvatar';
 import { setSyncDiagIdentity } from '../core/services/syncDiag'; // DIAG: temporary — remove after OTA 389/390 investigation
+import { withTimeout } from '../core/services/withTimeout';
 
 const STORAGE_KEY = 'stokit:v2:household';
+// Matches PULL_TIMEOUT_MS in syncEngine.ts. This RPC gates app-boot hydration
+// (durableStore.hydrate -> startSyncEngine -> householdId -> ensureHousehold),
+// so an unbounded call here can hang the splash screen forever on weak networks.
+const RPC_TIMEOUT_MS = 10_000;
 let householdChannel: ReturnType<typeof supabase.channel> | null = null;
 let subscribedHouseholdId: string | null = null;
 let profileChannel: ReturnType<typeof supabase.channel> | null = null;
@@ -126,7 +131,7 @@ async function applyPayload(payload: HouseholdPayload | null, set: (state: Parti
 }
 
 async function rpc(name: string, args?: Record<string, string>): Promise<HouseholdPayload | null> {
-  const { data, error } = await supabase.rpc(name, args);
+  const { data, error } = await withTimeout(supabase.rpc(name, args), RPC_TIMEOUT_MS);
   if (error) throw error;
   return data as HouseholdPayload;
 }

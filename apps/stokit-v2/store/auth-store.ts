@@ -10,6 +10,7 @@ import { useSessionStore } from './session-store';
 import { stopSyncEngine } from '../core/services/syncEngine';
 import { clearReceiptImages } from '../core/services/receiptImages';
 import { isExistingAccountSignUpResponse, isAccountDeletedError } from '../core/services/authResponses';
+import { withTimeout } from '../core/services/withTimeout';
 
 type AuthResult =
   | { ok: true; next?: 'VERIFY_EMAIL' | 'SIGN_IN' }
@@ -22,6 +23,11 @@ type DeleteAccountResult =
 // Only a deliberate user sign-out should navigate to the welcome screen.
 let _explicitSignOut = false;
 let _signUpInProgress = false;
+
+// Matches PULL_TIMEOUT_MS in syncEngine.ts. This gates the INITIAL_SESSION
+// recovery path, which runs before `initializing` can go false — an
+// unbounded call here can hang the splash screen forever on weak networks.
+const AUTH_REFRESH_TIMEOUT_MS = 10_000;
 
 const AUTH_REDIRECT_URL = `${Constants.expoConfig?.scheme ?? 'pantrypal'}://auth/callback`;
 
@@ -437,17 +443,30 @@ supabase.auth.onAuthStateChange(async (event, session) => {
         if (backup?.refresh_token) {
           if (__DEV__) console.log('[Auth] Backup found. Attempting token refresh...');
 
-          // Attempt a fresh session via the stored refresh token.
-          const { data, error } = await supabase.auth.refreshSession({
-            refresh_token: backup.refresh_token,
-          });
+          // Attempt a fresh session via the stored refresh token. Bounded so a
+          // stalled network request falls through to the cached-user fallback
+          // below instead of leaving `initializing` true forever.
+          let refreshData: { session: Session | null } | null = null;
+          let refreshFailed = false;
+          try {
+            const { data, error } = await withTimeout(
+              supabase.auth.refreshSession({ refresh_token: backup.refresh_token }),
+              AUTH_REFRESH_TIMEOUT_MS,
+            );
+            refreshData = data;
+            refreshFailed = Boolean(error);
+          } catch (timeoutOrNetworkError) {
+            if (__DEV__) console.warn('[Auth] refreshSession timed out or failed:', timeoutOrNetworkError);
+            refreshFailed = true;
+          }
 
-          if (!error && data.session) {
+          if (!refreshFailed && refreshData && refreshData.session) {
+            const session = refreshData.session;
             if (__DEV__) console.log('[Auth] Recovery via refresh succeeded.');
-            saveBackup(data.session);
+            saveBackup(session);
             useAuthStore.setState({
-              session: data.session,
-              user: data.session.user,
+              session,
+              user: session.user,
               loading: false,
               initializing: false,
               pendingEmail,
@@ -456,7 +475,7 @@ supabase.auth.onAuthStateChange(async (event, session) => {
             return;
           }
 
-          // Refresh failed (offline, or refresh token revoked/expired).
+          // Refresh failed (offline, timed out, or refresh token revoked/expired).
           // Keep the user logged in with the cached user object so they can
           // use the app. Supabase will auto-refresh when connectivity returns.
           if (backup.user) {
