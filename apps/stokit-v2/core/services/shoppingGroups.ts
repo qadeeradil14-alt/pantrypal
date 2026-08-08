@@ -23,6 +23,7 @@ import type {
   PantryItem,
   ShoppingEntry,
   ShoppingStoreAssignment,
+  Trip,
   Unit,
 } from '../../types';
 import { stopIdForQueueIndex, type ShoppingSession } from '../shopping-machine';
@@ -75,6 +76,7 @@ export function shoppingGroups(
   session: Pick<ShoppingSession, 'status' | 'tripId' | 'storeQueue' | 'entries'>,
   items: PantryItem[],
   assignments?: ShoppingStoreAssignment[],
+  trips?: Trip[],
 ): ShoppingGroup[] {
   if (isTripActive(session)) {
     const groups: ShoppingGroup[] = [];
@@ -94,7 +96,7 @@ export function shoppingGroups(
 
   const order: string[] = [];
   const byStore = new Map<string, ShoppingGroupItem[]>();
-  for (const entry of shoppingEntryDraftsFromAssignments(items, assignments)) {
+  for (const entry of shoppingEntryDraftsFromAssignments(items, assignments, trips)) {
     if (!byStore.has(entry.storeId)) {
       byStore.set(entry.storeId, []);
       order.push(entry.storeId);

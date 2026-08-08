@@ -2,8 +2,10 @@ import type {
   PantryItem,
   ShoppingEntryDraft,
   ShoppingStoreAssignment,
+  Trip,
 } from '../../types';
 import { nextTimestamp } from './id';
+import { releasedByMostRecentClosedTrip } from './shoppingDuplicateGuard';
 
 export function shoppingStoreAssignmentId(
   pantryItemId: string,
@@ -34,9 +36,26 @@ export function assignShoppingItemToStore(
   ];
 }
 
+/**
+ * Which stores this item is currently wanted at.
+ *
+ * `trips` is optional and purely suppressive: when supplied, an item the most
+ * recently completed trip already settled is not treated as a live shopping
+ * need. Omitting it preserves the original behaviour exactly, so call sites
+ * that are not deriving the shopping plan (and tests asserting raw ledger
+ * semantics) are unaffected.
+ *
+ * An ACTIVE assignment always wins and is never suppressed — it is the
+ * explicit user intent signal. Only addItem / assignItemsToStore create one,
+ * and both already run canAssignToStore, which requires the user's "Add again"
+ * (allowRepurchase) confirmation to re-assign something the last trip settled.
+ * So re-adding an item immediately restores it here, with no waiting for the
+ * next trip to close.
+ */
 export function activeShoppingStoreIds(
   item: PantryItem,
   assignments: ShoppingStoreAssignment[] | undefined,
+  trips?: Trip[],
 ): string[] {
   const itemAssignments = (assignments ?? [])
     .filter((assignment) => assignment.pantryItemId === item.id);
@@ -44,7 +63,14 @@ export function activeShoppingStoreIds(
     .filter((assignment) => assignment.active)
     .sort((a, b) => a.updatedAt - b.updatedAt || a.id.localeCompare(b.id))
     .map((assignment) => assignment.storeId);
-  if (itemAssignments.length > 0) return [...new Set(assigned)];
+  // Explicit, current intent — always authoritative.
+  if (assigned.length > 0) return [...new Set(assigned)];
+  // Nothing active: this item would only be "wanted" by derivation from its
+  // pantry status. If the last trip already settled it, that is an echo of the
+  // closed trip, not a new need — suppress it from both the unassigned bucket
+  // and the legacy item.storeId fallback below.
+  if (releasedByMostRecentClosedTrip(trips, item.id, item.name)) return [];
+  if (itemAssignments.length > 0) return [];
   return item.storeId ? [item.storeId] : [];
 }
 
@@ -91,11 +117,12 @@ export function deactivateShoppingItemStores(
 export function shoppingEntryDraftsFromAssignments(
   items: PantryItem[],
   assignments: ShoppingStoreAssignment[] | undefined,
+  trips?: Trip[],
 ): ShoppingEntryDraft[] {
   return items
     .filter((item) => item.status === 'low' || item.status === 'expiring')
     .flatMap((item) =>
-      activeShoppingStoreIds(item, assignments).map((storeId) => ({
+      activeShoppingStoreIds(item, assignments, trips).map((storeId) => ({
         pantryItemId: item.id,
         name: item.name,
         quantity: item.quantity,

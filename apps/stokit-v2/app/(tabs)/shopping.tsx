@@ -92,6 +92,7 @@ import {
   activeShoppingStoreIds,
   shoppingEntryDraftsFromAssignments,
 } from '../../core/services/shoppingStoreAssignments';
+import { releasedByMostRecentClosedTrip } from '../../core/services/shoppingDuplicateGuard';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -267,22 +268,27 @@ export default function ShoppingScreen() {
 
   const plan = useMemo(() => {
     const byStore = new Map<string, ShoppingEntryDraft[]>();
-    for (const entry of shoppingEntryDraftsFromAssignments(items, shoppingStoreAssignments)) {
+    for (const entry of shoppingEntryDraftsFromAssignments(items, shoppingStoreAssignments, trips)) {
       const list = byStore.get(entry.storeId) ?? [];
       list.push(entry);
       byStore.set(entry.storeId, list);
     }
     byStore.forEach((list) => list.sort((a, b) => a.name.localeCompare(b.name)));
     return byStore;
-  }, [items, shoppingStoreAssignments]);
+  }, [items, shoppingStoreAssignments, trips]);
 
+  // `trips` suppresses items the most recent completed trip already settled —
+  // otherwise a released (still-`low`) item reappears here as a brand-new
+  // "Choose store" need the instant the trip closes. Re-adding it explicitly
+  // creates an active assignment, which is never suppressed.
   const unassigned = useMemo(
     () => items.filter(
       (item) =>
         (item.status === 'low' || item.status === 'expiring') &&
-        activeShoppingStoreIds(item, shoppingStoreAssignments).length === 0,
+        activeShoppingStoreIds(item, shoppingStoreAssignments, trips).length === 0 &&
+        !releasedByMostRecentClosedTrip(trips, item.id, item.name),
     ),
-    [items, shoppingStoreAssignments],
+    [items, shoppingStoreAssignments, trips],
   );
   const unassignedCount = unassigned.length;
 
@@ -296,6 +302,7 @@ export default function ShoppingScreen() {
     const entriesByAssignment = shoppingEntryDraftsFromAssignments(
       items,
       shoppingStoreAssignments,
+      trips,
     );
     const byStore = new Map<string, ShoppingEntryDraft[]>();
     for (const entry of entriesByAssignment) {
@@ -464,7 +471,7 @@ export default function ShoppingScreen() {
   // While a trip is running the session's occurrences are the source of truth,
   // so the same pantry item can appear under every stop it was assigned to.
   // Idle falls back to the pantry-derived plan. See shoppingGroups.
-  const planGroups  = shoppingGroups(session, items, shoppingStoreAssignments);
+  const planGroups  = shoppingGroups(session, items, shoppingStoreAssignments, trips);
   const totalItems  = planGroups.reduce((n, group) => n + group.items.length, 0);
   const singleStore = planGroups.length === 1 ? storeById(planGroups[0].storeId) : undefined;
 

@@ -191,6 +191,30 @@ function matchesTripPairing(
 }
 
 /**
+ * Store-agnostic counterpart to matchesTripPairing — "is this the same thing",
+ * ignoring which store the trip settled it at. Uses the same id-preferred,
+ * name-fallback identity, with a constant store placeholder so storeId cannot
+ * participate in the comparison.
+ */
+function matchesTripItem(
+  pantryItemId: string,
+  name: string,
+  candidate: TripPurchasedItem,
+): boolean {
+  const ANY_STORE = '';
+  return shoppingDuplicateKey(candidate.itemId, candidate.name, ANY_STORE)
+    === shoppingDuplicateKey(pantryItemId, name, ANY_STORE);
+}
+
+function mostRecentClosedTrip(trips: Trip[] | undefined): Trip | null {
+  if (!trips || trips.length === 0) return null;
+  return trips.reduce<Trip | null>(
+    (latest, trip) => (!latest || trip.completedAt > latest.completedAt ? trip : latest),
+    null,
+  );
+}
+
+/**
  * Post-close counterpart to isAlreadyPurchasedThisTrip.
  *
  * activeSession goes null (or moves on to the next trip) moments after a
@@ -213,15 +237,54 @@ export function protectedByMostRecentClosedTrip(
   name: string,
   storeId: string,
 ): boolean {
-  if (!trips || trips.length === 0) return false;
-  const mostRecent = trips.reduce<Trip | null>(
-    (latest, trip) => (!latest || trip.completedAt > latest.completedAt ? trip : latest),
-    null,
-  );
+  const mostRecent = mostRecentClosedTrip(trips);
   if (!mostRecent) return false;
   return (
     mostRecent.purchasedItems.some((candidate) => matchesTripPairing(pantryItemId, name, storeId, candidate))
     || (mostRecent.releasedItems ?? []).some((candidate) => matchesTripPairing(pantryItemId, name, storeId, candidate))
+  );
+}
+
+/**
+ * Item-scoped counterpart to protectedByMostRecentClosedTrip: "did the most
+ * recently completed trip already settle this item, at ANY store?"
+ *
+ * Exists because post-trip shopping state is re-derived from pantry
+ * eligibility. releaseStoreAssignment deliberately keeps an unbought item at
+ * `low`/`expiring` (you still need it) while nulling its store, so the plan
+ * derivation immediately reconstructed it as a brand-new "Choose store" need —
+ * and, for items that never had a ledger record, as a row under the store the
+ * trip just finished (via activeShoppingStoreIds' legacy item.storeId
+ * fallback). Neither is current shopping intent; both are echoes of the trip
+ * that just closed.
+ *
+ * Covers BOTH sides the trip settled — `releasedItems` (left unbought) and
+ * `purchasedItems` (bought) — because either way that trip is done with the
+ * item. Store-agnostic on purpose: the derivation paths that consult this have
+ * no store in hand (an unassigned item has none, and the legacy fallback is
+ * exactly the case where the ledger has nothing to name one).
+ *
+ * Scoped to the single most recent trip, like protectedByMostRecentClosedTrip,
+ * so suppression self-expires as soon as another trip completes. It is also
+ * bypassed immediately — without waiting for that — by any ACTIVE assignment
+ * record, which only an explicit user assignment can create (addItem /
+ * assignItemsToStore, both already gated by canAssignToStore + the user's
+ * "Add again" allowRepurchase confirmation). See activeShoppingStoreIds.
+ *
+ * Never mutates, and never changes pantry status: the item stays `low` in the
+ * pantry exactly as before — it simply stops being treated as a live shopping
+ * need until the user says so.
+ */
+export function releasedByMostRecentClosedTrip(
+  trips: Trip[] | undefined,
+  pantryItemId: string,
+  name: string,
+): boolean {
+  const mostRecent = mostRecentClosedTrip(trips);
+  if (!mostRecent) return false;
+  return (
+    mostRecent.purchasedItems.some((candidate) => matchesTripItem(pantryItemId, name, candidate))
+    || (mostRecent.releasedItems ?? []).some((candidate) => matchesTripItem(pantryItemId, name, candidate))
   );
 }
 
