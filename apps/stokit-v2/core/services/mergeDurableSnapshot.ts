@@ -100,6 +100,47 @@ function tombstones(entries: DurableState['deletedItems']): DurableState['delete
   return byId(entries);
 }
 
+/**
+ * JSON.stringify with every object's keys sorted, recursively.
+ *
+ * Root cause this exists for: Postgres `jsonb` (unlike the `json` type) does
+ * NOT preserve object key insertion order. A record round-tripped through
+ * `household_snapshots` comes back with its keys in Postgres's own order,
+ * which differs from the order the same record has in local memory — even
+ * when every value is byte-for-byte identical. Plain JSON.stringify is
+ * order-sensitive, so two semantically-equal snapshots produced different
+ * fingerprint strings on every single cycle, permanently defeating
+ * runDrain's no-op guard (`lastAcknowledgedFingerprint === submittedFingerprint`
+ * in householdPushCoordinator.ts) and forcing a real push every drain
+ * iteration — proven to sustain an indefinite ~800ms-cadence push loop with
+ * zero real content changes, which both wastes bandwidth/battery and starves
+ * genuine edits behind constant CAS contention.
+ *
+ * Sorting arrays (byId, above) was already order-independent; this closes
+ * the remaining gap for the objects INSIDE those arrays (and every other
+ * nested object) without changing any value, array order, or merge outcome —
+ * it only changes what the fingerprint STRING looks like.
+ */
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    // Match native JSON.stringify: an undefined array element serializes as
+    // null (never omitted — omitting would shift every later index).
+    return `[${value.map((entry) => (entry === undefined ? 'null' : stableStringify(entry))).join(',')}]`;
+  }
+  if (value !== null && typeof value === 'object') {
+    // Match native JSON.stringify: a key whose value is undefined is omitted
+    // entirely, not written as "undefined" or null.
+    const keys = Object.keys(value as Record<string, unknown>)
+      .filter((key) => (value as Record<string, unknown>)[key] !== undefined)
+      .sort();
+    const body = keys
+      .map((key) => `${JSON.stringify(key)}:${stableStringify((value as Record<string, unknown>)[key])}`)
+      .join(',');
+    return `{${body}}`;
+  }
+  return JSON.stringify(value);
+}
+
 export function durableStateSemanticFingerprint(state: DurableState): string {
   const items = byId(state.items);
   const activeSession = state.activeSession ? {
@@ -109,7 +150,7 @@ export function durableStateSemanticFingerprint(state: DurableState): string {
     skippedStoreIds: [...state.activeSession.skippedStoreIds].sort(),
     receipts: byId(state.activeSession.receipts),
   } : null;
-  return JSON.stringify({
+  return stableStringify({
     items,
     stores: byId(state.stores),
     priceHistory: byId(state.priceHistory),
