@@ -22,7 +22,7 @@ export function MoveItemsSheet({
   stores: Store[];
 }) {
   const { colors } = useTheme();
-  const updateItem = useDurableStore((s) => s.updateItem);
+  const assignItemsToStore = useDurableStore((s) => s.assignItemsToStore);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pickingStore, setPickingStore] = useState(false);
   const [addingStore, setAddingStore] = useState(false);
@@ -42,8 +42,16 @@ export function MoveItemsSheet({
       return next;
     });
 
+  // Routed through the same guarded ledger path as every other store
+  // reassignment (assignItemToStore/assignItemsToStore) — a direct
+  // updateItem({ storeId }) here used to bypass the assignment ledger and
+  // canAssignToStore/protectedByMostRecentClosedTrip entirely, letting a
+  // completed store's item silently reappear on the Shopping tab. No
+  // allowRepurchase: like the Choose Store bulk-assign flow, a guarded item
+  // is left deactivated rather than resurrected — matches shopping.tsx's
+  // `assignItemsToStore(unassigned..., storeId)` call.
   const move = (storeId: string) => {
-    selected.forEach((id) => updateItem(id, { storeId }));
+    assignItemsToStore([...selected], storeId);
     onClose();
   };
 

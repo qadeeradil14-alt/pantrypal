@@ -22,7 +22,7 @@ export const OTA_SEQ = 453;
  * the "preview" EAS channel and aborts unless this is exactly one higher —
  * see that script for the guard.
  */
-export const RECOVERY_PREVIEW_SEQ = 'R453.3';
+export const RECOVERY_PREVIEW_SEQ = 'R453.4';
 
 /**
  * Last known production OTA sequence — for DISPLAY ONLY, never gating.
